@@ -1,0 +1,67 @@
+{
+  "source": "hand-written for the third graph test; neutral names, no equivalent in the TS Hexlog, so no oracle: tests assert behavior, not hashes",
+  "types": [
+    {
+      "name": "section",
+      "schema": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": {"type": "string", "minLength": 1, "maxLength": 100}
+        }
+      }
+    },
+    {
+      "name": "paragraph",
+      "schema": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": {"type": "string", "maxLength": 2000}
+        }
+      }
+    },
+    {
+      "name": "person",
+      "schema": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    {
+      "name": "team",
+      "schema": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    {
+      "name": "ticket",
+      "requires_snapshot": true,
+      "schema": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {"enum": ["open", "closed"]},
+          "title": {"type": "string"}
+        }
+      }
+    },
+    {
+      "name": "milestone",
+      "schema": {"type": "object"}
+    }
+  ],
+  "relations": [
+    {"name": "contains", "from": ["section"], "to": ["section", "paragraph"], "acyclic": true},
+    {"name": "member-of", "from": ["person"], "to": ["team"]},
+    {"name": "blocks", "from": ["ticket"], "to": ["ticket"], "acyclic": true},
+    {"name": "targets", "from": ["ticket"], "to": ["milestone"]}
+  ]
+}
