@@ -1,0 +1,79 @@
+{
+  "types": [
+    {
+      "name": "work-item",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "status"],
+        "properties": {
+          "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "status": {"enum": ["open", "closed"]},
+          "gate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "passed", "chain_head_seq", "snapshot"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1, "maxLength": 100},
+              "passed": {"type": "boolean"},
+              "chain_head_seq": {"type": "integer", "minimum": 0},
+              "snapshot": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "id"],
+                "properties": {
+                  "kind": {"const": "git-commit"},
+                  "id": {"type": "string", "minLength": 40, "maxLength": 64}
+                }
+              }
+            }
+          }
+        },
+        "oneOf": [
+          {"properties": {"status": {"const": "open"}}, "not": {"required": ["gate"]}},
+          {"properties": {"status": {"const": "closed"}}, "required": ["gate"]}
+        ]
+      }
+    },
+    {
+      "name": "pull-request",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "status", "provider", "repo", "number"],
+        "properties": {
+          "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "status": {"enum": ["open", "closed"]},
+          "gate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "passed", "chain_head_seq", "snapshot"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1, "maxLength": 100},
+              "passed": {"type": "boolean"},
+              "chain_head_seq": {"type": "integer", "minimum": 0},
+              "snapshot": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "id"],
+                "properties": {
+                  "kind": {"const": "git-commit"},
+                  "id": {"type": "string", "minLength": 40, "maxLength": 64}
+                }
+              }
+            }
+          },
+          "provider": {"enum": ["github"]},
+          "repo": {"type": "string", "minLength": 1, "maxLength": 200},
+          "number": {"type": "integer", "minimum": 1},
+          "branch": {"type": "string", "minLength": 1, "maxLength": 200}
+        },
+        "oneOf": [
+          {"properties": {"status": {"const": "open"}}, "not": {"required": ["gate"]}},
+          {"properties": {"status": {"const": "closed"}}, "required": ["gate"]}
+        ]
+      }
+    }
+  ],
+  "relations": []
+}

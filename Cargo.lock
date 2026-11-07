@@ -711,6 +711,9 @@ name = "omhl"
 version = "0.1.0"
 dependencies = [
  "hexlog",
+ "serde_json",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]

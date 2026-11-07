@@ -9,3 +9,8 @@ workspace = true
 
 [dependencies]
 hexlog = { path = "../hexlog" }
+serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+uuid = { version = "=1.29.1", features = ["v7"] }
