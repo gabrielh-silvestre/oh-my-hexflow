@@ -1253,6 +1253,18 @@ O dono escolheu `sqlx` (alternativa E1-B) depois do consenso. Esta seção preva
 
 O `decide` roda os passos 1 a 6 dentro do `BEGIN IMMEDIATE`, como o TS: 40 ms medidos para 50 itens de 19 KB. `Clock::now()` é lido uma vez por `append`, e os ids são gerados só na montagem. O ponteiro de `data` é `/items/<i>/body/data` em tudo. O passo 4 roda em duas passadas, com o corte do lote. `FORK_REJECTED` no mesmo lote leva `lineage-in-batch`, e ainda há `base-unknown`, `lineage-not-found` e `already-retired`. A Facade ganha `Config::new` e recusa `Limits` fora do que o DDL aceita, e as leituras de tenant desconhecido dão `TenantNotFound`.
 
+### 16.14 F1: correções da validação final (D-32 a D-40)
+
+A validação final teve cinco revisores: arquiteto, segurança, revisão de código, verificador e simplificador. Só um bloqueio apareceu: `list` com `include_retired` devolvia `Internal`. A F1:
+- tirou `include_retired` de `ListFilter`;
+- pôs o tenant em `record_by_id`;
+- passou a validar `page_default`, `busy_timeout` e `db_path` na abertura, e `after_seq` no `list`;
+- passou a abrir banco já iniciado sem trava de escrita.
+
+O `Busy` intermitente dos testes de corrida veio de `fsync` parado no WSL2, provado pelo debugger, e o prazo desses testes foi a 120 s. A revalidação aprovou, e o laço de 20 rodadas de `concurrency` fechou 20 de 20.
+
+Os structs de porta da seção 4.4 (`TenantRow`, `LatestRow` e `RecordRow`) perderam campos na T6 (S-19) e na F1. Para eles e para os limites conhecidos, vale a seção F1 do [contrato de costuras](omhl-v2-core-step3-seams.md).
+
 ### 16.13 T5c: verificação sobre texto cru e política `Full` fora da transação (D-19, D-24 a D-26)
 
 `VerifyReads` passa a ler texto cru (`stored_tenant`, `stored_records`, `stored_batches`) e perde o `tenant`, então o E0034 some. `verify_chain` compara texto com o valor recalculado e nunca faz `parse` das colunas: coluna adulterada vira quebra, não `StoreError`. Na escrita, `Full` roda uma `Store::read` antes do `append_with`, fora da transação; `Tail` mapeia `corrupt-row` da cauda para `ChainBroken` `tail-unreadable`. `sqlite_store` vai a 32. Detalhes na costura 14 a 16 do [contrato de costuras](omhl-v2-core-step3-seams.md); esta seção e o contrato prevalecem sobre a seção 4.5 do plano onde divergirem.
