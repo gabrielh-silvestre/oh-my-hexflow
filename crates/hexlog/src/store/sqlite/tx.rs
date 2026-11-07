@@ -78,7 +78,7 @@ const INSERT_TENANT: &str = "INSERT INTO tenants (tenant, anchor, anchor_doc, cr
 const SELECT_LAST_RECORD: &str =
     "SELECT seq, hash FROM records WHERE tenant = ?1 ORDER BY seq DESC LIMIT 1";
 const SELECT_LATEST_RECORD: &str = concat!(
-    "SELECT r.id, r.seq, r.retired, r.type, r.def_hash FROM records AS r \
+    "SELECT r.id, r.retired, r.type, r.def_hash FROM records AS r \
      WHERE r.tenant = ?1 AND r.lineage_kind = ?2 AND r.lineage_key = ?3 AND ",
     no_successor!("r")
 );
@@ -286,7 +286,6 @@ fn tenant_from(row: &SqliteRow) -> Result<TenantRow, HexlogError> {
     Ok(TenantRow {
         tenant: parsed(row, "tenant", TenantId::parse)?,
         anchor: parsed(row, "anchor", Hash::parse)?,
-        anchor_doc: text(row, "anchor_doc")?.to_owned(),
         created_at: text(row, "created_at")?.to_owned(),
     })
 }
@@ -294,7 +293,6 @@ fn tenant_from(row: &SqliteRow) -> Result<TenantRow, HexlogError> {
 fn latest_from(row: &SqliteRow) -> Result<LatestRow, HexlogError> {
     Ok(LatestRow {
         record_id: parsed(row, "id", RecordId::parse)?,
-        seq: unsigned(row, "seq")?,
         retired: retired_of(row)?,
         type_name: parsed(row, "type", Name::parse)?,
         def_hash: parsed(row, "def_hash", Hash::parse)?,
@@ -331,7 +329,6 @@ fn columns_from(row: &SqliteRow) -> Result<RecordColumns, HexlogError> {
 
 fn stored_tenant_from(row: &SqliteRow) -> Result<StoredTenant, HexlogError> {
     Ok(StoredTenant {
-        tenant: column(row, "tenant")?,
         anchor: column(row, "anchor")?,
         anchor_doc: column(row, "anchor_doc")?,
         created_at: column(row, "created_at")?,
@@ -340,7 +337,6 @@ fn stored_tenant_from(row: &SqliteRow) -> Result<StoredTenant, HexlogError> {
 
 fn stored_row_from(row: &SqliteRow) -> Result<StoredRow, HexlogError> {
     Ok(StoredRow {
-        tenant: column(row, "tenant")?,
         seq: column(row, "seq")?,
         id: column(row, "id")?,
         prev_hash: column(row, "prev_hash")?,

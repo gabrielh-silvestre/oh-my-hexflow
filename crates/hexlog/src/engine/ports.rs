@@ -1,6 +1,7 @@
 use serde_json::Value;
 use uuid::Uuid;
 
+pub(crate) use crate::engine::model::LineageKind;
 use crate::engine::model::{
     AppendOutcome, ChainHead, LineageRef, ListFilter, Origin, PageRequest, RelationQuery,
 };
@@ -63,41 +64,15 @@ pub(crate) trait Definitions: Send + Sync {
     fn validate_data(&self, name: &TypeName, data: &Value) -> Result<(), Vec<DataViolation>>;
 }
 
-#[derive(Clone, Copy)]
-pub(crate) enum LineageKind {
-    Node,
-    Relation,
-}
-
-impl LineageKind {
-    /// Texto da coluna `lineage_kind` e do campo `kind` do corpo.
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            LineageKind::Node => "node",
-            LineageKind::Relation => "relation",
-        }
-    }
-
-    pub(crate) fn parse(text: &str) -> Option<LineageKind> {
-        match text {
-            "node" => Some(LineageKind::Node),
-            "relation" => Some(LineageKind::Relation),
-            _ => None,
-        }
-    }
-}
-
 pub(crate) struct TenantRow {
     pub(crate) tenant: TenantId,
     pub(crate) anchor: Hash,
-    pub(crate) anchor_doc: String,
     pub(crate) created_at: String,
 }
 
 /// `type_name` guarda o tipo do node ou o relation type, por isso `Name`.
 pub(crate) struct LatestRow {
     pub(crate) record_id: RecordId,
-    pub(crate) seq: u64,
     pub(crate) retired: bool,
     pub(crate) type_name: Name,
     pub(crate) def_hash: Hash,
@@ -204,7 +179,6 @@ pub(crate) trait QueryReads {
 
 /// Linha do tenant como está no banco: `verify_chain` compara texto e nunca interpreta.
 pub(crate) struct StoredTenant {
-    pub(crate) tenant: String,
     pub(crate) anchor: String,
     pub(crate) anchor_doc: String,
     pub(crate) created_at: String,
@@ -212,7 +186,6 @@ pub(crate) struct StoredTenant {
 
 /// Linha de `records` como está no banco, sem nenhum `parse`.
 pub(crate) struct StoredRow {
-    pub(crate) tenant: String,
     pub(crate) seq: i64,
     pub(crate) id: String,
     pub(crate) prev_hash: String,

@@ -1,6 +1,3 @@
-// removido na T6
-#![allow(dead_code)]
-
 pub(crate) mod chain;
 pub(in crate::engine) mod decide;
 pub(crate) mod limits;
