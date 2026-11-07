@@ -68,3 +68,32 @@ impl Tamper {
         .expect("record exists")
     }
 }
+
+/// Conexão crua somente leitura ao arquivo do banco. Ao contrário do `Tamper`, não remove os
+/// triggers: serve para conferir o esquema que o store deixou. Uso só em teste.
+pub struct Inspect {
+    conn: SqliteConnection,
+}
+
+impl Inspect {
+    /// Não cria o arquivo: o store já o criou.
+    pub fn open(path: &Path) -> Inspect {
+        let options = SqliteConnectOptions::new().filename(path).read_only(true);
+        let conn =
+            block_on(SqliteConnection::connect_with(&options)).expect("inspect connection opens");
+        Inspect { conn }
+    }
+
+    /// Primeira coluna de cada linha; o `sql` faz `CAST(.. AS TEXT)` do que não for texto.
+    pub fn read_text(&mut self, sql: &str, binds: &[&str]) -> Vec<String> {
+        let mut query = sqlx::query(AssertSqlSafe(sql));
+        for bind in binds {
+            query = query.bind(*bind);
+        }
+        block_on(query.fetch_all(&mut self.conn))
+            .expect("inspect query runs")
+            .iter()
+            .map(|row| row.try_get::<String, _>(0).expect("first column is text"))
+            .collect()
+    }
+}

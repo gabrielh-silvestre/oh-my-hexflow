@@ -41,6 +41,9 @@ impl ErrorCode {
     }
 }
 
+/// Código do detalhe que marca o corte das violações.
+pub(crate) const TOO_MANY_ERRORS: &str = "too-many-errors";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Detail {
     pub path: String,
@@ -48,6 +51,19 @@ pub struct Detail {
     pub message: String,
     pub current: Option<RecordId>,
     pub retired: Option<bool>,
+}
+
+impl Detail {
+    /// Detalhe sem `current` nem `retired`, que só a recusa de fork preenche.
+    pub(crate) fn new(path: String, code: &str, message: &str) -> Detail {
+        Detail {
+            path,
+            code: code.to_owned(),
+            message: message.to_owned(),
+            current: None,
+            retired: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -64,13 +80,7 @@ impl HexlogError {
         HexlogError {
             code,
             message: message.to_owned(),
-            details: vec![Detail {
-                path: String::new(),
-                code: detail_code.to_owned(),
-                message: message.to_owned(),
-                current: None,
-                retired: None,
-            }],
+            details: vec![Detail::new(String::new(), detail_code, message)],
         }
     }
 

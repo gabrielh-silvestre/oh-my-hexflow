@@ -49,6 +49,8 @@ const FORBIDDEN_CRATES: &[&str] = &[
 const FORBIDDEN_SERDE_JSON_FEATURES: &[&str] = &["arbitrary_precision", "preserve_order"];
 const GIT_ONLY_FILE: &str = "engine/snapshot.rs";
 const SCHEMA_SQL: &str = "store/sqlite/schema.sql";
+const BLOCKING_IDENTS: &[&str] = &["block_on", "futures_executor"];
+const BLOCKING_HOME: &str = "store/sqlite";
 const RESTRICTED_FOR_ENGINE: &[&str] = &["store", "catalog"];
 const INTERNAL_MODULES: &[&str] = &["engine", "catalog", "store"];
 const ENGINE_CHILDREN: &[(&str, &str)] = &[
@@ -302,6 +304,21 @@ fn scan_stream<'a>(stream: TokenStream, banned: &[&'a str], hits: &mut Vec<Hit<'
             }
         }
     }
+}
+
+/// Linhas em que `stream` usa, como identificador inteiro, um dos nomes de `names`.
+fn lines_using_idents(stream: TokenStream, names: &[&str]) -> Vec<usize> {
+    let mut lines = Vec::new();
+    for tree in stream {
+        match tree {
+            TokenTree::Group(group) => lines.extend(lines_using_idents(group.stream(), names)),
+            TokenTree::Ident(ident) if names.iter().any(|name| ident == name) => {
+                lines.push(ident.span().start().line);
+            }
+            _ => {}
+        }
+    }
+    lines
 }
 
 fn skip_doc_attribute(trees: &mut Peekable<token_stream::IntoIter>) {
@@ -1025,6 +1042,29 @@ fn it_should_not_use_domain_vocabulary_in_identifiers_or_string_literals_of_the_
 
     let mut findings = rust_findings(&sources, VOCABULARY);
     findings.extend(schema_findings(VOCABULARY));
+
+    assert_no_failures(&findings);
+}
+
+#[test]
+fn it_should_confine_block_on_to_the_sqlite_store() {
+    let home = src_dir().join(BLOCKING_HOME);
+    let sources: Vec<PathBuf> = files_with_extension(&src_dir(), "rs")
+        .into_iter()
+        .filter(|path| !path.starts_with(&home))
+        .collect();
+
+    let mut findings = Vec::new();
+    for path in &sources {
+        match tokenize(&read(path)) {
+            Ok(stream) => findings.extend(
+                lines_using_idents(stream, BLOCKING_IDENTS)
+                    .into_iter()
+                    .map(|line| render(path, line, "block_on or futures_executor")),
+            ),
+            Err(error) => findings.push(format!("{}: cannot tokenize: {error}", display(path))),
+        }
+    }
 
     assert_no_failures(&findings);
 }

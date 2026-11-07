@@ -3,10 +3,12 @@ use std::fmt;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::engine::limits::{EXTERNAL_ID_MAX, IDEMPOTENCY_KEY_MAX};
 use crate::error::{ErrorCode, HexlogError};
 
 const SEGMENT_MAX: usize = 63;
+/// Formato do id (e não teto configurável): 1 a 200 unidades UTF-16.
+pub(crate) const IDEMPOTENCY_KEY_MAX: usize = 200;
+pub(crate) const EXTERNAL_ID_MAX: usize = 200;
 const SEMANTIC_ID_MAX: usize = 200;
 const UUID_LEN: usize = 36;
 
@@ -55,7 +57,7 @@ fn is_utf16_within(text: &str, max: usize) -> bool {
 
 macro_rules! string_id {
     ($name:ident, $is_valid:expr, $code:expr, $detail_code:expr, $message:expr) => {
-        #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
         #[serde(transparent)]
         pub struct $name(String);
 

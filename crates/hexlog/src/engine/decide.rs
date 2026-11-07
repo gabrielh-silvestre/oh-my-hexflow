@@ -8,9 +8,9 @@ use serde_json::Value;
 use crate::engine::chain::{fingerprint, hash_record};
 use crate::engine::limits::Limits;
 use crate::engine::model::{
-    AppendItem, AppendOutcome, AppendRequest, AppendedRecord, BodyAuthor, BodyBatch, BodyLineage,
-    BodySnapshot, ChainHead, ItemBody, Lineage, Origin, RecordBody, invalid_body, lineage_columns,
-    read_body,
+    AppendItem, AppendOutcome, AppendRequest, AppendedRecord, BODY_VERSION, BodyAuthor, BodyBatch,
+    BodyLineage, BodySnapshot, ChainHead, ItemBody, Lineage, LineageRef, Origin, RecordBody,
+    invalid_body, lineage_columns, read_body,
 };
 use crate::engine::ports::{
     AppendPlan, BatchRow, Definitions, IdGenerator, LatestRow, LineageKind, NativeNodes, NewRecord,
@@ -55,7 +55,7 @@ pub fn decide(
     })?;
     let head = reads.chain_head(&req.tenant)?;
     validate_tail(&req.tenant, &head, reads)?;
-    let lineages: Vec<Cow<'_, Lineage>> = req
+    let lineages: Vec<LineageRef<'_>> = req
         .items
         .iter()
         .map(|item| item_lineage(&item.body))
@@ -113,7 +113,9 @@ fn validate_tail(
     if head.seq == 0 {
         return Ok(());
     }
-    let tail = reads.batch_records(tenant, head.seq, 1)?;
+    let tail = reads
+        .batch_records(tenant, head.seq, 1)
+        .map_err(tail_unreadable)?;
     let intact = tail.first().is_some_and(|row| {
         hash_record(row.prev_hash.as_str(), &row.body) == row.hash && row.hash == head.hash
     });
@@ -127,20 +129,37 @@ fn validate_tail(
     ))
 }
 
-/// A linhagem do item; só a retirement já traz a sua pronta.
-fn item_lineage(body: &ItemBody) -> Cow<'_, Lineage> {
+/// Uma coluna da cauda que os tipos recusam é adulteração, e o chamador precisa do código que a diz.
+fn tail_unreadable(error: HexlogError) -> HexlogError {
+    let corrupt_row = error.code == ErrorCode::StoreError
+        && error
+            .details
+            .first()
+            .is_some_and(|detail| detail.code == "corrupt-row");
+    if !corrupt_row {
+        return error;
+    }
+    HexlogError::refused(
+        ErrorCode::ChainBroken,
+        "tail-unreadable",
+        "last record is not readable",
+    )
+}
+
+/// A linhagem do item, emprestada do corpo.
+fn item_lineage(body: &ItemBody) -> LineageRef<'_> {
     match body {
-        ItemBody::Node { id, .. } => Cow::Owned(Lineage::Node(id.clone())),
+        ItemBody::Node { id, .. } => LineageRef::Node(id),
         ItemBody::Relation {
             relation_type,
             from,
             to,
-        } => Cow::Owned(Lineage::Relation {
-            relation_type: relation_type.clone(),
-            from: from.clone(),
-            to: to.clone(),
-        }),
-        ItemBody::Retirement { lineage } => Cow::Borrowed(lineage),
+        } => LineageRef::Relation {
+            relation_type,
+            from,
+            to,
+        },
+        ItemBody::Retirement { lineage } => LineageRef::from(lineage),
     }
 }
 
@@ -192,7 +211,7 @@ type PairsByType<'r> = HashMap<&'r str, Vec<(SemanticId, SemanticId)>>;
 fn validate_history(
     ctx: &DecideCtx<'_>,
     req: &AppendRequest,
-    lineages: &[Cow<'_, Lineage>],
+    lineages: &[LineageRef<'_>],
     reads: &mut dyn WriteReads,
 ) -> Result<Vec<Validated>, HexlogError> {
     let pairs = load_acyclic_pairs(ctx, req, reads)?;
@@ -206,8 +225,8 @@ fn validate_history(
     let mut overlay: HashMap<&str, Overlay<'_>> = HashMap::new();
     let mut seen = HashSet::with_capacity(req.items.len());
     let mut validated = Vec::with_capacity(req.items.len());
-    for (index, (item, lineage)) in req.items.iter().zip(lineages).enumerate() {
-        if !seen.insert(lineage_columns(lineage)) {
+    for (index, (item, &lineage)) in req.items.iter().zip(lineages).enumerate() {
+        if !seen.insert(lineage) {
             return Err(HexlogError::refused(
                 ErrorCode::ForkRejected,
                 "lineage-in-batch",
@@ -264,7 +283,7 @@ fn ends_of_item<'a>(
         }
         ItemBody::Retirement {
             lineage: Lineage::Relation { .. },
-        } => Ok(Some(inherited_ends(reads, latest)?)),
+        } => Ok(Some(inherited_ends(reads, tenant, latest)?)),
         ItemBody::Node { id, type_name, .. } => {
             overlay.insert(id.as_str(), Overlay::Live(type_name));
             Ok(None)
@@ -388,7 +407,7 @@ fn resolve_endpoint<'o>(
         })),
         Some(Overlay::Retired) => Ok(None),
         None => Ok(reads
-            .latest_record(tenant, &Lineage::Node(id.clone()))?
+            .latest_record(tenant, LineageRef::Node(id))?
             .filter(|latest| !latest.retired)
             .map(|latest| Resolved {
                 origin: Origin::Tenant,
@@ -400,11 +419,12 @@ fn resolve_endpoint<'o>(
 /// Retirement de relation copia as origens e a versão nativa do latest: não revalida extremos.
 fn inherited_ends(
     reads: &mut dyn WriteReads,
+    tenant: &TenantId,
     latest: Option<&LatestRow>,
 ) -> Result<Ends, HexlogError> {
     let latest = latest.ok_or_else(|| HexlogError::internal("retirement has no latest record"))?;
     let row = reads
-        .record_by_id(&latest.record_id)?
+        .record_by_id(tenant, &latest.record_id)?
         .ok_or_else(|| HexlogError::internal("latest record is missing"))?;
     let (Some(from), Some(to)) = (row.columns.from_origin, row.columns.to_origin) else {
         return Err(invalid_body());
@@ -479,7 +499,7 @@ fn not_current(index: usize, latest: &LatestRow) -> HexlogError {
 
 /// O que um item grava: tipo, hash da definição e `data` vêm do catálogo (node, relation) ou do latest (retirement).
 struct Subject<'a> {
-    lineage: &'a Lineage,
+    lineage: LineageRef<'a>,
     type_name: Name,
     def_hash: &'a Hash,
     data: Option<&'a Value>,
@@ -489,7 +509,7 @@ struct Subject<'a> {
 fn subject<'a>(
     defs: &'a dyn Definitions,
     item: &'a AppendItem,
-    lineage: &'a Lineage,
+    lineage: LineageRef<'a>,
     latest: Option<&'a LatestRow>,
 ) -> Result<Subject<'a>, HexlogError> {
     match (&item.body, latest) {
@@ -535,7 +555,7 @@ fn subject<'a>(
 fn assemble(
     ctx: &DecideCtx<'_>,
     req: &AppendRequest,
-    lineages: &[Cow<'_, Lineage>],
+    lineages: &[LineageRef<'_>],
     head: &ChainHead,
     batch_fingerprint: Hash,
     validated: &[Validated],
@@ -550,7 +570,7 @@ fn assemble(
     let count = u32::try_from(req.items.len())
         .map_err(|_| HexlogError::internal("batch item count out of range"))?;
     let mut records: Vec<NewRecord> = Vec::with_capacity(req.items.len());
-    for (index, ((item, lineage), found)) in
+    for (index, ((item, &lineage), found)) in
         req.items.iter().zip(lineages).zip(validated).enumerate()
     {
         let (seq, prev_hash) = match records.last() {
@@ -605,7 +625,7 @@ struct Link {
 fn build_record(
     ctx: &DecideCtx<'_>,
     req: &AppendRequest,
-    (item, lineage): (&AppendItem, &Lineage),
+    (item, lineage): (&AppendItem, LineageRef<'_>),
     validated: &Validated,
     link: Link,
     batch: Option<BodyBatch<'_>>,
@@ -625,7 +645,7 @@ fn build_record(
         )
     })?;
     let body = RecordBody {
-        v: 1,
+        v: BODY_VERSION,
         tenant: Cow::Borrowed(req.tenant.as_str()),
         seq: link.seq,
         id: Cow::Borrowed(id.as_str()),
@@ -670,15 +690,15 @@ fn build_record(
 }
 
 fn body_lineage<'a>(
-    lineage: &'a Lineage,
+    lineage: LineageRef<'a>,
     ends: Option<&Ends>,
 ) -> Result<BodyLineage<'a>, HexlogError> {
     match (lineage, ends) {
-        (Lineage::Node(id), _) => Ok(BodyLineage::Node {
+        (LineageRef::Node(id), _) => Ok(BodyLineage::Node {
             id: Cow::Borrowed(id.as_str()),
         }),
         (
-            Lineage::Relation {
+            LineageRef::Relation {
                 relation_type,
                 from,
                 to,
@@ -691,7 +711,7 @@ fn body_lineage<'a>(
             from_origin: Cow::Borrowed(ends.from.as_str()),
             to_origin: Cow::Borrowed(ends.to.as_str()),
         }),
-        (Lineage::Relation { .. }, None) => Err(HexlogError::internal(
+        (LineageRef::Relation { .. }, None) => Err(HexlogError::internal(
             "relation item has no resolved endpoints",
         )),
     }
@@ -704,8 +724,8 @@ fn record_columns(
     validated: &Validated,
 ) -> RecordColumns {
     let (lineage_kind, relation) = match subject.lineage {
-        Lineage::Node(_) => (LineageKind::Node, None),
-        Lineage::Relation {
+        LineageRef::Node(_) => (LineageKind::Node, None),
+        LineageRef::Relation {
             relation_type,
             from,
             to,

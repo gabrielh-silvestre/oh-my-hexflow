@@ -165,6 +165,15 @@ impl Harness {
     }
 
     pub fn open_with(&self, config: &Config, catalog: Catalog) -> Hexlog<'_> {
+        self.try_open_with(config, catalog).expect("hexlog opens")
+    }
+
+    /// Como `open_with`, mas devolve a recusa em vez de falhar o teste.
+    pub fn try_open_with(
+        &self,
+        config: &Config,
+        catalog: Catalog,
+    ) -> Result<Hexlog<'_>, HexlogError> {
         let deps = Deps {
             clock: &self.clock,
             ids: &self.ids,
@@ -172,7 +181,7 @@ impl Harness {
             native: &self.native,
         };
 
-        Hexlog::open(config, deps).expect("hexlog opens")
+        Hexlog::open(config, deps)
     }
 
     /// Catálogo de referência, com o tenant `acme` já criado.
@@ -339,7 +348,6 @@ pub fn all() -> ListFilter {
         id_prefix: None,
         snapshot: None,
         where_eq: Vec::new(),
-        include_retired: false,
     }
 }
 

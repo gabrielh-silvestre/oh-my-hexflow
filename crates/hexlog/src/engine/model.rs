@@ -14,6 +14,30 @@ use crate::ids::{
 #[cfg(test)]
 mod tests;
 
+#[derive(Clone, Copy)]
+pub(crate) enum LineageKind {
+    Node,
+    Relation,
+}
+
+impl LineageKind {
+    /// Texto da coluna `lineage_kind` e do campo `kind` do corpo.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            LineageKind::Node => "node",
+            LineageKind::Relation => "relation",
+        }
+    }
+
+    pub(crate) fn parse(text: &str) -> Option<LineageKind> {
+        match text {
+            "node" => Some(LineageKind::Node),
+            "relation" => Some(LineageKind::Relation),
+            _ => None,
+        }
+    }
+}
+
 // Entrada de escrita
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +96,34 @@ pub enum Lineage {
     },
 }
 
+/// A linhagem emprestada: as portas de leitura a recebem por valor, sem copiar os ids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum LineageRef<'a> {
+    Node(&'a SemanticId),
+    Relation {
+        relation_type: &'a RelationTypeName,
+        from: &'a SemanticId,
+        to: &'a SemanticId,
+    },
+}
+
+impl<'a> From<&'a Lineage> for LineageRef<'a> {
+    fn from(lineage: &'a Lineage) -> Self {
+        match lineage {
+            Lineage::Node(id) => LineageRef::Node(id),
+            Lineage::Relation {
+                relation_type,
+                from,
+                to,
+            } => LineageRef::Relation {
+                relation_type,
+                from,
+                to,
+            },
+        }
+    }
+}
+
 // Um `Node(SemanticId)` não cabe em enum com tag interna do serde: a tag precisa de um objeto.
 impl Serialize for Lineage {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -99,15 +151,15 @@ impl Serialize for Lineage {
 }
 
 /// Tipo da linhagem em texto e a chave que a identifica: o id do node, ou `tipo|de|para` da relation.
-pub(crate) fn lineage_columns(lineage: &Lineage) -> (&'static str, Cow<'_, str>) {
+pub(crate) fn lineage_columns(lineage: LineageRef<'_>) -> (&'static str, Cow<'_, str>) {
     match lineage {
-        Lineage::Node(id) => ("node", Cow::Borrowed(id.as_str())),
-        Lineage::Relation {
+        LineageRef::Node(id) => (LineageKind::Node.as_str(), Cow::Borrowed(id.as_str())),
+        LineageRef::Relation {
             relation_type,
             from,
             to,
         } => (
-            "relation",
+            LineageKind::Relation.as_str(),
             Cow::Owned(format!(
                 "{}|{}|{}",
                 relation_type.as_str(),
@@ -163,6 +215,52 @@ pub struct AppendOutcome {
     pub chain_head: ChainHead,
 }
 
+// Relatório de verificação
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BreakReason {
+    DivergingSeq,
+    HashMismatch,
+    InvalidBody,
+    ColumnMismatch,
+    BatchIndexMismatch,
+    AnchorMismatch,
+    ChainHeadNotFound,
+}
+
+impl BreakReason {
+    /// Código do detalhe de `ChainBroken` quando a política `Full` recusa uma consulta.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            BreakReason::DivergingSeq => "diverging-seq",
+            BreakReason::HashMismatch => "hash-mismatch",
+            BreakReason::InvalidBody => "invalid-body",
+            BreakReason::ColumnMismatch => "column-mismatch",
+            BreakReason::BatchIndexMismatch => "batch-index-mismatch",
+            BreakReason::AnchorMismatch => "anchor-mismatch",
+            BreakReason::ChainHeadNotFound => "chain-head-not-found",
+        }
+    }
+}
+
+/// `seq` é `None` nas quebras que não são de um record: âncora, lote e chain head esperado.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainBreak {
+    pub seq: Option<u64>,
+    pub reason: BreakReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainReport {
+    pub ok: bool,
+    pub total_records: u64,
+    /// Hash recalculado do último record (a âncora recalculada, num tenant vazio).
+    pub chain_head: Hash,
+    /// As primeiras 100 quebras; `total_breaks` conta todas.
+    pub breaks: Vec<ChainBreak>,
+    pub total_breaks: u64,
+}
+
 // Consulta
 
 /// Nome de campo escalar de primeiro nível de `data`: nada além disso entra no caminho JSON.
@@ -203,7 +301,6 @@ pub struct ListFilter {
     pub id_prefix: Option<String>,
     pub snapshot: Option<Snapshot>,
     pub where_eq: Vec<(FieldName, Scalar)>,
-    pub include_retired: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -221,6 +318,9 @@ pub struct RelationQuery {
 }
 
 // Corpo do record (JCS desta estrutura é o que entra no hash)
+
+/// Versão do formato do corpo: a escrita grava e `verify_chain` confere.
+pub(crate) const BODY_VERSION: u8 = 1;
 
 // O serde só empresta `Cow<str>` direto; `Option<Cow<str>>` viria sempre dono sem este passo.
 fn borrow_optional<'de: 'a, 'a, D: Deserializer<'de>>(

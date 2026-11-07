@@ -5,12 +5,12 @@ use sqlx::sqlite::{Sqlite, SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{Connection, Decode, Row, Transaction, Type};
 
 use crate::engine::model::{
-    ChainHead, FieldName, Lineage, ListFilter, Origin, PageRequest, RelationQuery, Scalar,
+    ChainHead, FieldName, LineageRef, ListFilter, Origin, PageRequest, RelationQuery, Scalar,
     lineage_columns,
 };
 use crate::engine::ports::{
     AppendPlan, BatchRow, LatestRow, LineageKind, NewRecord, QueryReads, RecordColumns, RecordRow,
-    TenantRow, VerifyReads, WriteReads,
+    StoredBatch, StoredRow, StoredTenant, TenantRow, VerifyReads, WriteReads,
 };
 use crate::engine::snapshot::{Snapshot, SnapshotKind};
 use crate::error::{ErrorCode, HexlogError};
@@ -21,7 +21,7 @@ use crate::ids::{
 // Fragmentos de SQL fixos: `concat!` os junta em tempo de compilação, então toda consulta é `&'static str`.
 macro_rules! record_columns {
     () => {
-        "r.tenant, r.seq, r.id, r.prev_hash, r.hash, r.body, r.at, r.type, r.lineage_kind, \
+        "r.seq, r.id, r.prev_hash, r.hash, r.body, r.at, r.type, r.lineage_kind, \
          r.lineage_key, r.retired, r.revises, r.relation_type, r.from_id, r.to_id, \
          r.from_origin, r.to_origin, r.snapshot_kind, r.snapshot_id, r.external_id, r.def_hash"
     };
@@ -78,11 +78,11 @@ const INSERT_TENANT: &str = "INSERT INTO tenants (tenant, anchor, anchor_doc, cr
 const SELECT_LAST_RECORD: &str =
     "SELECT seq, hash FROM records WHERE tenant = ?1 ORDER BY seq DESC LIMIT 1";
 const SELECT_LATEST_RECORD: &str = concat!(
-    "SELECT r.id, r.seq, r.retired, r.type, r.def_hash FROM records AS r \
+    "SELECT r.id, r.retired, r.type, r.def_hash FROM records AS r \
      WHERE r.tenant = ?1 AND r.lineage_kind = ?2 AND r.lineage_key = ?3 AND ",
     no_successor!("r")
 );
-const SELECT_RECORD_BY_ID: &str = select_records!("WHERE r.id = ?1");
+const SELECT_RECORD_BY_ID: &str = select_records!("WHERE r.tenant = ?1 AND r.id = ?2");
 const SELECT_BATCH_BY_KEY: &str = select_batches!("WHERE tenant = ?1 AND key = ?2");
 const SELECT_LIVE_RELATION_PAIRS: &str = concat!(
     "SELECT r.from_id, r.to_id FROM records AS r \
@@ -94,21 +94,21 @@ const SELECT_LIVE_RELATION_PAIRS: &str = concat!(
     " AND ",
     live_endpoint!("to_id", "to_origin")
 );
-// Cada condição de `where_eq` chega em `?8` como `[caminho, tipo, valor]`; `IS NOT` trata o caminho ausente.
+// Cada condição de `where_eq` chega em `?7` como `[caminho, tipo, valor]`; `IS NOT` trata o caminho ausente.
 const SELECT_CURRENT_NODES: &str = select_records!(
     "WHERE r.tenant = ?1 AND r.lineage_kind = 'node' AND ",
     no_successor!("r"),
-    " AND (?2 IS NULL OR r.type = ?2) AND (?3 = 1 OR r.retired = 0) \
-     AND (?4 IS NULL OR (r.snapshot_kind = ?4 AND r.snapshot_id = ?5)) \
-     AND (?6 IS NULL OR r.lineage_key = ?6 \
-          OR substr(r.lineage_key, 1, length(?6) + 1) = ?6 || '.') \
-     AND r.seq > ?7 \
-     AND NOT EXISTS (SELECT 1 FROM json_each(?8) AS cond \
+    " AND (?2 IS NULL OR r.type = ?2) AND r.retired = 0 \
+     AND (?3 IS NULL OR (r.snapshot_kind = ?3 AND r.snapshot_id = ?4)) \
+     AND (?5 IS NULL OR r.lineage_key = ?5 \
+          OR substr(r.lineage_key, 1, length(?5) + 1) = ?5 || '.') \
+     AND r.seq > ?6 \
+     AND NOT EXISTS (SELECT 1 FROM json_each(?7) AS cond \
           WHERE json_type(r.body, json_extract(cond.value, '$[0]')) \
                 IS NOT json_extract(cond.value, '$[1]') \
              OR json_extract(r.body, json_extract(cond.value, '$[0]')) \
                 IS NOT json_extract(cond.value, '$[2]')) \
-     ORDER BY r.seq LIMIT ?9"
+     ORDER BY r.seq LIMIT ?8"
 );
 const SELECT_REVISIONS: &str = select_records!(
     "WHERE r.tenant = ?1 AND r.lineage_kind = ?2 AND r.lineage_key = ?3 ORDER BY r.seq"
@@ -121,6 +121,8 @@ const SELECT_LATEST_RELATIONS: &str = select_records!(
 );
 const SELECT_RECORDS_FROM: &str =
     select_records!("WHERE r.tenant = ?1 AND r.seq >= ?2 ORDER BY r.seq LIMIT ?3");
+const SELECT_STORED_RECORDS: &str =
+    select_records!("WHERE r.tenant = ?1 AND (?2 IS NULL OR r.seq > ?2) ORDER BY r.seq LIMIT ?3");
 const SELECT_BATCHES: &str = select_batches!("WHERE tenant = ?1 ORDER BY first_seq");
 const INSERT_RECORD: &str = "INSERT INTO records (tenant, seq, id, prev_hash, hash, body, at, \
     type, lineage_kind, lineage_key, retired, revises, relation_type, from_id, to_id, \
@@ -204,25 +206,6 @@ fn signed(value: u64) -> Result<i64, HexlogError> {
 
 // ---------------------------------------------------------------- texto das colunas
 
-fn parse_origin(text: &str) -> Result<Origin, HexlogError> {
-    Origin::parse(text).ok_or_else(corrupt)
-}
-
-fn kind_text(kind: &LineageKind) -> &'static str {
-    match kind {
-        LineageKind::Node => "node",
-        LineageKind::Relation => "relation",
-    }
-}
-
-fn parse_kind(text: &str) -> Result<LineageKind, HexlogError> {
-    match text {
-        "node" => Ok(LineageKind::Node),
-        "relation" => Ok(LineageKind::Relation),
-        _ => Err(corrupt()),
-    }
-}
-
 /// Condições de `where_eq` como `[caminho, tipo, valor]`; o tipo é um literal fixo escolhido aqui.
 fn conditions_json(where_eq: &[(FieldName, Scalar)]) -> String {
     let conditions = where_eq.iter().map(|(field, scalar)| {
@@ -293,9 +276,7 @@ fn snapshot_of(row: &SqliteRow) -> Result<Option<Snapshot>, HexlogError> {
 
 fn tenant_from(row: &SqliteRow) -> Result<TenantRow, HexlogError> {
     Ok(TenantRow {
-        tenant: parsed(row, "tenant", TenantId::parse)?,
         anchor: parsed(row, "anchor", Hash::parse)?,
-        anchor_doc: text(row, "anchor_doc")?.to_owned(),
         created_at: text(row, "created_at")?.to_owned(),
     })
 }
@@ -303,7 +284,6 @@ fn tenant_from(row: &SqliteRow) -> Result<TenantRow, HexlogError> {
 fn latest_from(row: &SqliteRow) -> Result<LatestRow, HexlogError> {
     Ok(LatestRow {
         record_id: parsed(row, "id", RecordId::parse)?,
-        seq: unsigned(row, "seq")?,
         retired: retired_of(row)?,
         type_name: parsed(row, "type", Name::parse)?,
         def_hash: parsed(row, "def_hash", Hash::parse)?,
@@ -323,24 +303,71 @@ fn columns_from(row: &SqliteRow) -> Result<RecordColumns, HexlogError> {
     Ok(RecordColumns {
         at: text(row, "at")?.to_owned(),
         type_name: parsed(row, "type", Name::parse)?,
-        lineage_kind: parsed(row, "lineage_kind", parse_kind)?,
+        lineage_kind: parsed(row, "lineage_kind", |text| {
+            LineageKind::parse(text).ok_or_else(corrupt)
+        })?,
         lineage_key: text(row, "lineage_key")?.to_owned(),
         retired: retired_of(row)?,
         revises: parsed_optional(row, "revises", RecordId::parse)?,
         relation_type: parsed_optional(row, "relation_type", RelationTypeName::parse)?,
         from_id: parsed_optional(row, "from_id", SemanticId::parse)?,
         to_id: parsed_optional(row, "to_id", SemanticId::parse)?,
-        from_origin: parsed_optional(row, "from_origin", parse_origin)?,
-        to_origin: parsed_optional(row, "to_origin", parse_origin)?,
+        from_origin: parsed_optional(row, "from_origin", |text| {
+            Origin::parse(text).ok_or_else(corrupt)
+        })?,
+        to_origin: parsed_optional(row, "to_origin", |text| {
+            Origin::parse(text).ok_or_else(corrupt)
+        })?,
         snapshot: snapshot_of(row)?,
         external_id: parsed_optional(row, "external_id", ExternalId::parse)?,
         def_hash: parsed(row, "def_hash", Hash::parse)?,
     })
 }
 
+fn stored_tenant_from(row: &SqliteRow) -> Result<StoredTenant, HexlogError> {
+    Ok(StoredTenant {
+        anchor: column(row, "anchor")?,
+        anchor_doc: column(row, "anchor_doc")?,
+        created_at: column(row, "created_at")?,
+    })
+}
+
+fn stored_row_from(row: &SqliteRow) -> Result<StoredRow, HexlogError> {
+    Ok(StoredRow {
+        seq: column(row, "seq")?,
+        id: column(row, "id")?,
+        prev_hash: column(row, "prev_hash")?,
+        hash: column(row, "hash")?,
+        body: column(row, "body")?,
+        at: column(row, "at")?,
+        type_name: column(row, "type")?,
+        lineage_kind: column(row, "lineage_kind")?,
+        lineage_key: column(row, "lineage_key")?,
+        retired: column(row, "retired")?,
+        revises: column(row, "revises")?,
+        relation_type: column(row, "relation_type")?,
+        from_id: column(row, "from_id")?,
+        to_id: column(row, "to_id")?,
+        from_origin: column(row, "from_origin")?,
+        to_origin: column(row, "to_origin")?,
+        snapshot_kind: column(row, "snapshot_kind")?,
+        snapshot_id: column(row, "snapshot_id")?,
+        external_id: column(row, "external_id")?,
+        def_hash: column(row, "def_hash")?,
+    })
+}
+
+fn stored_batch_from(row: &SqliteRow) -> Result<StoredBatch, HexlogError> {
+    Ok(StoredBatch {
+        key: column(row, "key")?,
+        fingerprint: column(row, "fingerprint")?,
+        first_seq: column(row, "first_seq")?,
+        item_count: column(row, "item_count")?,
+    })
+}
+
 fn record_from(row: &SqliteRow) -> Result<RecordRow, HexlogError> {
     Ok(RecordRow {
-        tenant: parsed(row, "tenant", TenantId::parse)?,
         seq: unsigned(row, "seq")?,
         id: parsed(row, "id", RecordId::parse)?,
         prev_hash: parsed(row, "prev_hash", Hash::parse)?,
@@ -477,7 +504,7 @@ impl<'c> Tx<'c> {
             .bind(record.body.as_str())
             .bind(columns.at.as_str())
             .bind(columns.type_name.as_str())
-            .bind(kind_text(&columns.lineage_kind))
+            .bind(columns.lineage_kind.as_str())
             .bind(columns.lineage_key.as_str())
             .bind(i64::from(columns.retired))
             .bind(columns.revises.as_ref().map(RecordId::as_str))
@@ -545,7 +572,7 @@ impl WriteReads for Tx<'_> {
     fn latest_record(
         &mut self,
         tenant: &TenantId,
-        lineage: &Lineage,
+        lineage: LineageRef<'_>,
     ) -> Result<Option<LatestRow>, HexlogError> {
         let (kind, key) = lineage_columns(lineage);
         let query = sqlx::query(SELECT_LATEST_RECORD)
@@ -555,8 +582,14 @@ impl WriteReads for Tx<'_> {
         self.fetch_mapped_optional(query, latest_from)
     }
 
-    fn record_by_id(&mut self, id: &RecordId) -> Result<Option<RecordRow>, HexlogError> {
-        let query = sqlx::query(SELECT_RECORD_BY_ID).bind(id.as_str());
+    fn record_by_id(
+        &mut self,
+        tenant: &TenantId,
+        id: &RecordId,
+    ) -> Result<Option<RecordRow>, HexlogError> {
+        let query = sqlx::query(SELECT_RECORD_BY_ID)
+            .bind(tenant.as_str())
+            .bind(id.as_str());
         self.fetch_mapped_optional(query, record_from)
     }
 
@@ -612,7 +645,6 @@ impl QueryReads for Tx<'_> {
         let query = sqlx::query(SELECT_CURRENT_NODES)
             .bind(tenant.as_str())
             .bind(filter.type_name.as_ref().map(|name| name.as_str()))
-            .bind(i64::from(filter.include_retired))
             .bind(snapshot.map(|found| found.kind().as_str()))
             .bind(snapshot.map(Snapshot::id))
             .bind(filter.id_prefix.as_deref())
@@ -625,7 +657,7 @@ impl QueryReads for Tx<'_> {
     fn revisions(
         &mut self,
         tenant: &TenantId,
-        lineage: &Lineage,
+        lineage: LineageRef<'_>,
     ) -> Result<Vec<RecordRow>, HexlogError> {
         let (kind, key) = lineage_columns(lineage);
         let query = sqlx::query(SELECT_REVISIONS)
@@ -651,25 +683,26 @@ impl QueryReads for Tx<'_> {
 }
 
 impl VerifyReads for Tx<'_> {
-    fn tenant(&mut self, tenant: &TenantId) -> Result<Option<TenantRow>, HexlogError> {
-        self.tenant_row(tenant)
+    fn stored_tenant(&mut self, tenant: &TenantId) -> Result<Option<StoredTenant>, HexlogError> {
+        let query = sqlx::query(SELECT_TENANT).bind(tenant.as_str());
+        self.fetch_mapped_optional(query, stored_tenant_from)
     }
 
-    fn records_from(
+    fn stored_records(
         &mut self,
         tenant: &TenantId,
-        from_seq: u64,
+        after_seq: Option<i64>,
         limit: u32,
-    ) -> Result<Vec<RecordRow>, HexlogError> {
-        let query = sqlx::query(SELECT_RECORDS_FROM)
+    ) -> Result<Vec<StoredRow>, HexlogError> {
+        let query = sqlx::query(SELECT_STORED_RECORDS)
             .bind(tenant.as_str())
-            .bind(signed(from_seq)?)
+            .bind(after_seq)
             .bind(i64::from(limit));
-        self.records(query)
+        self.fetch_mapped(query, stored_row_from)
     }
 
-    fn batches(&mut self, tenant: &TenantId) -> Result<Vec<BatchRow>, HexlogError> {
+    fn stored_batches(&mut self, tenant: &TenantId) -> Result<Vec<StoredBatch>, HexlogError> {
         let query = sqlx::query(SELECT_BATCHES).bind(tenant.as_str());
-        self.fetch_mapped(query, batch_from)
+        self.fetch_mapped(query, stored_batch_from)
     }
 }
