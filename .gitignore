@@ -78,11 +78,6 @@ graphify-out/
 .claude/skills/gitnexus/
 CLAUDE.local.md
 
-# OMC: project documents are tracked; state, wiki, notepads, artifacts and logs are not
+# OMC: local working state and documents; only project skills are tracked
 .omc/*
-!.omc/drafts/
-!.omc/handoffs/
-!.omc/plans/
-!.omc/research/
-!.omc/specs/
 !.omc/skills/
