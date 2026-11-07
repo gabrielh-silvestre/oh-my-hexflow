@@ -1,0 +1,175 @@
+use hexlog::Author;
+use serde_json::{Map, Value};
+
+use super::error::AppError;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    List {
+        type_name: Option<String>,
+        id_prefix: Option<String>,
+        limit: Option<u32>,
+        after_seq: Option<u64>,
+    },
+    Get {
+        id: String,
+    },
+    Append {
+        request: Value,
+    },
+    Attest {
+        check: String,
+        work_item: String,
+        outcome: String,
+        note: Option<String>,
+    },
+    Render,
+    GatePr {
+        work_item: String,
+    },
+    Close {
+        work_item: String,
+    },
+    Verify,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Caller {
+    pub client: &'static str,
+    pub agent: &'static str,
+}
+
+impl Caller {
+    pub fn cli() -> Caller {
+        Caller {
+            client: "cli",
+            agent: "user",
+        }
+    }
+
+    pub fn mcp() -> Caller {
+        Caller {
+            client: "mcp",
+            agent: "claude",
+        }
+    }
+
+    pub fn hook() -> Caller {
+        Caller {
+            client: "hook",
+            agent: "hook",
+        }
+    }
+
+    /// Sem `model`: o `omhl` não sabe qual modelo está do outro lado.
+    pub(crate) fn author(&self) -> Author {
+        Author {
+            agent: self.agent.to_owned(),
+            model: None,
+            client: self.client.to_owned(),
+        }
+    }
+}
+
+/// Nome da ferramenta MCP e objeto `arguments` viram uma `Action`.
+pub fn parse_tool_call(name: &str, arguments: &Value) -> Result<Action, AppError> {
+    let empty = Map::new();
+    let args = match arguments {
+        Value::Null => &empty,
+        Value::Object(map) => map,
+        _ => return Err(AppError::invalid_arguments("", "wrong type")),
+    };
+
+    match name {
+        "list" => list(args),
+        "get" => only(args, &["id"])
+            .and_then(|()| required_text(args, "id"))
+            .map(|id| Action::Get { id }),
+        "append" => Ok(Action::Append {
+            request: Value::Object(args.clone()),
+        }),
+        "attest" => attest(args),
+        "render" => only(args, &[]).map(|()| Action::Render),
+        "gate_pr" => work_item(args).map(|work_item| Action::GatePr { work_item }),
+        "close" => work_item(args).map(|work_item| Action::Close { work_item }),
+        "verify" => only(args, &[]).map(|()| Action::Verify),
+        _ => Err(AppError::plain("unknown-tool", "unknown tool")),
+    }
+}
+
+fn list(args: &Map<String, Value>) -> Result<Action, AppError> {
+    only(args, &["type", "id_prefix", "limit", "after_seq"])?;
+    let limit = optional_uint(args, "limit", 1)?;
+
+    Ok(Action::List {
+        type_name: optional_text(args, "type")?,
+        id_prefix: optional_text(args, "id_prefix")?,
+        limit: limit
+            .map(|value| {
+                u32::try_from(value)
+                    .map_err(|_| AppError::invalid_arguments("/limit", "unknown value"))
+            })
+            .transpose()?,
+        after_seq: optional_uint(args, "after_seq", 0)?,
+    })
+}
+
+fn attest(args: &Map<String, Value>) -> Result<Action, AppError> {
+    only(args, &["check", "work_item", "outcome", "note"])?;
+
+    Ok(Action::Attest {
+        check: required_text(args, "check")?,
+        work_item: required_text(args, "work_item")?,
+        outcome: required_text(args, "outcome")?,
+        note: optional_text(args, "note")?,
+    })
+}
+
+fn work_item(args: &Map<String, Value>) -> Result<String, AppError> {
+    only(args, &["work_item"])?;
+
+    required_text(args, "work_item")
+}
+
+/// Chave fora do esquema da ferramenta é recusada.
+fn only(args: &Map<String, Value>, allowed: &[&str]) -> Result<(), AppError> {
+    match args.keys().find(|key| !allowed.contains(&key.as_str())) {
+        Some(key) => Err(AppError::invalid_arguments(
+            &format!("/{}", hexlog::pointer_segment(key)),
+            "unknown argument",
+        )),
+        None => Ok(()),
+    }
+}
+
+fn pointer(key: &str) -> String {
+    format!("/{key}")
+}
+
+fn optional_text(args: &Map<String, Value>, key: &str) -> Result<Option<String>, AppError> {
+    match args.get(key) {
+        None => Ok(None),
+        Some(Value::String(text)) => Ok(Some(text.clone())),
+        Some(_) => Err(AppError::invalid_arguments(&pointer(key), "wrong type")),
+    }
+}
+
+fn required_text(args: &Map<String, Value>, key: &str) -> Result<String, AppError> {
+    optional_text(args, key)?
+        .ok_or_else(|| AppError::invalid_arguments(&pointer(key), "missing argument"))
+}
+
+/// Inteiro sem sinal; um valor abaixo de `min` é valor fora do conjunto permitido.
+fn optional_uint(args: &Map<String, Value>, key: &str, min: u64) -> Result<Option<u64>, AppError> {
+    let Some(value) = args.get(key) else {
+        return Ok(None);
+    };
+    let Some(number) = value.as_u64() else {
+        return Err(AppError::invalid_arguments(&pointer(key), "wrong type"));
+    };
+    if number < min {
+        return Err(AppError::invalid_arguments(&pointer(key), "unknown value"));
+    }
+
+    Ok(Some(number))
+}
