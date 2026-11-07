@@ -16,7 +16,6 @@ sqlx = { version = "=0.9.0", default-features = false, features = ["sqlite-bundl
 futures-executor = "=0.3.34"
 uuid = { version = "=1.29.1", features = ["v7"] }
 thiserror = "=2.0.21"
-time = "=0.3.55"
 url = "=2.5.8"
 # Ciclos de `$ref` na T3 (`kosaraju_scc`, iterativo, D-18) e de relations na T5b (D-8); `std` é obrigatória para o `DiGraphMap`.
 petgraph = { version = "=0.8.3", default-features = false, features = ["std", "graphmap"] }
