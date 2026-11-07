@@ -1,0 +1,59 @@
+{
+  "types": [
+    {
+      "name": "premise",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "status"],
+        "properties": {
+          "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "status": {"enum": ["assumed", "confirmed"]},
+          "work_item": {"type": "string", "minLength": 1, "maxLength": 200}
+        }
+      }
+    },
+    {
+      "name": "guideline",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text"],
+        "properties": {
+          "text": {"type": "string", "minLength": 1, "maxLength": 2000}
+        }
+      }
+    },
+    {
+      "name": "decision",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence"],
+        "properties": {
+          "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source", "summary"],
+              "properties": {
+                "source": {"type": "string", "minLength": 1, "maxLength": 200},
+                "summary": {"type": "string", "minLength": 1, "maxLength": 2000}
+              }
+            }
+          },
+          "work_item": {"type": "string", "minLength": 1, "maxLength": 200}
+        }
+      }
+    }
+  ],
+  "relations": [
+    {"name": "supports", "from": ["premise", "guideline", "decision"], "to": ["decision"]},
+    {"name": "contradicts", "from": ["premise", "guideline", "decision"], "to": ["premise", "guideline", "decision"]},
+    {"name": "answers", "from": ["decision"], "to": ["premise"]}
+  ]
+}
