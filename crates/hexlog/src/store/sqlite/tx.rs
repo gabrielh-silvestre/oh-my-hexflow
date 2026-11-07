@@ -5,7 +5,7 @@ use sqlx::sqlite::{Sqlite, SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{Connection, Decode, Row, Transaction, Type};
 
 use crate::engine::model::{
-    ChainHead, FieldName, Lineage, ListFilter, Origin, PageRequest, RelationQuery, Scalar,
+    ChainHead, FieldName, LineageRef, ListFilter, Origin, PageRequest, RelationQuery, Scalar,
     lineage_columns,
 };
 use crate::engine::ports::{
@@ -210,19 +210,8 @@ fn parse_origin(text: &str) -> Result<Origin, HexlogError> {
     Origin::parse(text).ok_or_else(corrupt)
 }
 
-fn kind_text(kind: &LineageKind) -> &'static str {
-    match kind {
-        LineageKind::Node => "node",
-        LineageKind::Relation => "relation",
-    }
-}
-
 fn parse_kind(text: &str) -> Result<LineageKind, HexlogError> {
-    match text {
-        "node" => Ok(LineageKind::Node),
-        "relation" => Ok(LineageKind::Relation),
-        _ => Err(corrupt()),
-    }
+    LineageKind::parse(text).ok_or_else(corrupt)
 }
 
 /// Condições de `where_eq` como `[caminho, tipo, valor]`; o tipo é um literal fixo escolhido aqui.
@@ -523,7 +512,7 @@ impl<'c> Tx<'c> {
             .bind(record.body.as_str())
             .bind(columns.at.as_str())
             .bind(columns.type_name.as_str())
-            .bind(kind_text(&columns.lineage_kind))
+            .bind(columns.lineage_kind.as_str())
             .bind(columns.lineage_key.as_str())
             .bind(i64::from(columns.retired))
             .bind(columns.revises.as_ref().map(RecordId::as_str))
@@ -591,7 +580,7 @@ impl WriteReads for Tx<'_> {
     fn latest_record(
         &mut self,
         tenant: &TenantId,
-        lineage: &Lineage,
+        lineage: LineageRef<'_>,
     ) -> Result<Option<LatestRow>, HexlogError> {
         let (kind, key) = lineage_columns(lineage);
         let query = sqlx::query(SELECT_LATEST_RECORD)
@@ -671,7 +660,7 @@ impl QueryReads for Tx<'_> {
     fn revisions(
         &mut self,
         tenant: &TenantId,
-        lineage: &Lineage,
+        lineage: LineageRef<'_>,
     ) -> Result<Vec<RecordRow>, HexlogError> {
         let (kind, key) = lineage_columns(lineage);
         let query = sqlx::query(SELECT_REVISIONS)

@@ -5,6 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::engine::chain::canonical;
+use crate::engine::ports::LineageKind;
 use crate::engine::snapshot::Snapshot;
 use crate::error::{ErrorCode, HexlogError};
 use crate::ids::{
@@ -72,6 +73,34 @@ pub enum Lineage {
     },
 }
 
+/// A linhagem emprestada: as portas de leitura a recebem por valor, sem copiar os ids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum LineageRef<'a> {
+    Node(&'a SemanticId),
+    Relation {
+        relation_type: &'a RelationTypeName,
+        from: &'a SemanticId,
+        to: &'a SemanticId,
+    },
+}
+
+impl<'a> From<&'a Lineage> for LineageRef<'a> {
+    fn from(lineage: &'a Lineage) -> Self {
+        match lineage {
+            Lineage::Node(id) => LineageRef::Node(id),
+            Lineage::Relation {
+                relation_type,
+                from,
+                to,
+            } => LineageRef::Relation {
+                relation_type,
+                from,
+                to,
+            },
+        }
+    }
+}
+
 // Um `Node(SemanticId)` não cabe em enum com tag interna do serde: a tag precisa de um objeto.
 impl Serialize for Lineage {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -99,15 +128,15 @@ impl Serialize for Lineage {
 }
 
 /// Tipo da linhagem em texto e a chave que a identifica: o id do node, ou `tipo|de|para` da relation.
-pub(crate) fn lineage_columns(lineage: &Lineage) -> (&'static str, Cow<'_, str>) {
+pub(crate) fn lineage_columns(lineage: LineageRef<'_>) -> (&'static str, Cow<'_, str>) {
     match lineage {
-        Lineage::Node(id) => ("node", Cow::Borrowed(id.as_str())),
-        Lineage::Relation {
+        LineageRef::Node(id) => (LineageKind::Node.as_str(), Cow::Borrowed(id.as_str())),
+        LineageRef::Relation {
             relation_type,
             from,
             to,
         } => (
-            "relation",
+            LineageKind::Relation.as_str(),
             Cow::Owned(format!(
                 "{}|{}|{}",
                 relation_type.as_str(),
@@ -267,6 +296,9 @@ pub struct RelationQuery {
 }
 
 // Corpo do record (JCS desta estrutura é o que entra no hash)
+
+/// Versão do formato do corpo: a escrita grava e `verify_chain` confere.
+pub(crate) const BODY_VERSION: u8 = 1;
 
 // O serde só empresta `Cow<str>` direto; `Option<Cow<str>>` viria sempre dono sem este passo.
 fn borrow_optional<'de: 'a, 'a, D: Deserializer<'de>>(

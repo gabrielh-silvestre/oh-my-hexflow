@@ -1,7 +1,8 @@
 mod support;
 
-use hexlog::{ErrorCode, Hexlog};
+use hexlog::{Config, ErrorCode, Hexlog, VerifyPolicy};
 use serde_json::json;
+use support::catalog::reference_catalog;
 use support::tamper::Tamper;
 use support::{Harness, assert_refusal, node, request, sid, tenant};
 
@@ -128,4 +129,37 @@ fn it_should_report_tenant_not_found_when_verifying_an_unknown_tenant() {
         "tenant-not-found",
         "/tenant",
     );
+}
+
+#[test]
+fn it_should_refuse_a_write_to_an_unknown_tenant_the_same_way_under_both_policies() {
+    for verify_policy in [VerifyPolicy::Tail, VerifyPolicy::Full] {
+        let harness = Harness::new();
+        let config = Config {
+            verify_policy,
+            ..harness.config()
+        };
+        let mut hexlog = harness.open_with(&config, reference_catalog());
+
+        let malformed = hexlog
+            .append(&request("ghost", None, Vec::new()))
+            .unwrap_err();
+        let well_formed = hexlog
+            .append(&request(
+                "ghost",
+                None,
+                vec![node("a.one", "note", json!({}))],
+            ))
+            .unwrap_err();
+        let head = hexlog.chain_head(&tenant("ghost")).unwrap_err();
+
+        assert_refusal(&malformed, ErrorCode::InvalidInput, "batch-size", "/items");
+        assert_refusal(
+            &well_formed,
+            ErrorCode::TenantNotFound,
+            "tenant-not-found",
+            "/tenant",
+        );
+        assert_eq!(head.code, ErrorCode::TenantNotFound);
+    }
 }
