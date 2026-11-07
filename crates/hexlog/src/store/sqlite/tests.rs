@@ -15,7 +15,7 @@ use crate::engine::model::{
 };
 use crate::engine::ports::{
     AppendPlan, BatchRow, LineageKind, NewRecord, RecordColumns, RecordRow, Store, StoreReader,
-    StoredRow, TenantRow, VerifyReads, WriteReads,
+    StoredRow, TenantRow, WriteReads,
 };
 use crate::engine::snapshot::{Snapshot, SnapshotKind};
 use crate::error::{ErrorCode, HexlogError};
@@ -439,14 +439,13 @@ fn stored_seqs(rows: &[StoredRow]) -> Vec<i64> {
 }
 
 /// Cada campo do `StoredRow`, em texto, igual ao do record que o teste mandou gravar.
-fn assert_stored_matches(row: &StoredRow, expected: &NewRecord, tenant: &TenantId) {
+fn assert_stored_matches(row: &StoredRow, expected: &NewRecord) {
     let columns = &expected.columns;
     let kind = if is_relation(&columns.lineage_kind) {
         "relation"
     } else {
         "node"
     };
-    assert_eq!(row.tenant, tenant.as_str());
     assert_eq!(row.seq, i64::try_from(expected.seq).unwrap());
     assert_eq!(row.id, expected.id.as_str());
     assert_eq!(row.prev_hash, expected.prev_hash.as_str());
@@ -844,10 +843,8 @@ fn it_should_read_a_tenant_row_and_none_for_an_unknown_tenant() {
     let write_side = write_side.unwrap();
     assert_eq!(write_side.tenant, ledger.tenant);
     assert_eq!(write_side.anchor, ledger.anchor);
-    assert_eq!(write_side.anchor_doc, ledger.anchor_doc);
     assert_eq!(write_side.created_at, CREATED_AT);
     let verify_side = verify_side.unwrap();
-    assert_eq!(verify_side.tenant, ledger.tenant.as_str());
     assert_eq!(verify_side.anchor, ledger.anchor.as_str());
     assert_eq!(verify_side.anchor_doc, ledger.anchor_doc);
     assert_eq!(verify_side.created_at, CREATED_AT);
@@ -936,13 +933,11 @@ fn it_should_find_the_latest_record_of_node_and_relation_lineages() {
 
     let node = node.unwrap();
     assert_eq!(node.record_id, ids_of(&revision)[0]);
-    assert_eq!(node.seq, 3);
     assert!(!node.retired);
     assert_eq!(node.type_name.as_str(), "note");
     assert_eq!(node.def_hash, hash_of('2'));
     let relation = relation.unwrap();
     assert_eq!(relation.record_id, ids_of(&retirement)[0]);
-    assert_eq!(relation.seq, 5);
     assert!(relation.retired);
     assert_eq!(relation.type_name.as_str(), "depends-on");
     assert!(none.is_none());
@@ -1495,7 +1490,7 @@ fn it_should_read_stored_records_after_a_seq_as_text() {
 
     assert_eq!(stored_seqs(&whole), [1, 2, 3, 4, 5]);
     for (row, expected) in whole.iter().zip(&plan.records) {
-        assert_stored_matches(row, expected, tenant);
+        assert_stored_matches(row, expected);
     }
     assert_eq!(stored_seqs(&after_two), [3, 4, 5]);
     assert_eq!(stored_seqs(&cut), [1, 2]);

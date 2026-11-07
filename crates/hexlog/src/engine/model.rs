@@ -5,7 +5,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::engine::chain::canonical;
-use crate::engine::ports::LineageKind;
 use crate::engine::snapshot::Snapshot;
 use crate::error::{ErrorCode, HexlogError};
 use crate::ids::{
@@ -14,6 +13,30 @@ use crate::ids::{
 
 #[cfg(test)]
 mod tests;
+
+#[derive(Clone, Copy)]
+pub(crate) enum LineageKind {
+    Node,
+    Relation,
+}
+
+impl LineageKind {
+    /// Texto da coluna `lineage_kind` e do campo `kind` do corpo.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            LineageKind::Node => "node",
+            LineageKind::Relation => "relation",
+        }
+    }
+
+    pub(crate) fn parse(text: &str) -> Option<LineageKind> {
+        match text {
+            "node" => Some(LineageKind::Node),
+            "relation" => Some(LineageKind::Relation),
+            _ => None,
+        }
+    }
+}
 
 // Entrada de escrita
 
