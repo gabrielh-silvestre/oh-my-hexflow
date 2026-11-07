@@ -687,7 +687,7 @@ Valores adulterados: os da tabela do plano (linhas 485-520), com estas precisõe
 
 ### Pronto (T5c)
 
-Arquivos: `src/engine/{verify,model,ports,decide,mod}.rs`, `src/store/sqlite/tx.rs`, `src/store/sqlite/tests.rs`, `src/facade.rs`, `src/lib.rs` (reexporta `CHECKED_FIELDS`, `ChainReport`, `ChainBreak`, `BreakReason`), `tests/support/mutations.rs`, `tests/{chain_tamper,tenant_isolation,chain_properties}.rs`. Verdes: `chain_tamper` (15), `tenant_isolation` (6), `chain_properties` (2) e `sqlite_store` (32), mais tudo o que a T5a e a T5b deixaram verde; `fmt`, `clippy -D warnings` e `test --workspace` limpos.
+Arquivos: `src/engine/{verify,model,ports,decide,mod}.rs`, `src/store/sqlite/tx.rs`, `src/store/sqlite/tests.rs`, `src/facade.rs`, `src/lib.rs` (reexporta `CHECKED_FIELDS`, `ChainReport`, `ChainBreak`, `BreakReason`), `tests/support/mutations.rs`, `tests/{chain_tamper,tenant_isolation,chain_properties}.rs`. Verdes: `chain_tamper` (15), `tenant_isolation` (7, com o da S-15), `chain_properties` (2) e `sqlite_store` (32), mais tudo o que a T5a e a T5b deixaram verde; `fmt`, `clippy -D warnings` e `test --workspace` limpos.
 
 ## Emenda D-31: `LineageRef` emprestado nas portas (rodada logo depois da T5c)
 
@@ -813,3 +813,121 @@ Ensaio do crítico numa cópia da árvore com T3 e T4 prontas: 88 avisos, todos 
 ### Pronto (T6)
 
 `third_graph` (2), `architecture` (10) e o `cli` do `omhl` (2) verdes; todos os comandos de verificação da seção 5 limpos, incluindo o laço de 20 execuções de `concurrency`; `grep -rnE "todo!|unimplemented!|relation-items-not-supported" crates/hexlog/src` vazio; `grep -rn "allow(dead_code" crates/hexlog/src` vazio (o `allow` de `tests/support/mod.rs` fica, porque está em `tests/`); `time` fora do `Cargo.toml` e do `Cargo.lock`; nenhum `// removido na T6` restante. O formato do record não muda aqui: o fim da T2 já o congelou.
+
+## F1. Rodada de correção da validação final
+
+Decisões em D-32 a D-40 do [log do crítico](omhl-v2-core-step3-critic-log.md). A validação final teve 5 revisores: arquiteto, segurança, revisão de código, verificador e simplificador. Além deles, um debugger achou a causa raiz do `Busy` intermitente: um `fsync` parado sob IO pesado no WSL2, sem bug no produto. Esta seção prevalece sobre as anteriores onde divergir.
+
+### Abertura do banco (emenda a costura 7)
+
+A abertura passa a ser esta, no lugar dos "5 passos":
+1. Conecta.
+2. Uma consulta sem transação lê `(user_version, objetos, tabelas)`: `SELECT (SELECT user_version FROM pragma_user_version), (SELECT count(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'), (SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('tenants','records','batches'))`.
+3. A função pura `classify` decide pelo resultado:
+   - `(0, 0, _)`: instala;
+   - `(1, _, 3)`: pronto, sem trava de escrita;
+   - outro `(1, ..)`: recusa com `StoreError` `schema-missing`;
+   - o resto: recusa com `StoreError` `unsupported-schema-version`.
+4. Instalar é: `BEGIN IMMEDIATE`; a mesma consulta e a mesma `classify` dentro da transação; `schema.sql`; `user_version = 1`; `COMMIT`.
+5. Depois vem o WAL, como hoje.
+
+Isso é robustez independente do `Busy`: reabrir um banco já iniciado enquanto outra conexão segura a trava de escrita passa a funcionar. A reconexão continua com `create_if_missing`, e o PRAGMA de WAL continua sempre (D-32, D-40).
+
+### Portas e leituras (emenda as costuras 7, 10 e 12)
+
+- `record_by_id(&mut self, tenant: &TenantId, id: &RecordId)` nas duas portas, com o SQL `WHERE r.tenant = ?1 AND r.id = ?2`. Id de outro tenant dá `None`.
+- `RecordRow.tenant` e `TenantRow.tenant` saem, e a coluna `r.tenant` sai de `record_columns!`. `relation_view` recebe o tenant por argumento, e `TenantInfo.tenant` vem do argumento de `ensure_tenant`.
+- `ListFilter.include_retired` sai: `list` com nó retirado dava `Internal` `invalid-body`, porque o corpo da retirement não tem `data`. `SELECT_CURRENT_NODES` passa a usar `r.retired = 0` fixo, e os placeholders `?4` a `?9` viram `?3` a `?8`. `RelationQuery.include_retired` fica.
+
+### Validações novas, todas `InvalidInput`
+
+`Hexlog::open`, nesta ordem:
+1. `limits-out-of-range` em `/limits/<campo>`, com `page_default` fora de `1..=page_max` em `/limits/page_default`, conferido depois do `page_max`.
+2. `busy-timeout-out-of-range` em `/busy_timeout`, acima de 2.147.483.647 ms. Acima disso o `sqlx` dá panic na própria thread. Use uma constante nomeada, sem `as`.
+3. `db-path-invalid` em `/db_path`, quando o caminho começa por `file:` ou é exatamente `:memory:`.
+
+`Hexlog::list`: depois do `page-limit`, `after_seq` acima de `i64::MAX` dá `page-after-seq` em `/page/after_seq`. `i64::MAX` continua aceito e devolve página vazia.
+
+### Refatorações sem teste novo
+
+- `IDEMPOTENCY_KEY_MAX` e `EXTERNAL_ID_MAX` vão para `ids.rs` como `pub(crate)`, o que desfaz o ciclo `ids` → `engine/limits` → `error` → `ids`.
+- `SnapshotKind::as_str` e `parse` viram `pub(crate)`.
+- Inline de `tx::parse_kind` e `tx::parse_origin`.
+- `Detail::new(path: String, code: &str, message: &str)`, `pub(crate)`, nos 3 pontos que montam `Detail`: `error.rs`, `rules.rs` e `validate.rs`.
+- `pub(crate) const TOO_MANY_ERRORS` em `error.rs`, no lugar dos 3 literais.
+- Ficam como estão `Hash::from_lower_hex`, uma exceção registrada porque o campo é privado, e os literais de `Lineage::serialize`, que entram no `fingerprint` gravado.
+
+### Documentação no código (`///`, pt-BR, escrita pelo executor)
+
+- `Hexlog::append`:
+  - o adaptador limita bytes e profundidade antes de montar o `Value`, porque o trabalho proporcional à entrada vem antes do teto de `data_max_chars`;
+  - `at` é o instante do pedido, e `seq` é a ordem;
+  - o custo do `acyclic` por `append`, medido nesta máquina com o piso de `fsync`: 16 a 27 ms com 0 pares, 53 a 65 ms com 1.000 e 320 a 566 ms com 5.000;
+  - o invariante `acyclic` só é conferido na escrita da relation: reativar um nó retirado ou um nativo que volta numa versão nova do catálogo não revalida.
+- `relations` e `lineage_records`: sem paginação.
+- `Config::busy_timeout`: "Espera máxima por uma trava; passado o prazo a chamada devolve `Busy`. Um `fsync` parado pode estender o `COMMIT` de quem segura a trava por dezenas de segundos, então nenhum prazo é garantido sob `fsync` sem teto."
+
+### Testes da F1 (9 novos, de 246 para 255; nenhum removido)
+
+`src/store/sqlite/tests.rs`:
+- novo `it_should_open_an_initialized_database_while_another_connection_holds_the_write_lock`: banco criado e fechado; `Raw::open` roda `BEGIN IMMEDIATE`; `SqliteStore::open(&path, SHORT_TIMEOUT)` dá `Ok`; `ROLLBACK`;
+- novo `it_should_refuse_a_database_with_user_version_1_and_no_tables`: `Raw::create`, `PRAGMA user_version = 1`, fecha; dá `StoreError` `schema-missing`;
+- novo `it_should_not_find_a_record_by_id_under_another_tenant`: `record_by_id(&acme, &beta_id)` dá `None`, e `record_by_id(&beta, &beta_id)` acha o record;
+- ajustes:
+  - `it_should_find_a_record_by_id` passa o tenant e perde o caso `foreign`, que vai para o teste novo; `assert_row_matches` perde a conferência de `tenant`;
+  - `it_should_list_current_nodes_by_each_filter` perde o caso `with_retired`;
+  - `it_should_report_busy_when_another_connection_holds_the_write_lock`: depois do `ROLLBACK`, a mesma instância grava, e `chain_head.seq == 2`;
+  - `it_should_read_a_tenant_row_and_none_for_an_unknown_tenant` perde a conferência de `row.tenant`, se houver.
+
+`tests/support/mod.rs`: `all()` perde `include_retired`, e entra `Harness::try_open_with(&Config, Catalog) -> Result<Hexlog, HexlogError>`.
+
+`tests/config.rs` (novo):
+- `it_should_refuse_limits_outside_the_supported_range_when_opening`:
+  - `batch_items`, `details_max` e `page_max` em 0 e acima do teto (51, 51 e 201);
+  - `page_default` em 0 e em `page_max + 1`;
+  - todos dão `limits-out-of-range` no `/limits/<campo>` de cada um, e `page_default == page_max` abre;
+- `it_should_refuse_a_busy_timeout_above_what_sqlite_accepts`: `Duration::MAX` e `from_millis(2_147_483_648)` dão `busy-timeout-out-of-range` em `/busy_timeout`, e `from_millis(2_147_483_647)` abre;
+- `it_should_refuse_a_database_path_read_as_a_uri_or_memory_database`: `file:hexlog.db` e `:memory:` dão `db-path-invalid` em `/db_path`.
+
+`tests/list_filters.rs`: novo `it_should_refuse_an_after_seq_above_the_database_range`. `u64::MAX` e `i64::MAX as u64 + 1` dão `page-after-seq` em `/page/after_seq`, e `i64::MAX` dá `Ok` com 0 itens.
+
+`tests/relations.rs`: novo `it_should_not_revalidate_cycles_when_a_retired_node_is_reactivated`, que fixa o limite no estilo do teste do `Tail`. Arranjo:
+1. grava os nós a, b e c e as relations `after` a→b e b→c;
+2. retira b;
+3. grava c→a, que é aceita;
+4. revisa b com a retirement como `base`, o que também é aceito.
+
+No fim, `relations` devolve as 3 relations, com os dois status `Current`.
+
+`tests/architecture.rs`: novo `it_should_confine_block_on_to_the_sqlite_store`. Nenhum arquivo de `src/` fora de `src/store/sqlite/` contém `block_on` nem `futures_executor`, e os comentários são ignorados como no varredor de vocabulário.
+
+`tests/batch.rs`: `it_should_report_type_not_found_before_aggregating_data_violations` troca o `assert_refusal` por `assert_eq!(detail_pairs(&error), [("/items/1/body/type", "type-not-found")])`.
+
+`tests/concurrency.rs`: `patient` passa de 30 s para 120 s, e o comentário acompanha (D-40). As 50 rodadas da abertura ficam.
+
+### Ordem e riscos (F1)
+
+Ordem:
+1. O test-engineer mexe só nos testes acima. O vermelho esperado: a lib e os testes de integração deixam de compilar, porque um campo e uma assinatura mudam, e o resto falha por asserção.
+2. O executor mexe só em `src/`, nesta ordem: `ddl.rs`; `record_by_id` e os campos de tenant; `include_retired`; validações da abertura e da página; refatorações; `///`.
+
+O verde é `cargo test --workspace`, `clippy --all-targets` e `fmt` limpos.
+
+Riscos:
+- Renumerar os placeholders de `SELECT_CURRENT_NODES`: a rede é `it_should_list_current_nodes_by_each_filter`.
+- `pragma_user_version` como função de tabela já funciona no SQLite empacotado.
+- Os literais novos não têm palavra vetada.
+- `as` em produção: use constante nomeada.
+
+### Limites conhecidos (D-37, D-40), para o relatório final
+
+- Reativar um nó retirado pode fechar ciclo num relation type `acyclic`.
+- Escrita direta no arquivo, inclusive `INSERT OR REPLACE`, passa pelos triggers; `verify_chain` detecta.
+- `SQLITE_PROTOCOL` não é traduzido para `Busy`.
+- `at` pode sair fora da ordem de `seq` entre escritores concorrentes.
+- `relations` e `lineage_records` não têm paginação.
+- O trabalho proporcional à entrada vem antes do teto de `data_max_chars`, então o adaptador limita o texto.
+- O `where_eq` não tem teto de quantidade nem de tamanho, e quem limita é o `omhl` do passo 4.
+- A permissão 0600 do banco fica com o `omhl` do passo 4.
+- `cargo audit` fica para quando houver CI.
+- `Busy` depois do `busy_timeout` sob `fsync` parado.
