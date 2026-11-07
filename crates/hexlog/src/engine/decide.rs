@@ -283,7 +283,7 @@ fn ends_of_item<'a>(
         }
         ItemBody::Retirement {
             lineage: Lineage::Relation { .. },
-        } => Ok(Some(inherited_ends(reads, latest)?)),
+        } => Ok(Some(inherited_ends(reads, tenant, latest)?)),
         ItemBody::Node { id, type_name, .. } => {
             overlay.insert(id.as_str(), Overlay::Live(type_name));
             Ok(None)
@@ -419,11 +419,12 @@ fn resolve_endpoint<'o>(
 /// Retirement de relation copia as origens e a versão nativa do latest: não revalida extremos.
 fn inherited_ends(
     reads: &mut dyn WriteReads,
+    tenant: &TenantId,
     latest: Option<&LatestRow>,
 ) -> Result<Ends, HexlogError> {
     let latest = latest.ok_or_else(|| HexlogError::internal("retirement has no latest record"))?;
     let row = reads
-        .record_by_id(&latest.record_id)?
+        .record_by_id(tenant, &latest.record_id)?
         .ok_or_else(|| HexlogError::internal("latest record is missing"))?;
     let (Some(from), Some(to)) = (row.columns.from_origin, row.columns.to_origin) else {
         return Err(invalid_body());

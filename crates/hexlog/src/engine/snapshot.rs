@@ -10,13 +10,13 @@ pub enum SnapshotKind {
 }
 
 impl SnapshotKind {
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             SnapshotKind::GitCommit => "git-commit",
         }
     }
 
-    pub fn parse(text: &str) -> Option<SnapshotKind> {
+    pub(crate) fn parse(text: &str) -> Option<SnapshotKind> {
         match text {
             "git-commit" => Some(SnapshotKind::GitCommit),
             _ => None,

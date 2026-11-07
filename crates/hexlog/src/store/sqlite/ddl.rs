@@ -13,8 +13,11 @@ use crate::error::{ErrorCode, HexlogError};
 const SCHEMA: &str = include_str!("schema.sql");
 const SCHEMA_VERSION: i64 = 1;
 const SET_SCHEMA_VERSION: &str = "PRAGMA user_version = 1";
-const READ_SCHEMA_VERSION: &str = "PRAGMA user_version";
-const COUNT_TABLES: &str = "SELECT count(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'";
+const PROBE_SCHEMA: &str = "SELECT (SELECT user_version FROM pragma_user_version), \
+    (SELECT count(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'), \
+    (SELECT count(*) FROM sqlite_schema \
+      WHERE type = 'table' AND name IN ('tenants', 'records', 'batches'))";
+const SCHEMA_TABLES: i64 = 3;
 const ENABLE_WAL: &str = "PRAGMA journal_mode = WAL";
 // O PRAGMA do WAL não honra o `busy_timeout`, por isso a repetição própria.
 const WAL_RETRY_PAUSE: Duration = Duration::from_millis(20);
@@ -37,13 +40,13 @@ pub(super) fn connect(
     run(SqliteConnection::connect_with(&options))
 }
 
-/// Abertura em cinco passos: conectar, `BEGIN IMMEDIATE`, esquema se vazio, `COMMIT`, WAL.
+/// Abertura: conecta, lê o esquema sem transação e só toma a trava de escrita se o banco estiver vazio; por fim, o WAL.
 pub(super) fn open(
     db_path: &Path,
     busy_timeout: Duration,
 ) -> Result<SqliteConnection, HexlogError> {
     let mut conn = connect(db_path, busy_timeout)?;
-    let prepared = install_schema(&mut conn).and_then(|()| enable_wal(&mut conn, busy_timeout));
+    let prepared = prepare_schema(&mut conn).and_then(|()| enable_wal(&mut conn, busy_timeout));
     match prepared {
         Ok(()) => Ok(conn),
         Err(error) => {
@@ -54,20 +57,55 @@ pub(super) fn open(
     }
 }
 
-fn install_schema(conn: &mut SqliteConnection) -> Result<(), HexlogError> {
-    let mut tx = run(conn.begin_with(BEGIN_IMMEDIATE))?;
-    let version = run(sqlx::query_scalar::<_, i64>(READ_SCHEMA_VERSION).fetch_one(&mut *tx))?;
-    let tables = run(sqlx::query_scalar::<_, i64>(COUNT_TABLES).fetch_one(&mut *tx))?;
-    if version == 0 && tables == 0 {
-        run(sqlx::raw_sql(SCHEMA).execute(&mut *tx))?;
-        run(sqlx::raw_sql(SET_SCHEMA_VERSION).execute(&mut *tx))?;
-    } else if version != SCHEMA_VERSION {
-        let _ = block_on(tx.rollback());
-        return Err(HexlogError::refused(
+enum Schema {
+    Install,
+    Ready,
+}
+
+/// Decide pelo trio lido do banco: instalar, usar como está ou recusar (`schema-missing`, `unsupported-schema-version`).
+fn classify(version: i64, objects: i64, tables: i64) -> Result<Schema, HexlogError> {
+    match (version, objects, tables) {
+        (0, 0, _) => Ok(Schema::Install),
+        (SCHEMA_VERSION, _, SCHEMA_TABLES) => Ok(Schema::Ready),
+        (SCHEMA_VERSION, ..) => Err(HexlogError::refused(
+            ErrorCode::StoreError,
+            "schema-missing",
+            "database has the schema version but not its tables",
+        )),
+        _ => Err(HexlogError::refused(
             ErrorCode::StoreError,
             "unsupported-schema-version",
             "unsupported database schema version",
-        ));
+        )),
+    }
+}
+
+async fn probe(conn: &mut SqliteConnection) -> Result<(i64, i64, i64), sqlx::Error> {
+    sqlx::query_as(PROBE_SCHEMA).fetch_one(conn).await
+}
+
+/// Banco já inicializado abre sem tomar a trava de escrita; só o vazio vai ao `BEGIN IMMEDIATE`.
+fn prepare_schema(conn: &mut SqliteConnection) -> Result<(), HexlogError> {
+    let (version, objects, tables) = run(probe(conn))?;
+    match classify(version, objects, tables)? {
+        Schema::Ready => Ok(()),
+        Schema::Install => install_schema(conn),
+    }
+}
+
+fn install_schema(conn: &mut SqliteConnection) -> Result<(), HexlogError> {
+    let mut tx = run(conn.begin_with(BEGIN_IMMEDIATE))?;
+    let (version, objects, tables) = run(probe(&mut tx))?;
+    match classify(version, objects, tables) {
+        Ok(Schema::Install) => {
+            run(sqlx::raw_sql(SCHEMA).execute(&mut *tx))?;
+            run(sqlx::raw_sql(SET_SCHEMA_VERSION).execute(&mut *tx))?;
+        }
+        Ok(Schema::Ready) => {}
+        Err(error) => {
+            let _ = block_on(tx.rollback());
+            return Err(error);
+        }
     }
     run(tx.commit())
 }

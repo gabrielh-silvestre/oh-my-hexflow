@@ -185,3 +185,34 @@ fn it_should_reject_a_page_limit_outside_1_to_200() {
         assert_refusal(&error, ErrorCode::InvalidInput, "page-limit", "/page/limit");
     }
 }
+
+#[test]
+fn it_should_refuse_an_after_seq_above_the_database_range() {
+    let harness = Harness::new();
+    let mut hexlog = harness.open_acme();
+    append_one(&mut hexlog, node("a.one", "note", json!({})));
+    let above_range = u64::try_from(i64::MAX).unwrap() + 1;
+
+    for after_seq in [u64::MAX, above_range] {
+        let request = PageRequest {
+            limit: 10,
+            after_seq: Some(after_seq),
+        };
+
+        let error = hexlog.list(&tenant("acme"), &all(), &request).unwrap_err();
+
+        assert_refusal(
+            &error,
+            ErrorCode::InvalidInput,
+            "page-after-seq",
+            "/page/after_seq",
+        );
+    }
+
+    let largest = PageRequest {
+        limit: 10,
+        after_seq: Some(u64::try_from(i64::MAX).unwrap()),
+    };
+    let accepted = hexlog.list(&tenant("acme"), &all(), &largest).unwrap();
+    assert!(accepted.items.is_empty());
+}

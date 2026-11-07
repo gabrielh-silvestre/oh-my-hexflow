@@ -502,8 +502,7 @@ fn seqs_of(rows: &[RecordRow]) -> Vec<u64> {
     rows.iter().map(|row| row.seq).collect()
 }
 
-fn assert_row_matches(row: &RecordRow, expected: &NewRecord, tenant: &TenantId) {
-    assert_eq!(&row.tenant, tenant);
+fn assert_row_matches(row: &RecordRow, expected: &NewRecord) {
     assert_eq!(row.seq, expected.seq);
     assert_eq!(row.id, expected.id);
     assert_eq!(row.prev_hash, expected.prev_hash);
@@ -841,7 +840,6 @@ fn it_should_read_a_tenant_row_and_none_for_an_unknown_tenant() {
     .unwrap();
 
     let write_side = write_side.unwrap();
-    assert_eq!(write_side.tenant, ledger.tenant);
     assert_eq!(write_side.anchor, ledger.anchor);
     assert_eq!(write_side.created_at, CREATED_AT);
     let verify_side = verify_side.unwrap();
@@ -947,7 +945,6 @@ fn it_should_find_the_latest_record_of_node_and_relation_lineages() {
 fn it_should_find_a_record_by_id() {
     let mut env = env();
     let mut acme = start(&mut env.store, "acme");
-    let mut beta = start(&mut env.store, "beta");
     let first = append(
         &mut env.store,
         &mut acme,
@@ -959,26 +956,42 @@ fn it_should_find_a_record_by_id() {
             Draft::relation("depends-on", "a.one", "native.x").with_native_target(),
         ],
     );
-    let other_tenant = append(&mut env.store, &mut beta, &[Draft::node("b.one", "note")]);
     let relation_id = ids_of(&first)[1].clone();
     let node_id = ids_of(&first)[0].clone();
-    let beta_id = ids_of(&other_tenant)[0].clone();
     let never_written = acme.record_id(999);
 
-    let (node, relation, foreign, none) = read_with(&mut env.store, |reader| {
+    let (node, relation, none) = read_with(&mut env.store, |reader| {
         Ok((
-            reader.record_by_id(&node_id)?,
-            reader.record_by_id(&relation_id)?,
-            reader.record_by_id(&beta_id)?,
-            reader.record_by_id(&never_written)?,
+            reader.record_by_id(&acme.tenant, &node_id)?,
+            reader.record_by_id(&acme.tenant, &relation_id)?,
+            reader.record_by_id(&acme.tenant, &never_written)?,
         ))
     })
     .unwrap();
 
-    assert_row_matches(&node.unwrap(), &first.records[0], &acme.tenant);
-    assert_row_matches(&relation.unwrap(), &first.records[1], &acme.tenant);
-    assert_row_matches(&foreign.unwrap(), &other_tenant.records[0], &beta.tenant);
+    assert_row_matches(&node.unwrap(), &first.records[0]);
+    assert_row_matches(&relation.unwrap(), &first.records[1]);
     assert!(none.is_none());
+}
+
+#[test]
+fn it_should_not_find_a_record_by_id_under_another_tenant() {
+    let mut env = env();
+    let acme = start(&mut env.store, "acme");
+    let mut beta = start(&mut env.store, "beta");
+    let other_tenant = append(&mut env.store, &mut beta, &[Draft::node("b.one", "note")]);
+    let beta_id = ids_of(&other_tenant)[0].clone();
+
+    let (foreign, own) = read_with(&mut env.store, |reader| {
+        Ok((
+            reader.record_by_id(&acme.tenant, &beta_id)?,
+            reader.record_by_id(&beta.tenant, &beta_id)?,
+        ))
+    })
+    .unwrap();
+
+    assert!(foreign.is_none());
+    assert_row_matches(&own.unwrap(), &other_tenant.records[0]);
 }
 
 #[test]
@@ -1027,7 +1040,7 @@ fn it_should_find_a_batch_by_key_and_read_its_records_in_order() {
     assert!(missing.is_none());
     assert_eq!(seqs_of(&records), [2, 3, 4]);
     for (row, expected) in records.iter().zip(&batch.records) {
-        assert_row_matches(row, expected, &acme.tenant);
+        assert_row_matches(row, expected);
     }
 }
 
@@ -1103,7 +1116,6 @@ fn no_filter() -> ListFilter {
         id_prefix: None,
         snapshot: None,
         where_eq: Vec::new(),
-        include_retired: false,
     }
 }
 
@@ -1176,10 +1188,6 @@ fn it_should_list_current_nodes_by_each_filter() {
         snapshot: Some(snapshot('b')),
         ..no_filter()
     });
-    let with_retired = list(ListFilter {
-        include_retired: true,
-        ..no_filter()
-    });
     let by_prefix = list(ListFilter {
         id_prefix: Some("area".to_owned()),
         ..no_filter()
@@ -1241,18 +1249,6 @@ fn it_should_list_current_nodes_by_each_filter() {
     assert_eq!(tasks, ["solo", "area.beta"]);
     assert_eq!(by_snapshot, ["area.alpha"]);
     assert!(by_other_snapshot.is_empty());
-    assert_eq!(
-        with_retired,
-        [
-            "area.alpha",
-            "areax.gamma",
-            "area.alpha.child",
-            "solo",
-            "old",
-            "area.beta",
-            "flagoff"
-        ]
-    );
     assert_eq!(by_prefix, ["area.alpha", "area.alpha.child", "area.beta"]);
     assert_eq!(by_exact_prefix, ["area.alpha", "area.alpha.child"]);
     assert!(by_partial_prefix.is_empty());
@@ -1415,7 +1411,7 @@ fn it_should_read_records_from_a_seq_up_to_a_limit() {
     assert_eq!(seqs_of(&tail), [4, 5]);
     assert!(beyond.is_empty());
     for (row, expected) in whole.iter().zip(&plan.records) {
-        assert_row_matches(row, expected, tenant);
+        assert_row_matches(row, expected);
     }
 }
 
@@ -1602,16 +1598,19 @@ fn it_should_translate_a_unique_violation_into_fork_rejected() {
 #[test]
 fn it_should_report_busy_when_another_connection_holds_the_write_lock() {
     let mut env = env_with(SHORT_TIMEOUT);
-    let ledger = start(&mut env.store, "acme");
+    let mut ledger = start(&mut env.store, "acme");
+    append(&mut env.store, &mut ledger, &[Draft::node("a.one", "note")]);
     let mut holder = Raw::open(&env.path);
     holder.run("BEGIN IMMEDIATE").unwrap();
 
     let result = env.store.append_with(&ledger.tenant, &mut |_| {
         Err(HexlogError::internal("decide should not run while busy"))
     });
+    holder.run("ROLLBACK").unwrap();
+    append(&mut env.store, &mut ledger, &[Draft::node("a.two", "note")]);
 
     assert_eq!(failure(result).code, ErrorCode::Busy);
-    holder.run("ROLLBACK").unwrap();
+    assert_eq!(head_of(&mut env.store, &ledger.tenant).seq, 2);
 }
 
 #[test]
@@ -1712,4 +1711,31 @@ fn it_should_accept_a_new_write_after_a_non_constraint_error_inside_a_transactio
     assert_eq!(error.code, ErrorCode::StoreError);
     assert_eq!(stored.outcome.chain_head.seq, 1);
     assert_eq!(head_of(&mut env.store, &ledger.tenant).seq, 1);
+}
+
+#[test]
+fn it_should_open_an_initialized_database_while_another_connection_holds_the_write_lock() {
+    let env = env();
+    let path = env.path.clone();
+    drop(env.store);
+    let mut holder = Raw::open(&path);
+    holder.run("BEGIN IMMEDIATE").unwrap();
+
+    let reopened = SqliteStore::open(&path, SHORT_TIMEOUT);
+
+    assert!(reopened.is_ok());
+    holder.run("ROLLBACK").unwrap();
+}
+
+#[test]
+fn it_should_refuse_a_database_with_user_version_1_and_no_tables() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("hollow.db");
+    let mut raw = Raw::create(&path);
+    raw.run("PRAGMA user_version = 1").unwrap();
+    raw.close();
+
+    let error = failure(SqliteStore::open(&path, DEFAULT_TIMEOUT));
+
+    assert_store_error(&error, "schema-missing");
 }

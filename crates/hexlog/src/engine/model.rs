@@ -301,7 +301,6 @@ pub struct ListFilter {
     pub id_prefix: Option<String>,
     pub snapshot: Option<Snapshot>,
     pub where_eq: Vec<(FieldName, Scalar)>,
-    pub include_retired: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
