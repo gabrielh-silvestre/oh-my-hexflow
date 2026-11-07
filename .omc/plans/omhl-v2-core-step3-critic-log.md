@@ -970,6 +970,14 @@ Decisões de processo ou de baixo risco que a sessão principal tomou sem passar
 - **S-13 (`.omc/` no repositório):** entram os documentos de `.omc/` (`drafts`, `handoffs`, `plans`, `research` e `specs`), porque o dono tornou a pesquisa entregável. Ficam fora o resto de `.omc/` (estado, wiki, notepads) e `.ignore/`, com as notas locais do dono.
 - **S-14 (uma quebra por lote):** a costura 14 dizia "um por problema" nos lotes. Ficou valendo a leitura do executor: uma `BatchIndexMismatch` por lote com problema, e não uma por campo. O `ChainBreak` de lote não carrega a chave (`seq` é `None`), então contar por campo não ajuda a achar o lote, e os testes só afirmam `breaks[0]`. A costura 14 foi emendada.
 - **S-15 (`Full` com tenant desconhecido):** na escrita com `Full`, o executor rodava a verificação antes do `decide`. Com isso, um lote malformado para um tenant que não existe dava `TenantNotFound` com `Full` e `InvalidInput` com `Tail`. Decisão: com tenant desconhecido, a verificação não roda, como já acontecia na leitura (costura 16). `Full` passa a só acrescentar recusas `CHAIN_BROKEN`, sem trocar o código de recusa que `Tail` daria. Entra 1 teste em `tenant_isolation`, e o total vai a 240.
+- **S-16 (testes da T6):** os testes da T6 foram escritos numa cópia do commit `8f5c88a` e passaram de primeira, como travas. Aceitas três leituras do test-engineer:
+  - para ter um `closed` gravado, o teste do invariante grava `open`, revisa para `closed` e então volta para `open`;
+  - o primeiro teste retira todas as relations e todos os nós de cada grafo, o que cobre "uma relation e um nó";
+  - nenhum dos dois afirma recusa de ciclo, que `relations.rs` já prova.
+- **S-17 (revisão da T5c):** veredito PASS nas três regras. Entram só os ajustes baratos que evitam deriva silenciosa: `BODY_VERSION` compartilhada, uma fonte para os textos `node` e `relation`, `into_owned` no lugar de `to_string` em `Cow` e o comentário de `CHECKED_FIELDS`. Ficam como estão:
+  - a derivação de colunas em duas pontas (`record_columns` e `verify.rs`): unificar reabriria a T4 e a T5a e trocaria o `strip_prefix` sem alocação por um `format!` por relation; a tabela de mutações já pega a deriva;
+  - os mapeadores crus e tipados de `tx.rs`, que existem por decisão (D-19, D-25);
+  - o auxiliar `in_read` opcional, com 2 usos, abaixo do limiar.
 
 ### D-31: `LineageRef` emprestado nas portas `latest_record` e `revisions`
 
