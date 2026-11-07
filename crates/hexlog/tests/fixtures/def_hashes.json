@@ -1,0 +1,88 @@
+{
+ "generated_with": "node crates/hexlog/tests/fixtures/generate_def_hashes.mjs (from the workspace root)",
+ "hexlog_ts_commit": "5d1e22b",
+ "hexlog_ts_repo": "hexlog TS repository, read only, node_modules as installed (HEXLOG_TS_DIR, default ~/personal/hexlog)",
+ "canonicalize_npm": "5.1.0",
+ "formula": "def_hash = sha256hex(canonicalize(normalized definition)); normalized: requires_snapshot and acyclic always present (default false), equivalent/from/to omitted when absent",
+ "definitions": [
+  {
+   "kind": "type",
+   "document": {
+    "name": "note",
+    "schema": {
+     "type": "object"
+    },
+    "requires_snapshot": false
+   },
+   "def_hash": "dd42860a5d64e12ee33e608d711b6efaa53bdbf1d79eaa531b3587f82b754447"
+  },
+  {
+   "kind": "type",
+   "document": {
+    "schema": {
+     "type": "object"
+    },
+    "name": "note"
+   },
+   "def_hash": "dd42860a5d64e12ee33e608d711b6efaa53bdbf1d79eaa531b3587f82b754447"
+  },
+  {
+   "kind": "type",
+   "document": {
+    "name": "note",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "é": {
+       "type": "string"
+      },
+      "a": {
+       "type": "integer",
+       "minimum": -5
+      }
+     }
+    },
+    "requires_snapshot": true,
+    "equivalent": "https://example.com/n"
+   },
+   "def_hash": "817730a409826e94700ef25d541514a48aa6d486ece026be55c058713372ac75"
+  },
+  {
+   "kind": "relation",
+   "document": {
+    "name": "after",
+    "from": [
+     "note",
+     "task"
+    ],
+    "to": [
+     "note"
+    ],
+    "acyclic": true
+   },
+   "def_hash": "ff31663197ac307219e96d5cfcbdf9e7f70479248fb3e14dae404af5d2e404d5"
+  },
+  {
+   "kind": "relation",
+   "document": {
+    "name": "after",
+    "from": [
+     "task",
+     "note"
+    ],
+    "to": [
+     "note"
+    ],
+    "acyclic": true
+   },
+   "def_hash": "fb3fa70df5f1b3060e97550892bf49498041c65bb823613a27e74498cabf5613"
+  },
+  {
+   "kind": "relation",
+   "document": {
+    "name": "links"
+   },
+   "def_hash": "16f4fa81d70a0010f92708972fcb19aa4b928b6772dbce53d61419810e2c1197"
+  }
+ ]
+}
