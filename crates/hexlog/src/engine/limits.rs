@@ -9,10 +9,6 @@ pub(crate) const JSON_NESTING_MAX: usize = 126;
 /// Maior inteiro que um double representa sem arredondar vizinhos: 2^53 - 1.
 const SAFE_INTEGER_MAX: u64 = (1 << 53) - 1;
 
-/// Formato do id (e não teto configurável): 1 a 200 unidades UTF-16.
-pub const IDEMPOTENCY_KEY_MAX: usize = 200;
-pub const EXTERNAL_ID_MAX: usize = 200;
-
 /// Tetos de entrada configuráveis (seção 4.5 do plano).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {

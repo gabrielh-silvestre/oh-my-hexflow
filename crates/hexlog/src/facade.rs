@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde_json::Value;
@@ -26,6 +26,8 @@ const BATCH_ITEMS_CEILING: usize = 50;
 const DETAILS_CEILING: usize = 50;
 const PAGE_CEILING: u32 = 200;
 const BUSY_TIMEOUT_DEFAULT: Duration = Duration::from_secs(5);
+/// Maior prazo que o SQLite aceita (um `int` de milissegundos); acima disso o `sqlx` dá panic na própria thread.
+const BUSY_TIMEOUT_CEILING: Duration = Duration::from_millis(2_147_483_647);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerifyPolicy {
@@ -37,6 +39,9 @@ pub enum VerifyPolicy {
 pub struct Config {
     pub db_path: PathBuf,
     pub limits: Limits,
+    /// Espera máxima por uma trava; passado o prazo a chamada devolve `Busy`. Um `fsync` parado pode
+    /// estender o `COMMIT` de quem segura a trava por dezenas de segundos, então nenhum prazo é
+    /// garantido sob `fsync` sem teto.
     pub busy_timeout: Duration,
     pub verify_policy: VerifyPolicy,
 }
@@ -137,6 +142,8 @@ pub struct Hexlog<'d> {
 impl<'d> Hexlog<'d> {
     pub fn open(config: &Config, deps: Deps<'d>) -> Result<Hexlog<'d>, HexlogError> {
         validate_limits(&config.limits)?;
+        validate_busy_timeout(config.busy_timeout)?;
+        validate_db_path(&config.db_path)?;
         Ok(Hexlog {
             store: SqliteStore::open(&config.db_path, config.busy_timeout)?,
             deps,
@@ -159,13 +166,23 @@ impl<'d> Hexlog<'d> {
             .store
             .ensure_tenant(tenant, &doc, &anchor(&doc), &now)?;
         Ok(TenantInfo {
-            tenant: row.tenant,
+            tenant: tenant.clone(),
             anchor: row.anchor,
             created_at: row.created_at,
             created,
         })
     }
 
+    /// Grava o lote numa transação só, ou devolve o resultado gravado se a chave de idempotência já existe.
+    ///
+    /// - O adaptador limita bytes e profundidade antes de montar o `Value`, porque o trabalho
+    ///   proporcional à entrada vem antes do teto de `data_max_chars`.
+    /// - `at` é o instante do pedido, e `seq` é a ordem: entre escritores concorrentes `at` pode
+    ///   sair fora da ordem de `seq`.
+    /// - O custo do `acyclic` cresce com o número de pares de cada `append`. Medido nesta máquina,
+    ///   com o piso de `fsync`: 16 a 27 ms com 0 pares, 53 a 65 ms com 1.000 e 320 a 566 ms com 5.000.
+    /// - O invariante `acyclic` só é conferido na escrita da relation: reativar um nó retirado, ou
+    ///   um nativo que volta numa versão nova do catálogo, não revalida.
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, HexlogError> {
         if self.verify_policy == VerifyPolicy::Full {
             // Fora da transação de escrita: a verificação não disputa corrida, um concorrente só acrescenta.
@@ -207,12 +224,13 @@ impl<'d> Hexlog<'d> {
                 return Ok(None);
             }
             let row = reader
-                .record_by_id(&latest.record_id)?
+                .record_by_id(tenant, &latest.record_id)?
                 .ok_or_else(|| HexlogError::internal("latest record is missing"))?;
             node_view(row, native).map(Some)
         })
     }
 
+    /// Todas as revisões da lineage, em ordem de `seq`, sem paginação.
     pub fn lineage_records(
         &mut self,
         tenant: &TenantId,
@@ -241,6 +259,17 @@ impl<'d> Hexlog<'d> {
             )
             .at("/page/limit"));
         }
+        if page
+            .after_seq
+            .is_some_and(|after| i64::try_from(after).is_err())
+        {
+            return Err(HexlogError::refused(
+                ErrorCode::InvalidInput,
+                "page-after-seq",
+                "page cursor is above the database range",
+            )
+            .at("/page/after_seq"));
+        }
         let limit = usize::try_from(page.limit)
             .map_err(|_| HexlogError::internal("page limit out of range"))?;
         // Uma linha a mais diz se há próxima página sem uma segunda consulta.
@@ -265,7 +294,7 @@ impl<'d> Hexlog<'d> {
         })
     }
 
-    /// Último record de cada relation do tenant, em ordem de `seq`, com o estado dos extremos.
+    /// Último record de cada relation do tenant, em ordem de `seq`, com o estado dos extremos; sem paginação.
     pub fn relations(
         &mut self,
         tenant: &TenantId,
@@ -276,7 +305,7 @@ impl<'d> Hexlog<'d> {
             reader
                 .latest_relations(tenant, query)?
                 .into_iter()
-                .map(|row| relation_view(row, native, reader))
+                .map(|row| relation_view(row, native, tenant, reader))
                 .collect()
         })
     }
@@ -350,6 +379,10 @@ fn validate_limits(limits: &Limits) -> Result<(), HexlogError> {
             (1..=DETAILS_CEILING).contains(&limits.details_max),
         ),
         ("page_max", (1..=PAGE_CEILING).contains(&limits.page_max)),
+        (
+            "page_default",
+            (1..=limits.page_max).contains(&limits.page_default),
+        ),
     ];
     match fields.iter().find(|(_, in_range)| !in_range) {
         Some((field, _)) => Err(HexlogError::refused(
@@ -360,6 +393,32 @@ fn validate_limits(limits: &Limits) -> Result<(), HexlogError> {
         .at(&format!("/limits/{field}"))),
         None => Ok(()),
     }
+}
+
+fn validate_busy_timeout(busy_timeout: Duration) -> Result<(), HexlogError> {
+    if busy_timeout > BUSY_TIMEOUT_CEILING {
+        return Err(HexlogError::refused(
+            ErrorCode::InvalidInput,
+            "busy-timeout-out-of-range",
+            "busy timeout is above what the database accepts",
+        )
+        .at("/busy_timeout"));
+    }
+    Ok(())
+}
+
+/// O SQLite lê `file:` como URI e `:memory:` como banco sem arquivo; os dois fugiriam do WAL e do arquivo.
+fn validate_db_path(db_path: &Path) -> Result<(), HexlogError> {
+    let bytes = db_path.as_os_str().as_encoded_bytes();
+    if bytes.starts_with(b"file:") || bytes == b":memory:" {
+        return Err(HexlogError::refused(
+            ErrorCode::InvalidInput,
+            "db-path-invalid",
+            "database path is read as a URI or an in-memory database",
+        )
+        .at("/db_path"));
+    }
+    Ok(())
 }
 
 fn author_from(author: BodyAuthor<'_>) -> Author {
@@ -434,6 +493,7 @@ fn node_view(row: RecordRow, native: &dyn NativeNodes) -> Result<NodeView, Hexlo
 fn relation_view(
     row: RecordRow,
     native: &dyn NativeNodes,
+    tenant: &TenantId,
     reader: &mut dyn StoreReader,
 ) -> Result<RelationView, HexlogError> {
     let body = read_body(&row.body)?;
@@ -452,8 +512,8 @@ fn relation_view(
     let to = SemanticId::parse(to).map_err(|_| invalid_body())?;
     let from_origin = Origin::parse(from_origin).ok_or_else(invalid_body)?;
     let to_origin = Origin::parse(to_origin).ok_or_else(invalid_body)?;
-    let from_status = endpoint_status(reader, native, &row.tenant, &from, from_origin)?;
-    let to_status = endpoint_status(reader, native, &row.tenant, &to, to_origin)?;
+    let from_status = endpoint_status(reader, native, tenant, &from, from_origin)?;
+    let to_status = endpoint_status(reader, native, tenant, &to, to_origin)?;
     Ok(RelationView {
         record_id: row.id,
         seq: row.seq,

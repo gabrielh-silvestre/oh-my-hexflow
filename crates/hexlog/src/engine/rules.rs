@@ -4,25 +4,14 @@ use crate::engine::chain::canonical;
 use crate::engine::limits::{JSON_NESTING_MAX, Limits, json_nesting_exceeds};
 use crate::engine::model::{AppendItem, AppendRequest, Author, ItemBody};
 use crate::engine::ports::{Definitions, NativeNodes, RelationTypeInfo};
-use crate::error::{Detail, ErrorCode, HexlogError};
+use crate::error::{Detail, ErrorCode, HexlogError, TOO_MANY_ERRORS};
 use crate::ids::{RelationTypeName, SemanticId, TypeName};
 
 #[cfg(test)]
 mod tests;
 
-const TOO_MANY_ERRORS: &str = "too-many-errors";
 /// Forma de `Clock::now()`: `d` é um dígito e o resto é literal.
 const INSTANT_SHAPE: &[u8] = b"dddd-dd-ddTdd:dd:dd.dddZ";
-
-fn detail(path: String, code: &str, message: &str) -> Detail {
-    Detail {
-        path,
-        code: code.to_owned(),
-        message: message.to_owned(),
-        current: None,
-        retired: None,
-    }
-}
 
 /// Só a forma de 24 caracteres, não o calendário: quem implementa o `Clock` responde pelo valor.
 pub fn instant_is_well_formed(text: &str) -> bool {
@@ -107,7 +96,7 @@ pub fn static_rules(
     }
     if marker || details.len() > limits.details_max {
         details.truncate(limits.details_max);
-        details.push(detail(
+        details.push(Detail::new(
             String::new(),
             TOO_MANY_ERRORS,
             "too many errors to list",
@@ -199,7 +188,7 @@ fn item_details(
         }
         ItemBody::Relation { from, to, .. } => {
             if from == to {
-                details.push(detail(
+                details.push(Detail::new(
                     format!("/items/{index}/body/to"),
                     "self-relation",
                     "a relation cannot connect a node to itself",
@@ -215,7 +204,7 @@ fn item_details(
         item.snapshot.is_some(),
     ));
     if item.external_id.is_some() && matches!(item.body, ItemBody::Retirement { .. }) {
-        details.push(detail(
+        details.push(Detail::new(
             format!("/items/{index}/external_id"),
             "external-id-not-allowed",
             "external id is not allowed here",
@@ -227,12 +216,12 @@ fn item_details(
 fn snapshot_detail(index: usize, required: bool, present: bool) -> Option<Detail> {
     let path = format!("/items/{index}/snapshot");
     match (required, present) {
-        (true, false) => Some(detail(
+        (true, false) => Some(Detail::new(
             path,
             "snapshot-required",
             "snapshot is required for this type",
         )),
-        (false, true) => Some(detail(
+        (false, true) => Some(Detail::new(
             path,
             "snapshot-not-allowed",
             "snapshot is not allowed here",
@@ -253,7 +242,7 @@ fn data_details(
     let path = format!("/items/{index}/body/data");
     let Err(violations) = defs.validate_data(type_name, data) else {
         if canonical(data)?.encode_utf16().count() > limits.data_max_chars {
-            details.push(detail(
+            details.push(Detail::new(
                 path,
                 "data-too-large",
                 "data exceeds the maximum size",
@@ -266,7 +255,7 @@ fn data_details(
         if violation.code == TOO_MANY_ERRORS {
             marker = true;
         } else {
-            details.push(detail(
+            details.push(Detail::new(
                 format!("{path}{}", violation.pointer),
                 &violation.code,
                 &violation.code.replace('-', " "),

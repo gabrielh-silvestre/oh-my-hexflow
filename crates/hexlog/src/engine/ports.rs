@@ -65,7 +65,6 @@ pub(crate) trait Definitions: Send + Sync {
 }
 
 pub(crate) struct TenantRow {
-    pub(crate) tenant: TenantId,
     pub(crate) anchor: Hash,
     pub(crate) created_at: String,
 }
@@ -103,7 +102,6 @@ pub(crate) struct RecordColumns {
 }
 
 pub(crate) struct RecordRow {
-    pub(crate) tenant: TenantId,
     pub(crate) seq: u64,
     pub(crate) id: RecordId,
     pub(crate) prev_hash: Hash,
@@ -137,7 +135,11 @@ pub(crate) trait WriteReads {
         tenant: &TenantId,
         lineage: LineageRef<'_>,
     ) -> Result<Option<LatestRow>, HexlogError>;
-    fn record_by_id(&mut self, id: &RecordId) -> Result<Option<RecordRow>, HexlogError>;
+    fn record_by_id(
+        &mut self,
+        tenant: &TenantId,
+        id: &RecordId,
+    ) -> Result<Option<RecordRow>, HexlogError>;
     fn batch_by_key(
         &mut self,
         tenant: &TenantId,

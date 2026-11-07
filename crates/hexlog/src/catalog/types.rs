@@ -8,7 +8,7 @@ use super::validate::{CompiledSchema, REPORT_MAX, compile, detail, violation};
 use crate::engine::chain::{canonical, sha256hex};
 use crate::engine::limits::json_issues;
 use crate::engine::ports::{DataViolation, Definitions, NodeTypeInfo, RelationTypeInfo};
-use crate::error::{Detail, ErrorCode, HexlogError};
+use crate::error::{Detail, ErrorCode, HexlogError, TOO_MANY_ERRORS};
 use crate::ids::{Hash, RelationTypeName, TypeName};
 
 #[cfg(test)]
@@ -187,7 +187,7 @@ impl Catalog {
         if !details.is_empty() {
             details.truncate(REPORT_MAX + 1);
             if details.len() > REPORT_MAX {
-                details[REPORT_MAX] = detail(String::new(), "too-many-errors");
+                details[REPORT_MAX] = detail(String::new(), TOO_MANY_ERRORS);
             }
             return Err(HexlogError {
                 code: ErrorCode::InvalidSchema,

@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 
 use crate::engine::limits::{JSON_NESTING_MAX, json_issues};
 use crate::engine::ports::DataViolation;
-use crate::error::{Detail, push_pointer_segment};
+use crate::error::{Detail, TOO_MANY_ERRORS, push_pointer_segment};
 use crate::ids::Hash;
 
 type NodeId = usize;
@@ -32,13 +32,7 @@ const TYPE_INTEGER: u8 = 64;
 
 /// `message` repete o código sem hífens: a mensagem nunca carrega valor do schema.
 pub(super) fn detail(path: String, code: &str) -> Detail {
-    Detail {
-        path,
-        code: code.to_owned(),
-        message: code.replace('-', " "),
-        current: None,
-        retired: None,
-    }
+    Detail::new(path, code, &code.replace('-', " "))
 }
 
 pub(super) fn violation(pointer: String, code: &str) -> DataViolation {
@@ -52,7 +46,7 @@ pub(super) fn violation(pointer: String, code: &str) -> DataViolation {
 fn capped(mut found: Vec<DataViolation>) -> Vec<DataViolation> {
     if found.len() > REPORT_MAX {
         found.truncate(REPORT_MAX);
-        found.push(violation(String::new(), "too-many-errors"));
+        found.push(violation(String::new(), TOO_MANY_ERRORS));
     }
     found
 }

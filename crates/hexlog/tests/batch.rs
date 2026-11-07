@@ -213,10 +213,8 @@ fn it_should_report_type_not_found_before_aggregating_data_violations() {
 
     let error = hexlog.append(&request("acme", None, items)).unwrap_err();
 
-    assert_refusal(
-        &error,
-        ErrorCode::TypeNotFound,
-        "type-not-found",
-        "/items/1/body/type",
+    assert_eq!(
+        detail_pairs(&error),
+        [("/items/1/body/type", "type-not-found")]
     );
 }

@@ -28,10 +28,11 @@ const SEVEN_TRIGGERS: [&str; 7] = [
     "tenants_no_update",
 ];
 
-/// Espera de 30 s só nestes testes, para a corrida não falhar em CI lento; o padrão do produto não muda.
+/// Espera de 120 s só nestes testes: sob IO pesado um `fsync` parado chega a dezenas de segundos
+/// dentro do `COMMIT` de quem segura a trava (medido: até 19,5 s no WSL2). O padrão do produto não muda.
 fn patient(harness: &Harness) -> Config {
     Config {
-        busy_timeout: Duration::from_secs(30),
+        busy_timeout: Duration::from_secs(120),
         ..harness.config()
     }
 }

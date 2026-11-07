@@ -9,8 +9,8 @@ use support::catalog::{catalog_of, reference_catalog};
 use support::tamper::Tamper;
 use support::{
     FakeNative, Harness, append_one, assert_fork_rejected, assert_refusal, commit, node, relation,
-    relation_lineage, relation_query, request, retire, retire_relation, revise_relation, rty, sid,
-    tenant, ty, unused_record_id, with_external, with_snapshot,
+    relation_lineage, relation_query, request, retire, retire_relation, revise, revise_relation,
+    rty, sid, tenant, ty, unused_record_id, with_external, with_snapshot,
 };
 
 /// Grava um node `note` por id, em `append`s separados, e devolve os ids técnicos na mesma ordem.
@@ -298,6 +298,39 @@ fn it_should_ignore_relations_with_a_retired_endpoint_when_detecting_cycles() {
 
     let views = relations_of(&mut hexlog);
     assert!(endpoints(&views).contains(&("a.three", "a.one")));
+}
+
+#[test]
+fn it_should_not_revalidate_cycles_when_a_retired_node_is_reactivated() {
+    let harness = Harness::new();
+    let mut hexlog = harness.open_acme();
+    let ids = write_notes(&mut hexlog, &["a.one", "a.two", "a.three"]);
+    append_one(&mut hexlog, relation("after", "a.one", "a.two"));
+    append_one(&mut hexlog, relation("after", "a.two", "a.three"));
+    let retirement = append_one(&mut hexlog, retire("a.two", &ids[1]));
+    append_one(&mut hexlog, relation("after", "a.three", "a.one"));
+
+    hexlog
+        .append(&request(
+            "acme",
+            None,
+            vec![revise(node("a.two", "note", json!({})), &retirement)],
+        ))
+        .unwrap();
+
+    let views = relations_of(&mut hexlog);
+    assert_eq!(
+        endpoints(&views),
+        [
+            ("a.one", "a.two"),
+            ("a.two", "a.three"),
+            ("a.three", "a.one")
+        ]
+    );
+    for view in &views {
+        assert_eq!(view.from_status, EndpointStatus::Current);
+        assert_eq!(view.to_status, EndpointStatus::Current);
+    }
 }
 
 #[test]
