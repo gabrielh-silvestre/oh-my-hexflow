@@ -2,17 +2,17 @@ use std::collections::HashMap;
 
 use crate::engine::chain::{self, hash_record, sha256hex};
 use crate::engine::model::{
-    BodyLineage, BodySnapshot, BreakReason, ChainBreak, ChainReport, RecordBody, read_body,
+    BODY_VERSION, BodyLineage, BodySnapshot, BreakReason, ChainBreak, ChainReport, RecordBody,
+    read_body,
 };
-use crate::engine::ports::{StoredBatch, StoredRow, VerifyReads};
+use crate::engine::ports::{LineageKind, StoredBatch, StoredRow, VerifyReads};
 use crate::error::HexlogError;
 use crate::ids::{Hash, TenantId};
 
 const PAGE_SIZE: u32 = 500;
 const BREAKS_SHOWN_MAX: usize = 100;
-const BODY_VERSION: u8 = 1;
 
-/// Os campos que `verify_chain` confere, na ordem da tabela de mutações dos testes.
+/// As colunas e os campos do corpo que `verify_chain` compara com o record gravado.
 pub const CHECKED_FIELDS: &[&str] = &[
     "seq",
     "prev_hash",
@@ -189,9 +189,9 @@ impl Scan {
             && let Some(key) = &batch.key
         {
             self.batches.insert(
-                key.to_string(),
+                key.clone().into_owned(),
                 ExpectedBatch {
-                    fingerprint: batch.fingerprint.to_string(),
+                    fingerprint: batch.fingerprint.clone().into_owned(),
                     first_seq: row.seq,
                     count: i64::from(batch.count),
                 },
@@ -244,7 +244,7 @@ fn snapshot_matches(row: &StoredRow, snapshot: Option<&BodySnapshot<'_>>) -> boo
 fn lineage_matches(row: &StoredRow, lineage: &BodyLineage<'_>) -> bool {
     match lineage {
         BodyLineage::Node { id } => {
-            row.lineage_kind == "node"
+            row.lineage_kind == LineageKind::Node.as_str()
                 && row.lineage_key == *id
                 && [
                     &row.relation_type,
@@ -263,7 +263,7 @@ fn lineage_matches(row: &StoredRow, lineage: &BodyLineage<'_>) -> bool {
             from_origin,
             to_origin,
         } => {
-            row.lineage_kind == "relation"
+            row.lineage_kind == LineageKind::Relation.as_str()
                 && relation_key_matches(&row.lineage_key, relation_type, from, to)
                 && row.relation_type.as_deref() == Some(&**relation_type)
                 && row.from_id.as_deref() == Some(&**from)

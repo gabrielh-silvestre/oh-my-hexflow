@@ -55,7 +55,7 @@ fn is_utf16_within(text: &str, max: usize) -> bool {
 
 macro_rules! string_id {
     ($name:ident, $is_valid:expr, $code:expr, $detail_code:expr, $message:expr) => {
-        #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
         #[serde(transparent)]
         pub struct $name(String);
 

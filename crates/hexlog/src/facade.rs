@@ -9,8 +9,8 @@ use crate::engine::chain::{anchor, anchor_doc};
 use crate::engine::limits::Limits;
 use crate::engine::model::{
     AppendOutcome, AppendRequest, Author, BodyAuthor, BodyLineage, BodySnapshot, ChainHead,
-    ChainReport, Lineage, ListFilter, Origin, PageRequest, RecordBody, RelationQuery, invalid_body,
-    read_body,
+    ChainReport, Lineage, LineageRef, ListFilter, Origin, PageRequest, RecordBody, RelationQuery,
+    invalid_body, read_body,
 };
 use crate::engine::ports::{
     Clock, IdGenerator, NativeNodes, RecordRow, Store, StoreReader, WriteReads,
@@ -169,8 +169,14 @@ impl<'d> Hexlog<'d> {
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, HexlogError> {
         if self.verify_policy == VerifyPolicy::Full {
             // Fora da transação de escrita: a verificação não disputa corrida, um concorrente só acrescenta.
-            self.store
-                .read(&mut |reader| refuse_when_broken(reader, &req.tenant))?;
+            // Tenant desconhecido segue para o `decide`, que recusa a forma antes do tenant, como em `Tail`.
+            match self
+                .store
+                .read(&mut |reader| refuse_when_broken(reader, &req.tenant))
+            {
+                Err(error) if error.code == ErrorCode::TenantNotFound => {}
+                verified => verified?,
+            }
         }
         let now = self.deps.clock.now();
         // Campos disjuntos de `self`: o `ctx` empresta `deps` e `limits` enquanto o store é emprestado como `&mut`.
@@ -193,9 +199,8 @@ impl<'d> Hexlog<'d> {
         id: &SemanticId,
     ) -> Result<Option<NodeView>, HexlogError> {
         let native = self.deps.native;
-        let lineage = Lineage::Node(id.clone());
         self.read(tenant, |reader| {
-            let Some(latest) = reader.latest_record(tenant, &lineage)? else {
+            let Some(latest) = reader.latest_record(tenant, LineageRef::Node(id))? else {
                 return Ok(None);
             };
             if latest.retired {
@@ -215,7 +220,7 @@ impl<'d> Hexlog<'d> {
     ) -> Result<Vec<RevisionView>, HexlogError> {
         self.read(tenant, |reader| {
             reader
-                .revisions(tenant, lineage)?
+                .revisions(tenant, LineageRef::from(lineage))?
                 .into_iter()
                 .map(|row| revision_from(read_body(&row.body)?, row.id, row.seq))
                 .collect()
@@ -480,7 +485,7 @@ fn endpoint_status(
         Origin::Native => Ok(EndpointStatus::MissingNative),
         Origin::Tenant => {
             let latest = reader
-                .latest_record(tenant, &Lineage::Node(id.clone()))?
+                .latest_record(tenant, LineageRef::Node(id))?
                 .ok_or_else(invalid_body)?;
             Ok(if latest.retired {
                 EndpointStatus::Retired

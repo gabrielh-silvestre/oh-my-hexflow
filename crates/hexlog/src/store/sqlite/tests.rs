@@ -10,8 +10,8 @@ use tempfile::TempDir;
 use super::SqliteStore;
 use crate::chain;
 use crate::engine::model::{
-    AppendOutcome, AppendedRecord, ChainHead, FieldName, Lineage, ListFilter, Origin, PageRequest,
-    RelationQuery, Scalar,
+    AppendOutcome, AppendedRecord, ChainHead, FieldName, Lineage, LineageRef, ListFilter, Origin,
+    PageRequest, RelationQuery, Scalar,
 };
 use crate::engine::ports::{
     AppendPlan, BatchRow, LineageKind, NewRecord, RecordColumns, RecordRow, Store, StoreReader,
@@ -927,9 +927,9 @@ fn it_should_find_the_latest_record_of_node_and_relation_lineages() {
 
     let (node, relation, none) = read_with(&mut env.store, |reader| {
         Ok((
-            reader.latest_record(&ledger.tenant, &node_lineage)?,
-            reader.latest_record(&ledger.tenant, &relation_lineage)?,
-            reader.latest_record(&ledger.tenant, &unwritten)?,
+            reader.latest_record(&ledger.tenant, LineageRef::from(&node_lineage))?,
+            reader.latest_record(&ledger.tenant, LineageRef::from(&relation_lineage))?,
+            reader.latest_record(&ledger.tenant, LineageRef::from(&unwritten))?,
         ))
     })
     .unwrap();
@@ -1317,9 +1317,9 @@ fn it_should_list_the_revisions_of_a_lineage_in_order() {
 
     let (node, relation, none) = read_with(&mut env.store, |reader| {
         Ok((
-            reader.revisions(&ledger.tenant, &node_lineage)?,
-            reader.revisions(&ledger.tenant, &relation_lineage)?,
-            reader.revisions(&ledger.tenant, &unwritten)?,
+            reader.revisions(&ledger.tenant, LineageRef::from(&node_lineage))?,
+            reader.revisions(&ledger.tenant, LineageRef::from(&relation_lineage))?,
+            reader.revisions(&ledger.tenant, LineageRef::from(&unwritten))?,
         ))
     })
     .unwrap();

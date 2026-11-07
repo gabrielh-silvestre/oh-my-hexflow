@@ -2,7 +2,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::engine::model::{
-    AppendOutcome, ChainHead, Lineage, ListFilter, Origin, PageRequest, RelationQuery,
+    AppendOutcome, ChainHead, LineageRef, ListFilter, Origin, PageRequest, RelationQuery,
 };
 use crate::engine::snapshot::Snapshot;
 use crate::error::HexlogError;
@@ -63,9 +63,28 @@ pub(crate) trait Definitions: Send + Sync {
     fn validate_data(&self, name: &TypeName, data: &Value) -> Result<(), Vec<DataViolation>>;
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum LineageKind {
     Node,
     Relation,
+}
+
+impl LineageKind {
+    /// Texto da coluna `lineage_kind` e do campo `kind` do corpo.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            LineageKind::Node => "node",
+            LineageKind::Relation => "relation",
+        }
+    }
+
+    pub(crate) fn parse(text: &str) -> Option<LineageKind> {
+        match text {
+            "node" => Some(LineageKind::Node),
+            "relation" => Some(LineageKind::Relation),
+            _ => None,
+        }
+    }
 }
 
 pub(crate) struct TenantRow {
@@ -141,7 +160,7 @@ pub(crate) trait WriteReads {
     fn latest_record(
         &mut self,
         tenant: &TenantId,
-        lineage: &Lineage,
+        lineage: LineageRef<'_>,
     ) -> Result<Option<LatestRow>, HexlogError>;
     fn record_by_id(&mut self, id: &RecordId) -> Result<Option<RecordRow>, HexlogError>;
     fn batch_by_key(
@@ -174,7 +193,7 @@ pub(crate) trait QueryReads {
     fn revisions(
         &mut self,
         tenant: &TenantId,
-        lineage: &Lineage,
+        lineage: LineageRef<'_>,
     ) -> Result<Vec<RecordRow>, HexlogError>;
     fn latest_relations(
         &mut self,
