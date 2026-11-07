@@ -1,0 +1,8 @@
+target/
+.ignore/
+.omc/*
+!.omc/drafts/
+!.omc/handoffs/
+!.omc/plans/
+!.omc/research/
+!.omc/specs/
