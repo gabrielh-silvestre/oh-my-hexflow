@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/hexlog", "crates/omhl"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# Regra do dono: borrow checker ao máximo e nenhuma exceção de memória sem registro (ver clippy.toml).
+[workspace.lints.clippy]
+disallowed_types = "deny"
+disallowed_methods = "deny"
+mem_forget = "deny"
+redundant_clone = "deny"
+implicit_clone = "deny"
+needless_pass_by_value = "deny"
+needless_pass_by_ref_mut = "deny"
+large_types_passed_by_value = "deny"

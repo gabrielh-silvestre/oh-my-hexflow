@@ -1,0 +1,26 @@
+# Regra do dono: nenhuma exceção na memória do Rust sem alternativa descartada, registro na seção 16 do plano
+# e `#[expect(clippy::disallowed_types, reason = "memory-exception: ...")]` no local.
+disallowed-types = [
+    { path = "std::rc::Rc", reason = "shared ownership: borrow instead" },
+    { path = "std::rc::Weak", reason = "shared ownership: borrow instead" },
+    { path = "std::sync::Arc", reason = "shared ownership: borrow instead" },
+    { path = "std::sync::Weak", reason = "shared ownership: borrow instead" },
+    { path = "std::cell::Cell", reason = "interior mutability: use &mut" },
+    { path = "std::cell::RefCell", reason = "interior mutability: use &mut" },
+    { path = "std::cell::OnceCell", reason = "interior mutability: use &mut" },
+    { path = "std::cell::LazyCell", reason = "interior mutability: use &mut" },
+    { path = "std::sync::Mutex", reason = "interior mutability: use &mut or a registered exception" },
+    { path = "std::sync::RwLock", reason = "interior mutability: use &mut" },
+    { path = "std::sync::OnceLock", reason = "global state: pass it by reference" },
+    { path = "std::sync::LazyLock", reason = "global state: pass it by reference" },
+    { path = "std::mem::ManuallyDrop", reason = "manual memory management" },
+    { path = "std::mem::MaybeUninit", reason = "manual memory management" },
+    { path = "sqlx_core::pool::Pool", reason = "panics at run time without a runtime feature: use SqliteConnection", allow-invalid = true },
+    { path = "sqlx_sqlite::SqlitePool", reason = "panics at run time without a runtime feature: use SqliteConnection", allow-invalid = true },
+]
+disallowed-methods = [
+    { path = "std::boxed::Box::leak", reason = "leaks memory: borrow from an owner instead" },
+    { path = "std::vec::Vec::leak", reason = "leaks memory: borrow from an owner instead" },
+    { path = "std::string::String::leak", reason = "leaks memory: borrow from an owner instead" },
+    { path = "std::mem::forget", reason = "skips Drop" },
+]
