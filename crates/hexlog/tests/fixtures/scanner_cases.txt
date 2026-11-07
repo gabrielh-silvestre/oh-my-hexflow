@@ -1,0 +1,134 @@
+# Casos do varredor de vocabulário (lidos por tests/architecture.rs).
+#
+# Formato: tudo antes do primeiro marcador de caso é texto livre (este cabeçalho).
+# Um caso começa numa linha que inicia com o marcador de arroba dupla seguido de espaço:
+#
+#     @@ <language> | <expectation> | <name>
+#
+# e vai até a linha anterior ao próximo marcador (ou o fim do arquivo). O corpo do
+# caso é o código-fonte que o varredor recebe, sem nenhuma alteração.
+#
+#   <language>     rust ou sql (escolhe o varredor).
+#   <expectation>  "clean" (nenhuma palavra acusada) ou "flags <w1>, <w2>" (o conjunto
+#                  exato de palavras da lista de vocabulário que o varredor acusa).
+#   <name>         texto livre, usado nas mensagens de falha.
+#
+# O arquivo não é compilado: o código Rust só precisa tokenizar, e o SQL só precisa
+# ser texto. As linhas de cabeçalho começam com "#" para nunca virarem marcador.
+
+@@ rust | flags check, gate | identifier in snake_case
+fn check_gate() {}
+
+@@ rust | flags gate | identifier in CamelCase
+struct GateId;
+
+@@ rust | flags gate | identifier after an acronym
+struct HTTPGateServer;
+
+@@ rust | flags gate | raw identifier
+fn f() { let r#gate = 1; }
+
+@@ rust | flags work | work_item identifier is caught by the word work
+fn f() { let work_item = 1; }
+
+@@ rust | flags work | string literal
+const NAME: &str = "work";
+
+@@ rust | flags work | string literal in upper case
+const NAME: &str = "WORK";
+
+@@ rust | flags work | word between punctuation inside a literal
+const NAME: &str = "a-work-b";
+
+@@ rust | flags work | escaped newline right before the word
+const NAME: &str = "\nwork";
+
+@@ rust | flags work | escaped hex separator before the word
+const NAME: &str = "a\x2dwork";
+
+@@ rust | flags work | raw string
+const NAME: &str = r#"work"#;
+
+@@ rust | flags work | byte string
+const NAME: &[u8] = b"work";
+
+@@ rust | flags work | c string
+const NAME: &core::ffi::CStr = c"work";
+
+@@ rust | flags decisão | accented word is one word
+const NAME: &str = "decisão";
+
+@@ rust | flags check | Rust literal carrying DDL with CHECK
+const DDL: &str = "CREATE TABLE t (x TEXT CHECK (x IN ('a','b')))";
+
+@@ rust | flags work | argument of an attribute
+#[error("work failed")]
+struct E;
+
+@@ rust | clean | word glued together by a line continuation
+const NAME: &str = "ab\
+                    work";
+
+@@ rust | clean | forbidden word only as a prefix inside a longer accented word
+const NAME: &str = "indecisão";
+
+@@ rust | clean | line and block comments
+// check gate work
+/* check gate
+   work */
+fn ok() {}
+
+@@ rust | clean | doc comments
+/// check gate work
+//! unit review
+/** claude */
+/*! omhl */
+fn ok() {}
+
+@@ rust | clean | names that merely contain a forbidden word
+fn digit(workspace: u8, network: u8) -> u8 {
+    let checked = 1;
+    let gateway = 2;
+    let unitary = 3;
+    workspace + network + checked + gateway + unitary
+}
+
+@@ sql | flags gate | gate_id as a column
+CREATE TABLE t (gate_id TEXT NOT NULL);
+
+@@ sql | flags check | check_id as a column
+CREATE TABLE t (check_id TEXT NOT NULL);
+
+@@ sql | flags check | check as an index name (not followed by an opening parenthesis)
+CREATE INDEX check ON t (a);
+
+@@ sql | flags gate | forbidden word in a constraint name
+CONSTRAINT gate_unique UNIQUE (a)
+
+@@ sql | flags work | single quoted literal is scanned
+CREATE TABLE t (a TEXT DEFAULT 'work');
+
+@@ sql | flags work | comment marker inside a literal does not start a comment
+CREATE TABLE t (a TEXT DEFAULT '-- work');
+
+@@ sql | clean | CHECK constraint with an IN list
+CREATE TABLE t (x TEXT CHECK (x IN ('a','b')));
+
+@@ sql | clean | lower case check glued to the parenthesis
+CREATE TABLE t (kind TEXT check(kind IN ('a')));
+
+@@ sql | clean | CHECK with the parenthesis on the next line
+CREATE TABLE t (kind TEXT CHECK
+    (kind IN ('a')));
+
+@@ sql | clean | named constraint
+CREATE TABLE t (kind TEXT, CONSTRAINT valid_kind CHECK (kind IN ('a')));
+
+@@ sql | clean | line and block comments
+-- gate_id
+/* check
+   work */
+CREATE TABLE t (a TEXT); -- review
+
+@@ sql | clean | columns that merely contain a forbidden word
+CREATE TABLE t (checked_at TEXT, workspace TEXT, gateway TEXT);
