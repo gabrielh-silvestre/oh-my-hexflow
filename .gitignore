@@ -1,8 +1,88 @@
+# Rust: cargo build output and rustfmt backups. Cargo.lock stays tracked (the workspace ships a binary).
 target/
+**/*.rs.bk
+*.pdb
+
+# Coverage, profiling and mutation testing
+*.profraw
+*.profdata
+lcov.info
+coverage/
+tarpaulin-report.html
+cobertura.xml
+mutants.out/
+mutants.out.old/
+
+# Fuzzing (cargo-fuzz)
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/
+
+# Pending insta snapshots. *.proptest-regressions stays tracked: proptest replays saved failures from it.
+*.snap.new
+*.pending-snap
+
+# Local hexlog databases (the tests use temporary directories)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.credentials.json
+
+# Node and Python, used only by the fixture scripts (generate_*.mjs, filter.py)
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+
+# Logs and local-only scratch, whatever the extension
+*.log
+*.bak
+*.local.*
+*.lab.*
 .ignore/
+
+# Editors and OS
+.vscode/
+.idea/
+*.iml
+.fleet/
+.zed/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Agent tooling and code indexes
+graphify-out/
+.gitnexus
+.omx/
+.skill_id
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/skills/gitnexus/
+CLAUDE.local.md
+
+# OMC: project documents are tracked; state, wiki, notepads, artifacts and logs are not
 .omc/*
 !.omc/drafts/
 !.omc/handoffs/
 !.omc/plans/
 !.omc/research/
 !.omc/specs/
+!.omc/skills/
