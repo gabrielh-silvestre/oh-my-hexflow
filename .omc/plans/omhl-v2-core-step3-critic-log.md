@@ -978,6 +978,8 @@ Decisões de processo ou de baixo risco que a sessão principal tomou sem passar
   - a derivação de colunas em duas pontas (`record_columns` e `verify.rs`): unificar reabriria a T4 e a T5a e trocaria o `strip_prefix` sem alocação por um `format!` por relation; a tabela de mutações já pega a deriva;
   - os mapeadores crus e tipados de `tx.rs`, que existem por decisão (D-19, D-25);
   - o auxiliar `in_read` opcional, com 2 usos, abaixo do limiar.
+- **S-18 (`LineageKind` no modelo):** a rodada da D-31 deu ao `LineageKind` o `as_str` e o `parse`, e com isso `engine/model.rs` passou a importar de `engine/ports.rs`, que já importava do modelo. Na T6, o tipo foi para `model.rs`, e `ports.rs` o reexporta com `pub(crate) use`. O reexporte é usado pelo próprio `RecordColumns`, e o caminho que os testes do store usam continua valendo. O ciclo acabou.
+- **S-19 (campos de porta mortos, D-30 classe c):** sem os `allow`, o clippy acusou quatro campos que a produção nunca lê: `TenantRow.anchor_doc`, `LatestRow.seq`, `StoredTenant.tenant` e `StoredRow.tenant`. Os dois `tenant` são redundantes, porque a consulta já filtra pelo tenant, e `verify_chain` compara o `tenant` do corpo. O test-engineer tira as leituras dos testes do store, e o executor apaga os campos e as atribuições. `time` saiu (D-29): `Cargo.lock` perdeu `time`, `time-core`, `deranged`, `num-conv` e `powerfmt`, e nada entrou.
 
 ### D-31: `LineageRef` emprestado nas portas `latest_record` e `revisions`
 
