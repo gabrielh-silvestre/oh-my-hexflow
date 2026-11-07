@@ -1,0 +1,28 @@
+[package]
+name = "hexlog"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+# float_roundtrip: leitura exata de literais de 17 dígitos, que o JCS exige (D-4 no log do crítico).
+serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
+sha2 = "=0.11.1"
+sqlx = { version = "=0.9.0", default-features = false, features = ["sqlite-bundled"] }
+futures-executor = "=0.3.34"
+uuid = { version = "=1.29.1", features = ["v7"] }
+thiserror = "=2.0.21"
+time = "=0.3.55"
+url = "=2.5.8"
+# Ciclos de `$ref` na T3 (`kosaraju_scc`, iterativo, D-18) e de relations na T5b (D-8); `std` é obrigatória para o `DiGraphMap`.
+petgraph = { version = "=0.8.3", default-features = false, features = ["std", "graphmap"] }
+
+[dev-dependencies]
+proptest = "=1.12.0"
+tempfile = "=3.27.0"
+# Exceção ao critério de 1000 estrelas, aprovada pelo dono: 946 estrelas, só em teste, e já vem por serde_derive e thiserror (plano, seção 16).
+proc-macro2 = { version = "=1.0.107", features = ["span-locations"] }
