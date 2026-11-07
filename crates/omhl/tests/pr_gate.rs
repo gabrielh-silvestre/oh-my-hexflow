@@ -1,6 +1,6 @@
 mod support;
 
-use hexlog::{FieldName, ListFilter, Scalar};
+use hexlog::{Author, FieldName, ListFilter, Scalar};
 use omhl::error::{OmhlError, RuleCode};
 use omhl::gate::{GateQuestion, Question};
 use omhl::pr_gate::{GATE_NAME, pr_gate_questions, required_checks};
@@ -13,7 +13,7 @@ use support::pr_gate::{
     closed_data, data_of, default_natives, gate_of, head_seq, native_check, outcomes,
     project_check, question, relation_retirement_item, seed_contradicted_decision, sids,
 };
-use support::{FakeProbe, sid, snap, tname};
+use support::{FakeProbe, author, sid, snap, tname};
 
 fn rule(code: RuleCode, pointer: &str) -> OmhlError {
     OmhlError::rule(code, pointer)
@@ -475,4 +475,98 @@ fn it_should_keep_the_chain_valid_after_the_full_flow() {
 
     assert!(report.ok);
     assert!(report.breaks.is_empty());
+}
+
+// Tetos de `where_eq` em `evaluate`
+
+#[test]
+fn it_should_refuse_an_evaluation_with_more_than_eight_where_eq_pairs() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let nine_pairs = (0..9)
+        .map(|i| (field(&format!("f{i}")), Scalar::Int(i)))
+        .collect();
+    let questions = vec![GateQuestion {
+        label: "too-many-pairs".to_owned(),
+        question: Question::Occurred {
+            select: ListFilter {
+                type_name: None,
+                id_prefix: None,
+                snapshot: None,
+                where_eq: nine_pairs,
+            },
+            min: 1,
+        },
+    }];
+
+    let result = omhl.evaluate(&acme(), "custom-gate", &questions);
+
+    assert_eq!(
+        result.err(),
+        Some(rule(
+            RuleCode::WhereEqTooMany,
+            "/questions/0/filter/where_eq"
+        ))
+    );
+}
+
+// Sonda e autor no fechamento
+
+#[test]
+fn it_should_refuse_closing_when_the_snapshot_is_not_the_probe_head() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let head_before = omhl.chain_head(&acme()).expect("the head is read");
+
+    let result = omhl.close_work_item(&acme(), &sid(PR_7), &snap('b'), &author());
+    let head_after = omhl.chain_head(&acme()).expect("the head is read");
+
+    assert_eq!(
+        (result.err(), head_after),
+        (
+            Some(rule(RuleCode::SnapshotNotHead, "/snapshot")),
+            head_before
+        )
+    );
+}
+
+#[test]
+fn it_should_refuse_closing_when_the_tree_is_dirty() {
+    let harness = OmhlHarness::new(FakeProbe::dirty());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let head_before = omhl.chain_head(&acme()).expect("the head is read");
+
+    let result = omhl.close_work_item(&acme(), &sid(PR_7), &snap('a'), &author());
+    let head_after = omhl.chain_head(&acme()).expect("the head is read");
+
+    assert_eq!(
+        (result.err(), head_after),
+        (
+            Some(rule(RuleCode::SnapshotDirty, "/snapshot")),
+            head_before
+        )
+    );
+}
+
+#[test]
+fn it_should_record_the_caller_author_on_the_closing_revision() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let closer = Author {
+        agent: "closer".to_owned(),
+        model: None,
+        client: "closing-client".to_owned(),
+    };
+
+    omhl.close_work_item(&acme(), &sid(PR_7), &snap('a'), &closer)
+        .expect("the work item is closed");
+    let stored = omhl
+        .get(&acme(), &sid(PR_7))
+        .expect("the node is read")
+        .map(|node| node.author);
+
+    assert_eq!(stored, Some(closer));
 }

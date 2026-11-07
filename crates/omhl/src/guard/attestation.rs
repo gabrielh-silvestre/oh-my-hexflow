@@ -5,7 +5,8 @@ use super::append::{Guard, NodeItem, status_of};
 use super::attestation_id;
 use crate::error::{OmhlError, RuleCode};
 use crate::native::NativeBase;
-use crate::probe::ProbeOutcome;
+use crate::probe::{ProbeError, ProbeOutcome};
+use hexlog::Snapshot;
 
 impl Guard<'_, '_> {
     /// Regras 6 a 10 da attestation (work item, check, id derivado, sonda e desfecho).
@@ -59,15 +60,10 @@ impl Guard<'_, '_> {
         let Some(snapshot) = node.snapshot else {
             return Ok(());
         };
-        let refuse = |code| node.error(code, "snapshot");
 
-        match self.probe_once() {
-            Err(_) => Err(refuse(RuleCode::ProbeFailed)),
-            Ok(ProbeOutcome::Dirty) => Err(refuse(RuleCode::SnapshotDirty)),
-            Ok(ProbeOutcome::Reproducible(head)) if head != snapshot => {
-                Err(refuse(RuleCode::SnapshotNotHead))
-            }
-            Ok(ProbeOutcome::Reproducible(_)) => Ok(()),
+        match probe_refusal(self.probe_once(), snapshot) {
+            Some(code) => Err(node.error(code, "snapshot")),
+            None => Ok(()),
         }
     }
 
@@ -103,5 +99,18 @@ fn check_derived_id(
         Ok(_) => Err(node.error(RuleCode::AttestationIdMismatch, "body/id")),
         Err(OmhlError::Rule { code, .. }) => Err(node.error(code, "body/id")),
         Err(other) => Err(other),
+    }
+}
+
+/// Por que a resposta da sonda não aceita o snapshot como `HEAD` de uma árvore limpa.
+pub(crate) fn probe_refusal(
+    probed: &Result<ProbeOutcome, ProbeError>,
+    snapshot: &Snapshot,
+) -> Option<RuleCode> {
+    match probed {
+        Err(_) => Some(RuleCode::ProbeFailed),
+        Ok(ProbeOutcome::Dirty) => Some(RuleCode::SnapshotDirty),
+        Ok(ProbeOutcome::Reproducible(head)) if head != snapshot => Some(RuleCode::SnapshotNotHead),
+        Ok(ProbeOutcome::Reproducible(_)) => None,
     }
 }

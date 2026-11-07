@@ -114,7 +114,10 @@ impl Guard<'_, '_> {
     fn check_node(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         check_namespace(node)?;
         match node.type_name {
-            name if WORK_ITEM_TYPES.contains(&name) => self.check_work_item_status(node),
+            name if WORK_ITEM_TYPES.contains(&name) => {
+                self.check_work_item_status(node)?;
+                self.check_reactivation(node)
+            }
             "premise" | "decision" => self.find_work_item(node).map(drop),
             "check" => self.check_reactivation(node),
             "attestation" => {

@@ -112,11 +112,11 @@ pub(crate) fn project_checks_filter() -> ListFilter {
 pub(crate) fn closing_request(
     tenant: &TenantId,
     author: &Author,
-    current: &NodeView,
+    current: NodeView,
     report: &GateReport,
     snapshot: &Snapshot,
 ) -> AppendRequest {
-    let mut data = current.data.clone();
+    let mut data = current.data;
     data["status"] = json!("closed");
     data["gate"] = json!({
         "name": GATE_NAME,
@@ -126,11 +126,11 @@ pub(crate) fn closing_request(
     });
     let item = AppendItem {
         body: ItemBody::Node {
-            id: current.id.clone(),
-            type_name: current.type_name.clone(),
+            id: current.id,
+            type_name: current.type_name,
             data,
         },
-        base: Some(current.record_id.clone()),
+        base: Some(current.record_id),
         snapshot: None,
         external_id: None,
     };

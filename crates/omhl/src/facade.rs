@@ -79,7 +79,7 @@ impl<'d> Omhl<'d> {
         filter: &ListFilter,
         page: &PageRequest,
     ) -> Result<Page<NodeView>, OmhlError> {
-        guard::check_where_eq(filter)?;
+        guard::check_where_eq(filter, "/filter")?;
 
         Ok(self.hexlog.list(tenant, filter, page)?)
     }
@@ -111,6 +111,7 @@ impl<'d> Omhl<'d> {
         gate: &str,
         questions: &[GateQuestion],
     ) -> Result<GateReport, OmhlError> {
+        guard::check_question_filters(questions)?;
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
         let (head, reports) = read_consistent(&mut source, tenant, |source| {
             gate::evaluate(source, tenant, questions)
@@ -127,6 +128,16 @@ impl<'d> Omhl<'d> {
         snapshot: &Snapshot,
     ) -> Result<GateReport, OmhlError> {
         self.find_work_item(tenant, work_item)?;
+
+        self.gate_report(tenant, work_item, snapshot)
+    }
+
+    fn gate_report(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+        snapshot: &Snapshot,
+    ) -> Result<GateReport, OmhlError> {
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
         let (head, reports) = read_consistent(&mut source, tenant, |source| {
             let checks = source.nodes(tenant, &project_checks_filter())?;
@@ -140,6 +151,7 @@ impl<'d> Omhl<'d> {
     }
 
     /// Fecha mesmo com o gate reprovado: o resultado fica gravado no work item. Escreve direto, sem a guarda.
+    /// O snapshot tem de ser o `HEAD` de uma árvore limpa, conferido na sonda antes do gate.
     pub fn close_work_item(
         &mut self,
         tenant: &TenantId,
@@ -151,8 +163,11 @@ impl<'d> Omhl<'d> {
         if current.data["status"] == "closed" {
             return Err(OmhlError::rule(RuleCode::InvalidTransition, "/work_item"));
         }
-        let report = self.evaluate_pr_gate(tenant, work_item, snapshot)?;
-        let request = closing_request(tenant, author, &current, &report, snapshot);
+        if let Some(code) = guard::probe_refusal(&self.probe.probe(), snapshot) {
+            return Err(OmhlError::rule(code, "/snapshot"));
+        }
+        let report = self.gate_report(tenant, work_item, snapshot)?;
+        let request = closing_request(tenant, author, current, &report, snapshot);
         let outcome = self.hexlog.append(&request)?;
 
         Ok(ClosedWorkItem { outcome, report })

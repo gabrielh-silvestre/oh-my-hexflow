@@ -5,7 +5,8 @@ mod filter;
 use hexlog::{SemanticId, Snapshot};
 
 pub(crate) use self::append::check_append;
-pub(crate) use self::filter::check_where_eq;
+pub(crate) use self::attestation::probe_refusal;
+pub(crate) use self::filter::{check_question_filters, check_where_eq};
 use crate::error::{OmhlError, RuleCode};
 
 pub const WHERE_EQ_PAIRS_MAX: usize = 8;

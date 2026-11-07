@@ -9,6 +9,7 @@ use support::omhl::{
     pull_request_data, refusal, request, retirement_item, revision_item, seed_pull_request,
     with_snapshot, work_item_data,
 };
+use support::pr_gate::close;
 use support::{FakeProbe, sid, snap, snap64};
 
 const ITEM_ID_POINTER: &str = "/items/0/body/id";
@@ -547,4 +548,48 @@ fn it_should_refuse_an_attestation_whose_check_is_a_native_guideline() {
         error,
         rule(RuleCode::CheckNotFound, "/items/0/body/data/check")
     );
+}
+
+#[test]
+fn it_should_refuse_reopening_a_closed_work_item_through_a_retirement() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let closed = close(&mut omhl, PR_7, &snap('a'));
+    let retired = append_ok(
+        &mut omhl,
+        vec![retirement_item(PR_7, &closed.outcome.records[0].id)],
+    );
+    let reopening = revision_item(
+        PR_7,
+        "pull-request",
+        pull_request_data("Add gate"),
+        &retired.records[0].id,
+    );
+
+    let error = refusal(&mut omhl, vec![reopening]);
+
+    assert_eq!(
+        error,
+        rule(RuleCode::ReactivationUnsupported, "/items/0/base")
+    );
+}
+
+#[test]
+fn it_should_refuse_an_attestation_whose_work_item_id_is_not_a_work_item() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    append_ok(
+        &mut omhl,
+        vec![node_item(
+            "decisions.d1",
+            "decision",
+            decision_data("use sqlite", None),
+        )],
+    );
+    let attestation = attestation_item(&snap('a'), RUN_TESTS, "decisions.d1");
+
+    let error = refusal(&mut omhl, vec![attestation]);
+
+    assert_eq!(error, rule(RuleCode::WorkItemNotFound, WORK_ITEM_POINTER));
 }
