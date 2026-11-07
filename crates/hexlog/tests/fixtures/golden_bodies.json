@@ -1,0 +1,158 @@
+{
+ "generated_with": "node crates/hexlog/tests/fixtures/generate_golden.mjs (from the workspace root)",
+ "hexlog_ts_commit": "5d1e22b",
+ "hexlog_ts_repo": "hexlog TS repository, read only, node_modules as installed (HEXLOG_TS_DIR, default ~/personal/hexlog)",
+ "canonicalize_npm": "5.1.0",
+ "formula": "hash = sha256hex(prev_hash + jcs), prev_hash = 64 zeros; fields = the body object, field by field",
+ "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+ "shapes": {
+  "node_full": {
+   "fields": {
+    "v": 1,
+    "tenant": "acme",
+    "seq": 3,
+    "id": "acme:0192a000-0000-7000-8000-000000000003",
+    "at": "2026-11-07T12:00:00.000Z",
+    "author": {
+     "agent": "ag",
+     "model": "m",
+     "client": "cli"
+    },
+    "def_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "type": "note",
+    "lineage": {
+     "kind": "node",
+     "id": "area.sub.item"
+    },
+    "revises": "acme:0192a000-0000-7000-8000-000000000001",
+    "retirement": false,
+    "data": {
+     "k": "v",
+     "n": 7,
+     "a/b": "é\u0001\"\\"
+    },
+    "snapshot": {
+     "kind": "git-commit",
+     "id": "cccccccccccccccccccccccccccccccccccccccc"
+    },
+    "external_id": "x",
+    "batch": {
+     "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "key": "K1",
+     "count": 2
+    }
+   },
+   "jcs": "{\"at\":\"2026-11-07T12:00:00.000Z\",\"author\":{\"agent\":\"ag\",\"client\":\"cli\",\"model\":\"m\"},\"batch\":{\"count\":2,\"fingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"key\":\"K1\"},\"data\":{\"a/b\":\"é\\u0001\\\"\\\\\",\"k\":\"v\",\"n\":7},\"def_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"external_id\":\"x\",\"id\":\"acme:0192a000-0000-7000-8000-000000000003\",\"lineage\":{\"id\":\"area.sub.item\",\"kind\":\"node\"},\"retirement\":false,\"revises\":\"acme:0192a000-0000-7000-8000-000000000001\",\"seq\":3,\"snapshot\":{\"id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"kind\":\"git-commit\"},\"tenant\":\"acme\",\"type\":\"note\",\"v\":1}",
+   "hash": "e4f3272b5220ce4afb3ed7fec669a54feb615d03fc23c4e3a1a626a30a401d1d"
+  },
+  "relation_native": {
+   "fields": {
+    "v": 1,
+    "tenant": "acme",
+    "seq": 4,
+    "id": "acme:0192a000-0000-7000-8000-000000000004",
+    "at": "2026-11-07T12:00:00.000Z",
+    "author": {
+     "agent": "ag",
+     "model": "m",
+     "client": "cli"
+    },
+    "def_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "type": "after",
+    "lineage": {
+     "kind": "relation",
+     "relation_type": "after",
+     "from": "a.one",
+     "to": "n.other",
+     "from_origin": "tenant",
+     "to_origin": "native"
+    },
+    "native_catalog": "v1",
+    "retirement": false
+   },
+   "jcs": "{\"at\":\"2026-11-07T12:00:00.000Z\",\"author\":{\"agent\":\"ag\",\"client\":\"cli\",\"model\":\"m\"},\"def_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"id\":\"acme:0192a000-0000-7000-8000-000000000004\",\"lineage\":{\"from\":\"a.one\",\"from_origin\":\"tenant\",\"kind\":\"relation\",\"relation_type\":\"after\",\"to\":\"n.other\",\"to_origin\":\"native\"},\"native_catalog\":\"v1\",\"retirement\":false,\"seq\":4,\"tenant\":\"acme\",\"type\":\"after\",\"v\":1}",
+   "hash": "2d6ff142d80d4ac2ffc7473c6f34005b014628baab18f9af14c5f2aa2e405408"
+  },
+  "retirement_node": {
+   "fields": {
+    "v": 1,
+    "tenant": "acme",
+    "seq": 5,
+    "id": "acme:0192a000-0000-7000-8000-000000000005",
+    "at": "2026-11-07T12:00:00.000Z",
+    "author": {
+     "agent": "ag",
+     "model": "m",
+     "client": "cli"
+    },
+    "def_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "type": "note",
+    "lineage": {
+     "kind": "node",
+     "id": "a.two"
+    },
+    "revises": "acme:0192a000-0000-7000-8000-000000000002",
+    "retirement": true
+   },
+   "jcs": "{\"at\":\"2026-11-07T12:00:00.000Z\",\"author\":{\"agent\":\"ag\",\"client\":\"cli\",\"model\":\"m\"},\"def_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"id\":\"acme:0192a000-0000-7000-8000-000000000005\",\"lineage\":{\"id\":\"a.two\",\"kind\":\"node\"},\"retirement\":true,\"revises\":\"acme:0192a000-0000-7000-8000-000000000002\",\"seq\":5,\"tenant\":\"acme\",\"type\":\"note\",\"v\":1}",
+   "hash": "02c602cfeb861e5ba1def37b77152a37b141877804830247373ed1ca16c23e10"
+  },
+  "retirement_relation": {
+   "fields": {
+    "v": 1,
+    "tenant": "acme",
+    "seq": 6,
+    "id": "acme:0192a000-0000-7000-8000-000000000006",
+    "at": "2026-11-07T12:00:00.000Z",
+    "author": {
+     "agent": "ag",
+     "model": "m",
+     "client": "cli"
+    },
+    "def_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "type": "after",
+    "lineage": {
+     "kind": "relation",
+     "relation_type": "after",
+     "from": "a.one",
+     "to": "n.other",
+     "from_origin": "tenant",
+     "to_origin": "native"
+    },
+    "native_catalog": "v1",
+    "revises": "acme:0192a000-0000-7000-8000-000000000004",
+    "retirement": true
+   },
+   "jcs": "{\"at\":\"2026-11-07T12:00:00.000Z\",\"author\":{\"agent\":\"ag\",\"client\":\"cli\",\"model\":\"m\"},\"def_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"id\":\"acme:0192a000-0000-7000-8000-000000000006\",\"lineage\":{\"from\":\"a.one\",\"from_origin\":\"tenant\",\"kind\":\"relation\",\"relation_type\":\"after\",\"to\":\"n.other\",\"to_origin\":\"native\"},\"native_catalog\":\"v1\",\"retirement\":true,\"revises\":\"acme:0192a000-0000-7000-8000-000000000004\",\"seq\":6,\"tenant\":\"acme\",\"type\":\"after\",\"v\":1}",
+   "hash": "af0ae36fc2dc743244e7c0969bc4f68557236cf8a184fcbd405df917a408effd"
+  },
+  "node_keyless_batch_first": {
+   "fields": {
+    "v": 1,
+    "tenant": "acme",
+    "seq": 1,
+    "id": "acme:0192a000-0000-7000-8000-000000000001",
+    "at": "2026-11-07T12:00:00.000Z",
+    "author": {
+     "agent": "ag",
+     "model": "m",
+     "client": "cli"
+    },
+    "def_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "type": "note",
+    "lineage": {
+     "kind": "node",
+     "id": "a.one"
+    },
+    "retirement": false,
+    "data": {},
+    "batch": {
+     "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "count": 1
+    }
+   },
+   "jcs": "{\"at\":\"2026-11-07T12:00:00.000Z\",\"author\":{\"agent\":\"ag\",\"client\":\"cli\",\"model\":\"m\"},\"batch\":{\"count\":1,\"fingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"data\":{},\"def_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"id\":\"acme:0192a000-0000-7000-8000-000000000001\",\"lineage\":{\"id\":\"a.one\",\"kind\":\"node\"},\"retirement\":false,\"seq\":1,\"tenant\":\"acme\",\"type\":\"note\",\"v\":1}",
+   "hash": "596e5a06282400cb783554422b54e2c44fd3ad95e0025eab920d1652af959182"
+  }
+ }
+}

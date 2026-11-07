@@ -1,0 +1,73 @@
+{
+ "generated_with": "node crates/hexlog/tests/fixtures/generate_golden.mjs (from the workspace root)",
+ "hexlog_ts_commit": "5d1e22b",
+ "hexlog_ts_repo": "hexlog TS repository, read only, node_modules as installed (HEXLOG_TS_DIR, default ~/personal/hexlog)",
+ "canonicalize_npm": "5.1.0",
+ "formula": "hash = sha256hex(prev_hash + canonicalize(document)); anchor = sha256hex(canonicalize({created_at, format:\"hexlog-chain/1\", tenant}))",
+ "anchor": {
+  "tenant": "acme",
+  "created_at": "2026-11-07T12:00:00.000Z",
+  "anchor_doc": "{\"created_at\":\"2026-11-07T12:00:00.000Z\",\"format\":\"hexlog-chain/1\",\"tenant\":\"acme\"}",
+  "anchor": "73f5431393b73cc3cee178e22d5e695db98a0ce93f537718bb01e50e7e0435be"
+ },
+ "records": {
+  "simple": {
+   "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+   "document": {
+    "v": 1,
+    "tenant": "acme",
+    "seq": 1,
+    "id": "acme:0192a000-0000-7000-8000-000000000001",
+    "type": "note",
+    "retirement": false,
+    "data": {
+     "title": "hello",
+     "count": 3,
+     "ok": true,
+     "none": null
+    }
+   },
+   "jcs": "{\"data\":{\"count\":3,\"none\":null,\"ok\":true,\"title\":\"hello\"},\"id\":\"acme:0192a000-0000-7000-8000-000000000001\",\"retirement\":false,\"seq\":1,\"tenant\":\"acme\",\"type\":\"note\",\"v\":1}",
+   "hash": "801a2daa099776ee82424839361ed0111819ec44d41817da3c94526fcd47faea"
+  },
+  "unicode": {
+   "prev_hash": "801a2daa099776ee82424839361ed0111819ec44d41817da3c94526fcd47faea",
+   "document": {
+    "v": 1,
+    "tenant": "acme",
+    "seq": 2,
+    "id": "acme:0192a000-0000-7000-8000-000000000002",
+    "type": "note",
+    "retirement": false,
+    "data": {
+     "é": "café ☕",
+     "😀": "emoji",
+     "€": "euro",
+     "a/b": "slash",
+     "quote": "q\"\\",
+     "ctl": "\u0001\n\t"
+    }
+   },
+   "jcs": "{\"data\":{\"a/b\":\"slash\",\"ctl\":\"\\u0001\\n\\t\",\"quote\":\"q\\\"\\\\\",\"é\":\"café ☕\",\"€\":\"euro\",\"😀\":\"emoji\"},\"id\":\"acme:0192a000-0000-7000-8000-000000000002\",\"retirement\":false,\"seq\":2,\"tenant\":\"acme\",\"type\":\"note\",\"v\":1}",
+   "hash": "eb7bcc750e4f57f117fa6ae9f7673ea7a5e4aaa8b272e7fac24236950ee7f81d"
+  },
+  "limit_integers": {
+   "prev_hash": "eb7bcc750e4f57f117fa6ae9f7673ea7a5e4aaa8b272e7fac24236950ee7f81d",
+   "document": {
+    "v": 1,
+    "tenant": "acme",
+    "seq": 3,
+    "id": "acme:0192a000-0000-7000-8000-000000000003",
+    "type": "note",
+    "retirement": false,
+    "data": {
+     "max": 9007199254740991,
+     "min": -9007199254740991,
+     "zero": 0
+    }
+   },
+   "jcs": "{\"data\":{\"max\":9007199254740991,\"min\":-9007199254740991,\"zero\":0},\"id\":\"acme:0192a000-0000-7000-8000-000000000003\",\"retirement\":false,\"seq\":3,\"tenant\":\"acme\",\"type\":\"note\",\"v\":1}",
+   "hash": "392ab36536df15741c56c811e9816a6830a317eb9bb5ee714795b39981416247"
+  }
+ }
+}

@@ -1,0 +1,153 @@
+{
+ "generated_with": "node crates/hexlog/tests/fixtures/generate_golden.mjs (from the workspace root)",
+ "hexlog_ts_commit": "5d1e22b",
+ "hexlog_ts_repo": "hexlog TS repository, read only, node_modules as installed (HEXLOG_TS_DIR, default ~/personal/hexlog)",
+ "canonicalize_npm": "5.1.0",
+ "formula": "fingerprint = sha256hex(canonicalize(array of items)); item JSON shape from seams contract, costura 5 (absent optional is omitted, never null)",
+ "shapes": {
+  "node_full": {
+   "items": [
+    {
+     "body": {
+      "kind": "node",
+      "id": "a.b",
+      "type": "note",
+      "data": {
+       "k": "v"
+      }
+     },
+     "base": "acme:0192a000-0000-7000-8000-000000000001",
+     "snapshot": {
+      "kind": "git-commit",
+      "id": "cccccccccccccccccccccccccccccccccccccccc"
+     },
+     "external_id": "x"
+    }
+   ],
+   "jcs": "[{\"base\":\"acme:0192a000-0000-7000-8000-000000000001\",\"body\":{\"data\":{\"k\":\"v\"},\"id\":\"a.b\",\"kind\":\"node\",\"type\":\"note\"},\"external_id\":\"x\",\"snapshot\":{\"id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"kind\":\"git-commit\"}}]",
+   "fingerprint": "1861ef8282ee3dd97d41d90654e175cc74cedd5dde014c4a75081a0cb3199d6e"
+  },
+  "node_minimal": {
+   "items": [
+    {
+     "body": {
+      "kind": "node",
+      "id": "a.b",
+      "type": "note",
+      "data": {}
+     }
+    }
+   ],
+   "jcs": "[{\"body\":{\"data\":{},\"id\":\"a.b\",\"kind\":\"node\",\"type\":\"note\"}}]",
+   "fingerprint": "473f21880d56d4a1d086dff6fff03d90155af24a8111744cc2adbea1921d5444"
+  },
+  "relation": {
+   "items": [
+    {
+     "body": {
+      "kind": "relation",
+      "relation_type": "after",
+      "from": "a.b",
+      "to": "c.d"
+     }
+    }
+   ],
+   "jcs": "[{\"body\":{\"from\":\"a.b\",\"kind\":\"relation\",\"relation_type\":\"after\",\"to\":\"c.d\"}}]",
+   "fingerprint": "3a450227f029c1d6f5448d8b40a43d3563ddabb554a9259ef9e00399f7af9937"
+  },
+  "retirement_node": {
+   "items": [
+    {
+     "body": {
+      "kind": "retirement",
+      "lineage": {
+       "kind": "node",
+       "id": "a.b"
+      }
+     },
+     "base": "acme:0192a000-0000-7000-8000-000000000001"
+    }
+   ],
+   "jcs": "[{\"base\":\"acme:0192a000-0000-7000-8000-000000000001\",\"body\":{\"kind\":\"retirement\",\"lineage\":{\"id\":\"a.b\",\"kind\":\"node\"}}}]",
+   "fingerprint": "6da64732030ce5e8912849b931803d9fb214eae040da2895f3529bde23cf958b"
+  },
+  "retirement_relation": {
+   "items": [
+    {
+     "body": {
+      "kind": "retirement",
+      "lineage": {
+       "kind": "relation",
+       "relation_type": "after",
+       "from": "a.b",
+       "to": "c.d"
+      }
+     },
+     "base": "acme:0192a000-0000-7000-8000-000000000001"
+    }
+   ],
+   "jcs": "[{\"base\":\"acme:0192a000-0000-7000-8000-000000000001\",\"body\":{\"kind\":\"retirement\",\"lineage\":{\"from\":\"a.b\",\"kind\":\"relation\",\"relation_type\":\"after\",\"to\":\"c.d\"}}}]",
+   "fingerprint": "b903eaae5bc500d1e1b639b73058adf3151b9ed51a4e621f31121051f76d0979"
+  },
+  "list_node_then_relation": {
+   "items": [
+    {
+     "body": {
+      "kind": "node",
+      "id": "a.b",
+      "type": "note",
+      "data": {
+       "k": "v"
+      }
+     },
+     "base": "acme:0192a000-0000-7000-8000-000000000001",
+     "snapshot": {
+      "kind": "git-commit",
+      "id": "cccccccccccccccccccccccccccccccccccccccc"
+     },
+     "external_id": "x"
+    },
+    {
+     "body": {
+      "kind": "relation",
+      "relation_type": "after",
+      "from": "a.b",
+      "to": "c.d"
+     }
+    }
+   ],
+   "jcs": "[{\"base\":\"acme:0192a000-0000-7000-8000-000000000001\",\"body\":{\"data\":{\"k\":\"v\"},\"id\":\"a.b\",\"kind\":\"node\",\"type\":\"note\"},\"external_id\":\"x\",\"snapshot\":{\"id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"kind\":\"git-commit\"}},{\"body\":{\"from\":\"a.b\",\"kind\":\"relation\",\"relation_type\":\"after\",\"to\":\"c.d\"}}]",
+   "fingerprint": "6ab902b1f24d6ecf3319451858a993c3d8b08b0aa7caaec67a0f1e2d730ed4f4"
+  },
+  "list_relation_then_node": {
+   "items": [
+    {
+     "body": {
+      "kind": "relation",
+      "relation_type": "after",
+      "from": "a.b",
+      "to": "c.d"
+     }
+    },
+    {
+     "body": {
+      "kind": "node",
+      "id": "a.b",
+      "type": "note",
+      "data": {
+       "k": "v"
+      }
+     },
+     "base": "acme:0192a000-0000-7000-8000-000000000001",
+     "snapshot": {
+      "kind": "git-commit",
+      "id": "cccccccccccccccccccccccccccccccccccccccc"
+     },
+     "external_id": "x"
+    }
+   ],
+   "jcs": "[{\"body\":{\"from\":\"a.b\",\"kind\":\"relation\",\"relation_type\":\"after\",\"to\":\"c.d\"}},{\"base\":\"acme:0192a000-0000-7000-8000-000000000001\",\"body\":{\"data\":{\"k\":\"v\"},\"id\":\"a.b\",\"kind\":\"node\",\"type\":\"note\"},\"external_id\":\"x\",\"snapshot\":{\"id\":\"cccccccccccccccccccccccccccccccccccccccc\",\"kind\":\"git-commit\"}}]",
+   "fingerprint": "714b3b12bfef88054c5d82cf97f8ac6b244305c1fd16569f5a6db55ea9b6468f"
+  }
+ }
+}
