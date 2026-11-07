@@ -1,0 +1,1 @@
+[{"description":"maximum validation with unsigned integer","schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","maximum":300},"tests":[{"description":"boundary point integer is valid","data":300,"valid":true}]}]
