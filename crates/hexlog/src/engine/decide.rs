@@ -113,7 +113,9 @@ fn validate_tail(
     if head.seq == 0 {
         return Ok(());
     }
-    let tail = reads.batch_records(tenant, head.seq, 1)?;
+    let tail = reads
+        .batch_records(tenant, head.seq, 1)
+        .map_err(tail_unreadable)?;
     let intact = tail.first().is_some_and(|row| {
         hash_record(row.prev_hash.as_str(), &row.body) == row.hash && row.hash == head.hash
     });
@@ -125,6 +127,23 @@ fn validate_tail(
         "tail-hash-mismatch",
         "last record does not match its hash",
     ))
+}
+
+/// Uma coluna da cauda que os tipos recusam é adulteração, e o chamador precisa do código que a diz.
+fn tail_unreadable(error: HexlogError) -> HexlogError {
+    let corrupt_row = error.code == ErrorCode::StoreError
+        && error
+            .details
+            .first()
+            .is_some_and(|detail| detail.code == "corrupt-row");
+    if !corrupt_row {
+        return error;
+    }
+    HexlogError::refused(
+        ErrorCode::ChainBroken,
+        "tail-unreadable",
+        "last record is not readable",
+    )
 }
 
 /// A linhagem do item; só a retirement já traz a sua pronta.

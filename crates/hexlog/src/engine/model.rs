@@ -163,6 +163,52 @@ pub struct AppendOutcome {
     pub chain_head: ChainHead,
 }
 
+// Relatório de verificação
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BreakReason {
+    DivergingSeq,
+    HashMismatch,
+    InvalidBody,
+    ColumnMismatch,
+    BatchIndexMismatch,
+    AnchorMismatch,
+    ChainHeadNotFound,
+}
+
+impl BreakReason {
+    /// Código do detalhe de `ChainBroken` quando a política `Full` recusa uma consulta.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            BreakReason::DivergingSeq => "diverging-seq",
+            BreakReason::HashMismatch => "hash-mismatch",
+            BreakReason::InvalidBody => "invalid-body",
+            BreakReason::ColumnMismatch => "column-mismatch",
+            BreakReason::BatchIndexMismatch => "batch-index-mismatch",
+            BreakReason::AnchorMismatch => "anchor-mismatch",
+            BreakReason::ChainHeadNotFound => "chain-head-not-found",
+        }
+    }
+}
+
+/// `seq` é `None` nas quebras que não são de um record: âncora, lote e chain head esperado.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainBreak {
+    pub seq: Option<u64>,
+    pub reason: BreakReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainReport {
+    pub ok: bool,
+    pub total_records: u64,
+    /// Hash recalculado do último record (a âncora recalculada, num tenant vazio).
+    pub chain_head: Hash,
+    /// As primeiras 100 quebras; `total_breaks` conta todas.
+    pub breaks: Vec<ChainBreak>,
+    pub total_breaks: u64,
+}
+
 // Consulta
 
 /// Nome de campo escalar de primeiro nível de `data`: nada além disso entra no caminho JSON.

@@ -9,13 +9,14 @@ use crate::engine::chain::{anchor, anchor_doc};
 use crate::engine::limits::Limits;
 use crate::engine::model::{
     AppendOutcome, AppendRequest, Author, BodyAuthor, BodyLineage, BodySnapshot, ChainHead,
-    Lineage, ListFilter, Origin, PageRequest, RecordBody, RelationQuery, invalid_body, read_body,
+    ChainReport, Lineage, ListFilter, Origin, PageRequest, RecordBody, RelationQuery, invalid_body,
+    read_body,
 };
 use crate::engine::ports::{
     Clock, IdGenerator, NativeNodes, RecordRow, Store, StoreReader, WriteReads,
 };
 use crate::engine::snapshot::{Snapshot, SnapshotKind};
-use crate::engine::{DecideCtx, decide, instant_is_well_formed};
+use crate::engine::{DecideCtx, decide, instant_is_well_formed, verify_chain};
 use crate::error::{ErrorCode, HexlogError};
 use crate::ids::{ExternalId, Hash, RecordId, RelationTypeName, SemanticId, TenantId, TypeName};
 use crate::store::SqliteStore;
@@ -130,6 +131,7 @@ pub struct Hexlog<'d> {
     store: SqliteStore,
     deps: Deps<'d>,
     limits: Limits,
+    verify_policy: VerifyPolicy,
 }
 
 impl<'d> Hexlog<'d> {
@@ -139,6 +141,7 @@ impl<'d> Hexlog<'d> {
             store: SqliteStore::open(&config.db_path, config.busy_timeout)?,
             deps,
             limits: config.limits,
+            verify_policy: config.verify_policy,
         })
     }
 
@@ -164,6 +167,11 @@ impl<'d> Hexlog<'d> {
     }
 
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, HexlogError> {
+        if self.verify_policy == VerifyPolicy::Full {
+            // Fora da transação de escrita: a verificação não disputa corrida, um concorrente só acrescenta.
+            self.store
+                .read(&mut |reader| refuse_when_broken(reader, &req.tenant))?;
+        }
         let now = self.deps.clock.now();
         // Campos disjuntos de `self`: o `ctx` empresta `deps` e `limits` enquanto o store é emprestado como `&mut`.
         let ctx = DecideCtx {
@@ -272,18 +280,37 @@ impl<'d> Hexlog<'d> {
         self.read(tenant, |reader| WriteReads::chain_head(reader, tenant))
     }
 
+    /// Quebra é resultado do relatório; `expected_chain_head` revela uma cauda apagada ou reescrita.
+    pub fn verify_chain(
+        &mut self,
+        tenant: &TenantId,
+        expected_chain_head: Option<&Hash>,
+    ) -> Result<ChainReport, HexlogError> {
+        let mut found = None;
+        self.store.read(&mut |reader| {
+            found = Some(verify_chain(reader, tenant, expected_chain_head)?);
+            Ok(())
+        })?;
+        found.ok_or_else(|| HexlogError::internal("verification produced no report"))
+    }
+
     pub fn catalog(&self) -> &Catalog {
         &self.deps.catalog
     }
 
     /// Leitura numa transação só; tenant desconhecido é recusado antes da consulta.
+    /// Com `Full`, a cadeia inteira é verificada antes (que já recusa o tenant desconhecido).
     fn read<T>(
         &mut self,
         tenant: &TenantId,
         mut query: impl FnMut(&mut dyn StoreReader) -> Result<T, HexlogError>,
     ) -> Result<T, HexlogError> {
+        let policy = self.verify_policy;
         let mut found = None;
         self.store.read(&mut |reader| {
+            if policy == VerifyPolicy::Full {
+                refuse_when_broken(reader, tenant)?;
+            }
             if WriteReads::tenant(reader, tenant)?.is_none() {
                 return Err(HexlogError::tenant_not_found());
             }
@@ -291,6 +318,19 @@ impl<'d> Hexlog<'d> {
             Ok(())
         })?;
         found.ok_or_else(|| HexlogError::internal("read produced no result"))
+    }
+}
+
+/// `ChainBroken` com o motivo da primeira quebra, em kebab, como código do detalhe.
+fn refuse_when_broken(reader: &mut dyn StoreReader, tenant: &TenantId) -> Result<(), HexlogError> {
+    let report = verify_chain(reader, tenant, None)?;
+    match report.breaks.first() {
+        None => Ok(()),
+        Some(first) => Err(HexlogError::refused(
+            ErrorCode::ChainBroken,
+            first.reason.as_str(),
+            "chain verification found a break",
+        )),
     }
 }
 
