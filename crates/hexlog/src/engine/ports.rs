@@ -183,16 +183,58 @@ pub(crate) trait QueryReads {
     ) -> Result<Vec<RecordRow>, HexlogError>;
 }
 
-/// O que `verify_chain` lê.
+/// Linha do tenant como está no banco: `verify_chain` compara texto e nunca interpreta.
+pub(crate) struct StoredTenant {
+    pub(crate) tenant: String,
+    pub(crate) anchor: String,
+    pub(crate) anchor_doc: String,
+    pub(crate) created_at: String,
+}
+
+/// Linha de `records` como está no banco, sem nenhum `parse`.
+pub(crate) struct StoredRow {
+    pub(crate) tenant: String,
+    pub(crate) seq: i64,
+    pub(crate) id: String,
+    pub(crate) prev_hash: String,
+    pub(crate) hash: String,
+    pub(crate) body: String,
+    pub(crate) at: String,
+    pub(crate) type_name: String,
+    pub(crate) lineage_kind: String,
+    pub(crate) lineage_key: String,
+    pub(crate) retired: i64,
+    pub(crate) revises: Option<String>,
+    pub(crate) relation_type: Option<String>,
+    pub(crate) from_id: Option<String>,
+    pub(crate) to_id: Option<String>,
+    pub(crate) from_origin: Option<String>,
+    pub(crate) to_origin: Option<String>,
+    pub(crate) snapshot_kind: Option<String>,
+    pub(crate) snapshot_id: Option<String>,
+    pub(crate) external_id: Option<String>,
+    pub(crate) def_hash: String,
+}
+
+pub(crate) struct StoredBatch {
+    pub(crate) key: String,
+    pub(crate) fingerprint: String,
+    pub(crate) first_seq: i64,
+    pub(crate) item_count: i64,
+}
+
+/// O que `verify_chain` lê: texto cru, para que um valor adulterado vire quebra e não `corrupt-row`.
 pub(crate) trait VerifyReads {
-    fn tenant(&mut self, tenant: &TenantId) -> Result<Option<TenantRow>, HexlogError>;
-    fn records_from(
+    fn stored_tenant(&mut self, tenant: &TenantId) -> Result<Option<StoredTenant>, HexlogError>;
+    /// `seq > after_seq` (`None` lê tudo), em ordem de `seq`.
+    fn stored_records(
         &mut self,
         tenant: &TenantId,
-        from_seq: u64,
+        after_seq: Option<i64>,
         limit: u32,
-    ) -> Result<Vec<RecordRow>, HexlogError>;
-    fn batches(&mut self, tenant: &TenantId) -> Result<Vec<BatchRow>, HexlogError>;
+    ) -> Result<Vec<StoredRow>, HexlogError>;
+    /// Em ordem de `first_seq`.
+    fn stored_batches(&mut self, tenant: &TenantId) -> Result<Vec<StoredBatch>, HexlogError>;
 }
 
 /// A soma das três, implementada uma vez pela transação do SQLite.

@@ -6,10 +6,12 @@ mod ids;
 mod store;
 
 pub use crate::catalog::{Catalog, RelationTypeDef, TypeDef};
+pub use crate::engine::CHECKED_FIELDS;
 pub use crate::engine::limits::Limits;
 pub use crate::engine::model::{
-    AppendItem, AppendOutcome, AppendRequest, AppendedRecord, Author, ChainHead, FieldName,
-    ItemBody, Lineage, ListFilter, Origin, PageRequest, RelationQuery, Scalar,
+    AppendItem, AppendOutcome, AppendRequest, AppendedRecord, Author, BreakReason, ChainBreak,
+    ChainHead, ChainReport, FieldName, ItemBody, Lineage, ListFilter, Origin, PageRequest,
+    RelationQuery, Scalar,
 };
 pub use crate::engine::ports::{Clock, DataViolation, IdGenerator, NativeNode, NativeNodes};
 pub use crate::engine::snapshot::{Snapshot, SnapshotKind};

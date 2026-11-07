@@ -15,7 +15,7 @@ use crate::engine::model::{
 };
 use crate::engine::ports::{
     AppendPlan, BatchRow, LineageKind, NewRecord, RecordColumns, RecordRow, Store, StoreReader,
-    TenantRow, VerifyReads, WriteReads,
+    StoredRow, TenantRow, VerifyReads, WriteReads,
 };
 use crate::engine::snapshot::{Snapshot, SnapshotKind};
 use crate::error::{ErrorCode, HexlogError};
@@ -416,7 +416,81 @@ fn rows_from(
     from_seq: u64,
     limit: u32,
 ) -> Vec<RecordRow> {
-    read_with(store, |reader| reader.records_from(tenant, from_seq, limit)).unwrap()
+    read_with(store, |reader| {
+        reader.batch_records(tenant, from_seq, limit)
+    })
+    .unwrap()
+}
+
+fn stored_rows(
+    store: &mut SqliteStore,
+    tenant: &TenantId,
+    after_seq: Option<i64>,
+    limit: u32,
+) -> Vec<StoredRow> {
+    read_with(store, |reader| {
+        reader.stored_records(tenant, after_seq, limit)
+    })
+    .unwrap()
+}
+
+fn stored_seqs(rows: &[StoredRow]) -> Vec<i64> {
+    rows.iter().map(|row| row.seq).collect()
+}
+
+/// Cada campo do `StoredRow`, em texto, igual ao do record que o teste mandou gravar.
+fn assert_stored_matches(row: &StoredRow, expected: &NewRecord, tenant: &TenantId) {
+    let columns = &expected.columns;
+    let kind = if is_relation(&columns.lineage_kind) {
+        "relation"
+    } else {
+        "node"
+    };
+    assert_eq!(row.tenant, tenant.as_str());
+    assert_eq!(row.seq, i64::try_from(expected.seq).unwrap());
+    assert_eq!(row.id, expected.id.as_str());
+    assert_eq!(row.prev_hash, expected.prev_hash.as_str());
+    assert_eq!(row.hash, expected.hash.as_str());
+    assert_eq!(row.body, expected.body);
+    assert_eq!(row.at, columns.at);
+    assert_eq!(row.type_name, columns.type_name.as_str());
+    assert_eq!(row.lineage_kind, kind);
+    assert_eq!(row.lineage_key, columns.lineage_key);
+    assert_eq!(row.retired, i64::from(columns.retired));
+    assert_eq!(
+        row.revises.as_deref(),
+        columns.revises.as_ref().map(RecordId::as_str)
+    );
+    assert_eq!(
+        row.relation_type.as_deref(),
+        columns.relation_type.as_ref().map(RelationTypeName::as_str)
+    );
+    assert_eq!(
+        row.from_id.as_deref(),
+        columns.from_id.as_ref().map(SemanticId::as_str)
+    );
+    assert_eq!(
+        row.to_id.as_deref(),
+        columns.to_id.as_ref().map(SemanticId::as_str)
+    );
+    assert_eq!(
+        row.from_origin.as_deref(),
+        columns.from_origin.map(origin_text)
+    );
+    assert_eq!(row.to_origin.as_deref(), columns.to_origin.map(origin_text));
+    assert_eq!(
+        row.snapshot_kind.as_deref(),
+        columns.snapshot.as_ref().map(|found| found.kind().as_str())
+    );
+    assert_eq!(
+        row.snapshot_id.as_deref(),
+        columns.snapshot.as_ref().map(Snapshot::id)
+    );
+    assert_eq!(
+        row.external_id.as_deref(),
+        columns.external_id.as_ref().map(ExternalId::as_str)
+    );
+    assert_eq!(row.def_hash, columns.def_hash.as_str());
 }
 
 fn keys_of(rows: &[RecordRow]) -> Vec<String> {
@@ -501,6 +575,22 @@ impl Raw {
     }
 
     fn insert(&mut self, tenant: &TenantId, record: &NewRecord) -> Result<(), sqlx::Error> {
+        self.insert_as(
+            tenant,
+            record,
+            record.hash.as_str(),
+            record.columns.type_name.as_str(),
+        )
+    }
+
+    /// Como `insert`, mas com `hash` e `type` em texto livre, para valores que os tipos recusam.
+    fn insert_as(
+        &mut self,
+        tenant: &TenantId,
+        record: &NewRecord,
+        hash: &str,
+        type_name: &str,
+    ) -> Result<(), sqlx::Error> {
         let columns = &record.columns;
         let kind = if is_relation(&columns.lineage_kind) {
             "relation"
@@ -512,10 +602,10 @@ impl Raw {
             .bind(i64::try_from(record.seq).unwrap())
             .bind(record.id.as_str())
             .bind(record.prev_hash.as_str())
-            .bind(record.hash.as_str())
+            .bind(hash)
             .bind(record.body.as_str())
             .bind(columns.at.as_str())
-            .bind(columns.type_name.as_str())
+            .bind(type_name)
             .bind(kind)
             .bind(columns.lineage_key.as_str())
             .bind(i64::from(columns.retired))
@@ -741,22 +831,28 @@ fn it_should_read_a_tenant_row_and_none_for_an_unknown_tenant() {
     let ledger = start(&mut env.store, "acme");
     let unknown = TenantId::parse("ghost").unwrap();
 
-    let (write_side, verify_side, missing) = read_with(&mut env.store, |reader| {
+    let (write_side, verify_side, missing, verify_missing) = read_with(&mut env.store, |reader| {
         Ok((
             WriteReads::tenant(reader, &ledger.tenant)?,
-            VerifyReads::tenant(reader, &ledger.tenant)?,
+            reader.stored_tenant(&ledger.tenant)?,
             WriteReads::tenant(reader, &unknown)?,
+            reader.stored_tenant(&unknown)?,
         ))
     })
     .unwrap();
 
-    for row in [write_side.unwrap(), verify_side.unwrap()] {
-        assert_eq!(row.tenant, ledger.tenant);
-        assert_eq!(row.anchor, ledger.anchor);
-        assert_eq!(row.anchor_doc, ledger.anchor_doc);
-        assert_eq!(row.created_at, CREATED_AT);
-    }
+    let write_side = write_side.unwrap();
+    assert_eq!(write_side.tenant, ledger.tenant);
+    assert_eq!(write_side.anchor, ledger.anchor);
+    assert_eq!(write_side.anchor_doc, ledger.anchor_doc);
+    assert_eq!(write_side.created_at, CREATED_AT);
+    let verify_side = verify_side.unwrap();
+    assert_eq!(verify_side.tenant, ledger.tenant.as_str());
+    assert_eq!(verify_side.anchor, ledger.anchor.as_str());
+    assert_eq!(verify_side.anchor_doc, ledger.anchor_doc);
+    assert_eq!(verify_side.created_at, CREATED_AT);
     assert!(missing.is_none());
+    assert!(verify_missing.is_none());
 }
 
 #[test]
@@ -1354,17 +1450,77 @@ fn it_should_list_the_batches_of_a_tenant() {
     );
 
     let mut acme_batches =
-        read_with(&mut env.store, |reader| reader.batches(&acme.tenant)).unwrap();
-    let beta_batches = read_with(&mut env.store, |reader| reader.batches(&beta.tenant)).unwrap();
+        read_with(&mut env.store, |reader| reader.stored_batches(&acme.tenant)).unwrap();
+    let beta_batches =
+        read_with(&mut env.store, |reader| reader.stored_batches(&beta.tenant)).unwrap();
 
-    acme_batches.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
-    let shape: Vec<(&str, u64, u32)> = acme_batches
+    acme_batches.sort_by(|a, b| a.key.cmp(&b.key));
+    let shape: Vec<(&str, i64, i64)> = acme_batches
         .iter()
         .map(|row| (row.key.as_str(), row.first_seq, row.item_count))
         .collect();
     assert_eq!(shape, [("k1", 1, 2), ("k2", 4, 1)]);
     assert_eq!(beta_batches.len(), 1);
-    assert_eq!(beta_batches[0].key.as_str(), "k3");
+    assert_eq!(beta_batches[0].key, "k3");
+}
+
+#[test]
+fn it_should_read_stored_records_after_a_seq_as_text() {
+    let mut env = env();
+    let mut ledger = start(&mut env.store, "acme");
+    let first = ledger.record_id(1);
+    let second = ledger.record_id(2);
+    let plan = append(
+        &mut env.store,
+        &mut ledger,
+        &[
+            Draft::node("a.one", "note"),
+            Draft::node("a.two", "note")
+                .with_snapshot(snapshot('c'))
+                .with_external_id("x")
+                .with_def_hash('2'),
+            Draft::relation("after", "a.one", "n.other").with_native_target(),
+            Draft::node("a.one", "note")
+                .with_data(json!({"text": "two"}))
+                .revising(&first),
+            Draft::node("a.two", "note").revising(&second).retired(),
+        ],
+    );
+    let tenant = &ledger.tenant;
+
+    let whole = stored_rows(&mut env.store, tenant, None, 10);
+    let after_two = stored_rows(&mut env.store, tenant, Some(2), 10);
+    let cut = stored_rows(&mut env.store, tenant, None, 2);
+    let beyond = stored_rows(&mut env.store, tenant, Some(5), 10);
+
+    assert_eq!(stored_seqs(&whole), [1, 2, 3, 4, 5]);
+    for (row, expected) in whole.iter().zip(&plan.records) {
+        assert_stored_matches(row, expected, tenant);
+    }
+    assert_eq!(stored_seqs(&after_two), [3, 4, 5]);
+    assert_eq!(stored_seqs(&cut), [1, 2]);
+    assert!(beyond.is_empty());
+}
+
+#[test]
+fn it_should_read_stored_rows_even_when_a_value_is_not_valid_for_its_type() {
+    let mut env = env();
+    let ledger = start(&mut env.store, "acme");
+    let record = ledger.records(&[Draft::node("a.one", "note")]).remove(0);
+    let mut raw = Raw::open(&env.path);
+    raw.insert_as(&ledger.tenant, &record, "ZZ", "Bad Type")
+        .unwrap();
+    raw.close();
+
+    let rows = stored_rows(&mut env.store, &ledger.tenant, None, 10);
+    let typed = failure(read_with(&mut env.store, |reader| {
+        reader.batch_records(&ledger.tenant, 1, 1)
+    }));
+
+    assert_eq!(stored_seqs(&rows), [1]);
+    assert_eq!(rows[0].hash, "ZZ");
+    assert_eq!(rows[0].type_name, "Bad Type");
+    assert_store_error(&typed, "corrupt-row");
 }
 
 // ---------------------------------------------------------------- escrita
@@ -1412,7 +1568,7 @@ fn it_should_append_records_and_batch_atomically() {
     assert_eq!(stored.outcome.records.len(), 2);
     let (rows, kept, dropped) = read_with(&mut env.store, |reader| {
         Ok((
-            reader.records_from(&ledger.tenant, 1, 10)?,
+            reader.batch_records(&ledger.tenant, 1, 10)?,
             reader.batch_by_key(&ledger.tenant, &key)?,
             reader.batch_by_key(&ledger.tenant, &failed_key)?,
         ))

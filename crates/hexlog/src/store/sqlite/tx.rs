@@ -10,7 +10,7 @@ use crate::engine::model::{
 };
 use crate::engine::ports::{
     AppendPlan, BatchRow, LatestRow, LineageKind, NewRecord, QueryReads, RecordColumns, RecordRow,
-    TenantRow, VerifyReads, WriteReads,
+    StoredBatch, StoredRow, StoredTenant, TenantRow, VerifyReads, WriteReads,
 };
 use crate::engine::snapshot::{Snapshot, SnapshotKind};
 use crate::error::{ErrorCode, HexlogError};
@@ -121,6 +121,8 @@ const SELECT_LATEST_RELATIONS: &str = select_records!(
 );
 const SELECT_RECORDS_FROM: &str =
     select_records!("WHERE r.tenant = ?1 AND r.seq >= ?2 ORDER BY r.seq LIMIT ?3");
+const SELECT_STORED_RECORDS: &str =
+    select_records!("WHERE r.tenant = ?1 AND (?2 IS NULL OR r.seq > ?2) ORDER BY r.seq LIMIT ?3");
 const SELECT_BATCHES: &str = select_batches!("WHERE tenant = ?1 ORDER BY first_seq");
 const INSERT_RECORD: &str = "INSERT INTO records (tenant, seq, id, prev_hash, hash, body, at, \
     type, lineage_kind, lineage_key, retired, revises, relation_type, from_id, to_id, \
@@ -335,6 +337,50 @@ fn columns_from(row: &SqliteRow) -> Result<RecordColumns, HexlogError> {
         snapshot: snapshot_of(row)?,
         external_id: parsed_optional(row, "external_id", ExternalId::parse)?,
         def_hash: parsed(row, "def_hash", Hash::parse)?,
+    })
+}
+
+fn stored_tenant_from(row: &SqliteRow) -> Result<StoredTenant, HexlogError> {
+    Ok(StoredTenant {
+        tenant: column(row, "tenant")?,
+        anchor: column(row, "anchor")?,
+        anchor_doc: column(row, "anchor_doc")?,
+        created_at: column(row, "created_at")?,
+    })
+}
+
+fn stored_row_from(row: &SqliteRow) -> Result<StoredRow, HexlogError> {
+    Ok(StoredRow {
+        tenant: column(row, "tenant")?,
+        seq: column(row, "seq")?,
+        id: column(row, "id")?,
+        prev_hash: column(row, "prev_hash")?,
+        hash: column(row, "hash")?,
+        body: column(row, "body")?,
+        at: column(row, "at")?,
+        type_name: column(row, "type")?,
+        lineage_kind: column(row, "lineage_kind")?,
+        lineage_key: column(row, "lineage_key")?,
+        retired: column(row, "retired")?,
+        revises: column(row, "revises")?,
+        relation_type: column(row, "relation_type")?,
+        from_id: column(row, "from_id")?,
+        to_id: column(row, "to_id")?,
+        from_origin: column(row, "from_origin")?,
+        to_origin: column(row, "to_origin")?,
+        snapshot_kind: column(row, "snapshot_kind")?,
+        snapshot_id: column(row, "snapshot_id")?,
+        external_id: column(row, "external_id")?,
+        def_hash: column(row, "def_hash")?,
+    })
+}
+
+fn stored_batch_from(row: &SqliteRow) -> Result<StoredBatch, HexlogError> {
+    Ok(StoredBatch {
+        key: column(row, "key")?,
+        fingerprint: column(row, "fingerprint")?,
+        first_seq: column(row, "first_seq")?,
+        item_count: column(row, "item_count")?,
     })
 }
 
@@ -651,25 +697,26 @@ impl QueryReads for Tx<'_> {
 }
 
 impl VerifyReads for Tx<'_> {
-    fn tenant(&mut self, tenant: &TenantId) -> Result<Option<TenantRow>, HexlogError> {
-        self.tenant_row(tenant)
+    fn stored_tenant(&mut self, tenant: &TenantId) -> Result<Option<StoredTenant>, HexlogError> {
+        let query = sqlx::query(SELECT_TENANT).bind(tenant.as_str());
+        self.fetch_mapped_optional(query, stored_tenant_from)
     }
 
-    fn records_from(
+    fn stored_records(
         &mut self,
         tenant: &TenantId,
-        from_seq: u64,
+        after_seq: Option<i64>,
         limit: u32,
-    ) -> Result<Vec<RecordRow>, HexlogError> {
-        let query = sqlx::query(SELECT_RECORDS_FROM)
+    ) -> Result<Vec<StoredRow>, HexlogError> {
+        let query = sqlx::query(SELECT_STORED_RECORDS)
             .bind(tenant.as_str())
-            .bind(signed(from_seq)?)
+            .bind(after_seq)
             .bind(i64::from(limit));
-        self.records(query)
+        self.fetch_mapped(query, stored_row_from)
     }
 
-    fn batches(&mut self, tenant: &TenantId) -> Result<Vec<BatchRow>, HexlogError> {
+    fn stored_batches(&mut self, tenant: &TenantId) -> Result<Vec<StoredBatch>, HexlogError> {
         let query = sqlx::query(SELECT_BATCHES).bind(tenant.as_str());
-        self.fetch_mapped(query, batch_from)
+        self.fetch_mapped(query, stored_batch_from)
     }
 }
