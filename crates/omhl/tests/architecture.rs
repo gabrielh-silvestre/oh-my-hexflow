@@ -10,6 +10,19 @@ const NATIVE_FORBIDDEN_MODULES: &[&str] = &["gate", "facade", "guard", "pr_gate"
 const NATIVE_FORBIDDEN_PATHS: &[&str] = &["omhl::"];
 const GATE_FORBIDDEN_MODULES: &[&str] = &["native", "graphs", "pr_gate"];
 const GATE_FORBIDDEN_LITERALS: &[&str] = &["check", "work-item", "work_item", "attestation"];
+const HEXLOG_PATHS: &[&str] = &["hexlog::"];
+const HEXLOG_IMPORTS: &[&str] = &["use hexlog", "extern crate hexlog"];
+const STDOUT_MACROS: &[&str] = &["println!", "print!", "dbg!"];
+const FORBIDDEN_PACKAGES: &[&str] = &[
+    "tokio",
+    "hyper",
+    "reqwest",
+    "ureq",
+    "git2",
+    "async-std",
+    "serde_yaml",
+];
+const FORBIDDEN_PACKAGE_PREFIX: &str = "gix";
 
 fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
@@ -336,6 +349,73 @@ fn scan_dir(dir: &Path, count: impl Fn(&str) -> Result<usize, String>) -> Vec<St
     failures
 }
 
+fn scan_paths(paths: &[PathBuf], count: impl Fn(&str) -> Result<usize, String>) -> Vec<String> {
+    let mut failures = Vec::new();
+    for path in paths {
+        if path.is_dir() {
+            failures.extend(scan_dir(path, &count));
+        } else if path.is_file() {
+            match count(&read(path)) {
+                Ok(0) => {}
+                Ok(found) => failures.push(format!(
+                    "{}: {found} forbidden reference(s)",
+                    path.display()
+                )),
+                Err(error) => failures.push(format!("{}: {error}", path.display())),
+            }
+        } else {
+            failures.push(format!("missing source path {}", path.display()));
+        }
+    }
+
+    failures
+}
+
+/// Referências a `hexlog` fora de comentário e de string: o caminho `hexlog::` e as formas de
+/// importar a crate inteira (`use hexlog`, `extern crate hexlog`).
+fn hexlog_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+    let imports: usize = HEXLOG_IMPORTS
+        .iter()
+        .map(|import| occurrences(&code, import, true))
+        .sum();
+
+    Ok(path_refs(source, HEXLOG_PATHS)? + imports)
+}
+
+/// Referências a um módulo `adapters` por qualquer caminho de camada interna.
+fn adapters_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+
+    Ok(module_refs(source, &["adapters"])?
+        + occurrences(&code, "omhl::adapters", true)
+        + path_refs(source, &["adapters::"])?)
+}
+
+/// Macros que escrevem direto no stdout do processo, com ou sem espaço antes do `!`.
+fn stdout_macro_refs(source: &str) -> Result<usize, String> {
+    let mut code = lex(source)?.code;
+    for open in ["(", "[", "{"] {
+        code = code.replace(&format!(" !{open}"), &format!("!{open}"));
+    }
+
+    Ok(STDOUT_MACROS
+        .iter()
+        .map(|name| occurrences(&code, name, false))
+        .sum())
+}
+
+/// Pacotes proibidos em um `Cargo.lock`, lidos como dado: só as linhas `name = "..."`.
+fn forbidden_lock_packages(lock: &str) -> Result<usize, String> {
+    Ok(lock
+        .lines()
+        .filter_map(|line| line.trim_end().strip_prefix("name = \"")?.strip_suffix('"'))
+        .filter(|name| {
+            FORBIDDEN_PACKAGES.contains(name) || name.starts_with(FORBIDDEN_PACKAGE_PREFIX)
+        })
+        .count())
+}
+
 fn assert_no_failures(failures: &[String]) {
     assert!(failures.is_empty(), "\n{}\n", failures.join("\n"));
 }
@@ -435,6 +515,125 @@ fn it_should_keep_the_gate_sources_free_of_domain_names_and_native_imports() {
     );
 
     failures.extend(scan_dir(&src_dir().join("gate"), count));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_adapters_free_of_hexlog_imports() {
+    let mut failures = prove_both_sides(
+        hexlog_refs,
+        &[
+            "use hexlog::Hexlog;",
+            "use ::hexlog::Hexlog;",
+            "use hexlog;",
+            "use hexlog as store;",
+            "extern crate hexlog;",
+            "fn f() { let c = hexlog::Config::default(); }",
+        ],
+        &[
+            "// use hexlog::Hexlog;",
+            "const PATH: &str = \"hexlog::Hexlog\";",
+            "use my_hexlog::Thing;",
+            "use hexlogger::Thing;",
+            "use crate::app::App;",
+        ],
+    );
+
+    failures.extend(scan_dir(&src_dir().join("adapters"), hexlog_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_not_import_adapters_from_the_inner_layers() {
+    let mut failures = prove_both_sides(
+        adapters_refs,
+        &[
+            "use crate::adapters::cli;",
+            "use crate::adapters;",
+            "use crate::{app::App, adapters::cli};",
+            "use omhl::adapters::cli::run;",
+            "use super::adapters::mcp;",
+        ],
+        &[
+            "// use crate::adapters::cli;",
+            "const PATH: &str = \"crate::adapters::cli\";",
+            "use crate::app::App;",
+            "use crate::my_adapters::Thing;",
+            "use crate::adapters_like::Thing;",
+        ],
+    );
+    let inner = [
+        src_dir().join("app"),
+        src_dir().join("render.rs"),
+        src_dir().join("project"),
+        src_dir().join("ports"),
+    ];
+
+    failures.extend(scan_paths(&inner, adapters_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_stdout_writes_out_of_every_source_file() {
+    let mut failures = prove_both_sides(
+        stdout_macro_refs,
+        &[
+            "fn f() { println!(\"x\"); }",
+            "fn f() { print!(\"x\"); }",
+            "fn f() { dbg!(value); }",
+            "fn f() { std::println!(\"x\"); }",
+            "fn f() { println !(\"x\"); }",
+        ],
+        &[
+            "fn f() { eprintln!(\"x\"); }",
+            "fn f() { eprint!(\"x\"); }",
+            "fn f() { writeln!(out, \"x\").ok(); }",
+            "// println!(\"x\")",
+            "const TEXT: &str = \"println!(x)\";",
+            "fn f() { my_println!(\"x\"); }",
+        ],
+    );
+
+    failures.extend(scan_dir(&src_dir(), stdout_macro_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_forbidden_crates_out_of_the_lockfile() {
+    let lock = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock");
+    let mut failures = prove_both_sides(
+        forbidden_lock_packages,
+        &[
+            "[[package]]\nname = \"tokio\"\nversion = \"1.0.0\"\n",
+            "name = \"hyper\"",
+            "name = \"reqwest\"",
+            "name = \"ureq\"",
+            "name = \"git2\"",
+            "name = \"async-std\"",
+            "name = \"serde_yaml\"",
+            "name = \"gix\"",
+            "name = \"gix-hash\"",
+        ],
+        &[
+            "name = \"hexlog\"",
+            "name = \"serde\"",
+            "version = \"tokio\"",
+            "dependencies = [\n \"serde\",\n]",
+        ],
+    );
+
+    match fs::read_to_string(&lock) {
+        Ok(text) => match forbidden_lock_packages(&text) {
+            Ok(0) => {}
+            Ok(found) => failures.push(format!("Cargo.lock: {found} forbidden package(s)")),
+            Err(error) => failures.push(format!("Cargo.lock: {error}")),
+        },
+        Err(error) => failures.push(format!("cannot read {}: {error}", lock.display())),
+    }
 
     assert_no_failures(&failures);
 }
