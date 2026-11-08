@@ -118,7 +118,10 @@ impl Guard<'_, '_> {
                 self.check_work_item_status(node)?;
                 self.check_reactivation(node)
             }
-            "premise" | "decision" => self.find_work_item(node).map(drop),
+            "premise" | "decision" => {
+                self.find_work_item(node)?;
+                self.check_reactivation(node)
+            }
             "check" => self.check_reactivation(node),
             "attestation" => {
                 self.check_reactivation(node)?;

@@ -1,0 +1,41 @@
+use std::thread;
+use std::time::Duration;
+
+use hexlog::ErrorCode;
+
+use super::error::AppError;
+
+const BUSY_TIMEOUT: Duration = Duration::from_secs(2);
+const PAUSES: [Duration; 2] = [Duration::from_millis(250), Duration::from_millis(500)];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetryPolicy {
+    /// Espera máxima do motor por uma trava, a cada tentativa.
+    pub busy_timeout: Duration,
+    /// Uma tentativa a mais por pausa.
+    pub pauses: Vec<Duration>,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> RetryPolicy {
+        RetryPolicy {
+            busy_timeout: BUSY_TIMEOUT,
+            pauses: PAUSES.to_vec(),
+        }
+    }
+}
+
+/// Repete só o `BUSY`: nesse caso nada foi gravado. Esgotadas as pausas, devolve o último erro.
+pub(crate) fn with_retry<T>(
+    policy: &RetryPolicy,
+    mut attempt: impl FnMut() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    for pause in &policy.pauses {
+        match attempt() {
+            Err(error) if error.code() == ErrorCode::Busy.as_str() => thread::sleep(*pause),
+            done => return done,
+        }
+    }
+
+    attempt()
+}

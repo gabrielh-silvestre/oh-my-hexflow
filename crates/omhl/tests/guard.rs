@@ -353,6 +353,68 @@ fn it_should_refuse_reactivating_a_retired_attestation() {
 }
 
 #[test]
+fn it_should_refuse_reactivating_a_retired_decision() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let created = append_ok(
+        &mut omhl,
+        vec![node_item(
+            "decisions.d-1",
+            "decision",
+            decision_data("use sqlite", None),
+        )],
+    );
+    let retired = append_ok(
+        &mut omhl,
+        vec![retirement_item("decisions.d-1", &created.records[0].id)],
+    );
+    let reactivation = revision_item(
+        "decisions.d-1",
+        "decision",
+        decision_data("use sqlite", None),
+        &retired.records[0].id,
+    );
+
+    let error = refusal(&mut omhl, vec![reactivation]);
+
+    assert_eq!(
+        error,
+        rule(RuleCode::ReactivationUnsupported, "/items/0/base")
+    );
+}
+
+#[test]
+fn it_should_refuse_reactivating_a_retired_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let created = append_ok(
+        &mut omhl,
+        vec![node_item(
+            "premises.p-1",
+            "premise",
+            premise_data("tests are fast", None),
+        )],
+    );
+    let retired = append_ok(
+        &mut omhl,
+        vec![retirement_item("premises.p-1", &created.records[0].id)],
+    );
+    let reactivation = revision_item(
+        "premises.p-1",
+        "premise",
+        premise_data("tests are fast", None),
+        &retired.records[0].id,
+    );
+
+    let error = refusal(&mut omhl, vec![reactivation]);
+
+    assert_eq!(
+        error,
+        rule(RuleCode::ReactivationUnsupported, "/items/0/base")
+    );
+}
+
+#[test]
 fn it_should_refuse_a_node_id_outside_the_namespace_of_its_type() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();

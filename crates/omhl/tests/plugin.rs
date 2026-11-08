@@ -1,0 +1,60 @@
+use std::fs;
+use std::path::Path;
+
+use serde_json::{Value, json};
+
+fn plugin_file(relative: &str) -> Value {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugin")
+        .join(relative);
+    let text = fs::read_to_string(&path).expect("the plugin file is readable");
+
+    serde_json::from_str(&text).expect("the plugin file is valid JSON")
+}
+
+#[test]
+fn it_should_declare_the_plugin_name_and_the_cargo_version() {
+    let manifest = plugin_file(".claude-plugin/plugin.json");
+
+    assert_eq!(manifest["name"], json!("oh-my-hexflow"));
+    assert_eq!(manifest["version"], json!(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn it_should_wire_the_session_start_hook_in_exec_form() {
+    let hooks = plugin_file("hooks/hooks.json");
+
+    assert_eq!(
+        hooks,
+        json!({
+            "hooks": {
+                "SessionStart": [{
+                    "matcher": "startup|resume|clear|compact",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
+                        "args": ["hook", "session-start"],
+                        "timeout": 15,
+                    }],
+                }],
+            }
+        })
+    );
+}
+
+#[test]
+fn it_should_wire_the_mcp_server() {
+    let servers = plugin_file(".mcp.json");
+
+    assert_eq!(
+        servers,
+        json!({
+            "mcpServers": {
+                "omhl": {
+                    "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
+                    "args": ["mcp"],
+                }
+            }
+        })
+    );
+}

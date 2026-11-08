@@ -1,8 +1,13 @@
 #![allow(dead_code)]
 
+pub mod busy;
+pub mod child;
 pub mod gate;
+pub mod git;
+pub mod mcp_session;
 pub mod omhl;
 pub mod pr_gate;
+pub mod project;
 pub mod raw;
 
 use std::sync::atomic::{AtomicU64, Ordering};
