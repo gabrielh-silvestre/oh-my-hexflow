@@ -500,3 +500,93 @@ fn it_should_derive_ids_from_kind_and_slug() {
     assert_eq!(guideline.id, "guidelines.tone");
     assert_eq!(guideline.path, guideline_raw.toml_path);
 }
+
+#[test]
+fn it_should_reject_a_malformed_after_target_with_the_file_path() {
+    let long_segment = format!("checks.{}", "a".repeat(64));
+    let targets = [
+        "checks.Bad Name",
+        "checks.a..b",
+        "checks.",
+        long_segment.as_str(),
+    ];
+
+    let found: Vec<Vec<(String, &'static str)>> = targets
+        .iter()
+        .map(|target| {
+            let top = format!("blocking = true\nhow = \"Run lint\"\nafter = [\"{target}\"]\n");
+            issues(&raw_check(&check_toml(&top, CHECK_WHEN), None))
+                .into_iter()
+                .map(|issue| (issue.path, issue.code))
+                .collect()
+        })
+        .collect();
+
+    assert_eq!(
+        found,
+        vec![vec![(CHECK_TOML_PATH.to_owned(), "value-not-allowed")]; 4]
+    );
+}
+
+#[test]
+fn it_should_reject_more_than_sixteen_after_targets() {
+    let after_of = |count: usize| {
+        let targets: Vec<String> = (1..=count).map(|n| format!("\"checks.t{n:02}\"")).collect();
+        let top = format!(
+            "blocking = true\nhow = \"Run lint\"\nafter = [{}]\n",
+            targets.join(", ")
+        );
+        raw_check(&check_toml(&top, CHECK_WHEN), None)
+    };
+    let over = after_of(17);
+    let at_limit = after_of(16);
+
+    let over_codes = codes(&over);
+    let at_limit_parsed = parse(&at_limit).is_ok();
+
+    assert_eq!(over_codes, vec!["value-too-long"]);
+    assert!(at_limit_parsed, "sixteen targets must parse");
+}
+
+#[test]
+fn it_should_reject_invisible_format_characters() {
+    let code_points: [u32; 13] = [
+        0x200B, 0x200F, 0x2028, 0x202A, 0x202E, 0x2060, 0x2064, 0xFEFF, 0xE0000, 0xE0001, 0xE0020,
+        0xE007F, 0x2063,
+    ];
+    let literal = |code_point: u32| format!("\\U{code_point:08X}");
+
+    let mut unexpected: Vec<String> = Vec::new();
+    for code_point in code_points {
+        let escaped = literal(code_point);
+        let how = check_toml(
+            &format!("blocking = true\nhow = \"a{escaped}b\"\n"),
+            CHECK_WHEN,
+        );
+        let event = check_toml(CHECK_TOP, &format!("event = \"a{escaped}b\"\n"));
+        let matcher = check_toml(
+            CHECK_TOP,
+            &format!("event = \"pre-commit\"\nmatcher = \"a{escaped}b\"\n"),
+        );
+        let text = format!("text = \"a{escaped}b\"\n");
+        let outcomes = [
+            ("how", issues(&raw_check(&how, None))),
+            ("event", issues(&raw_check(&event, None))),
+            ("matcher", issues(&raw_check(&matcher, None))),
+            ("text", issues(&raw_guideline(&text, None))),
+        ];
+        for (field, found) in outcomes {
+            let found_codes: Vec<&str> = found.iter().map(|issue| issue.code).collect();
+            let echoed = found.iter().any(|issue| {
+                issue
+                    .message
+                    .contains(char::from_u32(code_point).expect("valid code point"))
+            });
+            if found_codes != ["value-not-allowed"] || echoed {
+                unexpected.push(format!("U+{code_point:04X} in {field}: {found_codes:?}"));
+            }
+        }
+    }
+
+    assert!(unexpected.is_empty(), "unexpected outcomes: {unexpected:?}");
+}

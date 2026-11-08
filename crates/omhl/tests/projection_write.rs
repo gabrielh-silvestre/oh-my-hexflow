@@ -83,23 +83,18 @@ fn it_should_write_the_internal_gitignore() {
 }
 
 #[test]
-fn it_should_rewrite_a_missing_or_different_gitignore() {
+fn it_should_rewrite_a_missing_gitignore() {
     let tree = ExtTree::new();
     let files = [generated("a.md", "body\n")];
     write(tree.root(), &files).expect("first write succeeds");
     let gitignore = tree.root().join(PROJECTION).join(".gitignore");
     fs::remove_file(&gitignore).expect("gitignore is removed");
-    fs::write(&gitignore, "something else\n").expect("gitignore is replaced");
-    write(tree.root(), &files).expect("write over a different gitignore succeeds");
-    let after_different = fs::read_to_string(&gitignore).expect("gitignore is read");
-    fs::remove_file(&gitignore).expect("gitignore is removed again");
 
     write(tree.root(), &files).expect("write over a missing gitignore succeeds");
 
-    let after_missing = fs::read_to_string(&gitignore).expect("gitignore is read again");
     assert_eq!(
-        [after_different, after_missing],
-        [GITIGNORE.to_owned(), GITIGNORE.to_owned()]
+        fs::read_to_string(&gitignore).expect("gitignore is read"),
+        GITIGNORE
     );
 }
 
@@ -374,4 +369,60 @@ fn it_should_refuse_a_directory_with_more_than_1100_entries() {
     let error = refused(tree.root(), &[generated("a.md", "body\n")]);
 
     assert_eq!(error.code, "too-many-entries");
+}
+
+#[test]
+fn it_should_refuse_a_user_gitignore_without_writing_anything() {
+    let tree = ExtTree::new();
+    tree.file(".omhl/projection/.gitignore", "my own rules\n");
+
+    let error = refused(
+        tree.root(),
+        &[generated("a.md", "body\n"), generated("b.md", "body\n")],
+    );
+
+    let projection = tree.root().join(PROJECTION);
+    assert_eq!(
+        (error.code, error.path.as_str()),
+        ("not-generated", ".omhl/projection/.gitignore")
+    );
+    assert_eq!(tree.read(".omhl/projection/.gitignore"), b"my own rules\n");
+    assert!(
+        !projection.join("a.md").exists(),
+        "a.md must not be created"
+    );
+    assert!(
+        !projection.join("b.md").exists(),
+        "b.md must not be created"
+    );
+    assert!(
+        !projection.join(".lock").exists(),
+        ".lock must not be created"
+    );
+}
+
+#[test]
+fn it_should_refuse_a_gitignore_directory_without_writing_anything() {
+    let tree = ExtTree::new();
+    tree.dir(".omhl/projection/.gitignore");
+
+    let error = refused(tree.root(), &[generated("a.md", "body\n")]);
+
+    let projection = tree.root().join(PROJECTION);
+    assert_eq!(
+        (error.code, error.path.as_str()),
+        ("not-regular-file", ".omhl/projection/.gitignore")
+    );
+    assert!(
+        projection.join(".gitignore").is_dir(),
+        "the directory stays"
+    );
+    assert!(
+        !projection.join("a.md").exists(),
+        "a.md must not be created"
+    );
+    assert!(
+        !projection.join(".lock").exists(),
+        ".lock must not be created"
+    );
 }

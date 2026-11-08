@@ -87,19 +87,17 @@ fn pending_note(report: &Value) -> Option<String> {
 /// Only codes and counts: file names and contents never reach the agent context.
 fn warning(error: &AppError) -> String {
     let reasons = match error.code() {
-        "extensions-invalid" => issue_counts(&error.to_json()),
+        "extensions-invalid" => issue_counts(error),
         code => code.to_owned(),
     };
 
     format!("WARNING: extensions not checked ({reasons}); run omhl load --dry-run for details")
 }
 
-fn issue_counts(error: &Value) -> String {
+fn issue_counts(error: &AppError) -> String {
     let mut counts = BTreeMap::new();
-    for detail in error["error"]["details"].as_array().into_iter().flatten() {
-        if let Some(code) = detail["code"].as_str() {
-            *counts.entry(code).or_insert(0_usize) += 1;
-        }
+    for code in error.detail_codes() {
+        *counts.entry(code).or_insert(0_usize) += 1;
     }
 
     counts

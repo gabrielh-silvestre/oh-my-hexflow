@@ -220,8 +220,8 @@ fn write_changes(
         .collect::<Result<Vec<_>, AppError>>()?;
     let mut written = 0;
     while !pending.is_empty() {
-        let rest = pending.split_off(pending.len().min(BATCH_SIZE));
-        let (items, files): (Vec<AppendItem>, Vec<String>) = pending.into_iter().unzip();
+        let batch = pending.len().min(BATCH_SIZE);
+        let (items, files): (Vec<AppendItem>, Vec<String>) = pending.drain(..batch).unzip();
         let size = items.len();
         append_batch(omhl, tenant, items, &files).map_err(|error| match written {
             0 => error,
@@ -234,7 +234,6 @@ fn write_changes(
             ),
         })?;
         written += size;
-        pending = rest;
     }
 
     Ok(())

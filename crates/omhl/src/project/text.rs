@@ -15,6 +15,18 @@ pub(crate) fn toml_error_position(text: &str, error: &toml::de::Error) -> (usize
     (line, column)
 }
 
+/// Caracteres de formato e separadores invisíveis que escondem texto de quem lê.
+pub(crate) fn is_invisible_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{200b}'..='\u{200f}'
+            | '\u{2028}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{feff}'
+            | '\u{e0000}'..='\u{e007f}'
+    )
+}
+
 /// `\r\n` e `\r` viram `\n`; sem `\r` o texto volta emprestado, sem alocar.
 pub(crate) fn normalize_line_breaks(text: &str) -> Cow<'_, str> {
     if text.contains('\r') {

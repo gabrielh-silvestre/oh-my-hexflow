@@ -494,3 +494,19 @@ fn it_should_include_the_tenant_and_warnings_in_the_report() {
         vec![key(".omhl/checks/.gitkeep", "hidden-file-ignored")]
     );
 }
+
+#[test]
+fn it_should_report_a_malformed_after_target_without_aborting_the_load() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .check("b", &check_toml("Run B", &["checks.Bad Name"]));
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("extensions-invalid"));
+    assert_eq!(
+        detail_keys(&error),
+        vec![key(".omhl/checks/b.toml", "value-not-allowed")]
+    );
+}

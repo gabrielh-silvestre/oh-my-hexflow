@@ -8,7 +8,7 @@ use super::{ProjectedFile, ProjectionError, ProjectionState};
 use crate::project::layout::{
     GENERATED_HEADER, OMHL_DIR, PROJECTION_DIR, PROJECTION_FILE_MAX_BYTES, PROJECTION_FILES_MAX,
 };
-use crate::project::text::normalize_line_breaks;
+use crate::project::text::{is_invisible_format, normalize_line_breaks};
 use crate::render::sort_by_id;
 
 const TRUNCATION_MARKER: &str = "<!-- omhl: truncated -->\n";
@@ -246,15 +246,19 @@ fn fenced(key: &str, info: &str, body: &str) -> String {
     format!("- {key}:\n{fence}{info}\n{body}\n{fence}")
 }
 
-/// Replaces every control character (C0, DEL, C1) not in `keep` with `\u00xx`.
+/// Replaces every control (C0, DEL, C1) or invisible format character not in `keep` with
+/// `\uXXXX`; characters above U+FFFF become a UTF-16 surrogate pair, as in JSON.
 fn escape<'a>(text: &'a str, keep: &[char]) -> Cow<'a, str> {
-    if !text.chars().any(|c| c.is_control() && !keep.contains(&c)) {
+    let needs_escape = |c: char| (c.is_control() || is_invisible_format(c)) && !keep.contains(&c);
+    if !text.chars().any(needs_escape) {
         return Cow::Borrowed(text);
     }
     let mut escaped = String::with_capacity(text.len());
     for c in text.chars() {
-        if c.is_control() && !keep.contains(&c) {
-            escaped.push_str(&format!("\\u{:04x}", u32::from(c)));
+        if needs_escape(c) {
+            for unit in c.encode_utf16(&mut [0; 2]) {
+                escaped.push_str(&format!("\\u{unit:04x}"));
+            }
         } else {
             escaped.push(c);
         }

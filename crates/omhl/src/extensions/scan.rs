@@ -6,7 +6,7 @@ use super::model::{ExtensionIssue, ExtensionKind, RawExtension};
 use crate::project::layout::{DIR_ENTRIES_MAX, EXT_FILE_MAX_BYTES, OMHL_DIR, PROJECTION_DIR};
 
 const KINDS: [ExtensionKind; 2] = [ExtensionKind::Check, ExtensionKind::Guideline];
-const SLUG_MAX_LEN: usize = 64;
+const SLUG_MAX_LEN: usize = 63;
 
 #[derive(Debug, Default)]
 pub struct ScanOutput {
@@ -18,8 +18,13 @@ pub struct ScanOutput {
 pub fn scan(root: &Path) -> ScanOutput {
     let mut output = ScanOutput::default();
     let omhl = root.join(OMHL_DIR);
-    if !fs::symlink_metadata(&omhl).is_ok_and(|metadata| metadata.is_dir()) {
-        return output;
+    match fs::symlink_metadata(&omhl) {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(metadata) if metadata.is_symlink() => {
+            output.errors.push(issue(OMHL_DIR.to_owned(), "symlink"));
+            return output;
+        }
+        _ => return output,
     }
     match names_in(&omhl, OMHL_DIR) {
         Ok(names) => {

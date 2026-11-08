@@ -62,6 +62,10 @@ impl AppError {
         &self.message
     }
 
+    pub(crate) fn detail_codes(&self) -> impl Iterator<Item = &str> {
+        self.details.iter().map(|detail| detail.code.as_str())
+    }
+
     pub fn to_json(&self) -> Value {
         let details: Vec<Value> = self.details.iter().map(Detail::to_json).collect();
 

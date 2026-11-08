@@ -320,3 +320,47 @@ fn it_should_reject_a_directory_with_more_than_100_entries() {
         "only the guidelines directory is read"
     );
 }
+
+// Slug e raiz simbólica
+
+#[test]
+fn it_should_refuse_a_slug_of_sixty_four_characters() {
+    let tree = ExtTree::new();
+    let slug = "a".repeat(64);
+    tree.check(&slug, "blocking = true\n");
+
+    let output = scan(tree.root());
+
+    assert_eq!(
+        summary(&output.errors),
+        vec![at(&format!(".omhl/checks/{slug}.toml"), "bad-file-name")]
+    );
+    assert!(output.files.is_empty(), "the long slug must not be read");
+}
+
+#[test]
+fn it_should_accept_a_slug_of_sixty_three_characters() {
+    let tree = ExtTree::new();
+    let slug = "a".repeat(63);
+    tree.check(&slug, "blocking = true\n");
+
+    let output = scan(tree.root());
+
+    assert_eq!(
+        listing(&output),
+        vec![(ExtensionKind::Check, slug.as_str())]
+    );
+    assert!(output.errors.is_empty(), "errors must be empty");
+}
+
+#[test]
+fn it_should_refuse_a_symlinked_omhl_directory() {
+    let tree = ExtTree::new();
+    tree.file("elsewhere/checks/a.toml", "blocking = true\n")
+        .symlink(".omhl", "elsewhere");
+
+    let output = scan(tree.root());
+
+    assert_eq!(summary(&output.errors), vec![at(".omhl", "symlink")]);
+    assert!(output.files.is_empty(), "the link target must not be read");
+}

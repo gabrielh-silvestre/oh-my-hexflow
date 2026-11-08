@@ -467,6 +467,33 @@ fn it_should_escape_control_characters() {
 }
 
 #[test]
+fn it_should_escape_invisible_format_characters() {
+    let nodes = vec![
+        work_item("a", "x\u{200b}y"),
+        premise("p1", "a\u{202e}b\u{feff}c\u{e0001}d", "a"),
+        premise("p2", "a\u{2028}b\n\u{2060}c", "a"),
+    ];
+
+    let files = built(nodes, Vec::new());
+
+    let text = content(&files, "a.md");
+    assert!(text.contains("# x\\u200by\n"));
+    assert!(text.contains("- text: \"a\\u202eb\\ufeffc"));
+    assert!(text.contains("- text:\n```text\na\\u2028b\n\\u2060c\n```\n"));
+    assert!(
+        !text.contains(|c: char| matches!(
+            c,
+            '\u{200b}'..='\u{200f}'
+                | '\u{2028}'..='\u{202e}'
+                | '\u{2060}'..='\u{2064}'
+                | '\u{feff}'
+                | '\u{e0000}'..='\u{e007f}'
+        )),
+        "an invisible character stayed raw in the file"
+    );
+}
+
+#[test]
 fn it_should_render_arrays_as_pretty_json_blocks() {
     let evidence = json!([
         { "source": "plan", "summary": "D36" },

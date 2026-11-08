@@ -1,16 +1,18 @@
+use hexlog::SemanticId;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 use super::model::{Extension, ExtensionIssue, ExtensionKind, RawExtension};
 use crate::project::text::{
-    normalize_line_breaks, normalize_line_breaks_owned, toml_error_position,
+    is_invisible_format, normalize_line_breaks, normalize_line_breaks_owned, toml_error_position,
 };
 
 const HOW_MAX_CHARS: usize = 8_000;
 const TEXT_MAX_CHARS: usize = 2_000;
 const EVENT_MAX_CHARS: usize = 100;
 const MATCHER_MAX_CHARS: usize = 200;
+const AFTER_MAX_ITEMS: usize = 16;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -195,12 +197,12 @@ fn checked(
 ) -> Result<String, ExtensionIssue> {
     if text
         .chars()
-        .any(|c| c.is_control() && c != '\n' && c != '\t')
+        .any(|c| (c.is_control() && c != '\n' && c != '\t') || is_invisible_format(c))
     {
         return Err(issue(
             path,
             "value-not-allowed",
-            format!("`{name}` has a control character"),
+            format!("`{name}` has a control or invisible character"),
         ));
     }
     if text.chars().count() > max_chars {
@@ -215,10 +217,18 @@ fn checked(
 }
 
 fn check_after(path: &str, own_id: &str, after: &[String], issues: &mut Vec<ExtensionIssue>) {
+    if after.len() > AFTER_MAX_ITEMS {
+        return issues.push(issue(
+            path,
+            "value-too-long",
+            format!("`after` has more than {AFTER_MAX_ITEMS} items"),
+        ));
+    }
     for (index, target) in after.iter().enumerate() {
-        let is_check_id = target
-            .strip_prefix(ExtensionKind::Check.id_prefix())
-            .is_some_and(|slug| !slug.is_empty());
+        let is_check_id = SemanticId::parse(target).is_ok()
+            && target
+                .strip_prefix(ExtensionKind::Check.id_prefix())
+                .is_some_and(|slug| !slug.is_empty());
         let reason = if !is_check_id {
             "is not a check id"
         } else if target == own_id {
