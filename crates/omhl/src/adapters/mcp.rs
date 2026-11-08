@@ -278,6 +278,7 @@ fn tools() -> Value {
     let mut all = read_tools();
     all.extend(write_tools());
     all.extend(plain_tools());
+    all.extend(extension_tools());
 
     Value::Array(all)
 }
@@ -348,5 +349,22 @@ fn plain_tools() -> Vec<Value> {
             &["work_item"],
         ),
         tool("verify", "Verify the hash chain.", &json!({}), &[]),
+    ]
+}
+
+fn extension_tools() -> Vec<Value> {
+    vec![
+        tool(
+            "load",
+            "Load the project extensions into the tenant; dry_run only reports the plan.",
+            &json!({ "dry_run": { "type": "boolean", "description": "Report without writing." } }),
+            &[],
+        ),
+        tool(
+            "project",
+            "Write the projection of the tenant under .omhl/projection/.",
+            &json!({}),
+            &[],
+        ),
     ]
 }

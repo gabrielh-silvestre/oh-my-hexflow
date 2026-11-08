@@ -2,15 +2,18 @@ mod support;
 
 use serde_json::{Value, json};
 use support::child::omhl;
+use support::ext::ExtTree;
 use support::git::git_in;
 use support::mcp_session::McpSession;
 use support::omhl::work_item_data;
 use support::project::Project;
 use tempfile::TempDir;
 
-const TOOLS: [&str; 8] = [
-    "list", "get", "append", "attest", "render", "gate_pr", "close", "verify",
+const TOOLS: [&str; 10] = [
+    "list", "get", "append", "attest", "render", "gate_pr", "close", "verify", "load", "project",
 ];
+const LINT_TOML: &str = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"pre-commit\"\n";
+const SECRET_MARKER: &str = "SECRET-MARKER-9f3";
 const MIB: usize = 1_048_576;
 
 // Apoio
@@ -160,7 +163,7 @@ fn it_should_answer_ping_with_an_empty_result() {
 // Ferramentas
 
 #[test]
-fn it_should_list_exactly_the_eight_tools_in_a_fixed_order() {
+fn it_should_list_exactly_the_ten_tools_in_a_fixed_order() {
     let (_project, session) = serve();
 
     session.send(&rpc(json!(1), "tools/list", json!({})));
@@ -327,6 +330,79 @@ fn it_should_report_no_marker_as_is_error_without_dying() {
     );
     assert_eq!(pinged["id"], json!(2));
     assert_eq!(pinged["result"], json!({}));
+}
+
+// load e project
+
+#[test]
+fn it_should_call_load_through_mcp() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).check("lint", LINT_TOML);
+    let session = McpSession::start(project.dir(), project.xdg());
+
+    session.send(&tool_call(1, "load", json!({}), None));
+
+    let result = &session.recv()["result"];
+    assert!(result.get("isError").is_none(), "the call succeeds");
+    assert_eq!(text_of(result)["created"], json!(["checks.lint"]));
+}
+
+#[test]
+fn it_should_accept_dry_run_as_a_boolean_in_the_load_schema() {
+    let (_project, session) = serve();
+
+    session.send(&rpc(json!(1), "tools/list", json!({})));
+
+    let response = session.recv();
+    let load = response["result"]["tools"]
+        .as_array()
+        .expect("tools is an array")
+        .iter()
+        .find(|tool| tool["name"] == json!("load"))
+        .expect("the load tool is listed");
+    let schema = &load["inputSchema"];
+    let mut required = schema["required"].as_array().into_iter().flatten();
+    assert_eq!(schema["properties"]["dry_run"]["type"], json!("boolean"));
+    assert!(
+        !required.any(|name| name == "dry_run"),
+        "dry_run is optional"
+    );
+}
+
+#[test]
+fn it_should_return_an_error_result_for_invalid_extensions_through_mcp() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).check("lint", &format!("this is = [not valid {SECRET_MARKER}"));
+    let session = McpSession::start(project.dir(), project.xdg());
+
+    session.send(&tool_call(1, "load", json!({}), None));
+
+    let result = &session.recv()["result"];
+    let text = result["content"][0]["text"]
+        .as_str()
+        .expect("the first content block is text");
+    assert_eq!(result["isError"], json!(true));
+    assert_eq!(
+        text_of(result)["error"]["code"],
+        json!("extensions-invalid")
+    );
+    assert!(
+        !text.contains(SECRET_MARKER),
+        "the error does not echo the file"
+    );
+}
+
+#[test]
+fn it_should_call_project_through_mcp() {
+    let project = Project::new("acme");
+    open_work_item(&project);
+    let session = McpSession::start(project.dir(), project.xdg());
+
+    session.send(&tool_call(1, "project", json!({}), None));
+
+    let result = &session.recv()["result"];
+    assert!(result.get("isError").is_none(), "the call succeeds");
+    assert_eq!(text_of(result)["written"], json!(["work-items.w1.md"]));
 }
 
 // Erros de protocolo

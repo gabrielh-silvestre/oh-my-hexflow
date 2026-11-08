@@ -1,0 +1,16 @@
+pub const OMHL_DIR: &str = ".omhl";
+pub const CHECKS_DIR: &str = "checks";
+pub const GUIDELINES_DIR: &str = "guidelines";
+pub const PROJECTION_DIR: &str = "projection";
+pub const GITIGNORE_NAME: &str = ".gitignore";
+pub const LOCK_NAME: &str = ".lock";
+pub const GENERATED_HEADER: &str = "<!-- omhl: generated file, do not edit -->";
+pub const GITIGNORE_CONTENT: &str = "# omhl: generated file, do not edit\n*\n";
+pub const TMP_PREFIX: &str = ".omhl-";
+pub const TMP_SUFFIX: &str = ".tmp";
+pub const EXT_FILE_MAX_BYTES: u64 = 65_536;
+pub const DIR_ENTRIES_MAX: usize = 100;
+pub const ISSUES_MAX: usize = 20;
+pub const PROJECTION_FILE_MAX_BYTES: u64 = 262_144;
+pub const PROJECTION_FILES_MAX: usize = 1_000;
+pub const PROJECTION_DIR_ENTRIES_MAX: usize = 1_100;

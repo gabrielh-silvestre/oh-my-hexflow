@@ -1,7 +1,8 @@
 use hexlog::{
     AppendOutcome, AppendRequest, Author, ChainHead, ChainReport, Clock, Config, Deps, Hash,
-    Hexlog, IdGenerator, ListFilter, NodeView, Page, PageRequest, RelationQuery, RelationView,
-    SemanticId, Snapshot, TenantId, TenantInfo,
+    Hexlog, IdGenerator, Lineage, ListFilter, NodeView, Page, PageRequest, RelationQuery,
+    RelationTypeName, RelationView, RevisionView, SemanticId, Snapshot, TenantId, TenantInfo,
+    TypeName,
 };
 
 use crate::error::{OmhlError, RuleCode};
@@ -12,9 +13,20 @@ use crate::pr_gate::{
     GATE_NAME, closing_request, pr_gate_questions, project_checks_filter, required_checks,
 };
 use crate::probe::SnapshotProbe;
+use crate::projection::ProjectionState;
 use crate::{graphs, guard};
 
 static NATIVE: NativeBase = NativeBase;
+
+/// Tipos de node e de relação que a projeção lê (os que `projection::build` consome).
+const PROJECTED_NODE_TYPES: [&str; 5] = [
+    "work-item",
+    "pull-request",
+    "premise",
+    "decision",
+    "attestation",
+];
+const PROJECTED_RELATIONS: [&str; 3] = ["supports", "contradicts", "answers"];
 
 /// Portas que o `Omhl` empresta; o dono é quem chama.
 #[derive(Clone, Copy)]
@@ -71,6 +83,15 @@ impl<'d> Omhl<'d> {
         id: &SemanticId,
     ) -> Result<Option<NodeView>, OmhlError> {
         Ok(self.hexlog.get(tenant, id)?)
+    }
+
+    /// Todas as revisões da lineage, em ordem de `seq`; a última diz se ela foi aposentada.
+    pub fn lineage_records(
+        &mut self,
+        tenant: &TenantId,
+        lineage: &Lineage,
+    ) -> Result<Vec<RevisionView>, OmhlError> {
+        Ok(self.hexlog.lineage_records(tenant, lineage)?)
     }
 
     pub fn list(
@@ -130,6 +151,34 @@ impl<'d> Omhl<'d> {
         self.find_work_item(tenant, work_item)?;
 
         self.gate_report(tenant, work_item, snapshot)
+    }
+
+    /// Nodes e relações vigentes lidos entre duas leituras iguais do chain head.
+    pub fn read_projection_state(
+        &mut self,
+        tenant: &TenantId,
+    ) -> Result<ProjectionState, OmhlError> {
+        let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
+        let (_, state) = read_consistent(&mut source, tenant, |source| {
+            let mut nodes = Vec::new();
+            for type_name in PROJECTED_NODE_TYPES {
+                let filter = ListFilter {
+                    type_name: Some(TypeName::parse(type_name)?),
+                    id_prefix: None,
+                    snapshot: None,
+                    where_eq: Vec::new(),
+                };
+                nodes.extend(source.nodes(tenant, &filter)?);
+            }
+            let mut relations = Vec::new();
+            for name in PROJECTED_RELATIONS {
+                relations.extend(source.relations(tenant, &RelationTypeName::parse(name)?)?);
+            }
+
+            Ok(ProjectionState { nodes, relations })
+        })?;
+
+        Ok(state)
     }
 
     fn gate_report(

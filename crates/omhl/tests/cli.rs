@@ -5,12 +5,15 @@ use std::process::{Command, Output};
 
 use serde_json::{Value, json};
 use support::child::{Cmd, Output as Child, omhl};
+use support::ext::ExtTree;
 use support::git::{GitRepo, git_in};
 use support::omhl::{decision_data, work_item_data};
 use support::project::Project;
 use tempfile::TempDir;
 
 const W1: &str = "work-items.w1";
+const LINT_CHECK: &str = "checks.lint";
+const LINT_TOML: &str = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"pre-commit\"\n";
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 const COMMANDS: [&str; 10] = [
@@ -410,4 +413,67 @@ fn it_should_create_the_database_at_the_db_flag_with_mode_0600() {
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(file_mode & 0o777, 0o600);
     assert_eq!(dir_mode & 0o777, 0o700);
+}
+
+// load e project
+
+fn listed_ids(project: &Project, type_name: &str) -> Vec<String> {
+    let listed = in_project(project, &["list", "--type", type_name]).run();
+
+    assert_eq!(listed.code, Some(0), "stderr: {}", listed.stderr);
+    json_line(&listed.stdout)["items"]
+        .as_array()
+        .expect("items is an array")
+        .iter()
+        .map(|item| item["id"].as_str().expect("the id is text").to_owned())
+        .collect()
+}
+
+#[test]
+fn it_should_load_extensions_through_the_cli() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).check("lint", LINT_TOML);
+
+    let output = in_project(&project, &["load"]).run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(json_line(&output.stdout)["created"], json!([LINT_CHECK]));
+}
+
+#[test]
+fn it_should_dry_run_without_writing_through_the_cli() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).check("lint", LINT_TOML);
+
+    let output = in_project(&project, &["load", "--dry-run"]).run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(json_line(&output.stdout)["dry_run"], json!(true));
+    assert!(
+        !listed_ids(&project, "check")
+            .iter()
+            .any(|id| id == LINT_CHECK),
+        "the dry run stored nothing"
+    );
+}
+
+#[test]
+fn it_should_project_through_the_cli() {
+    let project = Project::new("acme");
+    open_work_item(&project);
+
+    let output = in_project(&project, &["project"]).run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(
+        json_line(&output.stdout)["written"],
+        json!(["work-items.w1.md"])
+    );
+    assert!(
+        project
+            .dir()
+            .join(".omhl/projection/work-items.w1.md")
+            .is_file(),
+        "the projection file exists"
+    );
 }

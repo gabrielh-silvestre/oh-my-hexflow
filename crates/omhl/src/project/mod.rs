@@ -1,5 +1,7 @@
+pub mod layout;
 pub mod marker;
 pub mod paths;
+pub(crate) mod text;
 
 /// Variáveis de ambiente que o `omhl` lê, por valor: ninguém toca o ambiente do processo.
 pub struct Env<'e> {

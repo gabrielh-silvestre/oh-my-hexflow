@@ -1,6 +1,8 @@
 mod attest;
 mod context;
 mod engine;
+mod load;
+mod read;
 mod wire;
 
 pub mod action;
@@ -10,7 +12,7 @@ pub mod output;
 pub mod retry;
 pub mod runtime;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use hexlog::{Config, ErrorCode, TenantId};
 use serde_json::Value;
@@ -48,9 +50,16 @@ impl<'d> App<'d> {
                 omhl,
                 tenant: tenant.clone(),
                 probe: deps.probe,
+                project_root: None,
             },
             retry: retry.clone(),
         })
+    }
+
+    /// Sem raiz, `load` e `project` respondem `no-project-root`.
+    pub fn with_project_root(mut self, root: impl Into<PathBuf>) -> App<'d> {
+        self.engine.project_root = Some(root.into());
+        self
     }
 
     pub fn dispatch(&mut self, caller: &Caller, action: &Action) -> Result<Value, AppError> {

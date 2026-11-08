@@ -23,6 +23,20 @@ const FORBIDDEN_PACKAGES: &[&str] = &[
     "serde_yaml",
 ];
 const FORBIDDEN_PACKAGE_PREFIX: &str = "gix";
+const PURE_LAYER_DIRS: &[&str] = &["extensions", "projection"];
+const PURE_LAYER_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
+const PURE_LAYER_FORBIDDEN_PATHS: &[&str] = &["adapters::", "app::", "facade::"];
+const TEMPFILE_ALLOWED_FILE: &str = "projection/write.rs";
+const EXPECTED_DEPENDENCIES: &[&str] = &[
+    "clap",
+    "hexlog",
+    "serde",
+    "serde_json",
+    "tempfile",
+    "toml",
+    "uuid",
+];
+const ATOMIC_PATHS: &[&str] = &["sync::atomic", "atomic::"];
 
 fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
@@ -634,6 +648,241 @@ fn it_should_keep_forbidden_crates_out_of_the_lockfile() {
         },
         Err(error) => failures.push(format!("cannot read {}: {error}", lock.display())),
     }
+
+    assert_no_failures(&failures);
+}
+
+// ------------------------------------------------- travas do passo 6
+
+/// Referências a `adapters`, `app` ou `facade` por `crate::`, `super::` ou caminho solto.
+fn pure_layer_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+    let super_refs: usize = PURE_LAYER_FORBIDDEN_MODULES
+        .iter()
+        .map(|module| occurrences(&code, &format!("super::{module}"), true))
+        .sum();
+
+    Ok(module_refs(source, PURE_LAYER_FORBIDDEN_MODULES)?
+        + path_refs(source, PURE_LAYER_FORBIDDEN_PATHS)?
+        + super_refs)
+}
+
+/// Menções ao crate `tempfile` fora de comentário e de string.
+fn tempfile_refs(source: &str) -> Result<usize, String> {
+    Ok(occurrences(&lex(source)?.code, "tempfile", true))
+}
+
+/// Tipos atômicos (`AtomicU64`, `AtomicBool`...) e caminhos do módulo `atomic`.
+fn atomic_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+    let types = code
+        .match_indices("Atomic")
+        .filter(|(at, _)| {
+            let before = code[..*at].chars().next_back();
+            let after = code[at + "Atomic".len()..].chars().next();
+            before.is_none_or(|c| !is_ident(c)) && after.is_some_and(|c| c.is_ascii_uppercase())
+        })
+        .count();
+    let paths: usize = ATOMIC_PATHS
+        .iter()
+        .map(|path| occurrences(&code, path, false))
+        .sum();
+
+    Ok(types + paths)
+}
+
+/// Falhas de um `Cargo.toml` lido como dado: a tabela `[dependencies]` precisa ter exatamente os
+/// pacotes esperados (`tempfile` só em dev-dependencies não conta).
+fn dependency_failures(manifest: &str) -> Vec<String> {
+    let table: toml::Table = match toml::from_str(manifest) {
+        Ok(table) => table,
+        Err(error) => return vec![format!("manifest is not valid TOML: {error}")],
+    };
+    let Some(dependencies) = table.get("dependencies").and_then(toml::Value::as_table) else {
+        return vec!["manifest has no [dependencies] table".to_owned()];
+    };
+    let found: Vec<&str> = dependencies.keys().map(String::as_str).collect();
+    let mut failures = Vec::new();
+    for name in &found {
+        if !EXPECTED_DEPENDENCIES.contains(name) {
+            failures.push(format!("unexpected dependency: {name}"));
+        }
+    }
+    for name in EXPECTED_DEPENDENCIES {
+        if !found.contains(name) {
+            failures.push(format!("missing dependency: {name}"));
+        }
+    }
+
+    failures
+}
+
+fn relative_to_src(file: &Path) -> String {
+    file.strip_prefix(src_dir())
+        .unwrap_or(file)
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+const EXACT_MANIFEST: &str = r#"[package]
+name = "omhl"
+
+[dependencies]
+clap = "1"
+hexlog = { path = "../hexlog" }
+serde = "1"
+serde_json = "1"
+tempfile = "3"
+toml = "1"
+uuid = "1"
+"#;
+
+#[test]
+fn it_should_not_import_adapters_app_or_facade_in_extensions_and_projection() {
+    let mut failures = prove_both_sides(
+        pure_layer_refs,
+        &[
+            "use crate::adapters::cli::Cli;",
+            "use crate::app::engine::Engine;",
+            "use crate::facade::Omhl;",
+            "use crate::{error::OmhlError, app::Action};",
+            "use super::app::Runtime;",
+            "let run = omhl::adapters::hook::run;",
+        ],
+        &[
+            "use crate::error::OmhlError;",
+            "use crate::project::layout::OMHL_DIR;",
+            "// use crate::app::engine::Engine;",
+            "const PATH: &str = \"crate::facade::Omhl\";",
+            "use crate::application::Thing;",
+            "use my_app::Thing;",
+        ],
+    );
+
+    for dir in PURE_LAYER_DIRS {
+        failures.extend(scan_dir(&src_dir().join(dir), pure_layer_refs));
+    }
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_use_tempfile_only_in_projection_write() {
+    let mut failures = prove_both_sides(
+        tempfile_refs,
+        &[
+            "use tempfile::NamedTempFile;",
+            "let file = tempfile::tempfile();",
+            "use tempfile::{Builder, TempDir};",
+        ],
+        &[
+            "// tempfile is used elsewhere",
+            "const NAME: &str = \"tempfile\";",
+            "use my_tempfile::Thing;",
+            "fn tempfile_name() {}",
+        ],
+    );
+    let files = rust_files(&src_dir());
+    if files.is_empty() {
+        failures.push(format!("no Rust sources under {}", src_dir().display()));
+    }
+
+    for file in &files {
+        let name = relative_to_src(file);
+        if name == TEMPFILE_ALLOWED_FILE {
+            continue;
+        }
+        match tempfile_refs(&read(file)) {
+            Ok(0) => {}
+            Ok(found) => failures.push(format!(
+                "{name}: {found} `tempfile` reference(s) outside {TEMPFILE_ALLOWED_FILE}"
+            )),
+            Err(error) => failures.push(format!("{name}: {error}")),
+        }
+    }
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_declare_exactly_the_expected_direct_dependencies() {
+    let with_extra = format!("{EXACT_MANIFEST}tokio = \"1\"\n");
+    let tempfile_only_in_dev = EXACT_MANIFEST.replace("tempfile = \"3\"\n", "")
+        + "\n[dev-dependencies]\ntempfile = \"3\"\n";
+    let mut failures = Vec::new();
+    if !dependency_failures(EXACT_MANIFEST).is_empty() {
+        failures.push("embedded exact manifest was flagged".to_owned());
+    }
+    if dependency_failures(&with_extra).is_empty() {
+        failures.push("embedded manifest with an extra dependency was not flagged".to_owned());
+    }
+    if dependency_failures(&tempfile_only_in_dev).is_empty() {
+        failures.push("embedded manifest with tempfile only in dev was not flagged".to_owned());
+    }
+
+    let manifest = read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"));
+    failures.extend(dependency_failures(&manifest));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_not_use_atomics_anywhere_in_src() {
+    let mut failures = prove_both_sides(
+        atomic_refs,
+        &[
+            "use std::sync::atomic::AtomicU64;",
+            "static COUNTER: AtomicBool = AtomicBool::new(false);",
+            "use std::sync::atomic::Ordering;",
+            "use core::sync::atomic;",
+            "use std::sync::{atomic::Ordering, Arc};",
+            "let n: AtomicUsize = make();",
+        ],
+        &[
+            "// AtomicU64 is not used here",
+            "const NAME: &str = \"AtomicBool\";",
+            "fn atomically() {}",
+            "struct Atomically;",
+            "use crate::atomic_write::Thing;",
+        ],
+    );
+
+    failures.extend(scan_dir(&src_dir(), atomic_refs));
+
+    assert_no_failures(&failures);
+}
+
+// ------------------------------------------------- travas do passo 6: adaptador hook
+
+const HOOK_SOURCE: &str = "adapters/hook.rs";
+const MARKER_SEARCH: &str = "find_marker";
+
+/// Chamadas ao `find_marker` fora de comentário e de string.
+fn marker_search_refs(source: &str) -> Result<usize, String> {
+    Ok(occurrences(&lex(source)?.code, MARKER_SEARCH, true))
+}
+
+#[test]
+fn it_should_not_search_the_marker_twice_in_the_hook() {
+    let mut failures = prove_both_sides(
+        marker_search_refs,
+        &[
+            "let marker = find_marker(&cwd)?;",
+            "let marker = project::marker::find_marker(&cwd)?;",
+        ],
+        &[
+            "// find_marker is called by the runtime",
+            "const NAME: &str = \"find_marker\";",
+            "fn find_marker_twice() {}",
+        ],
+    );
+
+    failures.extend(scan_paths(
+        &[src_dir().join(HOOK_SOURCE)],
+        marker_search_refs,
+    ));
 
     assert_no_failures(&failures);
 }
