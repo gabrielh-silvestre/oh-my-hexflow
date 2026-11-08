@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use super::ProjectError;
+use super::text::toml_error_position;
 
 const MARKER_FILE: &str = ".omhl.toml";
 const MAX_MARKER_BYTES: usize = 4096;
@@ -38,7 +39,7 @@ fn invalid(path: &Path, reason: impl std::fmt::Display) -> ProjectError {
 /// O texto de erro do TOML repete trechos do arquivo: só a posição, e o nome de uma chave extra, saem.
 fn parse_raw(path: &Path, text: &str) -> Result<RawMarker, ProjectError> {
     let table: toml::Table = text.parse().map_err(|error: toml::de::Error| {
-        let (line, column) = line_column(text, error.span().map_or(0, |span| span.start));
+        let (line, column) = toml_error_position(text, &error);
         invalid(
             path,
             format!("not valid TOML at line {line}, column {column}"),
@@ -77,19 +78,6 @@ pub fn parse_marker(path: &Path, bytes: &[u8]) -> Result<Marker, ProjectError> {
         version: raw.version,
         tenant,
     })
-}
-
-/// Linha e coluna (base 1, em caracteres) do byte `offset` de `text`.
-fn line_column(text: &str, offset: usize) -> (usize, usize) {
-    let before = text.get(..offset).unwrap_or(text);
-    let line = before.matches('\n').count() + 1;
-    let column = before
-        .rsplit('\n')
-        .next()
-        .map_or(0, |last| last.chars().count())
-        + 1;
-
-    (line, column)
 }
 
 /// Lê no máximo um byte além do limite, para que um marcador gigante não vá inteiro à memória.
