@@ -4,7 +4,10 @@ use hexlog::{ErrorCode, HexlogError};
 use serde_json::{Value, json};
 
 use crate::error::{OmhlError, RuleCode};
+use crate::extensions::model::ExtensionIssue;
 use crate::project::ProjectError;
+use crate::project::layout::ISSUES_MAX;
+use crate::projection::ProjectionError;
 
 const BUSY_MESSAGE: &str =
     "database is busy: another omhl process is writing; run the command again";
@@ -91,6 +94,52 @@ impl AppError {
         AppError::at_pointer("invalid-arguments", pointer, message)
     }
 
+    /// Mostra até `ISSUES_MAX` problemas; `omitted` conta os que a coleta já descartou.
+    pub(crate) fn extensions_invalid(issues: &[ExtensionIssue], omitted: usize) -> AppError {
+        let omitted = omitted + issues.len().saturating_sub(ISSUES_MAX);
+        let details: Vec<Detail> = issues
+            .iter()
+            .take(ISSUES_MAX)
+            .map(|issue| Detail::new(&issue.path, issue.code, &issue.message))
+            .collect();
+        let message = format!(
+            "extensions are invalid: {} error(s) shown, {omitted} omitted; nothing was loaded",
+            details.len()
+        );
+
+        AppError {
+            code: "extensions-invalid".to_owned(),
+            message,
+            details,
+        }
+    }
+
+    /// Um único detalhe com o caminho, o código e a mensagem do erro de projeção.
+    pub(crate) fn projection_failed(error: &ProjectionError) -> AppError {
+        AppError {
+            code: "projection-failed".to_owned(),
+            message: "the projection could not be written".to_owned(),
+            details: vec![Detail::new(&error.path, error.code, &error.message)],
+        }
+    }
+
+    /// Troca o ponteiro `/items/<i>/...` de cada detalhe pelo arquivo `files[i]`.
+    pub(crate) fn remap_item_paths(mut self, files: &[String]) -> AppError {
+        for detail in &mut self.details {
+            if let Some(file) = item_index(&detail.path).and_then(|index| files.get(index)) {
+                detail.path.clone_from(file);
+            }
+        }
+
+        self
+    }
+
+    pub(crate) fn with_detail(mut self, path: &str, code: &str, message: &str) -> AppError {
+        self.details.push(Detail::new(path, code, message));
+
+        self
+    }
+
     /// A mensagem leva o motivo da sonda; o código e o ponteiro são os da regra.
     pub(crate) fn probe_failed(reason: &str) -> AppError {
         let code = RuleCode::ProbeFailed.as_str();
@@ -101,6 +150,14 @@ impl AppError {
             details: vec![Detail::new("/snapshot", code, code)],
         }
     }
+}
+
+fn item_index(path: &str) -> Option<usize> {
+    path.strip_prefix("/items/")?
+        .split('/')
+        .next()?
+        .parse()
+        .ok()
 }
 
 impl fmt::Display for AppError {

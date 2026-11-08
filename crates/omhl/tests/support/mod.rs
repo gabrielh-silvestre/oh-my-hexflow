@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod appfx;
 pub mod busy;
 pub mod child;
 pub mod ext;

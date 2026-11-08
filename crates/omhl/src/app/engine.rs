@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use hexlog::{HexlogError, ListFilter, PageRequest, SemanticId, Snapshot, TenantId, TypeName};
 use serde_json::{Value, json};
 
@@ -8,6 +10,8 @@ use super::{context, output};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::Omhl;
 use crate::probe::{ProbeOutcome, SnapshotProbe};
+use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
+use crate::projection::{build::build, write::write};
 
 /// Tamanho de página quando o pedido não traz `limit` (o padrão do motor).
 const DEFAULT_PAGE_LIMIT: u32 = 50;
@@ -19,6 +23,7 @@ pub(super) struct Engine<'d> {
     pub(super) omhl: Omhl<'d>,
     pub(super) tenant: TenantId,
     pub(super) probe: &'d dyn SnapshotProbe,
+    pub(super) project_root: Option<PathBuf>,
 }
 
 /// Id ou nome do pedido que não passa em `parse`: erro do motor com o ponteiro do campo.
@@ -67,6 +72,8 @@ impl Engine<'_> {
 
                 Ok(output::verify(&report))
             }
+            Action::Load { dry_run } => self.load(*dry_run),
+            Action::Project => self.project(),
         }
     }
 
@@ -131,6 +138,24 @@ impl Engine<'_> {
                 .close_work_item(&self.tenant, &work_item, &snapshot, &caller.author())?;
 
         Ok(output::closed(&closed))
+    }
+
+    /// Regenera `.omhl/projection` a partir do estado vigente; não grava nenhum record.
+    fn project(&mut self) -> Result<Value, AppError> {
+        let root = self
+            .project_root
+            .as_deref()
+            .ok_or_else(|| AppError::plain("no-project-root", "no project root is available"))?;
+        let state = self.omhl.read_projection_state(&self.tenant)?;
+        let files = build(&state).map_err(|error| AppError::projection_failed(&error))?;
+        let report = write(root, &files).map_err(|error| AppError::projection_failed(&error))?;
+
+        Ok(json!({
+            "dir": format!("{OMHL_DIR}/{PROJECTION_DIR}"),
+            "written": report.written,
+            "unchanged": report.unchanged,
+            "removed": report.removed,
+        }))
     }
 
     /// O snapshot de uma árvore limpa; árvore suja e sonda com falha são recusas em `/snapshot`.

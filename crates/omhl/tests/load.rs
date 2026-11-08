@@ -1,0 +1,496 @@
+mod support;
+
+use std::fs;
+
+use serde_json::{Value, json};
+use support::appfx::AppFixture;
+
+const SECRET_MARKER: &str = "SECRET-MARKER-9f3";
+const INVALID_TOML: &str = "this is = [not valid";
+const A_TOML_PATH: &str = ".omhl/checks/a.toml";
+
+// Montagem das extensions
+
+fn check_toml(how: &str, after: &[&str]) -> String {
+    let after_line = if after.is_empty() {
+        String::new()
+    } else {
+        let targets: Vec<String> = after.iter().map(|id| format!("\"{id}\"")).collect();
+        format!("after = [{}]\n", targets.join(", "))
+    };
+
+    format!("blocking = true\nhow = \"{how}\"\n{after_line}\n[when]\nevent = \"pre-commit\"\n")
+}
+
+fn guideline_toml(text: &str) -> String {
+    format!("text = \"{text}\"\n")
+}
+
+fn check_data(how: &str) -> Value {
+    json!({
+        "blocking": true,
+        "how": how,
+        "when": {"vocabulary": "free", "event": "pre-commit"}
+    })
+}
+
+/// 50 checks `c01..c50`; `c01 after c02` e `c02 after c01` fecham um ciclo no 2º lote.
+fn fixture_with_a_cycle() -> AppFixture {
+    let fx = AppFixture::new();
+    for n in 1..=50 {
+        let after: &[&str] = match n {
+            1 => &["checks.c02"],
+            2 => &["checks.c01"],
+            _ => &[],
+        };
+        fx.ext()
+            .check(&format!("c{n:02}"), &check_toml("Run", after));
+    }
+
+    fx
+}
+
+// Leitura das respostas
+
+fn loaded(fx: &AppFixture, dry_run: bool) -> Value {
+    fx.load(dry_run).expect("the load is accepted")
+}
+
+fn refused(fx: &AppFixture) -> Value {
+    fx.load(false).expect_err("the load is refused")
+}
+
+fn ids_of(nodes: &Value) -> Vec<String> {
+    nodes
+        .as_array()
+        .expect("the nodes are an array")
+        .iter()
+        .map(|node| node["id"].as_str().expect("the node has an id").to_owned())
+        .collect()
+}
+
+fn details_of(error: &Value) -> &Vec<Value> {
+    error["error"]["details"]
+        .as_array()
+        .expect("the error has details")
+}
+
+fn path_and_code(entry: &Value) -> (String, String) {
+    (
+        entry["path"].as_str().expect("entry has a path").to_owned(),
+        entry["code"].as_str().expect("entry has a code").to_owned(),
+    )
+}
+
+fn detail_keys(error: &Value) -> Vec<(String, String)> {
+    details_of(error).iter().map(path_and_code).collect()
+}
+
+fn warning_keys(report: &Value) -> Vec<(String, String)> {
+    report["warnings"]
+        .as_array()
+        .expect("the report has warnings")
+        .iter()
+        .map(path_and_code)
+        .collect()
+}
+
+fn key(path: &str, code: &str) -> (String, String) {
+    (path.to_owned(), code.to_owned())
+}
+
+fn numbers_in(text: &str) -> Vec<u32> {
+    text.split(|c: char| !c.is_ascii_digit())
+        .filter_map(|part| part.parse().ok())
+        .collect()
+}
+
+fn total_records(fx: &AppFixture) -> u64 {
+    fx.verify()["total_records"]
+        .as_u64()
+        .expect("verify counts the records")
+}
+
+fn retire(fx: &AppFixture, id: &str) {
+    let base = fx.get(id)["record_id"].clone();
+    let request = json!({
+        "items": [{
+            "body": {"kind": "retirement", "lineage": {"kind": "node", "id": id}},
+            "base": base,
+        }]
+    });
+
+    fx.append_as_user(request)
+        .expect("the retirement is accepted");
+}
+
+// Criação e autoria
+
+#[test]
+fn it_should_create_checks_and_guidelines() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .guideline("tone", &guideline_toml("Be brief"));
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["created"], json!(["checks.a", "guidelines.tone"]));
+    assert_eq!(ids_of(&fx.list("check")), vec!["checks.a"]);
+    assert_eq!(ids_of(&fx.list("guideline")), vec!["guidelines.tone"]);
+    assert_eq!(fx.get("checks.a")["data"], check_data("Run A"));
+    assert_eq!(
+        fx.get("guidelines.tone")["data"],
+        json!({"text": "Be brief"})
+    );
+}
+
+#[test]
+fn it_should_author_the_nodes_as_the_loader() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .guideline("tone", &guideline_toml("Be brief"));
+
+    loaded(&fx, false);
+
+    let loader = json!({"client": "loader", "agent": "loader"});
+    assert_eq!(fx.get("checks.a")["author"], loader);
+    assert_eq!(fx.get("guidelines.tone")["author"], loader);
+}
+
+// Dry run
+
+#[test]
+fn it_should_write_nothing_on_a_dry_run() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .guideline("tone", &guideline_toml("Be brief"));
+
+    let report = loaded(&fx, true);
+
+    assert_eq!(report["dry_run"], json!(true));
+    assert_eq!(report["created"], json!(["checks.a", "guidelines.tone"]));
+    assert_eq!(total_records(&fx), 0);
+}
+
+#[test]
+fn it_should_report_on_a_dry_run_what_the_real_run_does() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .check("b", &check_toml("Run B", &["checks.a"]));
+
+    let dry = loaded(&fx, true);
+    let real = loaded(&fx, false);
+
+    for field in ["created", "revised", "relations_created"] {
+        assert_eq!(dry[field], real[field], "field {field} differs");
+    }
+}
+
+// Idempotência e revisão
+
+#[test]
+fn it_should_report_unchanged_on_a_second_run() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .guideline("tone", &guideline_toml("Be brief"));
+    loaded(&fx, false);
+    let records_after_first = total_records(&fx);
+
+    let second = loaded(&fx, false);
+
+    assert_eq!(second["created"], json!([]));
+    assert_eq!(second["unchanged"], json!(["checks.a", "guidelines.tone"]));
+    assert_eq!(total_records(&fx), records_after_first);
+}
+
+#[test]
+fn it_should_revise_a_node_when_the_file_changes() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &check_toml("Run A", &[]));
+    loaded(&fx, false);
+    fx.ext().check("a", &check_toml("Run A again", &[]));
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["revised"], json!(["checks.a"]));
+    assert_eq!(fx.get("checks.a")["data"], check_data("Run A again"));
+}
+
+#[test]
+fn it_should_not_revise_for_a_comment_only_edit() {
+    let fx = AppFixture::new();
+    let original = check_toml("Run A", &[]);
+    fx.ext().check("a", &original);
+    loaded(&fx, false);
+    let edited = format!(
+        "{}\n\n# a comment added later\n",
+        original.replace("blocking = true", "blocking    =    true  # still blocking")
+    );
+    fx.ext().check("a", &edited);
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["unchanged"], json!(["checks.a"]));
+    assert_eq!(report["revised"], json!([]));
+}
+
+#[test]
+fn it_should_create_the_after_relation() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .check("b", &check_toml("Run B", &["checks.a"]));
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(
+        report["relations_created"],
+        json!([{"from": "checks.b", "to": "checks.a"}])
+    );
+}
+
+// Aposentadas
+
+#[test]
+fn it_should_skip_a_retired_check() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &check_toml("Run A", &[]));
+    loaded(&fx, false);
+    retire(&fx, "checks.a");
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(
+        report["skipped"],
+        json!([{"id": "checks.a", "code": "extension-retired"}])
+    );
+    assert_eq!(fx.list("check"), json!([]));
+}
+
+#[test]
+fn it_should_skip_a_retired_guideline() {
+    let fx = AppFixture::new();
+    fx.ext().guideline("tone", &guideline_toml("Be brief"));
+    loaded(&fx, false);
+    retire(&fx, "guidelines.tone");
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(
+        report["skipped"],
+        json!([{"id": "guidelines.tone", "code": "extension-retired"}])
+    );
+    assert_eq!(fx.list("guideline"), json!([]));
+}
+
+#[test]
+fn it_should_warn_and_still_load_the_rest_when_after_points_to_a_retired_check() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &check_toml("Run A", &[]));
+    loaded(&fx, false);
+    retire(&fx, "checks.a");
+    fx.ext()
+        .check("b", &check_toml("Run B", &["checks.a"]))
+        .check("c", &check_toml("Run C", &[]));
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(
+        warning_keys(&report),
+        vec![key(".omhl/checks/b.toml", "after-target-retired")]
+    );
+    assert_eq!(report["created"], json!(["checks.b", "checks.c"]));
+    assert_eq!(report["relations_created"], json!([]));
+}
+
+// Órfãos
+
+#[test]
+fn it_should_report_orphans_without_retiring_them() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &check_toml("Run A", &[]));
+    loaded(&fx, false);
+    fs::remove_file(fx.ext().root().join(A_TOML_PATH)).expect("the file is removed");
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["orphans"], json!(["checks.a"]));
+    assert_eq!(ids_of(&fx.list("check")), vec!["checks.a"]);
+}
+
+#[test]
+fn it_should_report_orphan_relations_without_retiring_them() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .check("b", &check_toml("Run B", &["checks.a"]));
+    loaded(&fx, false);
+    let records_before = total_records(&fx);
+    fx.ext().check("b", &check_toml("Run B", &[]));
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(
+        report["orphan_relations"],
+        json!([{"from": "checks.b", "to": "checks.a"}])
+    );
+    assert_eq!(total_records(&fx), records_before);
+}
+
+// Recusas
+
+#[test]
+fn it_should_refuse_invalid_extensions_and_write_nothing() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .check("x", INVALID_TOML);
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("extensions-invalid"));
+    assert_eq!(
+        detail_keys(&error),
+        vec![key(".omhl/checks/x.toml", "invalid-toml")]
+    );
+    assert_eq!(fx.list("check"), json!([]));
+}
+
+#[test]
+fn it_should_not_echo_file_content_in_the_error() {
+    let fx = AppFixture::new();
+    fx.ext().check(
+        "x",
+        &format!("blocking = true\nhow = \"Run\"\n{SECRET_MARKER} = 1\n\n[when]\nevent = \"e\"\n"),
+    );
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("extensions-invalid"));
+    assert!(
+        !error.to_string().contains(SECRET_MARKER),
+        "the error echoes the file content: {error}"
+    );
+}
+
+#[test]
+fn it_should_cap_error_details_at_20() {
+    let fx = AppFixture::new();
+    for n in 1..=25 {
+        fx.ext().check(&format!("bad{n:02}"), INVALID_TOML);
+    }
+
+    let error = refused(&fx);
+
+    assert_eq!(details_of(&error).len(), 20);
+    let message = error["error"]["message"]
+        .as_str()
+        .expect("the error has a message");
+    assert!(
+        numbers_in(message).contains(&5),
+        "the message does not say 5 were omitted: {message}"
+    );
+}
+
+#[test]
+fn it_should_refuse_a_native_check_id() {
+    let fx = AppFixture::new();
+    fx.ext().check("run-tests", &check_toml("Run tests", &[]));
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("extensions-invalid"));
+    assert_eq!(
+        detail_keys(&error),
+        vec![key(".omhl/checks/run-tests.toml", "reserved-id")]
+    );
+}
+
+#[test]
+fn it_should_refuse_load_without_a_project_root() {
+    let fx = AppFixture::without_root();
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("no-project-root"));
+}
+
+// Lotes e carga parcial
+
+#[test]
+fn it_should_load_more_than_50_changes_in_batches_and_be_idempotent() {
+    let fx = AppFixture::new();
+    for n in 1..=51 {
+        fx.ext()
+            .guideline(&format!("g{n:02}"), &guideline_toml(&format!("Rule {n}")));
+    }
+
+    let first = loaded(&fx, false);
+    let second = loaded(&fx, false);
+
+    assert_eq!(first["created"].as_array().map(Vec::len), Some(51));
+    assert_eq!(second["created"], json!([]));
+    assert_eq!(second["unchanged"].as_array().map(Vec::len), Some(51));
+    assert_eq!(fx.verify()["ok"], json!(true));
+}
+
+#[test]
+fn it_should_report_a_partial_load_when_a_later_batch_fails() {
+    let fx = fixture_with_a_cycle();
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("CYCLE_REJECTED"));
+    let last = details_of(&error).last().expect("the error has details");
+    assert_eq!(last["code"], json!("load-partial"));
+    assert!(
+        last["message"]
+            .as_str()
+            .expect("the detail has a message")
+            .contains("50 of 52"),
+        "unexpected message: {last}"
+    );
+    assert_eq!(fx.list("check").as_array().map(Vec::len), Some(50));
+
+    fx.ext().check("c02", &check_toml("Run", &[]));
+    let retried = fx.load(false);
+    assert!(
+        retried.is_ok(),
+        "the load after the fix failed: {retried:?}"
+    );
+}
+
+#[test]
+fn it_should_map_engine_errors_to_the_originating_file() {
+    let fx = fixture_with_a_cycle();
+
+    let error = refused(&fx);
+
+    let first = details_of(&error).first().expect("the error has details");
+    let path = first["path"].as_str().expect("the detail has a path");
+    assert!(
+        path == ".omhl/checks/c01.toml" || path == ".omhl/checks/c02.toml",
+        "unexpected path: {path}"
+    );
+}
+
+// Relatório
+
+#[test]
+fn it_should_include_the_tenant_and_warnings_in_the_report() {
+    let fx = AppFixture::new();
+    fx.ext().file(".omhl/checks/.gitkeep", "");
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["tenant"], json!("acme"));
+    assert_eq!(
+        warning_keys(&report),
+        vec![key(".omhl/checks/.gitkeep", "hidden-file-ignored")]
+    );
+}

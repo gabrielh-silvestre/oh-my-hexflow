@@ -31,6 +31,10 @@ pub enum Action {
         work_item: String,
     },
     Verify,
+    Load {
+        dry_run: bool,
+    },
+    Project,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +62,13 @@ impl Caller {
         Caller {
             client: "hook",
             agent: "hook",
+        }
+    }
+
+    pub fn loader() -> Caller {
+        Caller {
+            client: "loader",
+            agent: "loader",
         }
     }
 
@@ -92,6 +103,8 @@ pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError>
         "gate_pr" => work_item(&mut args).map(|work_item| Action::GatePr { work_item }),
         "close" => work_item(&mut args).map(|work_item| Action::Close { work_item }),
         "verify" => only(&args, &[]).map(|()| Action::Verify),
+        "load" => load(&mut args),
+        "project" => only(&args, &[]).map(|()| Action::Project),
         _ => Err(AppError::plain("unknown-tool", "unknown tool")),
     }
 }
@@ -122,6 +135,17 @@ fn attest(args: &mut Map<String, Value>) -> Result<Action, AppError> {
         outcome: required_text(args, "outcome")?,
         note: optional_text(args, "note")?,
     })
+}
+
+fn load(args: &mut Map<String, Value>) -> Result<Action, AppError> {
+    only(args, &["dry_run"])?;
+    let dry_run = match args.remove("dry_run") {
+        None => false,
+        Some(Value::Bool(flag)) => flag,
+        Some(_) => return Err(AppError::invalid_arguments("/dry_run", "wrong type")),
+    };
+
+    Ok(Action::Load { dry_run })
 }
 
 fn work_item(args: &mut Map<String, Value>) -> Result<String, AppError> {

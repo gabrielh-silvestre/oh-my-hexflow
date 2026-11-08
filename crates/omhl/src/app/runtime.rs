@@ -22,6 +22,7 @@ pub struct Runtime {
     clock: SystemClock,
     ids: V7Ids,
     probe: GitProbe,
+    root: PathBuf,
     retry: RetryPolicy,
 }
 
@@ -46,6 +47,7 @@ impl Runtime {
             clock: SystemClock,
             ids: V7Ids,
             probe: GitProbe::new(&located.root),
+            root: located.root,
             retry: RetryPolicy::default(),
         })
     }
@@ -57,7 +59,10 @@ impl Runtime {
             probe: &self.probe,
         };
 
-        App::open(&self.db_path, &self.tenant, deps, &self.retry)
+        Ok(
+            App::open(&self.db_path, &self.tenant, deps, &self.retry)?
+                .with_project_root(&self.root),
+        )
     }
 }
 
