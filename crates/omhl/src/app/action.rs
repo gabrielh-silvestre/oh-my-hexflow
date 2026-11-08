@@ -72,34 +72,33 @@ impl Caller {
 }
 
 /// Nome da ferramenta MCP e objeto `arguments` viram uma `Action`.
-pub fn parse_tool_call(name: &str, arguments: &Value) -> Result<Action, AppError> {
-    let empty = Map::new();
-    let args = match arguments {
-        Value::Null => &empty,
+pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError> {
+    let mut args = match arguments {
+        Value::Null => Map::new(),
         Value::Object(map) => map,
         _ => return Err(AppError::invalid_arguments("", "wrong type")),
     };
 
     match name {
-        "list" => list(args),
-        "get" => only(args, &["id"])
-            .and_then(|()| required_text(args, "id"))
+        "list" => list(&mut args),
+        "get" => only(&args, &["id"])
+            .and_then(|()| required_text(&mut args, "id"))
             .map(|id| Action::Get { id }),
         "append" => Ok(Action::Append {
-            request: Value::Object(args.clone()),
+            request: Value::Object(args),
         }),
-        "attest" => attest(args),
-        "render" => only(args, &[]).map(|()| Action::Render),
-        "gate_pr" => work_item(args).map(|work_item| Action::GatePr { work_item }),
-        "close" => work_item(args).map(|work_item| Action::Close { work_item }),
-        "verify" => only(args, &[]).map(|()| Action::Verify),
+        "attest" => attest(&mut args),
+        "render" => only(&args, &[]).map(|()| Action::Render),
+        "gate_pr" => work_item(&mut args).map(|work_item| Action::GatePr { work_item }),
+        "close" => work_item(&mut args).map(|work_item| Action::Close { work_item }),
+        "verify" => only(&args, &[]).map(|()| Action::Verify),
         _ => Err(AppError::plain("unknown-tool", "unknown tool")),
     }
 }
 
-fn list(args: &Map<String, Value>) -> Result<Action, AppError> {
+fn list(args: &mut Map<String, Value>) -> Result<Action, AppError> {
     only(args, &["type", "id_prefix", "limit", "after_seq"])?;
-    let limit = optional_uint(args, "limit", 1)?;
+    let limit = optional_uint(args, "limit")?;
 
     Ok(Action::List {
         type_name: optional_text(args, "type")?,
@@ -110,11 +109,11 @@ fn list(args: &Map<String, Value>) -> Result<Action, AppError> {
                     .map_err(|_| AppError::invalid_arguments("/limit", "unknown value"))
             })
             .transpose()?,
-        after_seq: optional_uint(args, "after_seq", 0)?,
+        after_seq: optional_uint(args, "after_seq")?,
     })
 }
 
-fn attest(args: &Map<String, Value>) -> Result<Action, AppError> {
+fn attest(args: &mut Map<String, Value>) -> Result<Action, AppError> {
     only(args, &["check", "work_item", "outcome", "note"])?;
 
     Ok(Action::Attest {
@@ -125,7 +124,7 @@ fn attest(args: &Map<String, Value>) -> Result<Action, AppError> {
     })
 }
 
-fn work_item(args: &Map<String, Value>) -> Result<String, AppError> {
+fn work_item(args: &mut Map<String, Value>) -> Result<String, AppError> {
     only(args, &["work_item"])?;
 
     required_text(args, "work_item")
@@ -146,30 +145,26 @@ fn pointer(key: &str) -> String {
     format!("/{key}")
 }
 
-fn optional_text(args: &Map<String, Value>, key: &str) -> Result<Option<String>, AppError> {
-    match args.get(key) {
+fn optional_text(args: &mut Map<String, Value>, key: &str) -> Result<Option<String>, AppError> {
+    match args.remove(key) {
         None => Ok(None),
-        Some(Value::String(text)) => Ok(Some(text.clone())),
+        Some(Value::String(text)) => Ok(Some(text)),
         Some(_) => Err(AppError::invalid_arguments(&pointer(key), "wrong type")),
     }
 }
 
-fn required_text(args: &Map<String, Value>, key: &str) -> Result<String, AppError> {
+fn required_text(args: &mut Map<String, Value>, key: &str) -> Result<String, AppError> {
     optional_text(args, key)?
         .ok_or_else(|| AppError::invalid_arguments(&pointer(key), "missing argument"))
 }
 
-/// Inteiro sem sinal; um valor abaixo de `min` é valor fora do conjunto permitido.
-fn optional_uint(args: &Map<String, Value>, key: &str, min: u64) -> Result<Option<u64>, AppError> {
+fn optional_uint(args: &Map<String, Value>, key: &str) -> Result<Option<u64>, AppError> {
     let Some(value) = args.get(key) else {
         return Ok(None);
     };
-    let Some(number) = value.as_u64() else {
-        return Err(AppError::invalid_arguments(&pointer(key), "wrong type"));
-    };
-    if number < min {
-        return Err(AppError::invalid_arguments(&pointer(key), "unknown value"));
-    }
 
-    Ok(Some(number))
+    match value.as_u64() {
+        Some(number) => Ok(Some(number)),
+        None => Err(AppError::invalid_arguments(&pointer(key), "wrong type")),
+    }
 }

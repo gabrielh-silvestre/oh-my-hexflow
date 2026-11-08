@@ -3,6 +3,10 @@ mod support;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use hexlog::Config;
 use omhl::facade::{Omhl, OmhlDeps};
@@ -135,6 +139,25 @@ fn it_should_report_path_line_and_column_on_a_syntax_error() {
     );
 }
 
+#[test]
+fn it_should_not_echo_marker_content_in_the_toml_error() {
+    let bytes = "version = 1\ntenant = secret-value-123\n";
+
+    let error = refusal(bytes.as_bytes());
+
+    assert_eq!(error.code, "invalid-marker");
+    assert!(
+        !error.message.contains("secret-value-123"),
+        "the message repeats the marker content: {}",
+        error.message
+    );
+    assert!(
+        error.message.contains("not valid TOML at line 2, column "),
+        "the message carries only line and column: {}",
+        error.message
+    );
+}
+
 // Busca do marcador (sistema de arquivos real)
 
 #[test]
@@ -210,6 +233,47 @@ fn it_should_stop_at_an_invalid_nearest_marker() {
     let error = find_marker(&dir.path().join("a/b")).expect_err("the nearest marker is invalid");
 
     assert_eq!(error.code, "invalid-marker");
+}
+
+#[cfg(unix)]
+#[test]
+fn it_should_refuse_a_marker_that_is_a_symlink() {
+    let dir = TempDir::new().expect("temporary directory is created");
+    let elsewhere = TempDir::new().expect("other directory is created");
+    let target = elsewhere.path().join("real-marker.toml");
+    fs::write(&target, marker_text("acme")).expect("target marker is written");
+    std::os::unix::fs::symlink(&target, dir.path().join(MARKER_FILE))
+        .expect("the symlink is created");
+
+    let error = find_marker(dir.path()).expect_err("the symlink marker is refused");
+
+    assert_eq!(error.code, "invalid-marker");
+}
+
+#[cfg(unix)]
+#[test]
+fn it_should_refuse_a_marker_that_is_a_fifo() {
+    let dir = TempDir::new().expect("temporary directory is created");
+    let fifo = dir.path().join(MARKER_FILE);
+    let made = Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("mkfifo runs");
+    assert!(made.success(), "mkfifo failed");
+    let start = dir.path().to_path_buf();
+    let (sender, receiver) = mpsc::channel();
+    // Opening a FIFO without a writer blocks forever, so the search runs off the test thread.
+    thread::spawn(move || {
+        let _ = sender.send(find_marker(&start).map_err(|error| error.code));
+    });
+
+    let result = receiver.recv_timeout(Duration::from_secs(5));
+
+    assert_eq!(
+        result,
+        Ok(Err("invalid-marker")),
+        "the FIFO marker is refused without being opened"
+    );
 }
 
 // Caminho padrão do banco (puro)
@@ -329,4 +393,20 @@ fn it_should_leave_an_existing_database_untouched() {
 
     assert_eq!(fs::read(&db).expect("the file is readable"), b"dbbytes");
     assert_eq!(mode_of(&db), 0o644);
+}
+
+#[test]
+fn it_should_refuse_a_database_path_that_is_a_directory() {
+    let dir = TempDir::new().expect("temporary directory is created");
+    let db = dir.path().join("omhl.db");
+    fs::create_dir(&db).expect("the directory is created");
+
+    let error = prepare_db_file(&db).expect_err("a directory is not a database file");
+
+    assert_eq!(error.code, "database-file");
+    assert!(
+        error.message.starts_with(&format!("{}: ", db.display())),
+        "the message names the path and the cause: {}",
+        error.message
+    );
 }

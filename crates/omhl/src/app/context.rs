@@ -2,10 +2,9 @@ use hexlog::{
     ListFilter, NativeNodes, NodeView, PageRequest, RelationQuery, RelationTypeName, SemanticId,
     TenantId, TypeName,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::error::AppError;
-use super::output;
 use crate::facade::Omhl;
 use crate::native::NativeBase;
 use crate::render::{CONTEXT_BUDGET, RenderInput, render};
@@ -31,7 +30,9 @@ pub(super) fn render_context(omhl: &mut Omhl<'_>, tenant: &TenantId) -> Result<V
         after: &after,
     };
 
-    Ok(output::rendered(&render(&input, CONTEXT_BUDGET)))
+    let rendered = render(&input, CONTEXT_BUDGET);
+
+    Ok(json!({ "text": rendered.text, "omitted": rendered.omitted }))
 }
 
 fn all_nodes(

@@ -225,6 +225,26 @@ fn it_should_exit_one_with_no_stdout_on_invalid_stdin() {
 }
 
 #[test]
+fn it_should_refuse_a_relative_cwd() {
+    let project = Project::new("acme");
+    let stdin = json!({
+        "hook_event_name": "SessionStart",
+        "session_id": "s1",
+        "cwd": "relative/project",
+        "source": "startup",
+    });
+
+    let output = run_hook(project.xdg(), &stdin.to_string());
+
+    assert_eq!(output.code, Some(1));
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert_eq!(
+        json_line(&output.stderr)["error"]["code"],
+        json!("invalid-hook-input")
+    );
+}
+
+#[test]
 fn it_should_exit_one_with_no_stdout_on_an_invalid_marker() {
     let project = Project::new("acme");
     fs::write(

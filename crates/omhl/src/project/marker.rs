@@ -23,7 +23,6 @@ pub struct Located {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct RawMarker {
     version: u32,
     tenant: String,
@@ -36,6 +35,27 @@ fn invalid(path: &Path, reason: impl std::fmt::Display) -> ProjectError {
     }
 }
 
+/// O texto de erro do TOML repete trechos do arquivo: só a posição, e o nome de uma chave extra, saem.
+fn parse_raw(path: &Path, text: &str) -> Result<RawMarker, ProjectError> {
+    let table: toml::Table = text.parse().map_err(|error: toml::de::Error| {
+        let (line, column) = line_column(text, error.span().map_or(0, |span| span.start));
+        invalid(
+            path,
+            format!("not valid TOML at line {line}, column {column}"),
+        )
+    })?;
+    if let Some(key) = table
+        .keys()
+        .find(|key| !matches!(key.as_str(), "version" | "tenant"))
+    {
+        return Err(invalid(path, format!("unknown key `{key}`")));
+    }
+
+    table
+        .try_into()
+        .map_err(|_| invalid(path, "needs an integer version and a string tenant"))
+}
+
 pub fn parse_marker(path: &Path, bytes: &[u8]) -> Result<Marker, ProjectError> {
     if bytes.len() > MAX_MARKER_BYTES {
         return Err(invalid(
@@ -44,7 +64,7 @@ pub fn parse_marker(path: &Path, bytes: &[u8]) -> Result<Marker, ProjectError> {
         ));
     }
     let text = std::str::from_utf8(bytes).map_err(|error| invalid(path, error))?;
-    let raw: RawMarker = toml::from_str(text).map_err(|error| invalid(path, error))?;
+    let raw = parse_raw(path, text)?;
     if raw.version != SUPPORTED_VERSION {
         return Err(invalid(
             path,
@@ -57,6 +77,19 @@ pub fn parse_marker(path: &Path, bytes: &[u8]) -> Result<Marker, ProjectError> {
         version: raw.version,
         tenant,
     })
+}
+
+/// Linha e coluna (base 1, em caracteres) do byte `offset` de `text`.
+fn line_column(text: &str, offset: usize) -> (usize, usize) {
+    let before = text.get(..offset).unwrap_or(text);
+    let line = before.matches('\n').count() + 1;
+    let column = before
+        .rsplit('\n')
+        .next()
+        .map_or(0, |last| last.chars().count())
+        + 1;
+
+    (line, column)
 }
 
 /// Lê no máximo um byte além do limite, para que um marcador gigante não vá inteiro à memória.
@@ -73,17 +106,20 @@ fn read_capped(path: &Path) -> std::io::Result<Vec<u8>> {
 pub fn find_marker(start: &Path) -> Result<Option<Located>, ProjectError> {
     for dir in start.ancestors() {
         let path = dir.join(MARKER_FILE);
-        match read_capped(&path) {
-            Ok(bytes) => {
-                let marker = parse_marker(&path, &bytes)?;
-                return Ok(Some(Located {
-                    root: dir.to_path_buf(),
-                    marker,
-                }));
-            }
-            Err(error) if error.kind() == ErrorKind::NotFound => {}
+        // Symlink, FIFO e dispositivo são recusados antes de abrir: abrir um FIFO sem escritor trava.
+        match std::fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_file() => {}
+            Ok(_) => return Err(invalid(&path, "marker is not a regular file")),
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
             Err(error) => return Err(invalid(&path, error)),
         }
+        let bytes = read_capped(&path).map_err(|error| invalid(&path, error))?;
+        let marker = parse_marker(&path, &bytes)?;
+
+        return Ok(Some(Located {
+            root: dir.to_path_buf(),
+            marker,
+        }));
     }
 
     Ok(None)

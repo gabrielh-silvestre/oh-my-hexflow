@@ -42,6 +42,9 @@ pub fn prepare_db_file(path: &Path) -> Result<(), ProjectError> {
     }
     match create_private_file(path) {
         Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::AlreadyExists && path.is_dir() => {
+            Err(file_error(path, &ErrorKind::IsADirectory.into()))
+        }
         Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(()),
         Err(error) => Err(file_error(path, &error)),
     }

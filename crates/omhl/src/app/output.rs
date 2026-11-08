@@ -1,9 +1,8 @@
-use hexlog::{AppendOutcome, Author, BreakReason, ChainHead, ChainReport, NodeView, Page};
+use hexlog::{AppendOutcome, Author, BreakReason, ChainReport, NodeView, Page};
 use serde_json::{Value, json};
 
 use crate::facade::ClosedWorkItem;
 use crate::gate::{GateReport, QuestionKind, QuestionReport};
-use crate::render::Rendered;
 
 pub fn node(view: &NodeView) -> Value {
     let mut node = json!({
@@ -46,7 +45,7 @@ pub fn appended(outcome: &AppendOutcome) -> Value {
     json!({
         "records": records,
         "replayed": outcome.replayed,
-        "chain_head": chain_head(&outcome.chain_head),
+        "chain_head": { "seq": outcome.chain_head.seq, "hash": outcome.chain_head.hash },
     })
 }
 
@@ -57,7 +56,7 @@ pub fn gate(report: &GateReport) -> Value {
         "gate": report.gate,
         "passed": report.passed,
         "questions": questions,
-        "chain_head": chain_head(&report.chain_head),
+        "chain_head": { "seq": report.chain_head.seq, "hash": report.chain_head.hash },
     })
 }
 
@@ -85,14 +84,6 @@ pub fn verify(report: &ChainReport) -> Value {
         "breaks": breaks,
         "total_breaks": report.total_breaks,
     })
-}
-
-pub fn rendered(rendered: &Rendered) -> Value {
-    json!({ "text": rendered.text, "omitted": rendered.omitted })
-}
-
-fn chain_head(head: &ChainHead) -> Value {
-    json!({ "seq": head.seq, "hash": head.hash })
 }
 
 fn author(author: &Author) -> Value {

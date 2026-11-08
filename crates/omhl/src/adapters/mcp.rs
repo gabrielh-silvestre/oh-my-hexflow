@@ -6,7 +6,7 @@ use serde_json::{Map, Value, json};
 
 use crate::app::action::{Action, Caller, parse_tool_call};
 use crate::app::error::AppError;
-use crate::app::runtime::Runtime;
+use crate::app::runtime::run_action;
 use crate::project::Env;
 
 const MAX_LINE_BYTES: usize = 1_048_576;
@@ -132,7 +132,7 @@ fn drain_line(input: &mut impl BufRead) -> std::io::Result<()> {
 impl Server<'_> {
     /// `None` quando a mensagem não tem `id`: notificação nunca recebe resposta.
     fn handle(&self, bytes: &[u8]) -> Option<Value> {
-        let message = match serde_json::from_slice::<Value>(bytes) {
+        let mut message = match serde_json::from_slice::<Value>(bytes) {
             Ok(Value::Object(message)) => message,
             Ok(_) => {
                 return Some(
@@ -143,25 +143,25 @@ impl Server<'_> {
                 return Some(RpcError::new(PARSE_ERROR, "parse error").response(&Value::Null));
             }
         };
-        let id = message.get("id")?;
+        let id = message.remove("id")?;
 
-        Some(match self.dispatch(&message) {
+        Some(match self.dispatch(message) {
             Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-            Err(error) => error.response(id),
+            Err(error) => error.response(&id),
         })
     }
 
-    fn dispatch(&self, message: &Map<String, Value>) -> Result<Value, RpcError> {
+    fn dispatch(&self, mut message: Map<String, Value>) -> Result<Value, RpcError> {
+        let params = message.remove("params").unwrap_or(Value::Null);
         let method = message
             .get("method")
             .and_then(Value::as_str)
             .ok_or_else(|| RpcError::new(INVALID_REQUEST, "invalid request"))?;
-        let params = message.get("params").unwrap_or(&Value::Null);
-        let era = era_of(params)?;
+        let era = era_of(&params)?;
 
         match method {
             "server/discover" => Ok(discover()),
-            "initialize" => Ok(initialize(params)),
+            "initialize" => Ok(initialize(&params)),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(with_cache(json!({ "tools": tools() }), era)),
             "tools/call" => self.call_tool(params, era),
@@ -169,11 +169,12 @@ impl Server<'_> {
         }
     }
 
-    fn call_tool(&self, params: &Value, era: Era) -> Result<Value, RpcError> {
+    fn call_tool(&self, mut params: Value, era: Era) -> Result<Value, RpcError> {
+        let arguments = params.get_mut("arguments").map_or(Value::Null, Value::take);
         let name = params["name"]
             .as_str()
             .ok_or_else(|| RpcError::new(INVALID_PARAMS, "missing tool name"))?;
-        let outcome = parse_tool_call(name, &params["arguments"]);
+        let outcome = parse_tool_call(name, arguments);
         if outcome
             .as_ref()
             .is_err_and(|error| error.code() == "unknown-tool")
@@ -191,10 +192,7 @@ impl Server<'_> {
 
     /// O projeto é redescoberto a cada chamada: o marcador pode nascer depois do início da sessão.
     fn run(&self, action: &Action) -> Result<Value, AppError> {
-        let runtime = Runtime::discover(self.start, self.db, self.env)?;
-        let mut app = runtime.app()?;
-
-        app.dispatch(&Caller::mcp(), action)
+        run_action(self.start, self.db, self.env, &Caller::mcp(), action)
     }
 }
 

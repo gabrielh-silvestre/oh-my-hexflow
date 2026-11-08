@@ -537,6 +537,35 @@ fn it_should_refuse_a_malformed_semantic_id() {
 }
 
 #[test]
+fn it_should_refuse_an_id_prefix_longer_than_two_hundred_characters() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let action = Action::List {
+        type_name: None,
+        id_prefix: Some("a".repeat(201)),
+        limit: None,
+        after_seq: None,
+    };
+
+    let error = refuse(&mut app, &action);
+
+    assert_eq!(
+        error.to_json(),
+        json!({
+            "error": {
+                "code": "invalid-arguments",
+                "message": "unknown value",
+                "details": [{
+                    "path": "/id_prefix",
+                    "code": "invalid-arguments",
+                    "message": "unknown value",
+                }],
+            }
+        })
+    );
+}
+
+#[test]
 fn it_should_verify_a_fresh_chain() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();
@@ -702,7 +731,7 @@ fn it_should_close_a_work_item_even_when_the_gate_fails() {
 }
 
 #[test]
-fn it_should_refuse_closing_when_the_tree_is_dirty() {
+fn it_should_refuse_closing_when_the_tree_is_dirty_in_the_app() {
     let fixture = Fixture::new(FakeProbe::dirty());
     let mut app = fixture.open();
     open_work_item(&mut app);

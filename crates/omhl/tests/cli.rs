@@ -169,6 +169,30 @@ fn it_should_exit_one_with_a_json_error_when_there_is_no_marker() {
 }
 
 #[test]
+fn it_should_refuse_a_malformed_id_prefix_from_the_cli() {
+    let project = Project::new("acme");
+
+    let output = in_project(&project, &["list", "--id-prefix", "decisions.Bad_Prefix"]).run();
+
+    assert_eq!(output.code, Some(1));
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert_eq!(
+        json_line(&output.stderr),
+        json!({
+            "error": {
+                "code": "invalid-arguments",
+                "message": "unknown value",
+                "details": [{
+                    "path": "/id_prefix",
+                    "code": "invalid-arguments",
+                    "message": "unknown value",
+                }],
+            }
+        })
+    );
+}
+
+#[test]
 fn it_should_find_the_project_by_the_project_dir_flag() {
     let project = Project::new("acme");
     let elsewhere = TempDir::new().expect("other directory is created");

@@ -212,6 +212,34 @@ fn it_should_fail_when_the_program_exceeds_the_timeout() {
 }
 
 #[test]
+fn it_should_time_out_even_when_a_grandchild_holds_the_pipe() {
+    let tools = TempDir::new().expect("temp dir");
+    let program = fake_program(tools.path(), "sleep 5 &\nexit 0");
+    let probe = GitProbe::new(tools.path())
+        .with_program(program)
+        .with_timeout(Duration::from_millis(200));
+    let started = Instant::now();
+
+    let result = probe.probe();
+
+    assert!(error_message(result).contains("timed out"));
+    assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+#[test]
+fn it_should_truncate_a_long_git_error_message() {
+    let tools = TempDir::new().expect("temp dir");
+    let program = fake_program(
+        tools.path(),
+        "head -c 1000 /dev/zero | tr '\\0' Z >&2\nexit 128",
+    );
+
+    let result = GitProbe::new(tools.path()).with_program(program).probe();
+
+    assert_eq!(error_message(result).matches('Z').count(), 200);
+}
+
+#[test]
 fn it_should_fail_on_malformed_output() {
     let tools = TempDir::new().expect("temp dir");
     let program = fake_program(tools.path(), "echo garbage");

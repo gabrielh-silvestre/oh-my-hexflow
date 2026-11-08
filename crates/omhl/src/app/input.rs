@@ -1,3 +1,5 @@
+use std::io::Read;
+
 use serde_json::Value;
 
 use super::error::AppError;
@@ -31,4 +33,15 @@ pub fn parse_json_text(bytes: &[u8]) -> Result<Value, AppError> {
             ),
         ),
     })
+}
+
+/// Lê um byte além do limite: a entrada grande demais é detectada sem ler o resto.
+pub fn read_json_input(input: &mut impl Read) -> Result<Value, AppError> {
+    let mut bytes = Vec::new();
+    input
+        .take(INPUT_MAX_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| AppError::plain("input-unreadable", "input could not be read"))?;
+
+    parse_json_text(&bytes)
 }

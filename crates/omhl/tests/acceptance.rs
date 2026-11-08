@@ -250,6 +250,29 @@ fn it_should_return_the_same_error_from_the_cli_and_the_mcp() {
     );
 }
 
+#[test]
+fn it_should_return_the_same_limit_error_from_the_cli_and_the_mcp() {
+    let project = Project::new("acme");
+    let session = McpSession::start(project.dir(), project.xdg());
+
+    let cli = at(project.dir(), project.xdg(), &["list", "--limit", "0"]).run();
+    let mcp = mcp_call(&session, "list", &json!({ "limit": 0 }));
+
+    let expected = json!({
+        "code": "invalid-arguments",
+        "message": "unknown value",
+        "details": [{
+            "path": "/limit",
+            "code": "invalid-arguments",
+            "message": "unknown value",
+        }],
+    });
+    assert_eq!(cli.code, Some(1));
+    assert_eq!(mcp["isError"], json!(true));
+    assert_eq!(json_line(&cli.stderr)["error"], expected);
+    assert_eq!(mcp["structuredContent"]["error"], expected);
+}
+
 // Sessão completa e isolamento
 
 #[test]

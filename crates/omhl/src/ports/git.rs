@@ -2,6 +2,7 @@ use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -11,6 +12,8 @@ use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
+const MAX_OUTPUT_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_ERROR_CHARS: usize = 200;
 const OID_PREFIX: &[u8] = b"# branch.oid ";
 const DIRTY_PREFIXES: [&[u8]; 4] = [b"1 ", b"2 ", b"u ", b"? "];
 
@@ -86,17 +89,14 @@ impl GitProbe {
             _ => return Err(error("git pipes are unavailable")),
         };
         // Duas threads leem os canos para o filho não travar com saída maior que o buffer.
-        thread::scope(|scope| {
-            let stdout = scope.spawn(move || read_all(stdout));
-            let stderr = scope.spawn(move || read_all(stderr));
-            let status = wait_within(&mut child, self.timeout);
-            let stdout = stdout.join().unwrap_or_default();
-            let stderr = stderr.join().unwrap_or_default();
-            status.map(|status| GitOutput {
-                status,
-                stdout,
-                stderr,
-            })
+        let (stdout, stderr) = (spawn_reader(stdout), spawn_reader(stderr));
+        let deadline = Instant::now() + self.timeout;
+        let status = wait_until(&mut child, deadline)?;
+
+        Ok(GitOutput {
+            status,
+            stdout: collect(&stdout, deadline)?,
+            stderr: collect(&stderr, deadline)?,
         })
     }
 }
@@ -105,7 +105,15 @@ impl SnapshotProbe for GitProbe {
     fn probe(&self) -> Result<ProbeOutcome, ProbeError> {
         let output = self.run()?;
         if !output.status.success() {
-            return Err(error(String::from_utf8_lossy(&output.stderr).trim()));
+            let message = String::from_utf8_lossy(&output.stderr);
+
+            return Err(error(
+                message
+                    .trim()
+                    .chars()
+                    .take(MAX_ERROR_CHARS)
+                    .collect::<String>(),
+            ));
         }
         parse_status(&output.stdout)
     }
@@ -117,16 +125,28 @@ fn error(message: impl Into<String>) -> ProbeError {
     }
 }
 
-fn read_all(mut pipe: impl Read) -> Vec<u8> {
-    let mut buffer = Vec::new();
-    // Erro de leitura deixa o que já chegou; o parser recusa saída incompleta.
-    let _ = pipe.read_to_end(&mut buffer);
-    buffer
+/// A thread solta termina quando o cano fecha, mesmo que um descendente do `git` o segure.
+fn spawn_reader(pipe: impl Read + Send + 'static) -> Receiver<Vec<u8>> {
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let mut buffer = Vec::new();
+        // Erro de leitura deixa o que já chegou; o parser recusa saída incompleta.
+        let _ = pipe.take(MAX_OUTPUT_BYTES).read_to_end(&mut buffer);
+        let _ = sender.send(buffer);
+    });
+
+    receiver
+}
+
+/// Sem `join`: o que não chegou até o prazo é abandonado.
+fn collect(reader: &Receiver<Vec<u8>>, deadline: Instant) -> Result<Vec<u8>, ProbeError> {
+    reader
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        .map_err(|_| error("git timed out"))
 }
 
 /// Espera o filho até o prazo; passado o prazo, mata e recolhe o processo.
-fn wait_within(child: &mut Child, timeout: Duration) -> Result<ExitStatus, ProbeError> {
-    let deadline = Instant::now() + timeout;
+fn wait_until(child: &mut Child, deadline: Instant) -> Result<ExitStatus, ProbeError> {
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),

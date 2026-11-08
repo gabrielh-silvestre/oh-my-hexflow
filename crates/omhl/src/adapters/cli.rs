@@ -10,8 +10,8 @@ use serde_json::Value;
 use super::{hook, mcp};
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
-use crate::app::input::{INPUT_MAX_BYTES, parse_json_text};
-use crate::app::runtime::Runtime;
+use crate::app::input::read_json_input;
+use crate::app::runtime::run_action;
 use crate::project::Env;
 
 #[derive(Debug, Parser)]
@@ -172,9 +172,8 @@ fn execute(
     env: &Env<'_>,
 ) -> Result<Value, AppError> {
     let action = to_action(command, stdin)?;
-    let runtime = Runtime::discover(start, db, env)?;
 
-    runtime.app()?.dispatch(&Caller::cli(), &action)
+    run_action(start, db, env, &Caller::cli(), &action)
 }
 
 fn to_action(command: ActionCommand, stdin: &mut impl Read) -> Result<Action, AppError> {
@@ -192,7 +191,7 @@ fn to_action(command: ActionCommand, stdin: &mut impl Read) -> Result<Action, Ap
         },
         ActionCommand::Get { id } => Action::Get { id },
         ActionCommand::Append => Action::Append {
-            request: read_request(stdin)?,
+            request: read_json_input(stdin)?,
         },
         ActionCommand::Attest {
             check,
@@ -210,15 +209,4 @@ fn to_action(command: ActionCommand, stdin: &mut impl Read) -> Result<Action, Ap
         ActionCommand::Close { work_item } => Action::Close { work_item },
         ActionCommand::Verify => Action::Verify,
     })
-}
-
-/// Reads one byte past the limit so an oversized input is detected without reading the rest.
-fn read_request(stdin: &mut impl Read) -> Result<Value, AppError> {
-    let mut bytes = Vec::new();
-    stdin
-        .take(INPUT_MAX_BYTES as u64 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| AppError::plain("input-unreadable", "input could not be read"))?;
-
-    parse_json_text(&bytes)
 }

@@ -1,4 +1,4 @@
-use hexlog::{AppendItem, AppendRequest, ItemBody, RecordId, SemanticId, Snapshot, TypeName};
+use hexlog::{AppendItem, AppendRequest, ItemBody, SemanticId, Snapshot, TypeName};
 use serde_json::{Value, json};
 
 use super::action::Caller;
@@ -36,7 +36,16 @@ impl Engine<'_> {
             .get(&self.tenant, &id)?
             .map(|existing| existing.record_id);
         let attestation = json!({ "id": id, "snapshot": snapshot });
-        let item = attestation_item(id, data.clone(), base, snapshot)?;
+        let item = AppendItem {
+            body: ItemBody::Node {
+                id,
+                type_name: TypeName::parse(ATTESTATION)?,
+                data: data.clone(),
+            },
+            base,
+            snapshot: Some(snapshot),
+            external_id: None,
+        };
         let request = AppendRequest {
             tenant: self.tenant.clone(),
             author: caller.author(),
@@ -57,24 +66,6 @@ fn derived_id(
     attestation_id(snapshot, check, work_item).map_err(|error| match error {
         OmhlError::Rule { code, .. } => OmhlError::rule(code, "/check"),
         other => other,
-    })
-}
-
-fn attestation_item(
-    id: SemanticId,
-    data: Value,
-    base: Option<RecordId>,
-    snapshot: Snapshot,
-) -> Result<AppendItem, AppError> {
-    Ok(AppendItem {
-        body: ItemBody::Node {
-            id,
-            type_name: TypeName::parse(ATTESTATION)?,
-            data,
-        },
-        base,
-        snapshot: Some(snapshot),
-        external_id: None,
     })
 }
 

@@ -11,6 +11,8 @@ use crate::probe::{ProbeOutcome, SnapshotProbe};
 
 /// Tamanho de página quando o pedido não traz `limit` (o padrão do motor).
 const DEFAULT_PAGE_LIMIT: u32 = 50;
+/// Teto de um `SemanticId` no `hexlog`; um prefixo maior nunca casa.
+const ID_PREFIX_MAX: usize = 200;
 
 /// Estado que as ações compartilham; as tentativas ficam por conta do `App`.
 pub(super) struct Engine<'d> {
@@ -26,6 +28,13 @@ pub(super) fn parse_at<T>(
     pointer: &str,
 ) -> Result<T, AppError> {
     parse(text).map_err(|error| AppError::from(error.at(pointer)))
+}
+
+fn is_id_prefix(prefix: &str) -> bool {
+    prefix.len() <= ID_PREFIX_MAX
+        && prefix
+            .bytes()
+            .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.'))
 }
 
 impl Engine<'_> {
@@ -68,6 +77,12 @@ impl Engine<'_> {
         limit: Option<u32>,
         after_seq: Option<u64>,
     ) -> Result<Value, AppError> {
+        if limit == Some(0) {
+            return Err(AppError::invalid_arguments("/limit", "unknown value"));
+        }
+        if id_prefix.is_some_and(|prefix| !is_id_prefix(prefix)) {
+            return Err(AppError::invalid_arguments("/id_prefix", "unknown value"));
+        }
         let filter = ListFilter {
             type_name: type_name
                 .map(|name| parse_at(TypeName::parse, name, "/type"))

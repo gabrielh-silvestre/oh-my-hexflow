@@ -6,8 +6,8 @@ use serde_json::{Value, json};
 
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
-use crate::app::input::{INPUT_MAX_BYTES, parse_json_text};
-use crate::app::runtime::Runtime;
+use crate::app::input::read_json_input;
+use crate::app::runtime::run_action;
 use crate::project::Env;
 use crate::project::marker::find_marker;
 
@@ -42,8 +42,7 @@ fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<St
     if find_marker(Path::new(&cwd))?.is_none() {
         return Ok(None);
     }
-    let runtime = Runtime::discover(Path::new(&cwd), None, env)?;
-    let mut rendered = runtime.app()?.dispatch(&Caller::hook(), &Action::Render)?;
+    let mut rendered = run_action(Path::new(&cwd), None, env, &Caller::hook(), &Action::Render)?;
 
     match rendered["text"].take() {
         Value::String(text) => Ok(Some(text)),
@@ -54,19 +53,12 @@ fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<St
     }
 }
 
-/// Reads one byte past the limit so an oversized input is detected without reading the rest.
 fn read_cwd(stdin: &mut impl Read) -> Result<String, AppError> {
-    let mut bytes = Vec::new();
-    stdin
-        .take(INPUT_MAX_BYTES as u64 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| AppError::plain("input-unreadable", "input could not be read"))?;
-
-    match parse_json_text(&bytes)?.get_mut("cwd").map(Value::take) {
-        Some(Value::String(cwd)) => Ok(cwd),
+    match read_json_input(stdin)?.get_mut("cwd").map(Value::take) {
+        Some(Value::String(cwd)) if Path::new(&cwd).is_absolute() => Ok(cwd),
         _ => Err(AppError::plain(
             "invalid-hook-input",
-            "hook input must be a JSON object with a string cwd",
+            "hook input must be a JSON object with an absolute string cwd",
         )),
     }
 }

@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use hexlog::TenantId;
+use serde_json::Value;
 
 use super::App;
+use super::action::{Action, Caller};
 use super::error::AppError;
 use super::retry::RetryPolicy;
 use crate::facade::OmhlDeps;
@@ -57,4 +59,17 @@ impl Runtime {
 
         App::open(&self.db_path, &self.tenant, deps, &self.retry)
     }
+}
+
+/// Descobre o projeto, abre o `App` e executa uma ação, para quem só precisa de uma chamada.
+pub fn run_action(
+    start: &Path,
+    db: Option<&Path>,
+    env: &Env<'_>,
+    caller: &Caller,
+    action: &Action,
+) -> Result<Value, AppError> {
+    Runtime::discover(start, db, env)?
+        .app()?
+        .dispatch(caller, action)
 }
