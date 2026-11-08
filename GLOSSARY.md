@@ -61,11 +61,11 @@ O conteúdo de fábrica embutido no binário e comum a todos os projetos (checks
 _Avoid_: built-in, base, default
 
 **Extension**:
-Um arquivo YAML escrito à mão em `.omhl/`, junto com os Markdown que ele referencia para o texto longo, que acrescenta nodes do projeto (checks e diretrizes) e é carregado no banco. É versionado com o projeto e estritamente validado. Só adiciona: nunca altera o native.
+Um arquivo TOML escrito à mão em `.omhl/<pasta do tipo>/<slug>.toml` (`checks/` ou `guidelines/`), com o texto longo opcional num `.md` de mesmo nome ao lado, que acrescenta nodes do projeto (checks e diretrizes) e é carregado no banco por `omhl load`. É versionado com o projeto e estritamente validado. Só adiciona: nunca altera o native.
 _Avoid_: overlay, manifest, override
 
 **Projection**:
-Uma vista gerada sob demanda a partir do banco, em arquivos só de leitura que nunca são editados à mão. Cada projeto pode querer projeções diferentes; a primeira é o estado atual por work item, com tudo que está vigente para ele. Não inclui o YAML nem o Markdown de uma extension, que são escritos à mão.
+Uma vista gerada sob demanda a partir do banco por `omhl project`, em arquivos só de leitura em `.omhl/projection/`, que nunca são editados à mão e não são versionados (a pasta traz o próprio `.gitignore`). A primeira projeção é o estado atual por work item, com tudo que está vigente para ele, um arquivo por work item. Não inclui o TOML nem o Markdown de uma extension, que são escritos à mão.
 _Avoid_: export, mirror
 
 **Graph**:
