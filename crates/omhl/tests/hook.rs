@@ -5,6 +5,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
+use support::ext::ExtTree;
 use support::omhl::decision_data;
 use support::project::Project;
 use tempfile::TempDir;
@@ -19,6 +20,9 @@ const NATIVE_GUIDELINES: [&str; 2] = [
     "guidelines.commit-policy",
 ];
 const CONTEXT_CEILING: usize = 10_000;
+const LINT_TOML: &str = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"pre-commit\"\n";
+const INVALID_TOML: &str = "this is = [not valid";
+const PENDING_NOTE: &str = "NOTE: 1 extension change(s) not loaded into tenant acme; run omhl load";
 
 // Apoio
 
@@ -296,4 +300,119 @@ fn it_should_inject_the_same_text_as_the_render_action() {
 
     assert_eq!(rendered.code, Some(0), "stderr: {}", rendered.stderr);
     assert_eq!(json_line(&rendered.stdout)["text"], json!(context));
+}
+
+// Aviso de extensions
+
+fn warning_line(context: &str) -> &str {
+    context
+        .lines()
+        .find(|line| line.starts_with("WARNING:"))
+        .expect("the context has a WARNING line")
+}
+
+#[test]
+fn it_should_append_a_note_when_extension_changes_are_pending() {
+    let project = Project::new("acme");
+    let baseline = context_of(&hook_for(&project));
+    ExtTree::at(project.dir()).check("lint", LINT_TOML);
+
+    let context = context_of(&hook_for(&project));
+
+    let appended = context
+        .strip_prefix(baseline.as_str())
+        .expect("the rendered text comes first");
+    assert_eq!(appended.trim_end(), format!("\n{PENDING_NOTE}"));
+}
+
+#[test]
+fn it_should_not_append_anything_when_extensions_are_synced() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).check("lint", LINT_TOML);
+    let loaded = in_project(&project, &["load"]);
+
+    let context = context_of(&hook_for(&project));
+    let rendered = in_project(&project, &["render"]);
+
+    assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
+    assert!(context.contains("### checks.lint\n"), "the check is loaded");
+    assert_eq!(json_line(&rendered.stdout)["text"], json!(context));
+    assert!(!context.contains("NOTE:"), "no note");
+    assert!(!context.contains("WARNING:"), "no warning");
+}
+
+#[test]
+fn it_should_not_write_to_the_database_when_extensions_are_pending() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).check("lint", LINT_TOML);
+
+    let hooked = hook_for(&project);
+    let listed = in_project(&project, &["list", "--type", "check"]);
+
+    let ids: Vec<Value> = json_line(&listed.stdout)["items"]
+        .as_array()
+        .expect("items is an array")
+        .iter()
+        .map(|item| item["id"].clone())
+        .collect();
+    assert_eq!(hooked.code, Some(0), "stderr: {}", hooked.stderr);
+    assert_eq!(listed.code, Some(0), "stderr: {}", listed.stderr);
+    assert!(
+        !ids.contains(&json!("checks.lint")),
+        "the check stays unloaded"
+    );
+}
+
+#[test]
+fn it_should_warn_with_codes_and_counts_but_never_paths() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir())
+        .check("alpha-check", INVALID_TOML)
+        .check("beta-check", INVALID_TOML)
+        .symlink(".omhl/checks/gamma-link.toml", "alpha-check.toml");
+
+    let context = context_of(&hook_for(&project));
+
+    let line = warning_line(&context);
+    assert!(line.contains("invalid-toml x2"), "counts the invalid files");
+    assert!(line.contains("symlink x1"), "counts the symlink");
+    for leaked in [".omhl/", "alpha-check", "beta-check", "gamma-link"] {
+        assert!(!line.contains(leaked), "the warning leaks {leaked}");
+    }
+}
+
+#[test]
+fn it_should_keep_the_rendered_text_when_the_extension_check_fails() {
+    let project = Project::new("acme");
+    let baseline = context_of(&hook_for(&project));
+    ExtTree::at(project.dir()).check("lint", INVALID_TOML);
+
+    let context = context_of(&hook_for(&project));
+
+    let appended = context
+        .strip_prefix(baseline.as_str())
+        .expect("the rendered text comes first");
+    assert!(
+        appended.starts_with("\nWARNING:"),
+        "the warning follows a blank line"
+    );
+}
+
+#[test]
+fn it_should_keep_the_warning_line_within_480_characters() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir())
+        .file(".omhl/checks/UPPER.toml", LINT_TOML)
+        .check("broken", INVALID_TOML)
+        .symlink(".omhl/checks/linked.toml", "broken.toml")
+        .check("huge", &"#".repeat(65_537))
+        .file(".omhl/checks/binary.toml", [0xff, 0xfe, 0xfd])
+        .check(
+            "nohow",
+            "blocking = true\n\n[when]\nevent = \"pre-commit\"\n",
+        );
+
+    let context = context_of(&hook_for(&project));
+
+    assert!(warning_line(&context).chars().count() <= 480);
 }

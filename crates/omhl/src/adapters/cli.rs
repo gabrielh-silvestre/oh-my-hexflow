@@ -74,6 +74,14 @@ pub enum ActionCommand {
     Close { work_item: String },
     /// Verify the hash chain.
     Verify,
+    /// Load the project extensions into the tenant.
+    Load {
+        /// Report the plan without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Write the projection of the tenant under `.omhl/projection/`.
+    Project,
 }
 
 #[derive(Debug, Subcommand)]
@@ -208,5 +216,7 @@ fn to_action(command: ActionCommand, stdin: &mut impl Read) -> Result<Action, Ap
         ActionCommand::GatePr { work_item } => Action::GatePr { work_item },
         ActionCommand::Close { work_item } => Action::Close { work_item },
         ActionCommand::Verify => Action::Verify,
+        ActionCommand::Load { dry_run } => Action::Load { dry_run },
+        ActionCommand::Project => Action::Project,
     })
 }

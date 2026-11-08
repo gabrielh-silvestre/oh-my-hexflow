@@ -853,3 +853,36 @@ fn it_should_not_use_atomics_anywhere_in_src() {
 
     assert_no_failures(&failures);
 }
+
+// ------------------------------------------------- travas do passo 6: adaptador hook
+
+const HOOK_SOURCE: &str = "adapters/hook.rs";
+const MARKER_SEARCH: &str = "find_marker";
+
+/// Chamadas ao `find_marker` fora de comentário e de string.
+fn marker_search_refs(source: &str) -> Result<usize, String> {
+    Ok(occurrences(&lex(source)?.code, MARKER_SEARCH, true))
+}
+
+#[test]
+fn it_should_not_search_the_marker_twice_in_the_hook() {
+    let mut failures = prove_both_sides(
+        marker_search_refs,
+        &[
+            "let marker = find_marker(&cwd)?;",
+            "let marker = project::marker::find_marker(&cwd)?;",
+        ],
+        &[
+            "// find_marker is called by the runtime",
+            "const NAME: &str = \"find_marker\";",
+            "fn find_marker_twice() {}",
+        ],
+    );
+
+    failures.extend(scan_paths(
+        &[src_dir().join(HOOK_SOURCE)],
+        marker_search_refs,
+    ));
+
+    assert_no_failures(&failures);
+}

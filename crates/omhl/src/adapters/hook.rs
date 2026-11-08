@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::ExitCode;
@@ -7,9 +8,8 @@ use serde_json::{Value, json};
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
-use crate::app::runtime::run_action;
+use crate::app::runtime::Runtime;
 use crate::project::Env;
-use crate::project::marker::find_marker;
 
 /// Without a marker the hook stays silent; any failure leaves stdout empty so no partial context is injected.
 pub fn session_start(
@@ -39,18 +39,74 @@ pub fn session_start(
 
 fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<String>, AppError> {
     let cwd = read_cwd(stdin)?;
-    if find_marker(Path::new(&cwd))?.is_none() {
-        return Ok(None);
-    }
-    let mut rendered = run_action(Path::new(&cwd), None, env, &Caller::hook(), &Action::Render)?;
-
-    match rendered["text"].take() {
-        Value::String(text) => Ok(Some(text)),
-        _ => Err(AppError::plain(
+    let runtime = match Runtime::discover(Path::new(&cwd), None, env) {
+        Ok(runtime) => runtime,
+        Err(error) if error.code() == "no-marker" => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let mut app = runtime.app()?;
+    let caller = Caller::hook();
+    let mut rendered = app.dispatch(&caller, &Action::Render)?;
+    let Value::String(mut text) = rendered["text"].take() else {
+        return Err(AppError::plain(
             "render-failed",
             "the render result has no text",
-        )),
+        ));
+    };
+    // A dry run never writes: the hook only tells what `omhl load` would do.
+    let checked = app.dispatch(&caller, &Action::Load { dry_run: true });
+    if let Some(line) = extension_notice(&checked) {
+        text.push_str(&format!("\n{line}\n"));
     }
+
+    Ok(Some(text))
+}
+
+fn extension_notice(checked: &Result<Value, AppError>) -> Option<String> {
+    match checked {
+        Ok(report) => pending_note(report),
+        Err(error) => Some(warning(error)),
+    }
+}
+
+fn pending_note(report: &Value) -> Option<String> {
+    let pending: usize = ["created", "revised", "relations_created"]
+        .iter()
+        .map(|key| report[key].as_array().map_or(0, Vec::len))
+        .sum();
+
+    (pending > 0).then(|| {
+        let tenant = report["tenant"].as_str().unwrap_or_default();
+
+        format!(
+            "NOTE: {pending} extension change(s) not loaded into tenant {tenant}; run omhl load"
+        )
+    })
+}
+
+/// Only codes and counts: file names and contents never reach the agent context.
+fn warning(error: &AppError) -> String {
+    let reasons = match error.code() {
+        "extensions-invalid" => issue_counts(&error.to_json()),
+        code => code.to_owned(),
+    };
+
+    format!("WARNING: extensions not checked ({reasons}); run omhl load --dry-run for details")
+}
+
+fn issue_counts(error: &Value) -> String {
+    let mut counts = BTreeMap::new();
+    for detail in error["error"]["details"].as_array().into_iter().flatten() {
+        if let Some(code) = detail["code"].as_str() {
+            *counts.entry(code).or_insert(0_usize) += 1;
+        }
+    }
+
+    counts
+        .iter()
+        .map(|(code, count)| format!("{code} x{count}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn read_cwd(stdin: &mut impl Read) -> Result<String, AppError> {
