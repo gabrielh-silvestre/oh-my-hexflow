@@ -55,8 +55,13 @@ pub fn render(input: &RenderInput<'_>, budget: usize) -> Rendered {
 
 fn visible_sorted(nodes: &[NodeView]) -> Vec<&NodeView> {
     let mut visible: Vec<&NodeView> = nodes.iter().filter(|node| !node.shadowed).collect();
-    visible.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+    sort_by_id(&mut visible);
     visible
+}
+
+/// Ordem estável por id, a mesma no contexto e na projeção.
+pub(crate) fn sort_by_id(nodes: &mut [&NodeView]) {
+    nodes.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
 }
 
 fn push_preamble(text: &mut String, tenant: &str) {

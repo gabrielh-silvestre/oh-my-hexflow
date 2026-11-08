@@ -1,3 +1,6 @@
+pub mod build;
+pub mod write;
+
 /// Arquivo de projeção; `name` é `<id>.md`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProjectedFile {
