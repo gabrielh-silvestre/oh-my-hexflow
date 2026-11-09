@@ -81,6 +81,8 @@ CLAUDE.local.md
 # OMC: local working state and documents; only project skills are tracked
 .omc/*
 !.omc/skills/
+# Same state written from a subdirectory (OMC creates .omc/ under the session cwd)
+*/**/.omc/
 
 # Plugin binary: a copy of target/release/omhl, never versioned
 plugin/bin/omhl
