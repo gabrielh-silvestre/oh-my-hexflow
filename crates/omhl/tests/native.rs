@@ -3,13 +3,17 @@ mod support;
 use hexlog::{
     AppendItem, AppendRequest, Catalog, DataViolation, EndpointStatus, ErrorCode, Hexlog,
     HexlogError, ItemBody, NativeNode, NativeNodes, Origin, RelationQuery, RelationView,
-    SemanticId,
+    SemanticId, Snapshot, SnapshotKind,
 };
 use omhl::graphs;
 use omhl::native::{NATIVE_CATALOG_VERSION, NativeBase, NativeCheck, NativeGuideline};
+use omhl::pr_gate::{REQUIRED_EVENTS, required_checks};
+use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::{Value, json};
+use support::omhl::{OmhlHarness, check_data, seed_pull_request};
+use support::pr_gate::{attest, expected_outcomes, gate_of, outcomes, required_pairs, snapshots};
 use support::raw::RawHarness;
-use support::{author, rty, sid, tenant, tname};
+use support::{FakeProbe, author, rty, sid, snap, tenant, tname};
 
 const CHECK_IDS: [&str; 3] = [
     "checks.run-tests",
@@ -37,8 +41,8 @@ fn catalog() -> Catalog {
     graphs::catalog().expect("the embedded catalogs build")
 }
 
-fn check_data(event: &str, how: &str, blocking: bool) -> Value {
-    json!({ "when": { "vocabulary": "closed", "event": event }, "how": how, "blocking": blocking })
+fn tree(fill: char) -> Snapshot {
+    Snapshot::new(SnapshotKind::GitTree, &fill.to_string().repeat(40)).expect("valid snapshot")
 }
 
 fn guideline_data(text: &str) -> Value {
@@ -451,4 +455,64 @@ fn it_should_expose_the_guideline_and_check_data_as_non_empty_texts_without_carr
         .filter(|text| text.is_empty() || text.contains('\r'))
         .collect();
     assert_eq!((texts.len(), malformed), (5, Vec::new()));
+}
+
+#[test]
+fn it_should_keep_the_native_checks_on_git_commit_snapshots() {
+    let probe = FakeProbe::clean(snap('a'))
+        .with_tree(TreeSource::Index, Ok(ProbeOutcome::Reproducible(tree('c'))));
+    let harness = OmhlHarness::new(probe);
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let at_head = snapshots(&snap('a'), &tree('c'));
+    attest(&mut omhl, &tree('c'), RUN_TESTS, "passed", true);
+    attest(&mut omhl, &tree('c'), CI_GREEN, "passed", true);
+    let on_the_tree = gate_of(&mut omhl, &at_head);
+    attest(&mut omhl, &snap('a'), RUN_TESTS, "passed", true);
+    attest(&mut omhl, &snap('a'), CI_GREEN, "passed", true);
+
+    let on_the_commit = gate_of(&mut omhl, &at_head);
+
+    assert_eq!(
+        outcomes(&on_the_tree),
+        expected_outcomes(&[
+            (RUN_TESTS, false),
+            (CI_GREEN, false),
+            ("no-open-contradiction", true),
+        ])
+    );
+    assert_eq!(
+        outcomes(&on_the_commit),
+        expected_outcomes(&[
+            (RUN_TESTS, true),
+            (CI_GREEN, true),
+            ("no-open-contradiction", true),
+        ])
+    );
+}
+
+#[test]
+fn it_should_keep_the_native_review_check_in_the_catalog_and_out_of_the_required_events() {
+    let checks = NativeBase.checks();
+    let ids: Vec<&str> = checks.iter().map(|check| check.id).collect();
+    let review = checks
+        .iter()
+        .find(|check| check.id == "checks.verify-review-comment-anchoring")
+        .expect("the review check is in the catalog");
+
+    let required = required_checks(checks, &[]);
+
+    assert_eq!(ids, CHECK_IDS.to_vec());
+    assert_eq!(
+        (review.event, review.blocking),
+        ("before-publishing-review-comments", true)
+    );
+    assert!(!REQUIRED_EVENTS.contains(&"before-publishing-review-comments"));
+    assert_eq!(
+        required,
+        required_pairs(&[
+            (RUN_TESTS, SnapshotKind::GitCommit),
+            (CI_GREEN, SnapshotKind::GitCommit),
+        ])
+    );
 }

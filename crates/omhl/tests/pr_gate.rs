@@ -1,19 +1,36 @@
 mod support;
 
-use hexlog::{Author, FieldName, ListFilter, Scalar};
+use hexlog::{
+    AppendItem, AppendOutcome, AppendRequest, Author, FieldName, ListFilter, Scalar, Snapshot,
+    SnapshotKind,
+    SnapshotKind::{GitCommit, GitTree},
+};
+use omhl::app::RUNNABLE_EVENTS;
 use omhl::error::{OmhlError, RuleCode};
+use omhl::facade::Omhl;
 use omhl::gate::{GateQuestion, Question};
-use omhl::pr_gate::{GATE_NAME, pr_gate_questions, required_checks};
+use omhl::pr_gate::{
+    GATE_NAME, GateSnapshots, NATIVE_SNAPSHOT, REQUIRED_EVENTS, pr_gate_questions, required_checks,
+};
+use omhl::probe::{ProbeOutcome, TreeSource};
+use serde_json::json;
 use support::omhl::{
-    OmhlHarness, PR_7, RUN_TESTS, acme, append_ok, attestation_item, check_data, node_item,
-    pull_request_data, refusal, retirement_item, revision_item, seed_pull_request, work_item_data,
+    OmhlHarness, PR_7, RUN_TESTS, acme, append_ok, attestation_id_for, attestation_item,
+    check_data, node_item, pull_request_data, refusal, request, retirement_item, revision_item,
+    seed_pull_request, with_snapshot, work_item_data,
 };
 use support::pr_gate::{
     CI_GREEN, DECISION, FEATURE_1, NO_OPEN_CONTRADICTION, PREMISE, attest, attest_required, close,
-    closed_data, data_of, default_natives, gate_of, head_seq, native_check, outcomes,
-    project_check, question, relation_retirement_item, seed_contradicted_decision, sids,
+    closed_data, data_of, default_natives, expected_outcomes, gate_of, head_seq,
+    mechanical_project_check, native_check, outcomes, project_check, question,
+    relation_retirement_item, required_pairs, seed_contradicted_decision, sids, snapshots,
 };
-use support::{FakeProbe, author, sid, snap, tname};
+use support::{
+    FakeProbe, author, executor_attestation_data, executor_author, loader_author, sid, snap, tname,
+};
+
+/// Hash do conteúdo vazio, o `byproduct` das attestations escritas à mão.
+const EMPTY_SHA: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 fn rule(code: RuleCode, pointer: &str) -> OmhlError {
     OmhlError::rule(code, pointer)
@@ -23,18 +40,34 @@ fn field(name: &str) -> FieldName {
     FieldName::parse(name).expect("valid field name")
 }
 
-// Composição das perguntas e seleção dos checks (puros)
+fn tree(fill: char) -> Snapshot {
+    Snapshot::new(SnapshotKind::GitTree, &fill.to_string().repeat(40)).expect("valid snapshot")
+}
 
-#[test]
-fn it_should_build_the_pr_gate_as_one_occurred_per_required_check_then_one_no_open_contradiction() {
-    let required = sids(&[RUN_TESTS, CI_GREEN]);
-    let expected_occurred = |check: &str| GateQuestion {
+/// O commit `snap('a')` e a árvore `tree('c')` de um HEAD limpo.
+fn at_head() -> GateSnapshots {
+    snapshots(&snap('a'), &tree('c'))
+}
+
+/// Sonda limpa: commit `snap('a')`, e a árvore `tree('c')` na fonte `Head`, a que o fechamento consulta.
+fn head_probe() -> FakeProbe {
+    FakeProbe::clean(snap('a'))
+        .with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree('c'))))
+}
+
+/// Como `head_probe`, e a mesma árvore na fonte `Index`, a que a guarda consulta ao gravar a attestation.
+fn flow_probe() -> FakeProbe {
+    head_probe().with_tree(TreeSource::Index, Ok(ProbeOutcome::Reproducible(tree('c'))))
+}
+
+fn occurred_question(check: &str, snapshot: &Snapshot) -> GateQuestion {
+    GateQuestion {
         label: check.to_owned(),
         question: Question::Occurred {
             select: ListFilter {
                 type_name: Some(tname("attestation")),
                 id_prefix: None,
-                snapshot: Some(snap('a')),
+                snapshot: Some(snapshot.clone()),
                 where_eq: vec![
                     (field("check"), Scalar::Str(check.to_owned())),
                     (field("work_item"), Scalar::Str(PR_7.to_owned())),
@@ -43,24 +76,67 @@ fn it_should_build_the_pr_gate_as_one_occurred_per_required_check_then_one_no_op
             },
             min: 1,
         },
-    };
-    let expected = vec![
-        expected_occurred(RUN_TESTS),
-        expected_occurred(CI_GREEN),
-        GateQuestion {
-            label: NO_OPEN_CONTRADICTION.to_owned(),
-            question: Question::NoOpenContradiction {
-                of: Some(ListFilter {
-                    type_name: Some(tname("decision")),
-                    id_prefix: None,
-                    snapshot: None,
-                    where_eq: vec![(field("work_item"), Scalar::Str(PR_7.to_owned()))],
-                }),
-            },
+    }
+}
+
+fn no_open_contradiction_question() -> GateQuestion {
+    GateQuestion {
+        label: NO_OPEN_CONTRADICTION.to_owned(),
+        question: Question::NoOpenContradiction {
+            of: Some(ListFilter {
+                type_name: Some(tname("decision")),
+                id_prefix: None,
+                snapshot: None,
+                where_eq: vec![(field("work_item"), Scalar::Str(PR_7.to_owned()))],
+            }),
         },
+    }
+}
+
+fn append_as(omhl: &mut Omhl<'_>, author: Author, items: Vec<AppendItem>) -> AppendOutcome {
+    omhl.append(&AppendRequest {
+        author,
+        ..request(items)
+    })
+    .expect("the append is accepted")
+}
+
+/// `checks.fmt` (mecânico, `before-commit`) atestado em `tree('c')` pelo `executor`, e `ci-green` em
+/// `snap('a')`: o gate fecha verde cobrando só esses dois.
+fn seed_per_check_flow(omhl: &mut Omhl<'_>) {
+    seed_pull_request(omhl);
+    let fmt = mechanical_project_check("checks.fmt", "before-commit", true, false);
+    append_as(
+        omhl,
+        loader_author(),
+        vec![node_item("checks.fmt", "check", fmt.data)],
+    );
+    let id = attestation_id_for(&tree('c'), "checks.fmt", PR_7);
+    let attestation = node_item(
+        &id,
+        "attestation",
+        executor_attestation_data("checks.fmt", PR_7, "passed", EMPTY_SHA),
+    );
+    append_as(
+        omhl,
+        executor_author(),
+        vec![with_snapshot(attestation, &tree('c'))],
+    );
+    attest(omhl, &snap('a'), CI_GREEN, "passed", true);
+}
+
+// Composição das perguntas e seleção dos checks (puros)
+
+#[test]
+fn it_should_build_the_pr_gate_as_one_occurred_per_required_check_then_one_no_open_contradiction() {
+    let required = required_pairs(&[(RUN_TESTS, GitCommit), (CI_GREEN, GitCommit)]);
+    let expected = vec![
+        occurred_question(RUN_TESTS, &snap('a')),
+        occurred_question(CI_GREEN, &snap('a')),
+        no_open_contradiction_question(),
     ];
 
-    let questions = pr_gate_questions(&required, &sid(PR_7), &snap('a'));
+    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head());
 
     assert_eq!(questions, expected);
 }
@@ -80,7 +156,10 @@ fn it_should_require_only_blocking_native_checks_with_before_commit_or_before_me
 
     let required = required_checks(&natives, &[]);
 
-    assert_eq!(required, sids(&[RUN_TESTS, CI_GREEN]));
+    assert_eq!(
+        required,
+        required_pairs(&[(RUN_TESTS, GitCommit), (CI_GREEN, GitCommit)])
+    );
 }
 
 #[test]
@@ -94,7 +173,14 @@ fn it_should_require_a_blocking_project_check_with_a_covered_event() {
 
     let required = required_checks(&default_natives(), &project);
 
-    assert_eq!(required, sids(&[RUN_TESTS, CI_GREEN, "checks.lint-docs"]));
+    assert_eq!(
+        required,
+        required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
+            ("checks.lint-docs", GitCommit)
+        ])
+    );
 }
 
 #[test]
@@ -108,7 +194,10 @@ fn it_should_not_require_a_non_blocking_project_check() {
 
     let required = required_checks(&default_natives(), &project);
 
-    assert_eq!(required, sids(&[RUN_TESTS, CI_GREEN]));
+    assert_eq!(
+        required,
+        required_pairs(&[(RUN_TESTS, GitCommit), (CI_GREEN, GitCommit)])
+    );
 }
 
 #[test]
@@ -122,7 +211,10 @@ fn it_should_not_require_a_project_check_whose_event_is_not_covered() {
 
     let required = required_checks(&default_natives(), &project);
 
-    assert_eq!(required, sids(&[RUN_TESTS, CI_GREEN]));
+    assert_eq!(
+        required,
+        required_pairs(&[(RUN_TESTS, GitCommit), (CI_GREEN, GitCommit)])
+    );
 }
 
 #[test]
@@ -136,7 +228,7 @@ fn it_should_not_require_a_shadowed_project_check() {
 
     let required = required_checks(&natives, &shadow);
 
-    assert_eq!(required, sids(&[CI_GREEN]));
+    assert_eq!(required, required_pairs(&[(CI_GREEN, GitCommit)]));
 }
 
 // Avaliação do gate sobre o `Hexlog` real
@@ -154,13 +246,13 @@ fn it_should_not_require_a_retired_project_check() {
             check_data("before-merge", "run it", true),
         )],
     );
-    let while_active = gate_of(&mut omhl, &snap('a')).questions.len();
+    let while_active = gate_of(&mut omhl, &at_head()).questions.len();
     append_ok(
         &mut omhl,
         vec![retirement_item("checks.lint-docs", &created.records[0].id)],
     );
 
-    let after_retirement = gate_of(&mut omhl, &snap('a')).questions.len();
+    let after_retirement = gate_of(&mut omhl, &at_head()).questions.len();
 
     assert_eq!((while_active, after_retirement), (4, 3));
 }
@@ -173,7 +265,7 @@ fn it_should_pass_when_every_required_check_has_an_ok_attestation_at_the_snapsho
     attest(&mut omhl, &snap('a'), RUN_TESTS, "passed", true);
     attest(&mut omhl, &snap('a'), CI_GREEN, "passed_with_warning", true);
 
-    let report = gate_of(&mut omhl, &snap('a'));
+    let report = gate_of(&mut omhl, &at_head());
 
     assert!(report.passed);
     assert_eq!(report.gate, GATE_NAME);
@@ -194,7 +286,7 @@ fn it_should_fail_and_name_the_check_without_an_attestation() {
     seed_pull_request(&mut omhl);
     attest(&mut omhl, &snap('a'), CI_GREEN, "passed", true);
 
-    let report = gate_of(&mut omhl, &snap('a'));
+    let report = gate_of(&mut omhl, &at_head());
 
     assert!(!report.passed);
     assert!(!question(&report, RUN_TESTS).passed);
@@ -207,7 +299,7 @@ fn it_should_fail_when_the_attestation_belongs_to_another_snapshot() {
     seed_pull_request(&mut omhl);
     attest_required(&mut omhl, &snap('b'));
 
-    let report = gate_of(&mut omhl, &snap('a'));
+    let report = gate_of(&mut omhl, &at_head());
 
     assert_eq!(
         outcomes(&report),
@@ -227,7 +319,7 @@ fn it_should_fail_when_an_attestation_failed() {
     attest(&mut omhl, &snap('a'), RUN_TESTS, "failed", false);
     attest(&mut omhl, &snap('a'), CI_GREEN, "passed", true);
 
-    let report = gate_of(&mut omhl, &snap('a'));
+    let report = gate_of(&mut omhl, &at_head());
 
     assert!(!report.passed);
     assert!(!question(&report, RUN_TESTS).passed);
@@ -241,7 +333,7 @@ fn it_should_fail_while_a_decision_of_the_work_item_is_contradicted() {
     attest_required(&mut omhl, &snap('a'));
     seed_contradicted_decision(&mut omhl);
 
-    let report = gate_of(&mut omhl, &snap('a'));
+    let report = gate_of(&mut omhl, &at_head());
 
     assert_eq!(
         outcomes(&report),
@@ -274,7 +366,7 @@ fn it_should_pass_again_after_the_contradiction_is_retired() {
         )],
     );
 
-    let report = gate_of(&mut omhl, &snap('a'));
+    let report = gate_of(&mut omhl, &at_head());
 
     assert!(report.passed);
 }
@@ -284,7 +376,7 @@ fn it_should_refuse_evaluating_the_gate_for_an_unknown_work_item() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
 
-    let result = omhl.evaluate_pr_gate(&acme(), &sid("work-items.pr-9"), &snap('a'));
+    let result = omhl.evaluate_pr_gate(&acme(), &sid("work-items.pr-9"), &at_head());
 
     assert_eq!(
         result.err(),
@@ -299,7 +391,7 @@ fn it_should_not_write_anything_when_evaluating_the_gate() {
     seed_pull_request(&mut omhl);
     let before = omhl.chain_head(&acme()).expect("the head is read");
 
-    gate_of(&mut omhl, &snap('a'));
+    gate_of(&mut omhl, &at_head());
 
     let after = omhl.chain_head(&acme()).expect("the head is read");
     assert_eq!(after, before);
@@ -309,13 +401,13 @@ fn it_should_not_write_anything_when_evaluating_the_gate() {
 
 #[test]
 fn it_should_close_a_work_item_recording_the_passing_result_snapshot_and_chain_head_seq() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     attest_required(&mut omhl, &snap('a'));
     let head_before = head_seq(&mut omhl);
 
-    let closed = close(&mut omhl, PR_7, &snap('a'));
+    let closed = close(&mut omhl, PR_7, &at_head());
 
     assert_eq!(
         data_of(&mut omhl, PR_7),
@@ -326,12 +418,12 @@ fn it_should_close_a_work_item_recording_the_passing_result_snapshot_and_chain_h
 
 #[test]
 fn it_should_close_even_when_the_gate_fails() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     let head_before = head_seq(&mut omhl);
 
-    let closed = close(&mut omhl, PR_7, &snap('a'));
+    let closed = close(&mut omhl, PR_7, &at_head());
 
     assert!(!closed.report.passed);
     assert_eq!(
@@ -347,13 +439,13 @@ fn it_should_close_even_when_the_gate_fails() {
 
 #[test]
 fn it_should_refuse_closing_an_unknown_work_item() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
 
     let result = omhl.close_work_item(
         &acme(),
         &sid("work-items.pr-9"),
-        &snap('a'),
+        &at_head(),
         &support::author(),
     );
 
@@ -365,12 +457,12 @@ fn it_should_refuse_closing_an_unknown_work_item() {
 
 #[test]
 fn it_should_refuse_closing_a_work_item_already_closed() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
-    close(&mut omhl, PR_7, &snap('a'));
+    close(&mut omhl, PR_7, &at_head());
 
-    let result = omhl.close_work_item(&acme(), &sid(PR_7), &snap('a'), &support::author());
+    let result = omhl.close_work_item(&acme(), &sid(PR_7), &at_head(), &support::author());
 
     assert_eq!(
         result.err(),
@@ -380,7 +472,7 @@ fn it_should_refuse_closing_a_work_item_already_closed() {
 
 #[test]
 fn it_should_close_a_pull_request_and_a_plain_work_item_the_same_way() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     append_ok(
@@ -392,10 +484,10 @@ fn it_should_close_a_pull_request_and_a_plain_work_item_the_same_way() {
         )],
     );
     let pr_head = head_seq(&mut omhl);
-    close(&mut omhl, PR_7, &snap('a'));
+    close(&mut omhl, PR_7, &at_head());
     let feature_head = head_seq(&mut omhl);
 
-    close(&mut omhl, FEATURE_1, &snap('a'));
+    close(&mut omhl, FEATURE_1, &at_head());
 
     assert_eq!(
         data_of(&mut omhl, PR_7),
@@ -414,10 +506,10 @@ fn it_should_close_a_pull_request_and_a_plain_work_item_the_same_way() {
 
 #[test]
 fn it_should_refuse_reopening_a_closed_work_item() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
-    let closed = close(&mut omhl, PR_7, &snap('a'));
+    let closed = close(&mut omhl, PR_7, &at_head());
     let reopening = revision_item(
         PR_7,
         "pull-request",
@@ -435,10 +527,10 @@ fn it_should_refuse_reopening_a_closed_work_item() {
 
 #[test]
 fn it_should_refuse_an_attestation_for_a_closed_work_item() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
-    close(&mut omhl, PR_7, &snap('a'));
+    close(&mut omhl, PR_7, &at_head());
 
     let error = refusal(
         &mut omhl,
@@ -453,7 +545,7 @@ fn it_should_refuse_an_attestation_for_a_closed_work_item() {
 
 #[test]
 fn it_should_keep_the_chain_valid_after_the_full_flow() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     attest_required(&mut omhl, &snap('a'));
@@ -467,7 +559,7 @@ fn it_should_keep_the_chain_valid_after_the_full_flow() {
             &contradiction,
         )],
     );
-    close(&mut omhl, PR_7, &snap('a'));
+    close(&mut omhl, PR_7, &at_head());
 
     let report = omhl
         .verify_chain(&acme(), None)
@@ -514,12 +606,17 @@ fn it_should_refuse_an_evaluation_with_more_than_eight_where_eq_pairs() {
 
 #[test]
 fn it_should_refuse_closing_when_the_snapshot_is_not_the_probe_head() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     let head_before = omhl.chain_head(&acme()).expect("the head is read");
 
-    let result = omhl.close_work_item(&acme(), &sid(PR_7), &snap('b'), &author());
+    let result = omhl.close_work_item(
+        &acme(),
+        &sid(PR_7),
+        &snapshots(&snap('b'), &tree('c')),
+        &author(),
+    );
     let head_after = omhl.chain_head(&acme()).expect("the head is read");
 
     assert_eq!(
@@ -538,7 +635,7 @@ fn it_should_refuse_closing_when_the_tree_is_dirty() {
     seed_pull_request(&mut omhl);
     let head_before = omhl.chain_head(&acme()).expect("the head is read");
 
-    let result = omhl.close_work_item(&acme(), &sid(PR_7), &snap('a'), &author());
+    let result = omhl.close_work_item(&acme(), &sid(PR_7), &at_head(), &author());
     let head_after = omhl.chain_head(&acme()).expect("the head is read");
 
     assert_eq!(
@@ -552,7 +649,7 @@ fn it_should_refuse_closing_when_the_tree_is_dirty() {
 
 #[test]
 fn it_should_record_the_caller_author_on_the_closing_revision() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     let closer = Author {
@@ -561,7 +658,7 @@ fn it_should_record_the_caller_author_on_the_closing_revision() {
         client: "closing-client".to_owned(),
     };
 
-    omhl.close_work_item(&acme(), &sid(PR_7), &snap('a'), &closer)
+    omhl.close_work_item(&acme(), &sid(PR_7), &at_head(), &closer)
         .expect("the work item is closed");
     let stored = omhl
         .get(&acme(), &sid(PR_7))
@@ -569,4 +666,220 @@ fn it_should_record_the_caller_author_on_the_closing_revision() {
         .map(|node| node.author);
 
     assert_eq!(stored, Some(closer));
+}
+
+// Um snapshot por check
+
+#[test]
+fn it_should_require_the_three_events_in_the_pull_request_gate() {
+    let notes = project_check("checks.review-notes", "before-pr", true, false);
+
+    let required = required_checks(&default_natives(), &[notes]);
+
+    assert_eq!(
+        REQUIRED_EVENTS,
+        ["before-commit", "before-pr", "before-merge"]
+    );
+    assert_eq!(REQUIRED_EVENTS, RUNNABLE_EVENTS);
+    assert_eq!(
+        required,
+        required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
+            ("checks.review-notes", GitCommit),
+        ])
+    );
+}
+
+#[test]
+fn it_should_ask_for_the_before_commit_attestation_on_the_head_tree() {
+    let fmt = mechanical_project_check("checks.fmt", "before-commit", true, false);
+    let required = required_checks(&default_natives(), &[fmt]);
+
+    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head());
+
+    assert_eq!(
+        required,
+        required_pairs(&[(CI_GREEN, GitCommit), ("checks.fmt", GitTree)])
+    );
+    assert_eq!(
+        questions,
+        vec![
+            occurred_question(CI_GREEN, &snap('a')),
+            occurred_question("checks.fmt", &tree('c')),
+            no_open_contradiction_question(),
+        ]
+    );
+}
+
+#[test]
+fn it_should_ask_for_the_before_pr_attestation_on_the_head_commit() {
+    let lint = mechanical_project_check("checks.lint", "before-pr", true, false);
+    let required = required_checks(&default_natives(), &[lint]);
+
+    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head());
+
+    assert_eq!(
+        required,
+        required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
+            ("checks.lint", GitCommit),
+        ])
+    );
+    assert!(questions.contains(&occurred_question("checks.lint", &snap('a'))));
+}
+
+#[test]
+fn it_should_ask_for_the_before_merge_attestation_on_the_head_commit() {
+    let ci = mechanical_project_check("checks.ci", "before-merge", true, false);
+    let required = required_checks(&default_natives(), &[ci]);
+
+    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head());
+
+    assert_eq!(
+        required,
+        required_pairs(&[(RUN_TESTS, GitCommit), ("checks.ci", GitCommit)])
+    );
+    assert!(questions.contains(&occurred_question("checks.ci", &snap('a'))));
+}
+
+#[test]
+fn it_should_derive_the_snapshot_kind_of_each_required_check_with_the_shared_decoder() {
+    let project = [
+        project_check("checks.a-notes", "before-commit", true, false),
+        mechanical_project_check("checks.b-fmt", "before-commit", true, false),
+        mechanical_project_check("checks.c-lint", "before-pr", true, false),
+        mechanical_project_check("checks.d-ci", "before-merge", true, false),
+    ];
+
+    let required = required_checks(&default_natives(), &project);
+
+    assert_eq!(
+        required,
+        required_pairs(&[
+            ("checks.a-notes", GitCommit),
+            ("checks.b-fmt", GitTree),
+            ("checks.c-lint", GitCommit),
+            ("checks.d-ci", GitCommit),
+        ])
+    );
+}
+
+#[test]
+fn it_should_treat_a_native_check_as_a_git_commit_check_through_the_single_native_constant() {
+    let required = required_checks(&default_natives(), &[]);
+
+    assert_eq!(NATIVE_SNAPSHOT, GitCommit);
+    assert_eq!(
+        required,
+        required_pairs(&[(RUN_TESTS, GitCommit), (CI_GREEN, GitCommit)])
+    );
+}
+
+#[test]
+fn it_should_close_a_work_item_with_the_per_check_snapshots() {
+    let harness = OmhlHarness::new(flow_probe());
+    let mut omhl = harness.open();
+    seed_per_check_flow(&mut omhl);
+
+    let closed = close(&mut omhl, PR_7, &at_head());
+
+    assert!(closed.report.passed);
+    assert_eq!(
+        outcomes(&closed.report),
+        expected_outcomes(&[
+            (CI_GREEN, true),
+            ("checks.fmt", true),
+            (NO_OPEN_CONTRADICTION, true),
+        ])
+    );
+}
+
+#[test]
+fn it_should_refuse_to_close_when_the_head_tree_cannot_be_probed() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let head_before = head_seq(&mut omhl);
+
+    let result = omhl.close_work_item(&acme(), &sid(PR_7), &at_head(), &author());
+
+    assert_eq!(result.err(), Some(rule(RuleCode::ProbeFailed, "/snapshot")));
+    assert_eq!(data_of(&mut omhl, PR_7)["status"], json!("open"));
+    assert_eq!(head_seq(&mut omhl), head_before);
+}
+
+#[test]
+fn it_should_keep_the_closing_record_snapshot_as_the_head_commit() {
+    let harness = OmhlHarness::new(flow_probe());
+    let mut omhl = harness.open();
+    seed_per_check_flow(&mut omhl);
+    let open = data_of(&mut omhl, PR_7);
+    let head_before = head_seq(&mut omhl);
+
+    close(&mut omhl, PR_7, &at_head());
+
+    assert_eq!(
+        data_of(&mut omhl, PR_7),
+        closed_data(open, true, head_before, &snap('a'))
+    );
+}
+
+#[test]
+fn it_should_not_require_run_tests_when_a_mechanical_before_commit_check_exists() {
+    let fmt = mechanical_project_check("checks.fmt", "before-commit", true, false);
+
+    let required = required_checks(&default_natives(), &[fmt]);
+
+    assert_eq!(
+        required,
+        required_pairs(&[(CI_GREEN, GitCommit), ("checks.fmt", GitTree)])
+    );
+}
+
+#[test]
+fn it_should_not_require_ci_green_before_merge_when_a_mechanical_before_merge_check_exists() {
+    let ci = mechanical_project_check("checks.ci", "before-merge", true, false);
+
+    let required = required_checks(&default_natives(), &[ci]);
+
+    assert_eq!(
+        required,
+        required_pairs(&[(RUN_TESTS, GitCommit), ("checks.ci", GitCommit)])
+    );
+}
+
+#[test]
+fn it_should_keep_requiring_the_native_checks_when_no_mechanical_check_covers_the_event() {
+    let project = [
+        project_check("checks.notes", "before-commit", true, false),
+        mechanical_project_check("checks.lint", "before-pr", true, false),
+        mechanical_project_check(RUN_TESTS, "before-commit", true, true),
+    ];
+
+    let required = required_checks(&default_natives(), &project);
+
+    assert_eq!(
+        required,
+        required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
+            ("checks.notes", GitCommit),
+            ("checks.lint", GitCommit),
+        ])
+    );
+}
+
+#[test]
+fn it_should_keep_requiring_run_tests_when_the_only_mechanical_before_commit_check_is_not_blocking()
+{
+    let fmt = mechanical_project_check("checks.fmt", "before-commit", false, false);
+
+    let required = required_checks(&default_natives(), &[fmt]);
+
+    assert_eq!(
+        required,
+        required_pairs(&[(RUN_TESTS, GitCommit), (CI_GREEN, GitCommit)])
+    );
 }

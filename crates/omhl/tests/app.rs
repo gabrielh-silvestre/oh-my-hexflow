@@ -48,7 +48,10 @@ impl Fixture {
     }
 
     fn clean() -> Fixture {
-        Fixture::new(FakeProbe::clean(snap('a')))
+        Fixture::new(
+            FakeProbe::clean(snap('a'))
+                .with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree('c')))),
+        )
     }
 
     fn deps(&self) -> OmhlDeps<'_> {
@@ -183,6 +186,10 @@ fn close_action() -> Action {
     Action::Close {
         work_item: W1.to_owned(),
     }
+}
+
+fn tree(fill: char) -> Snapshot {
+    Snapshot::new(SnapshotKind::GitTree, &fill.to_string().repeat(40)).expect("valid snapshot")
 }
 
 fn tree_a() -> Snapshot {

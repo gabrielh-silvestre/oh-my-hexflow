@@ -311,6 +311,18 @@ fn it_should_attest_both_required_checks_and_pass_the_gate_in_a_real_repo() {
     )
     .run();
     let gate = in_project(&project, &["gate-pr", W1]).run();
+    let gate_json = json_line(&gate.stdout);
+    let questions: Vec<(&str, bool)> = gate_json["questions"]
+        .as_array()
+        .expect("the gate lists its questions")
+        .iter()
+        .map(|question| {
+            (
+                question["label"].as_str().expect("the label is text"),
+                question["passed"].as_bool().expect("passed is a bool"),
+            )
+        })
+        .collect();
     let first_json = json_line(&first.stdout);
     let attestation_id = first_json["attestation"]["id"]
         .as_str()
@@ -323,7 +335,19 @@ fn it_should_attest_both_required_checks_and_pass_the_gate_in_a_real_repo() {
         json_line(&second.stdout)["attestation"]["snapshot"]["id"],
         json!(head)
     );
+    assert_eq!(
+        first_json["attestation"]["snapshot"]["kind"],
+        json!("git-commit")
+    );
     assert_eq!(json_line(&gate.stdout)["passed"], json!(true));
+    assert_eq!(
+        questions,
+        vec![
+            (RUN_TESTS, true),
+            (CI_GREEN, true),
+            ("no-open-contradiction", true),
+        ]
+    );
     assert_eq!(
         json_line(&fetched.stdout)["node"]["data"]["outcome"],
         json!("passed")
