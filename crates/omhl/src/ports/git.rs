@@ -1,5 +1,6 @@
 use std::ffi::OsString;
-use std::io::Read;
+use std::fs;
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver};
@@ -16,12 +17,15 @@ const MAX_OUTPUT_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_ERROR_CHARS: usize = 200;
 const OID_PREFIX: &[u8] = b"# branch.oid ";
 const DIRTY_PREFIXES: [&[u8]; 4] = [b"1 ", b"2 ", b"u ", b"? "];
+const MARK_FILE: &str = "omhl-develop-mark";
+const MARK_LINE: &[u8] = b"omhl-develop-mark v1";
 
 /// Sonda que pergunta ao executável `git` se a árvore do repositório que envolve `dir` está limpa.
 pub struct GitProbe {
     dir: PathBuf,
     program: OsString,
     timeout: Duration,
+    index_file: Option<PathBuf>,
 }
 
 struct GitOutput {
@@ -36,6 +40,7 @@ impl GitProbe {
             dir: dir.to_path_buf(),
             program: OsString::from("git"),
             timeout: DEFAULT_TIMEOUT,
+            index_file: None,
         }
     }
 
@@ -50,12 +55,15 @@ impl GitProbe {
         GitProbe { timeout, ..self }
     }
 
-    /// Caminho relativo é resolvido contra `base`; índice injetado que não existe é erro, nunca árvore vazia.
-    pub fn with_index_file(self, _index_file: Option<&Path>, _base: &Path) -> GitProbe {
-        unimplemented!()
+    /// Caminho relativo é resolvido contra `base` já aqui: o `git -C <dir>` troca de diretório antes de ler a variável.
+    pub fn with_index_file(self, index_file: Option<&Path>, base: &Path) -> GitProbe {
+        GitProbe {
+            index_file: index_file.map(|path| base.join(path)),
+            ..self
+        }
     }
 
-    fn command(&self) -> Command {
+    fn base_command(&self) -> Command {
         let mut command = Command::new(&self.program);
         // Variáveis GIT_* herdadas (GIT_DIR, GIT_INDEX_FILE, GIT_CONFIG_COUNT...) desviariam a resposta.
         for (key, _) in std::env::vars_os() {
@@ -69,24 +77,42 @@ impl GitProbe {
             .arg("-C")
             .arg(&self.dir)
             .args(["--no-optional-locks", "-c", "core.fsmonitor=false"])
-            .args([
-                "status",
-                "--porcelain=v2",
-                "-z",
-                "--branch",
-                "--no-renames",
-                "--no-ahead-behind",
-                "--untracked-files=normal",
-                "--ignore-submodules=none",
-            ])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         command
     }
 
-    fn run(&self) -> Result<GitOutput, ProbeError> {
-        let mut child = self.command().spawn().map_err(|error| ProbeError {
+    fn status_command(&self) -> Command {
+        self.git(&[
+            "status",
+            "--porcelain=v2",
+            "-z",
+            "--branch",
+            "--no-renames",
+            "--no-ahead-behind",
+            "--untracked-files=normal",
+            "--ignore-submodules=none",
+        ])
+    }
+
+    fn git(&self, args: &[&str]) -> Command {
+        let mut command = self.base_command();
+        command.args(args);
+        command
+    }
+
+    /// Só as chamadas de árvore recebem o índice injetado.
+    fn tree_git(&self, args: &[&str]) -> Command {
+        let mut command = self.git(args);
+        if let Some(index_file) = &self.index_file {
+            command.env("GIT_INDEX_FILE", index_file);
+        }
+        command
+    }
+
+    fn run(&self, mut command: Command) -> Result<GitOutput, ProbeError> {
+        let mut child = command.spawn().map_err(|error| ProbeError {
             message: error.to_string(),
         })?;
         let (stdout, stderr) = match (child.stdout.take(), child.stderr.take()) {
@@ -104,45 +130,145 @@ impl GitProbe {
             stderr: collect(&stderr, deadline)?,
         })
     }
+
+    /// Exige exit 0 e devolve o stdout.
+    fn run_ok(&self, command: Command) -> Result<Vec<u8>, ProbeError> {
+        let output = self.run(command)?;
+        if !output.status.success() {
+            return Err(git_error(&output));
+        }
+        Ok(output.stdout)
+    }
+
+    fn line(&self, args: &[&str]) -> Result<String, ProbeError> {
+        text_line(self.run_ok(self.git(args))?)
+    }
+
+    /// Working tree diferente do índice, ou não rastreado fora do `.gitignore`.
+    fn index_dirty(&self) -> Result<bool, ProbeError> {
+        // Sem esta conferência o `git` trataria o índice ausente como vazio.
+        if let Some(index_file) = &self.index_file
+            && !index_file.exists()
+        {
+            return Err(error("the git index file does not exist"));
+        }
+        let diff = self.run(self.tree_git(&["diff", "--quiet", "--no-ext-diff"]))?;
+        match diff.status.code() {
+            Some(0) => {}
+            Some(1) => return Ok(true),
+            _ => return Err(git_error(&diff)),
+        }
+        let untracked =
+            self.run_ok(self.tree_git(&["ls-files", "--others", "--exclude-standard", "-z"]))?;
+        Ok(!untracked.is_empty())
+    }
+
+    fn tree_snapshot(&self, command: Command) -> Result<ProbeOutcome, ProbeError> {
+        let stdout = self.run_ok(command)?;
+        let snapshot = std::str::from_utf8(&stdout)
+            .ok()
+            .and_then(|text| text.strip_suffix('\n'))
+            .and_then(|hex| Snapshot::new(SnapshotKind::GitTree, hex).ok())
+            .ok_or_else(|| error("unexpected git output"))?;
+        Ok(ProbeOutcome::Reproducible(snapshot))
+    }
+
+    fn rebase_head(&self) -> Result<Option<String>, ProbeError> {
+        for name in ["rebase-merge/head-name", "rebase-apply/head-name"] {
+            let path = self.line(&["rev-parse", "--path-format=absolute", "--git-path", name])?;
+            match fs::read_to_string(path) {
+                Ok(content) => return Ok(Some(content)),
+                Err(io_error) if io_error.kind() == ErrorKind::NotFound => {}
+                Err(io_error) => return Err(error(io_error.to_string())),
+            }
+        }
+        Ok(None)
+    }
+
+    fn head_commit(&self) -> Result<Option<String>, ProbeError> {
+        let output = self.run(self.git(&["rev-parse", "--verify", "-q", "HEAD"]))?;
+        match output.status.code() {
+            Some(0) => text_line(output.stdout).map(Some),
+            Some(1) if output.stdout.is_empty() => Ok(None),
+            _ => Err(git_error(&output)),
+        }
+    }
+
+    fn containing_branches(&self) -> Result<Vec<String>, ProbeError> {
+        let stdout = self.run_ok(self.git(&[
+            "for-each-ref",
+            "--format=%(refname:short)",
+            "--contains",
+            "HEAD",
+            "refs/heads",
+        ]))?;
+        let text = String::from_utf8(stdout).map_err(|_| error("unexpected git output"))?;
+        Ok(text.lines().map(str::to_owned).collect())
+    }
+
+    fn mark_path(&self) -> Result<PathBuf, ProbeError> {
+        let git_dir = self.line(&["rev-parse", "--path-format=absolute", "--absolute-git-dir"])?;
+        Ok(Path::new(&git_dir).join(MARK_FILE))
+    }
 }
 
 impl SnapshotProbe for GitProbe {
     fn probe(&self) -> Result<ProbeOutcome, ProbeError> {
-        let output = self.run()?;
-        if !output.status.success() {
-            let message = String::from_utf8_lossy(&output.stderr);
-
-            return Err(error(
-                message
-                    .trim()
-                    .chars()
-                    .take(MAX_ERROR_CHARS)
-                    .collect::<String>(),
-            ));
-        }
-        parse_status(&output.stdout)
+        parse_status(&self.run_ok(self.status_command())?)
     }
 
-    fn probe_tree(&self, _source: TreeSource) -> Result<ProbeOutcome, ProbeError> {
-        unimplemented!()
+    fn probe_tree(&self, source: TreeSource) -> Result<ProbeOutcome, ProbeError> {
+        match source {
+            TreeSource::Index if self.index_dirty()? => Ok(ProbeOutcome::Dirty),
+            TreeSource::Index => self.tree_snapshot(self.tree_git(&["write-tree"])),
+            TreeSource::Head => match self.probe()? {
+                ProbeOutcome::Dirty => Ok(ProbeOutcome::Dirty),
+                ProbeOutcome::Reproducible(_) => {
+                    self.tree_snapshot(self.git(&["rev-parse", "HEAD^{tree}"]))
+                }
+            },
+        }
     }
 
     fn tree_dirty(&self) -> Result<bool, ProbeError> {
-        unimplemented!()
+        self.index_dirty()
     }
 
     fn head_facts(&self) -> Result<HeadFacts, ProbeError> {
-        unimplemented!()
+        let current =
+            Some(self.line(&["branch", "--show-current"])?).filter(|name| !name.is_empty());
+        let rebase_head = self.rebase_head()?;
+        let head = self.head_commit()?;
+        // Sem commit o `for-each-ref --contains HEAD` sai 129.
+        let containing = match head {
+            Some(_) => self.containing_branches()?,
+            None => Vec::new(),
+        };
+        Ok(HeadFacts {
+            current,
+            rebase_head,
+            containing,
+            head,
+        })
     }
 }
 
 impl DevelopMark for GitProbe {
     fn present(&self) -> Result<bool, ProbeError> {
-        unimplemented!()
+        match fs::read(self.mark_path()?) {
+            Ok(content) => Ok(content.split(|byte| *byte == b'\n').next() == Some(MARK_LINE)),
+            Err(io_error) if io_error.kind() == ErrorKind::NotFound => Ok(false),
+            Err(io_error) => Err(error(io_error.to_string())),
+        }
     }
 
     fn consume(&self) -> Result<(), ProbeError> {
-        unimplemented!()
+        match fs::remove_file(self.mark_path()?) {
+            Err(io_error) if io_error.kind() != ErrorKind::NotFound => {
+                Err(error(io_error.to_string()))
+            }
+            _ => Ok(()),
+        }
     }
 }
 
@@ -150,6 +276,26 @@ fn error(message: impl Into<String>) -> ProbeError {
     ProbeError {
         message: message.into(),
     }
+}
+
+fn git_error(output: &GitOutput) -> ProbeError {
+    let message = String::from_utf8_lossy(&output.stderr);
+    error(
+        message
+            .trim()
+            .chars()
+            .take(MAX_ERROR_CHARS)
+            .collect::<String>(),
+    )
+}
+
+/// Stdout de uma linha, sem o `\n` final.
+fn text_line(stdout: Vec<u8>) -> Result<String, ProbeError> {
+    let mut text = String::from_utf8(stdout).map_err(|_| error("unexpected git output"))?;
+    if text.ends_with('\n') {
+        text.pop();
+    }
+    Ok(text)
 }
 
 /// A thread solta termina quando o cano fecha, mesmo que um descendente do `git` o segure.
