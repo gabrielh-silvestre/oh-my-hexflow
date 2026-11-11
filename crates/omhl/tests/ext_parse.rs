@@ -1,6 +1,9 @@
+mod support;
+
 use omhl::extensions::model::{Extension, ExtensionIssue, ExtensionKind, RawExtension};
 use omhl::extensions::parse::parse;
-use serde_json::json;
+use serde_json::{Value, json};
+use support::omhl::check_data;
 
 const CHECK_TOML_PATH: &str = ".omhl/checks/lint.toml";
 const CHECK_MARKDOWN_PATH: &str = ".omhl/checks/lint.md";
@@ -695,4 +698,288 @@ fn it_should_report_the_form_issue_of_an_event_before_event_unsupported() {
             vec!["event-unsupported", "value-not-allowed"]
         )
     );
+}
+
+// Campos mecânicos do check (S8)
+
+const REPORT_LINT_TOML: &str = r#"concern = "style"
+variant = "lint"
+when = { event = "before-commit" }
+blocking = true
+run = ["cargo", "clippy", "--workspace", "--all-targets", "--locked"]
+timeout_secs = 600
+expect = [
+  { exit = 0, stderr = "(?m)^warning", outcome = "passed_with_warning" },
+  { exit = 0, outcome = "passed" },
+]
+"#;
+const REPORT_LINT_MD: &str = "Run clippy on the workspace.\n";
+
+fn report_lint_data() -> Value {
+    let mut data = check_data("before-commit", "Run clippy on the workspace.", true);
+    data["concern"] = json!("style");
+    data["variant"] = json!("lint");
+    data["run"] = json!([
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked"
+    ]);
+    data["timeout_secs"] = json!(600);
+    data["expect"] = json!([
+        {"exit": 0, "stderr": "(?m)^warning", "outcome": "passed_with_warning"},
+        {"exit": 0, "outcome": "passed"},
+    ]);
+
+    data
+}
+
+/// Check mecânico mínimo; `(chave, Some(v))` troca ou insere a linha, `(chave, None)` apaga.
+fn mech_toml(over: &[(&str, Option<&str>)]) -> String {
+    let mut lines: Vec<String> = [
+        "blocking = true",
+        "how = \"Run lint\"",
+        "run = [\"true\"]",
+        "timeout_secs = 60",
+        "expect = [{ exit = 0, outcome = \"passed\" }]",
+        "[when]",
+        "event = \"before-pr\"",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+
+    for (key, value) in over {
+        let prefix = format!("{key} = ");
+        let found = lines.iter().position(|line| line.starts_with(&prefix));
+        match (found, value) {
+            (Some(index), Some(value)) => lines[index] = format!("{prefix}{value}"),
+            (Some(index), None) => {
+                lines.remove(index);
+            }
+            (None, Some(value)) => {
+                let when = lines
+                    .iter()
+                    .position(|line| line == "[when]")
+                    .expect("the base has a [when] table");
+                lines.insert(when, format!("{prefix}{value}"));
+            }
+            (None, None) => {}
+        }
+    }
+
+    format!("{}\n", lines.join("\n"))
+}
+
+fn mech_raw(over: &[(&str, Option<&str>)]) -> RawExtension {
+    raw_check(&mech_toml(over), None)
+}
+
+fn code_list(found: &[ExtensionIssue]) -> Vec<&'static str> {
+    found.iter().map(|issue| issue.code).collect()
+}
+
+fn echoes(found: &[ExtensionIssue], needle: &str) -> bool {
+    found.iter().any(|issue| issue.message.contains(needle))
+}
+
+const TWO_STREAMS: &[(&str, Option<&str>)] = &[(
+    "expect",
+    Some("[{ exit = 0, stdout = \"a\", stderr = \"b\", outcome = \"passed\" }]"),
+)];
+
+#[test]
+fn it_should_parse_the_lint_check_of_the_report_into_node_data() {
+    let raw = raw_check(REPORT_LINT_TOML, Some(REPORT_LINT_MD));
+
+    let extension = parsed(&raw);
+
+    assert_eq!(extension.id, "checks.lint");
+    assert_eq!(extension.data, report_lint_data());
+    assert_eq!(extension.after, Vec::<String>::new());
+    assert_eq!(extension.path, CHECK_TOML_PATH);
+    assert!(extension.data.get("snapshot_kind").is_none());
+}
+
+#[test]
+fn it_should_reject_a_run_with_an_empty_argv() {
+    let found = issues(&mech_raw(&[("run", Some("[]"))]));
+
+    assert_eq!(code_list(&found), vec!["run-empty"]);
+    assert_eq!(found[0].path, CHECK_TOML_PATH);
+    assert_eq!(found[0].message, "run-empty at /run");
+}
+
+#[test]
+fn it_should_reject_a_timeout_of_zero() {
+    let found = issues(&mech_raw(&[("timeout_secs", Some("0"))]));
+
+    assert_eq!(code_list(&found), vec!["timeout-out-of-range"]);
+    assert_eq!(found[0].message, "timeout-out-of-range at /timeout_secs");
+}
+
+#[test]
+fn it_should_reject_a_timeout_above_the_limit() {
+    let over = issues(&mech_raw(&[("timeout_secs", Some("7201"))]));
+    let at_limit = parsed(&mech_raw(&[("timeout_secs", Some("7200"))]));
+
+    assert_eq!(code_list(&over), vec!["timeout-out-of-range"]);
+    assert_eq!(at_limit.data["timeout_secs"], json!(7200));
+}
+
+#[test]
+fn it_should_reject_an_invalid_regex_without_echoing_it() {
+    let over = [(
+        "expect",
+        Some("[{ exit = 0, stdout = \"(unclosed\", outcome = \"passed\" }]"),
+    )];
+
+    let found = issues(&mech_raw(&over));
+
+    assert_eq!(code_list(&found), vec!["regex-invalid"]);
+    assert_eq!(found[0].message, "regex-invalid at /expect/0/stdout");
+    assert!(!echoes(&found, "unclosed"));
+}
+
+#[test]
+fn it_should_reject_an_unknown_concern() {
+    let over = [
+        ("concern", Some("\"security\"")),
+        ("variant", Some("\"lint\"")),
+    ];
+
+    let found = issues(&mech_raw(&over));
+
+    assert_eq!(code_list(&found), vec!["value-not-allowed"]);
+    assert_eq!(
+        found[0].message,
+        "`concern` is not one of style, test, compile"
+    );
+    assert!(!echoes(&found, "security"));
+}
+
+#[test]
+fn it_should_reject_a_variant_that_does_not_belong_to_the_concern() {
+    let over = [
+        ("concern", Some("\"style\"")),
+        ("variant", Some("\"suite\"")),
+    ];
+
+    let found = issues(&mech_raw(&over));
+
+    assert_eq!(code_list(&found), vec!["value-not-allowed"]);
+    assert_eq!(found[0].message, "`variant` does not belong to `concern`");
+}
+
+#[test]
+fn it_should_reject_run_without_expect() {
+    let found = issues(&mech_raw(&[("expect", None)]));
+
+    assert_eq!(code_list(&found), vec!["expect-missing"]);
+    assert_eq!(found[0].message, "expect-missing at /expect");
+}
+
+#[test]
+fn it_should_reject_an_empty_expect() {
+    let found = issues(&mech_raw(&[("expect", Some("[]"))]));
+
+    assert_eq!(code_list(&found), vec!["expect-empty"]);
+    assert_eq!(found[0].message, "expect-empty at /expect");
+}
+
+#[test]
+fn it_should_reject_a_check_over_the_aggregate_size_limit() {
+    let how = format!("\"{}\"", "h".repeat(7000));
+    let item = format!("\"{}\"", "r".repeat(1000));
+    let run = format!("[{}]", vec![item; 5].join(", "));
+    let expect = format!(
+        "[{{ exit = 0, stdout = \"{}\", outcome = \"passed\" }}]",
+        "a".repeat(2830)
+    );
+    let over = [
+        ("how", Some(how.as_str())),
+        ("run", Some(run.as_str())),
+        ("expect", Some(expect.as_str())),
+    ];
+
+    let found = issues(&mech_raw(&over));
+
+    assert_eq!(code_list(&found), vec!["data-too-large"]);
+    assert_eq!(found[0].message, "data-too-large");
+    assert!(!echoes(&found, "hhhh") && !echoes(&found, "rrrr") && !echoes(&found, "aaaa"));
+}
+
+#[test]
+fn it_should_reject_a_snapshot_kind_key_as_unknown() {
+    let found = issues(&mech_raw(&[("snapshot_kind", Some("\"git-tree\""))]));
+
+    assert_eq!(code_list(&found), vec!["invalid-toml"]);
+    assert!(has_toml_position(&found[0].message));
+    assert!(!echoes(&found, "snapshot_kind"));
+    assert!(
+        parse(&mech_raw(&[])).is_ok(),
+        "the control without the key parses"
+    );
+}
+
+#[test]
+fn it_should_keep_a_text_only_check_unchanged() {
+    let toml = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
+
+    let extension = parsed(&raw_check(toml, None));
+
+    assert_eq!(
+        extension.data,
+        check_data("before-commit", "Run lint", true)
+    );
+    assert_eq!(extension.data.as_object().map(|keys| keys.len()), Some(3));
+}
+
+#[test]
+fn it_should_reject_an_unknown_key_in_an_expect_rule() {
+    let over = [(
+        "expect",
+        Some("[{ exit = 0, outcome = \"passed\", extra = 1 }]"),
+    )];
+
+    let found = issues(&mech_raw(&over));
+
+    assert_eq!(code_list(&found), vec!["invalid-toml"]);
+    assert!(has_toml_position(&found[0].message));
+    assert!(
+        parse(&mech_raw(&[])).is_ok(),
+        "the control without the key parses"
+    );
+}
+
+#[test]
+fn it_should_reject_an_event_outside_the_closed_list_for_a_check_with_run() {
+    let found = issues(&mech_raw(&[("event", Some("\"before-deploy\""))]));
+
+    assert_eq!(code_list(&found), vec!["event-unsupported"]);
+    assert_eq!(found[0].path, CHECK_TOML_PATH);
+    assert!(!echoes(&found, "before-deploy"));
+}
+
+#[test]
+fn it_should_reject_a_rule_with_both_a_stdout_and_a_stderr_pattern() {
+    let found = issues(&mech_raw(TWO_STREAMS));
+
+    assert_eq!(code_list(&found), vec!["rule-two-streams"]);
+    assert!(
+        found[0]
+            .message
+            .starts_with("rule-two-streams at /expect/0")
+    );
+}
+
+#[test]
+fn it_should_name_the_one_command_per_check_practice_in_the_two_streams_error() {
+    let found = issues(&mech_raw(TWO_STREAMS));
+
+    assert_eq!(
+        found[0].message,
+        "rule-two-streams at /expect/0: a rule matches stdout or stderr, not both; keep one command per check"
+    );
+    assert!(found[0].message.contains("one command per check"));
 }

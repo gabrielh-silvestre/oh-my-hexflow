@@ -2,8 +2,13 @@ mod support;
 
 use std::fs;
 
+use hexlog::{AppendRequest, ErrorCode};
+use omhl::error::OmhlError;
+use omhl::mechanical::spec::{CheckSpec, SpecError};
 use serde_json::{Value, json};
 use support::appfx::AppFixture;
+use support::omhl::{OmhlHarness, acme, node_item};
+use support::{FakeProbe, loader_author, snap};
 
 const SECRET_MARKER: &str = "SECRET-MARKER-9f3";
 const INVALID_TOML: &str = "this is = [not valid";
@@ -508,5 +513,258 @@ fn it_should_report_a_malformed_after_target_without_aborting_the_load() {
     assert_eq!(
         detail_keys(&error),
         vec![key(".omhl/checks/b.toml", "value-not-allowed")]
+    );
+}
+
+// Campos mecânicos do check (S8)
+
+const REPORT_LINT_TOML: &str = r#"concern = "style"
+variant = "lint"
+when = { event = "before-commit" }
+blocking = true
+run = ["cargo", "clippy", "--workspace", "--all-targets", "--locked"]
+timeout_secs = 600
+expect = [
+  { exit = 0, stderr = "(?m)^warning", outcome = "passed_with_warning" },
+  { exit = 0, outcome = "passed" },
+]
+"#;
+const REPORT_LINT_MD: &str = "Run clippy on the workspace.\n";
+const BAD_REGEX_TOML: &str = r#"blocking = true
+how = "Run lint"
+run = ["true"]
+timeout_secs = 60
+expect = [{ exit = 0, stdout = "(unclosed", outcome = "passed" }]
+[when]
+event = "before-pr"
+"#;
+
+type CatalogVerdict = Result<(), Vec<(String, String)>>;
+type SpecVerdict = Result<(), SpecError>;
+
+fn report_lint_data() -> Value {
+    let mut data = support::omhl::check_data("before-commit", "Run clippy on the workspace.", true);
+    data["concern"] = json!("style");
+    data["variant"] = json!("lint");
+    data["run"] = json!([
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked"
+    ]);
+    data["timeout_secs"] = json!(600);
+    data["expect"] = json!([
+        {"exit": 0, "stderr": "(?m)^warning", "outcome": "passed_with_warning"},
+        {"exit": 0, "outcome": "passed"},
+    ]);
+
+    data
+}
+
+fn fx_with_report_lint() -> AppFixture {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("lint", REPORT_LINT_TOML)
+        .markdown("checks", "lint", REPORT_LINT_MD);
+
+    fx
+}
+
+fn check_ok() -> Value {
+    let mut data = support::omhl::check_data("before-commit", "Run the linter", true);
+    data["concern"] = json!("style");
+    data["variant"] = json!("lint");
+    data["run"] = json!(["cargo", "clippy"]);
+    data["timeout_secs"] = json!(120);
+    data["expect"] = json!([{"exit": 0, "outcome": "passed"}]);
+
+    data
+}
+
+fn check_with(key: &str, value: Value) -> Value {
+    let mut data = check_ok();
+    data[key] = value;
+
+    data
+}
+
+/// Veredito do catálogo: `append` no banco real, como o `loader`; `Err` lista (path, code).
+fn catalog_verdict(data: &Value) -> CatalogVerdict {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    let request = AppendRequest {
+        tenant: acme(),
+        author: loader_author(),
+        key: None,
+        items: vec![node_item("checks.probe", "check", data.clone())],
+    };
+
+    match omhl.append(&request) {
+        Ok(_) => Ok(()),
+        Err(OmhlError::Hexlog(error)) if error.code == ErrorCode::InvalidRecord => Err(error
+            .details
+            .iter()
+            .map(|detail| (detail.path.clone(), detail.code.clone()))
+            .collect()),
+        Err(other) => panic!("unexpected refusal: {other:?}"),
+    }
+}
+
+fn spec_verdict(data: &Value) -> SpecVerdict {
+    CheckSpec::from_data(data).map(|_| ())
+}
+
+fn verdicts(data: &Value) -> (CatalogVerdict, SpecVerdict) {
+    (catalog_verdict(data), spec_verdict(data))
+}
+
+fn catalog_refusal(path: &str, code: &str) -> CatalogVerdict {
+    Err(vec![key(path, code)])
+}
+
+fn spec_refusal(path: &str, code: &'static str) -> SpecVerdict {
+    Err(SpecError {
+        path: path.to_owned(),
+        code,
+    })
+}
+
+#[test]
+fn it_should_load_a_mechanical_check_into_the_database_with_all_its_fields() {
+    let fx = fx_with_report_lint();
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["created"], json!(["checks.lint"]));
+    assert_eq!(fx.get("checks.lint")["data"], report_lint_data());
+}
+
+#[test]
+fn it_should_report_invalid_extensions_for_a_bad_regex_and_write_nothing() {
+    let fx = AppFixture::new();
+    let records_before = total_records(&fx);
+    fx.ext().check("lint", BAD_REGEX_TOML);
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("extensions-invalid"));
+    assert_eq!(
+        detail_keys(&error),
+        vec![key(".omhl/checks/lint.toml", "regex-invalid")]
+    );
+    assert_eq!(
+        error["error"]["details"][0]["message"],
+        json!("regex-invalid at /expect/0/stdout")
+    );
+    assert_eq!(ids_of(&fx.list("check")), Vec::<String>::new());
+    assert_eq!(total_records(&fx), records_before);
+    assert!(!error.to_string().contains("unclosed"));
+}
+
+#[test]
+fn it_should_author_the_loaded_mechanical_check_as_the_loader() {
+    let fx = fx_with_report_lint();
+
+    loaded(&fx, false);
+
+    assert_eq!(
+        fx.get("checks.lint")["author"],
+        json!({"client": "loader", "agent": "loader"})
+    );
+}
+
+#[test]
+fn it_should_agree_with_the_catalog_on_the_number_of_run_items() {
+    let at_limit = check_with("run", json!(vec!["x"; 64]));
+    let over = check_with("run", json!(vec!["x"; 65]));
+
+    let found = (verdicts(&at_limit), verdicts(&over));
+
+    assert_eq!(
+        found,
+        (
+            (Ok(()), Ok(())),
+            (
+                catalog_refusal("/items/0/body/data/run", "max-items"),
+                spec_refusal("/run", "run-too-many-items")
+            )
+        )
+    );
+}
+
+#[test]
+fn it_should_agree_with_the_catalog_on_the_length_of_a_run_item() {
+    let at_limit = check_with("run", json!(["r".repeat(1000)]));
+    let over = check_with("run", json!(["r".repeat(1001)]));
+
+    let found = (verdicts(&at_limit), verdicts(&over));
+
+    assert_eq!(
+        found,
+        (
+            (Ok(()), Ok(())),
+            (
+                catalog_refusal("/items/0/body/data/run/0", "max-length"),
+                spec_refusal("/run/0", "run-item-too-long")
+            )
+        )
+    );
+}
+
+#[test]
+fn it_should_agree_with_the_catalog_on_the_timeout_range() {
+    let mut missing = check_ok();
+    missing
+        .as_object_mut()
+        .expect("the check data is an object")
+        .remove("timeout_secs");
+
+    let found = (
+        verdicts(&check_with("timeout_secs", json!(1))),
+        verdicts(&check_with("timeout_secs", json!(7200))),
+        verdicts(&check_with("timeout_secs", json!(0))),
+        verdicts(&check_with("timeout_secs", json!(7201))),
+        verdicts(&missing),
+    );
+
+    assert_eq!(
+        found,
+        (
+            (Ok(()), Ok(())),
+            (Ok(()), Ok(())),
+            (
+                catalog_refusal("/items/0/body/data/timeout_secs", "minimum"),
+                spec_refusal("/timeout_secs", "timeout-out-of-range")
+            ),
+            (
+                catalog_refusal("/items/0/body/data/timeout_secs", "maximum"),
+                spec_refusal("/timeout_secs", "timeout-out-of-range")
+            ),
+            (
+                catalog_refusal("/items/0/body/data", "any-of"),
+                spec_refusal("/timeout_secs", "timeout-missing")
+            ),
+        )
+    );
+}
+
+#[test]
+fn it_should_agree_with_the_catalog_on_the_number_of_expect_rules() {
+    let rule = json!({"exit": 0, "outcome": "passed"});
+    let at_limit = check_with("expect", json!(vec![rule.clone(); 16]));
+    let over = check_with("expect", json!(vec![rule; 17]));
+
+    let found = (verdicts(&at_limit), verdicts(&over));
+
+    assert_eq!(
+        found,
+        (
+            (Ok(()), Ok(())),
+            (
+                catalog_refusal("/items/0/body/data/expect", "max-items"),
+                spec_refusal("/expect", "expect-too-many-rules")
+            )
+        )
     );
 }
