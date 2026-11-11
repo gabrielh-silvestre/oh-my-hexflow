@@ -13,6 +13,7 @@ use super::engine::Engine;
 use super::error::{AppError, CheckDetail};
 use super::retry::with_retry;
 use super::work_item::{WorkItemRoute, head_branch, resolve_work_item};
+use crate::byproduct::ByproductHash;
 use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
 use crate::mechanical::evaluate::{Observation, evaluate};
@@ -34,6 +35,8 @@ const SNAPSHOT_REFUSED_HINT: &str =
 const PROBE_FAILED_HINT: &str =
     "git could not read the tree; run git status and fix the repository state";
 const TREE_CHANGED_HINT: &str = "the command changed the working tree; keep checks read-only, add generated files to .gitignore, or restore tracked files with git checkout -- <path>";
+const BLOB_FAILED_HINT: &str =
+    "the output store is not writable; fix its permissions or free disk space";
 const PARENT_GONE_HINT: &str = "the process that started omhl exited before the checks ran; nothing ran; run the same command again";
 const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
 const PUSH_INPUT_HINT: &str = "the pre-push input needs four fields per line; run git push again";
@@ -367,9 +370,37 @@ impl Engine<'_> {
             let message = "output in context.output_tail".to_owned();
             return Ok(verdict(failed(message, Some(context))));
         };
-        let recording = self.record(check, spec, work_item, snapshot, outcome, &report)?;
+        let store = self.byproducts.ok_or_else(|| {
+            AppError::plain(
+                "byproduct-store-unavailable",
+                "no byproduct store is configured",
+            )
+        })?;
         let mut context = scope.ran_context("guard-refused", &check.id, &spec.run, snapshot);
         context["expected"] = json!(outcome_name(outcome));
+        // O blob vai para o store antes do `append`: a attestation nunca aponta para um blob ausente.
+        let byproduct = match store.put(&byproduct_blob(&report)) {
+            Ok(hash) => hash,
+            Err(error) => {
+                context["kind"] = json!("blob-failed");
+                context["os_error"] = json!(error.message);
+                context["output_tail"] = output_tail(&report);
+                context["hint"] = json!(BLOB_FAILED_HINT);
+                return Ok(Step::Miss(Miss {
+                    error: AppError::check_not_run,
+                    detail: check_detail(
+                        check,
+                        "not-run",
+                        "the output could not be stored",
+                        context,
+                    ),
+                    stops: true,
+                }));
+            }
+        };
+        context["byproduct"] = json!(byproduct.as_str());
+        let data = run_attestation_data(check, spec, work_item, outcome, &report, &byproduct);
+        let recording = self.record(check, work_item, snapshot, &data)?;
         let miss = match recording {
             Recording::Recorded => {
                 let message = format!(
@@ -441,11 +472,9 @@ impl Engine<'_> {
     fn record(
         &mut self,
         check: &PlannedCheck,
-        spec: &CheckSpec,
         work_item: &SemanticId,
         snapshot: &Snapshot,
-        outcome: Outcome,
-        report: &RunReport,
+        data: &Value,
     ) -> Result<Recording, AppError> {
         let id = match derived_id(snapshot, &check.id, work_item) {
             Ok(id) => id,
@@ -454,9 +483,6 @@ impl Engine<'_> {
             }
             Err(error) => return Err(error.into()),
         };
-        let mut data = attestation_data(&check.id, work_item, outcome_name(outcome), None);
-        data["command"] = json!(spec.run);
-        let data = with_run_fields(data, report);
         let policy = self.retry_after_run.clone();
         // O `get` do `base` fica dentro da tentativa: outro processo pode ter gravado entre elas (DP-18).
         let attempt = with_retry(&policy, || {
@@ -720,6 +746,40 @@ fn finish(scope: &Scope<'_>, tally: Tally) -> Result<Value, AppError> {
         "results": tally.outputs,
         "blocked": summary.blocked,
     }))
+}
+
+/// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context` (DP-37).
+fn byproduct_blob(report: &RunReport) -> Vec<u8> {
+    let mut blob = format!(
+        "omhl-byproduct v1 stdout={} stderr={}\n",
+        report.stdout.len(),
+        report.stderr.len()
+    )
+    .into_bytes();
+    blob.extend_from_slice(&report.stdout);
+    blob.extend_from_slice(&report.stderr);
+
+    blob
+}
+
+fn run_attestation_data(
+    check: &PlannedCheck,
+    spec: &CheckSpec,
+    work_item: &SemanticId,
+    outcome: Outcome,
+    report: &RunReport,
+    byproduct: &ByproductHash,
+) -> Value {
+    let mut data = attestation_data(
+        &check.id,
+        work_item,
+        outcome_name(outcome),
+        None,
+        Some(byproduct.as_str()),
+    );
+    data["command"] = json!(spec.run);
+
+    with_run_fields(data, report)
 }
 
 /// `exit_code` fica de fora, nunca `null`, quando o comando não terminou com código.

@@ -29,7 +29,6 @@ pub(super) struct Engine<'d> {
     pub(super) probe: &'d dyn SnapshotProbe,
     pub(super) project_root: Option<PathBuf>,
     pub(super) runner: Option<&'d dyn CommandRunner>,
-    #[allow(dead_code)] // consumido pela S13 (`app/check_run.rs`): a S7 não grava byproduct
     pub(super) byproducts: Option<&'d dyn ByproductStore>,
     pub(super) mark: Option<&'d dyn DevelopMark>,
     /// Cópia da política do `App`, para a leitura inicial do `check run`.

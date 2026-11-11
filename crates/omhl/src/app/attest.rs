@@ -29,7 +29,7 @@ impl Engine<'_> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshot = self.probe_snapshot()?;
         let id = derived_id(&snapshot, &check, &work_item)?;
-        let data = attestation_data(&check, &work_item, outcome, note);
+        let data = attestation_data(&check, &work_item, outcome, note, None);
         let base = self.current_base(&id)?;
         let attestation = json!({ "id": id, "snapshot": snapshot });
         let item = AppendItem {
@@ -78,6 +78,7 @@ pub(super) fn attestation_data(
     work_item: &SemanticId,
     outcome: &str,
     note: Option<&str>,
+    byproduct: Option<&str>,
 ) -> Value {
     let mut data = json!({
         "check": check,
@@ -87,6 +88,9 @@ pub(super) fn attestation_data(
     });
     if let Some(note) = note {
         data["note"] = json!(note);
+    }
+    if let Some(byproduct) = byproduct {
+        data["byproduct"] = json!(byproduct);
     }
 
     data
