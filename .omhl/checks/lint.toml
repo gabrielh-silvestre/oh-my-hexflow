@@ -1,0 +1,8 @@
+concern = "style"
+variant = "lint"
+blocking = true
+after = ["checks.fmt"]
+run = ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
+timeout_secs = 21
+expect = [{ exit = 0, outcome = "passed" }]
+when = { event = "before-commit" }
