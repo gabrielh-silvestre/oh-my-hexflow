@@ -23,13 +23,15 @@ const FORBIDDEN_PACKAGES: &[&str] = &[
     "serde_yaml",
 ];
 const FORBIDDEN_PACKAGE_PREFIX: &str = "gix";
-const PURE_LAYER_DIRS: &[&str] = &["extensions", "projection"];
+const PURE_LAYER_DIRS: &[&str] = &["extensions", "projection", "mechanical"];
 const PURE_LAYER_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const PURE_LAYER_FORBIDDEN_PATHS: &[&str] = &["adapters::", "app::", "facade::"];
 const TEMPFILE_ALLOWED_FILE: &str = "projection/write.rs";
 const EXPECTED_DEPENDENCIES: &[&str] = &[
     "clap",
     "hexlog",
+    "nix",
+    "regex",
     "serde",
     "serde_json",
     "tempfile",
@@ -37,6 +39,11 @@ const EXPECTED_DEPENDENCIES: &[&str] = &[
     "uuid",
 ];
 const ATOMIC_PATHS: &[&str] = &["sync::atomic", "atomic::"];
+const MECHANICAL_FORBIDDEN_MODULES: &[&str] =
+    &["adapters", "app", "facade", "ports", "runner", "byproduct"];
+const SERVICE_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
+const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super::"];
+const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
 
 fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
@@ -223,7 +230,7 @@ fn module_refs(source: &str, modules: &[&str]) -> Result<usize, String> {
     for module in modules {
         count += occurrences(&code, &format!("crate::{module}"), true);
     }
-    count += grouped_module_refs(&code, modules);
+    count += grouped_refs(&code, "crate::", modules);
 
     Ok(count)
 }
@@ -239,40 +246,45 @@ fn tighten(code: &str) -> String {
     text
 }
 
-/// Itens de topo de cada `crate::{...}` que começam por um dos módulos.
-fn grouped_module_refs(code: &str, modules: &[&str]) -> usize {
+/// Itens de topo de cada `<prefix>{...}` que começam por um dos módulos.
+fn grouped_refs(code: &str, prefix: &str, modules: &[&str]) -> usize {
+    let opener = format!("{prefix}{{");
     let mut count = 0;
     let mut rest = code;
-    while let Some(at) = rest.find("crate::{") {
-        let group = &rest[at + "crate::{".len()..];
-        let mut depth = 0;
-        let mut item_start = 0;
-        for (index, c) in group.char_indices() {
-            let ends_item = match c {
-                '{' => {
-                    depth += 1;
-                    false
-                }
-                '}' if depth == 0 => true,
-                '}' => {
-                    depth -= 1;
-                    false
-                }
-                ',' => depth == 0,
-                _ => false,
-            };
-            if ends_item {
-                count += usize::from(starts_with_module(&group[item_start..index], modules));
-                item_start = index + 1;
-                if c == '}' {
-                    break;
-                }
-            }
-        }
+    while let Some(at) = rest.find(&opener) {
+        let group = &rest[at + opener.len()..];
+        count += group_items(group)
+            .iter()
+            .filter(|item| starts_with_module(item, modules))
+            .count();
         rest = group;
     }
 
     count
+}
+
+/// Itens de topo de um grupo, lido a partir do texto logo depois da chave de abertura.
+fn group_items(group: &str) -> Vec<&str> {
+    let mut items = Vec::new();
+    let mut depth = 0;
+    let mut item_start = 0;
+    for (index, c) in group.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' if depth == 0 => {
+                items.push(&group[item_start..index]);
+                break;
+            }
+            '}' => depth -= 1,
+            ',' if depth == 0 => {
+                items.push(&group[item_start..index]);
+                item_start = index + 1;
+            }
+            _ => {}
+        }
+    }
+
+    items
 }
 
 fn starts_with_module(item: &str, modules: &[&str]) -> bool {
@@ -383,6 +395,25 @@ fn scan_paths(paths: &[PathBuf], count: impl Fn(&str) -> Result<usize, String>) 
     }
 
     failures
+}
+
+/// Do passo 1 ao passo 3 da S0: caminho ausente conta como vazio; caminho existente segue a regra estrita.
+fn scan_present_dir(dir: &Path, count: impl Fn(&str) -> Result<usize, String>) -> Vec<String> {
+    if !dir.exists() {
+        return Vec::new();
+    }
+
+    scan_dir(dir, count)
+}
+
+/// Do passo 1 ao passo 3 da S0: os caminhos ausentes são descartados antes do `scan_paths`.
+fn scan_present_paths(
+    paths: &[PathBuf],
+    count: impl Fn(&str) -> Result<usize, String>,
+) -> Vec<String> {
+    let present: Vec<PathBuf> = paths.iter().filter(|path| path.exists()).cloned().collect();
+
+    scan_paths(&present, count)
 }
 
 /// Referências a `hexlog` fora de comentário e de string: o caminho `hexlog::` e as formas de
@@ -691,8 +722,8 @@ fn atomic_refs(source: &str) -> Result<usize, String> {
     Ok(types + paths)
 }
 
-/// Falhas de um `Cargo.toml` lido como dado: a tabela `[dependencies]` precisa ter exatamente os
-/// pacotes esperados (`tempfile` só em dev-dependencies não conta).
+/// Falhas de um `Cargo.toml` lido como dado: `[dependencies]` mais toda `[target.*.dependencies]`
+/// precisam ter exatamente os pacotes esperados (`tempfile` só em dev-dependencies não conta).
 fn dependency_failures(manifest: &str) -> Vec<String> {
     let table: toml::Table = match toml::from_str(manifest) {
         Ok(table) => table,
@@ -701,7 +732,16 @@ fn dependency_failures(manifest: &str) -> Vec<String> {
     let Some(dependencies) = table.get("dependencies").and_then(toml::Value::as_table) else {
         return vec!["manifest has no [dependencies] table".to_owned()];
     };
-    let found: Vec<&str> = dependencies.keys().map(String::as_str).collect();
+    let target_dependencies = table
+        .get("target")
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flat_map(toml::Table::values)
+        .filter_map(|target| target.get("dependencies").and_then(toml::Value::as_table));
+    let found: Vec<&str> = std::iter::once(dependencies)
+        .chain(target_dependencies)
+        .flat_map(|dependencies| dependencies.keys().map(String::as_str))
+        .collect();
     let mut failures = Vec::new();
     for name in &found {
         if !EXPECTED_DEPENDENCIES.contains(name) {
@@ -732,11 +772,15 @@ name = "omhl"
 [dependencies]
 clap = "1"
 hexlog = { path = "../hexlog" }
+regex = "=1.13.1"
 serde = "1"
 serde_json = "1"
 tempfile = "3"
 toml = "1"
 uuid = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "=0.31.3", default-features = false, features = ["signal", "process"] }
 "#;
 
 #[test]
@@ -762,7 +806,12 @@ fn it_should_not_import_adapters_app_or_facade_in_extensions_and_projection() {
     );
 
     for dir in PURE_LAYER_DIRS {
-        failures.extend(scan_dir(&src_dir().join(dir), pure_layer_refs));
+        let path = src_dir().join(dir);
+        if *dir == "mechanical" {
+            failures.extend(scan_present_dir(&path, pure_layer_refs));
+        } else {
+            failures.extend(scan_dir(&path, pure_layer_refs));
+        }
     }
 
     assert_no_failures(&failures);
@@ -808,7 +857,7 @@ fn it_should_use_tempfile_only_in_projection_write() {
 
 #[test]
 fn it_should_declare_exactly_the_expected_direct_dependencies() {
-    let with_extra = format!("{EXACT_MANIFEST}tokio = \"1\"\n");
+    let with_extra = EXACT_MANIFEST.replace("uuid = \"1\"\n", "uuid = \"1\"\ntokio = \"1\"\n");
     let tempfile_only_in_dev = EXACT_MANIFEST.replace("tempfile = \"3\"\n", "")
         + "\n[dev-dependencies]\ntempfile = \"3\"\n";
     let mut failures = Vec::new();
@@ -882,6 +931,345 @@ fn it_should_not_search_the_marker_twice_in_the_hook() {
     failures.extend(scan_paths(
         &[src_dir().join(HOOK_SOURCE)],
         marker_search_refs,
+    ));
+
+    assert_no_failures(&failures);
+}
+
+// ------------------------------------------------- travas dos gates mecânicos (S0)
+
+/// Referências aos módulos por `crate::` (solto ou agrupado), por caminho solto e por `super::`.
+fn forbidden_module_refs(source: &str, modules: &[&str]) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+    let mut count = module_refs(source, modules)?;
+    for module in modules {
+        count += occurrences(&code, &format!("{module}::"), false)
+            + occurrences(&code, &format!("super::{module}"), true);
+    }
+
+    Ok(count)
+}
+
+fn mechanical_refs(source: &str) -> Result<usize, String> {
+    forbidden_module_refs(source, MECHANICAL_FORBIDDEN_MODULES)
+}
+
+fn service_refs(source: &str) -> Result<usize, String> {
+    forbidden_module_refs(source, SERVICE_FORBIDDEN_MODULES)
+}
+
+/// Caminhos `nix::` e a importação da crate inteira (`use nix`).
+fn nix_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+
+    Ok(occurrences(&code, "nix::", false) + occurrences(&code, "use nix", true))
+}
+
+/// `Command`, `Child` e `Stdio` de `std::process`, soltos, agrupados ou pelo módulo importado.
+fn process_spawn_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+    let spawn_types = ["Command", "Child", "Stdio"];
+    let module_imported = occurrences(&code, "use std::process;", false) > 0;
+    let mut count = grouped_refs(&code, "std::process::", &spawn_types);
+    for name in spawn_types {
+        count += occurrences(&code, &format!("std::process::{name}"), true);
+        if module_imported {
+            count += occurrences(&code, &format!("process::{name}"), true);
+        }
+    }
+
+    Ok(count)
+}
+
+fn thread_scope_refs(source: &str) -> Result<usize, String> {
+    Ok(occurrences(
+        &tighten(&lex(source)?.code),
+        "thread::scope",
+        true,
+    ))
+}
+
+/// Um caminho é aceito quando começa por um prefixo de `ADAPTERS_ALLOWED` sem identificador colado.
+fn adapters_allowed(path: &str) -> bool {
+    ADAPTERS_ALLOWED.iter().any(|allowed| {
+        path.strip_prefix(allowed).is_some_and(|after| {
+            allowed.ends_with("::") || after.chars().next().is_none_or(|c| !is_ident(c))
+        })
+    })
+}
+
+/// Cada item de `crate::` (solto ou dentro de `crate::{...}`) fora de `ADAPTERS_ALLOWED`, mais
+/// todo `super::super::`.
+fn adapters_inner_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+    let mut count = occurrences(&code, "super::super::", false);
+    for (at, _) in code.match_indices("crate::") {
+        if code[..at].chars().next_back().is_some_and(is_ident) {
+            continue;
+        }
+        count += match code[at + "crate::".len()..].strip_prefix('{') {
+            Some(group) => group_items(group)
+                .iter()
+                .filter(|item| !adapters_allowed(&format!("crate::{item}")))
+                .count(),
+            None => usize::from(!adapters_allowed(&code[at..])),
+        };
+    }
+
+    Ok(count)
+}
+
+/// 1 se o primeiro comando do corpo de `fn main` (o primeiro trecho terminado em `;` na
+/// profundidade 0) não lê o pid do pai, ou se não há `fn main`; 0 caso contrário.
+fn parent_pid_not_first(source: &str) -> Result<usize, String> {
+    let code = lex(source)?.code;
+    let body = code
+        .match_indices("fn main")
+        .find(|(at, needle)| !code[at + needle.len()..].starts_with(is_ident))
+        .and_then(|(at, _)| code[at..].find('{').map(|open| &code[at + open + 1..]));
+    let Some(body) = body else {
+        return Ok(1);
+    };
+    let mut depth = 0;
+    for (index, c) in body.char_indices() {
+        match c {
+            '{' | '(' | '[' => depth += 1,
+            '}' | ')' | ']' if depth == 0 => return Ok(1),
+            '}' | ')' | ']' => depth -= 1,
+            ';' if depth == 0 => {
+                return Ok(usize::from(!body[..index].contains(PARENT_PID_CALL)));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(1)
+}
+
+#[test]
+fn it_should_count_a_target_specific_dependency_as_declared() {
+    let without_target = EXACT_MANIFEST.split("[target.").next().unwrap();
+
+    let exact = dependency_failures(EXACT_MANIFEST);
+    let missing_nix = dependency_failures(without_target);
+
+    assert_eq!(exact, Vec::<String>::new());
+    assert_eq!(missing_nix, ["missing dependency: nix"]);
+}
+
+#[test]
+fn it_should_report_a_target_specific_dependency_that_is_not_expected() {
+    let with_libc = format!("{EXACT_MANIFEST}libc = \"0.2\"\n");
+
+    let failures = dependency_failures(&with_libc);
+
+    assert_eq!(failures, ["unexpected dependency: libc"]);
+}
+
+#[test]
+fn it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner_and_byproduct() {
+    let mut failures = prove_both_sides(
+        mechanical_refs,
+        &[
+            "use crate::app::App;",
+            "use crate::adapters::cli::Cli;",
+            "use crate::facade::Omhl;",
+            "use crate::ports::git::GitProbe;",
+            "use crate::runner::RunSpec;",
+            "use crate::byproduct::ByproductHash;",
+            "use crate::{project::Env, app::Action};",
+        ],
+        &[
+            "use crate::project::Env;",
+            "use super::spec::CheckSpec;",
+            "// use crate::app::App;",
+            "const P: &str = \"crate::runner::RunSpec\";",
+            "use crate::application::Thing;",
+        ],
+    );
+
+    failures.extend(scan_present_dir(
+        &src_dir().join("mechanical"),
+        mechanical_refs,
+    ));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_runner_and_byproduct_free_of_adapters_app_and_facade() {
+    let mut failures = prove_both_sides(
+        service_refs,
+        &[
+            "use crate::adapters::cli::Cli;",
+            "use crate::app::engine::Engine;",
+            "use crate::facade::Omhl;",
+        ],
+        &[
+            "use crate::mechanical::spec::CheckSpec;",
+            "use std::time::Duration;",
+            "// use crate::app::App;",
+        ],
+    );
+    let services = [src_dir().join("runner.rs"), src_dir().join("byproduct.rs")];
+
+    failures.extend(scan_present_paths(&services, service_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_confine_nix_to_the_process_port() {
+    let mut failures = prove_both_sides(
+        nix_refs,
+        &[
+            "use nix::sys::signal::killpg;",
+            "let pid = nix::unistd::getpid();",
+            "use nix::{sys::signal, unistd::Pid};",
+        ],
+        &[
+            "// nix::sys::signal",
+            "const NAME: &str = \"nix::sys\";",
+            "use my_nix::Thing;",
+            "fn nixie() {}",
+            "let p = std::os::unix::process::parent_id();",
+        ],
+    );
+    let outside_process_port: Vec<PathBuf> = rust_files(&src_dir())
+        .into_iter()
+        .filter(|file| relative_to_src(file) != "ports/process.rs")
+        .collect();
+
+    failures.extend(scan_paths(&outside_process_port, nix_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_confine_process_spawning_types_to_the_ports_module() {
+    let mut failures = prove_both_sides(
+        process_spawn_refs,
+        &[
+            "use std::process::Command;",
+            "use std::process::{Child, Stdio};",
+            "let c = std::process::Command::new(\"x\");",
+            "use std::process::{Command as Cmd};",
+            "use std::process; fn f() { process::Command::new(\"x\"); }",
+        ],
+        &[
+            "use std::process::ExitCode;",
+            "// std::process::Command::new(\"x\")",
+            "const S: &str = \"std::process::Command\";",
+        ],
+    );
+    let outside_ports: Vec<PathBuf> = rust_files(&src_dir())
+        .into_iter()
+        .filter(|file| !relative_to_src(file).starts_with("ports/"))
+        .collect();
+
+    failures.extend(scan_paths(&outside_ports, process_spawn_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_not_flag_the_exit_code_type_or_the_clap_command_enum_outside_the_ports_module() {
+    let mut failures = prove_both_sides(
+        process_spawn_refs,
+        &[],
+        &[
+            "use std::process::ExitCode;",
+            "pub enum Command { Mcp }",
+            "Command::Mcp",
+            "ActionCommand",
+            "use clap::Command;",
+        ],
+    );
+    let entry_points = [
+        src_dir().join("main.rs"),
+        src_dir().join("adapters/cli.rs"),
+        src_dir().join("adapters/mcp.rs"),
+        src_dir().join("adapters/hook.rs"),
+    ];
+
+    failures.extend(scan_paths(&entry_points, process_spawn_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_not_scope_the_threads_of_the_pipe_readers() {
+    let mut failures = prove_both_sides(
+        thread_scope_refs,
+        &[
+            "std::thread::scope(|s| { s.spawn(|| {}); });",
+            "thread::scope(|s| {});",
+        ],
+        &[
+            "thread::spawn(move || {})",
+            "// thread::scope",
+            "const S: &str = \"thread::scope\";",
+        ],
+    );
+    let pipe_readers = [
+        src_dir().join("ports/pipes.rs"),
+        src_dir().join("ports/process.rs"),
+    ];
+
+    failures.extend(scan_present_paths(&pipe_readers, thread_scope_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_the_project_env() {
+    let mut failures = prove_both_sides(
+        adapters_inner_refs,
+        &[
+            "use crate::mechanical::spec::CheckSpec;",
+            "use crate::render::x;",
+            "use crate::ports::git::GitProbe;",
+            "use crate::{app::Action, runner::RunSpec};",
+            "use crate::facade::Omhl;",
+            "use crate::application::Thing;",
+            "use crate::project::layout::OMHL_DIR;",
+        ],
+        &[
+            "use crate::app::RUNNABLE_EVENTS;",
+            "use crate::app::action::{Action, Caller};",
+            "use crate::project::Env;",
+            "use super::{hook, mcp};",
+            "// use crate::render::x;",
+            "use crate::{app::Action, project::Env};",
+        ],
+    );
+    let adapters = [
+        src_dir().join("adapters/cli.rs"),
+        src_dir().join("adapters/hook.rs"),
+        src_dir().join("adapters/mcp.rs"),
+    ];
+
+    failures.extend(scan_paths(&adapters, adapters_inner_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_read_the_parent_pid_before_anything_else_in_main() {
+    let mut failures = prove_both_sides(
+        parent_pid_not_first,
+        &[
+            "fn main() -> ExitCode {\n    let home = std::env::var_os(\"HOME\");\n    let parent_pid = std::os::unix::process::parent_id();\n    ExitCode::SUCCESS\n}",
+            "fn main() -> ExitCode {\n    ExitCode::SUCCESS\n}",
+        ],
+        &[
+            "fn main() -> ExitCode {\n    let parent_pid = std::os::unix::process::parent_id();\n    let home = std::env::var_os(\"HOME\");\n    ExitCode::SUCCESS\n}",
+        ],
+    );
+
+    failures.extend(scan_paths(
+        &[src_dir().join("main.rs")],
+        parent_pid_not_first,
     ));
 
     assert_no_failures(&failures);
