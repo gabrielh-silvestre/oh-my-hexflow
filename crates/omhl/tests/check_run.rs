@@ -9,14 +9,14 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
 
-use hexlog::{AppendItem, AppendOutcome, AppendRequest, Author, Config};
+use hexlog::{AppendItem, AppendOutcome, AppendRequest, Author, Config, Snapshot, SnapshotKind};
 use omhl::app::App;
 use omhl::app::action::{Action, Caller, CheckTarget};
 use omhl::app::error::AppError;
 use omhl::app::retry::RetryPolicy;
 use omhl::facade::{Omhl, OmhlDeps};
 use omhl::ports::blob::BlobStore;
-use omhl::probe::HeadFacts;
+use omhl::probe::{HeadFacts, ProbeOutcome, TreeSource};
 use omhl::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
 use serde_json::{Value, json};
 use support::busy::{AppendingRunner, GatedRunner, lock_at_gate, with_write_lock};
@@ -37,6 +37,10 @@ const LINT: &[&str] = &["cargo", "clippy"];
 const BUILD: &[&str] = &["cargo", "build"];
 const DOCS: &[&str] = &["cargo", "doc"];
 const BUSY_HINT: &str = "the database stayed locked for about 74 seconds; the verdict above was computed but not recorded; run the same command again when the other process ends";
+
+fn tree(fill: char) -> Snapshot {
+    Snapshot::new(SnapshotKind::GitTree, &fill.to_string().repeat(40)).expect("valid snapshot")
+}
 
 type Response = (Vec<String>, Result<RunReport, RunError>);
 
@@ -112,8 +116,10 @@ impl Fixture {
     }
 
     fn close_w1(&self) {
-        let probe = FakeProbe::clean(snap('a'));
-        support::pr_gate::close(&mut self.omhl(&probe), W1, &snap('a'));
+        let probe = FakeProbe::clean(snap('a'))
+            .with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree('c'))));
+        let snapshots = support::pr_gate::snapshots(&snap('a'), &tree('c'));
+        support::pr_gate::close(&mut self.omhl(&probe), W1, &snapshots);
     }
 
     fn app<'a>(&'a self, probe: &'a FakeProbe, runner: &'a dyn CommandRunner) -> App<'a> {
