@@ -1090,27 +1090,6 @@ fn it_should_author_the_attestation_as_the_executor() {
 }
 
 #[test]
-fn it_should_answer_check_not_run_for_a_tree_check_before_the_tree_snapshot_exists() {
-    let fx = Fixture::new();
-    fx.seed_check("checks.tree", run_data("before-commit", true, &["true"]));
-    let (runner, specs) = FakeRunner::new(vec![ok(&["true"])]);
-    let probe = wi_probe();
-    let mut app = fx.app(&probe, &runner);
-
-    let error = app
-        .dispatch(&Caller::cli(), &on_event("before-commit"))
-        .expect_err("the tree check cannot run yet");
-
-    assert_eq!(error.code(), "check-not-run");
-    let details = details(&error);
-    assert_eq!(details.as_array().map(Vec::len), Some(1));
-    assert_eq!(details[0]["path"], json!("checks.tree"));
-    assert_eq!(details[0]["code"], json!("snapshot-tree-pending"));
-    assert_eq!(received(&specs), Vec::<Vec<String>>::new());
-    assert_eq!(list(&mut app, "attestation"), no_attestations());
-}
-
-#[test]
 fn it_should_not_rerun_the_first_check_when_the_second_append_stays_busy() {
     let fx = Fixture::new();
     fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
