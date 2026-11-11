@@ -25,6 +25,7 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::WhereEqTooMany, "where-eq-too-many"),
         (RuleCode::WhereEqValueTooLong, "where-eq-value-too-long"),
         (RuleCode::GateInconsistent, "gate-inconsistent"),
+        (RuleCode::SnapshotTreeMismatch, "snapshot-tree-mismatch"),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected

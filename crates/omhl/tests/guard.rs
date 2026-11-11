@@ -1,8 +1,16 @@
 mod support;
 
-use hexlog::{FieldName, ListFilter, PageRequest, Scalar};
+use hexlog::{
+    AppendItem, AppendOutcome, AppendRequest, Author, FieldName, ListFilter, PageRequest, Scalar,
+    Snapshot, SnapshotKind,
+};
 use omhl::error::{OmhlError, RuleCode};
+use omhl::facade::{Omhl, OmhlDeps};
 use omhl::guard::attestation_id;
+use omhl::ports::git::GitProbe;
+use omhl::probe::{ProbeOutcome, TreeSource};
+use serde_json::{Value, json};
+use support::git::GitRepo;
 use support::omhl::{
     LINT_DOCS, OmhlHarness, PR_7, RUN_TESTS, acme, append_ok, attestation_data, attestation_id_for,
     attestation_item, check_data, closed_with_gate, decision_data, node_item, premise_data,
@@ -10,11 +18,18 @@ use support::omhl::{
     with_snapshot, work_item_data,
 };
 use support::pr_gate::close;
-use support::{FakeProbe, sid, snap, snap64};
+use support::raw::RawHarness;
+use support::{
+    FakeProbe, executor_attestation_data, executor_author, loader_author, sid, snap, snap64, tname,
+};
 
 const ITEM_ID_POINTER: &str = "/items/0/body/id";
 const SNAPSHOT_POINTER: &str = "/items/0/snapshot";
 const WORK_ITEM_POINTER: &str = "/items/0/body/data/work_item";
+const FMT: &str = "checks.fmt";
+const LINT: &str = "checks.lint";
+const EMPTY_SHA: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const HEAD_TREE: &str = "08585692ce06452da6f82ae66b90d98b55536fca";
 const STATUS_POINTER: &str = "/items/0/body/data/status";
 
 fn rule(code: RuleCode, pointer: &str) -> OmhlError {
@@ -35,6 +50,67 @@ fn filter_with(where_eq: Vec<(FieldName, Scalar)>) -> ListFilter {
         snapshot: None,
         where_eq,
     }
+}
+
+fn tree(fill: char) -> Snapshot {
+    Snapshot::new(SnapshotKind::GitTree, &fill.to_string().repeat(40)).expect("valid snapshot")
+}
+
+/// Sonda de `pre-commit`: o índice reproduz `tree('c')` e a working tree está suja para o `probe()`.
+fn staged_tree_probe() -> FakeProbe {
+    FakeProbe::dirty().with_tree(TreeSource::Index, Ok(ProbeOutcome::Reproducible(tree('c'))))
+}
+
+/// Check com `run`, como o `load` o grava.
+fn mechanical_check(event: &str, run: &[&str], blocking: bool) -> Value {
+    let mut data = check_data(event, "run it", blocking);
+    data["run"] = json!(run);
+    data["timeout_secs"] = json!(60);
+    data["expect"] = json!([{ "exit": 0, "outcome": "passed" }]);
+
+    data
+}
+
+fn append_as(
+    omhl: &mut Omhl<'_>,
+    author: Author,
+    items: Vec<AppendItem>,
+) -> Result<AppendOutcome, OmhlError> {
+    omhl.append(&AppendRequest {
+        author,
+        ..request(items)
+    })
+}
+
+fn refusal_as_executor(omhl: &mut Omhl<'_>, items: Vec<AppendItem>) -> OmhlError {
+    append_as(omhl, executor_author(), items).expect_err("the append is refused")
+}
+
+/// Pull request `PR_7` aberto e o check `check` gravado pelo loader.
+fn seed_pull_request_and_check(omhl: &mut Omhl<'_>, check: &str, event: &str) {
+    seed_pull_request(omhl);
+    let node = node_item(check, "check", mechanical_check(event, &["true"], true));
+    append_as(omhl, loader_author(), vec![node]).expect("the check is accepted");
+}
+
+/// Attestation `passed` de um check com `run`, no id derivado do snapshot.
+fn executor_attestation(snapshot: &Snapshot, check: &str) -> AppendItem {
+    let id = attestation_id_for(snapshot, check, PR_7);
+    let data = executor_attestation_data(check, PR_7, "passed", EMPTY_SHA);
+
+    with_snapshot(node_item(&id, "attestation", data), snapshot)
+}
+
+fn attestation_count(omhl: &mut Omhl<'_>) -> usize {
+    let filter = ListFilter {
+        type_name: Some(tname("attestation")),
+        ..filter_with(Vec::new())
+    };
+
+    omhl.list(&acme(), &filter, &page())
+        .expect("the list is read")
+        .items
+        .len()
 }
 
 /// `count` pares `f0 = 0`, `f1 = 1`, ... em campos que nenhum node tem.
@@ -654,4 +730,111 @@ fn it_should_refuse_an_attestation_whose_work_item_id_is_not_a_work_item() {
     let error = refusal(&mut omhl, vec![attestation]);
 
     assert_eq!(error, rule(RuleCode::WorkItemNotFound, WORK_ITEM_POINTER));
+}
+
+#[test]
+fn it_should_accept_a_git_tree_attestation_for_the_staged_tree() {
+    let harness = OmhlHarness::new(staged_tree_probe());
+    let mut omhl = harness.open();
+    seed_pull_request_and_check(&mut omhl, FMT, "before-commit");
+    let attestation = executor_attestation(&tree('c'), FMT);
+
+    let result = append_as(&mut omhl, executor_author(), vec![attestation]);
+
+    assert_eq!(result.map(|outcome| outcome.records.len()), Ok(1));
+}
+
+#[test]
+fn it_should_refuse_a_git_tree_attestation_for_another_tree() {
+    let harness = OmhlHarness::new(staged_tree_probe());
+    let mut omhl = harness.open();
+    seed_pull_request_and_check(&mut omhl, FMT, "before-commit");
+    let attestation = executor_attestation(&tree('d'), FMT);
+
+    let error = refusal_as_executor(&mut omhl, vec![attestation]);
+
+    assert_eq!(
+        (error, attestation_count(&mut omhl)),
+        (rule(RuleCode::SnapshotTreeMismatch, SNAPSHOT_POINTER), 0)
+    );
+}
+
+#[test]
+fn it_should_accept_a_git_tree_attestation_for_the_head_tree_when_the_index_equals_it() {
+    let repo = GitRepo::init();
+    repo.write("a.txt", "a\n");
+    repo.commit_all("init");
+    repo.git(&["switch", "-c", "feat/wi-w1__x"]);
+    let git_probe = GitProbe::new(repo.path());
+    let raw = RawHarness::new();
+    let deps = OmhlDeps {
+        clock: &raw.clock,
+        ids: &raw.ids,
+        probe: &git_probe,
+    };
+    let mut omhl = Omhl::open(&raw.config(), deps).expect("omhl opens");
+    omhl.ensure_tenant(&acme()).expect("the tenant is created");
+    seed_pull_request_and_check(&mut omhl, FMT, "before-commit");
+    let head_tree = Snapshot::new(SnapshotKind::GitTree, HEAD_TREE).expect("valid snapshot");
+    let attestation = executor_attestation(&head_tree, FMT);
+
+    let result = append_as(&mut omhl, executor_author(), vec![attestation]);
+
+    assert_eq!(
+        (
+            result.map(|outcome| outcome.records.len()),
+            repo.git(&["rev-parse", "HEAD^{tree}"]).trim().to_owned()
+        ),
+        (Ok(1), HEAD_TREE.to_owned())
+    );
+}
+
+#[test]
+fn it_should_refuse_a_git_tree_attestation_when_the_working_tree_differs_from_the_index() {
+    let probe = FakeProbe::clean(snap('a')).with_tree(TreeSource::Index, Ok(ProbeOutcome::Dirty));
+    let harness = OmhlHarness::new(probe);
+    let mut omhl = harness.open();
+    seed_pull_request_and_check(&mut omhl, FMT, "before-commit");
+    let attestation = executor_attestation(&tree('c'), FMT);
+
+    let error = refusal_as_executor(&mut omhl, vec![attestation]);
+
+    assert_eq!(error, rule(RuleCode::SnapshotDirty, SNAPSHOT_POINTER));
+}
+
+#[test]
+fn it_should_keep_refusing_a_git_commit_attestation_on_a_dirty_tree() {
+    let probe =
+        FakeProbe::dirty().with_tree(TreeSource::Index, Ok(ProbeOutcome::Reproducible(tree('a'))));
+    let harness = OmhlHarness::new(probe);
+    let mut omhl = harness.open();
+    seed_pull_request_and_check(&mut omhl, LINT, "before-pr");
+    let attestation = executor_attestation(&snap('a'), LINT);
+
+    let error = refusal_as_executor(&mut omhl, vec![attestation]);
+
+    assert_eq!(error, rule(RuleCode::SnapshotDirty, SNAPSHOT_POINTER));
+}
+
+#[test]
+fn it_should_answer_snapshot_tree_mismatch_with_its_own_code() {
+    let harness = OmhlHarness::new(staged_tree_probe());
+    let mut omhl = harness.open();
+    seed_pull_request_and_check(&mut omhl, FMT, "before-commit");
+    let attestation = executor_attestation(&tree('d'), FMT);
+
+    let error = refusal_as_executor(&mut omhl, vec![attestation]);
+
+    assert_eq!(
+        (
+            error.to_string(),
+            RuleCode::SnapshotTreeMismatch.as_str(),
+            RuleCode::SnapshotTreeMismatch != RuleCode::SnapshotNotHead
+        ),
+        (
+            "snapshot-tree-mismatch at /items/0/snapshot".to_owned(),
+            "snapshot-tree-mismatch",
+            true
+        )
+    );
 }
