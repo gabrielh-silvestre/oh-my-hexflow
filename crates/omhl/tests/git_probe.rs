@@ -1,7 +1,6 @@
 mod support;
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -9,7 +8,7 @@ use std::time::{Duration, Instant};
 use ::omhl::ports::git::GitProbe;
 use ::omhl::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 use hexlog::{Snapshot, SnapshotKind};
-use support::git::{GitRepo, fake_program, git_command_with_env, git_in};
+use support::git::{GitRepo, fake_program, git_command_with_env, git_in, write_executable};
 use tempfile::TempDir;
 
 const BASE_TREE: &str = "f4b354863caa9cea99b95422c9dab70465757d87";
@@ -187,8 +186,7 @@ fn during_commit<T>(
          while [ ! -e '{reg_path}/go' ] && [ \"$i\" -lt 300 ]; do sleep 0.1; i=$((i+1)); done\n"
     );
     let hook = hooks.path().join("pre-commit");
-    fs::write(&hook, script).expect("write the hook");
-    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).expect("make it executable");
+    write_executable(&hook, &script);
     git_out(
         repo,
         &["config", "core.hooksPath", &hooks.path().to_string_lossy()],
