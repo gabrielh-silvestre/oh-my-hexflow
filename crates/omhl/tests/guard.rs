@@ -182,7 +182,7 @@ fn open_app<'a>(raw: &'a RawHarness, probe: &'a FakeProbe) -> App<'a> {
         .unwrap_or_else(|error| panic!("the app opens: {error}"))
 }
 
-fn append_wire(id: &str, type_name: &str, data: Value) -> Action {
+fn append_wire(id: &str, type_name: &str, data: &Value) -> Action {
     Action::Append {
         request: json!({
             "items": [{ "body": { "kind": "node", "id": id, "type": type_name, "data": data } }]
@@ -191,8 +191,8 @@ fn append_wire(id: &str, type_name: &str, data: Value) -> Action {
 }
 
 /// `W1` aberto pela CLI e o check gravado por `writer`.
-fn seed_app(app: &mut App<'_>, check: &str, data: Value, writer: &Caller) {
-    let work_item = append_wire(W1, "work-item", work_item_data("t"));
+fn seed_app(app: &mut App<'_>, check: &str, data: &Value, writer: &Caller) {
+    let work_item = append_wire(W1, "work-item", &work_item_data("t"));
     app.dispatch(&Caller::cli(), &work_item)
         .unwrap_or_else(|error| panic!("the work item is accepted: {error}"));
     app.dispatch(writer, &append_wire(check, "check", data))
@@ -1165,7 +1165,7 @@ fn it_should_still_accept_a_manual_attestation_of_a_text_only_check() {
     let probe = FakeProbe::clean(snap('a'));
     let mut app = open_app(&raw, &probe);
     let data = check_data("before-pr", "Read the diff", false);
-    seed_app(&mut app, READ_DIFF, data, &Caller::cli());
+    seed_app(&mut app, READ_DIFF, &data, &Caller::cli());
 
     let response = app
         .dispatch(&Caller::cli(), &attest_action(READ_DIFF))
@@ -1186,7 +1186,7 @@ fn it_should_refuse_the_manual_attest_command_for_a_mechanical_check() {
     let raw = RawHarness::new();
     let probe = FakeProbe::clean(snap('a'));
     let mut app = open_app(&raw, &probe);
-    seed_app(&mut app, SUITE, mechanical_check_data(), &Caller::loader());
+    seed_app(&mut app, SUITE, &mechanical_check_data(), &Caller::loader());
 
     let result = app.dispatch(&Caller::cli(), &attest_action(SUITE));
 
@@ -1201,7 +1201,7 @@ fn it_should_refuse_the_attest_through_the_mcp_for_a_mechanical_check() {
     let raw = RawHarness::new();
     let probe = FakeProbe::clean(snap('a'));
     let mut app = open_app(&raw, &probe);
-    seed_app(&mut app, SUITE, mechanical_check_data(), &Caller::loader());
+    seed_app(&mut app, SUITE, &mechanical_check_data(), &Caller::loader());
 
     let result = app.dispatch(&Caller::mcp(), &attest_action(SUITE));
 
