@@ -6,7 +6,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::symlink;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Output, Stdio};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -169,13 +169,22 @@ fn send_signal(args: &[&str]) {
     assert!(status.success(), "kill {args:?} failed");
 }
 
-/// Manda `KILL` a todo pid que casou, com falha ou não, quando o teste termina.
-#[derive(Default)]
-struct Reaper(Vec<u32>);
+/// Dono do `git` filho: quando o teste termina, com falha ou não, mata e colhe o `git` se ele
+/// ainda vive e manda `KILL` aos pids que casam naquele momento (relidos, nunca lembrados: um pid
+/// lembrado pode já ser de outro processo).
+struct Reaper<'a> {
+    argv: &'a [u8],
+    xdg: &'a Path,
+    git: Child,
+}
 
-impl Drop for Reaper {
+impl Drop for Reaper<'_> {
     fn drop(&mut self) {
-        for pid in &self.0 {
+        if let Ok(None) = self.git.try_wait() {
+            let _ = self.git.kill();
+            let _ = self.git.wait();
+        }
+        for pid in matching_processes(self.argv, self.xdg) {
             let _ = Command::new("kill")
                 .args(["-KILL", &pid.to_string()])
                 .stderr(Stdio::null())
@@ -185,7 +194,7 @@ impl Drop for Reaper {
 }
 
 /// Espera o `git` sair (a cada 20 ms, até `limit`); se não sair, mata e colhe, e devolve `None`.
-fn wait_or_kill(git: &mut std::process::Child, limit: Duration) -> Option<ExitStatus> {
+fn wait_or_kill(git: &mut Child, limit: Duration) -> Option<ExitStatus> {
     let mut status = None;
     poll_until(limit, || {
         status = git.try_wait().expect("the git child is polled");
@@ -304,7 +313,12 @@ impl E2e {
     }
 
     fn omhl(&self, args: &[&str]) -> Cmd {
-        omhl(args).cwd(&self.r).xdg(&self.x).env("HOME", &self.h)
+        omhl(args)
+            .cwd(&self.r)
+            .xdg(&self.x)
+            .env("HOME", &self.h)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
     }
 
     fn write(&self, dir: &Path, rel: &str, content: &str) {
@@ -664,6 +678,7 @@ fn it_should_recover_the_missing_attestation_by_running_the_event_manually_on_a_
     assert_eq!(commit_run.code, Some(0), "stderr: {}", commit_run.stderr);
     let tree = snapshot("git-tree", &e.tree_of_head(&e.r));
     assert!(has_passed_at(&e.attestations(GATE), &tree));
+    assert_eq!(gate_pr.code, Some(0), "gate-pr: {}", gate_pr.stderr);
     assert_eq!(json_line(&gate_pr.stdout)["passed"], json!(true));
 }
 
@@ -789,7 +804,13 @@ fn it_should_report_a_missing_binary_as_a_stopped_run_without_attestation() {
 #[test]
 fn it_should_leave_omhl_verify_passing_after_the_full_flow() {
     let e = E2e::with_remote(&[red_gate(), pr_check(), merge_check()]);
-    red_then_green(&e);
+    let flow = red_then_green(&e);
+    assert_eq!(
+        flow.passed.status.code(),
+        Some(0),
+        "green commit: {}",
+        text(&flow.passed.stderr)
+    );
     e.git_ok(&e.r, &["push", "origin", WORK_ITEM_BRANCH]);
     let merge_run = e.omhl(&["check", "run", "--event", BEFORE_MERGE]).run();
     assert_eq!(
@@ -908,25 +929,25 @@ fn it_should_leave_no_orphan_when_the_hook_is_interrupted() {
     let e = E2e::new(&[slow_signal("307")]);
     e.stage(&e.r, "s", "s\n");
     let argv = b"sleep\x00307\x00";
-    let mut reaper = Reaper::default();
 
-    let mut git = git_command_with_env(&e.r, &e.x, &e.h, &["commit", "-m", "s"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .expect("git commit starts");
+    let mut run = Reaper {
+        argv,
+        xdg: &e.x,
+        git: git_command_with_env(&e.r, &e.x, &e.h, &["commit", "-m", "s"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .expect("git commit starts"),
+    };
     let started = poll_until(HOOK_START_LIMIT, || {
-        reaper.0.extend(matching_processes(argv, &e.x));
-        !reaper.0.is_empty()
+        !matching_processes(argv, &e.x).is_empty()
     });
-    send_signal(&["-INT", "--", &format!("-{}", git.id())]);
-    let status = wait_or_kill(&mut git, SIGNAL_LIMIT);
-    let no_orphan = poll_until(SIGNAL_LIMIT, || {
-        let found = matching_processes(argv, &e.x);
-        let none = found.is_empty();
-        reaper.0.extend(found);
-        none
+    send_signal(&["-INT", "--", &format!("-{}", run.git.id())]);
+    let signaled = Instant::now();
+    let status = wait_or_kill(&mut run.git, SIGNAL_LIMIT);
+    let no_orphan = poll_until(SIGNAL_LIMIT.saturating_sub(signaled.elapsed()), || {
+        matching_processes(argv, &e.x).is_empty()
     });
 
     assert!(started, "the hook never started sleep 307");
@@ -944,26 +965,23 @@ fn it_should_leave_no_orphan_when_the_git_process_is_killed_during_the_hook() {
     let e = E2e::new(&[slow_signal("308")]);
     e.stage(&e.r, "s", "s\n");
     let argv = b"sleep\x00308\x00";
-    let mut reaper = Reaper::default();
 
-    let mut git = git_command_with_env(&e.r, &e.x, &e.h, &["commit", "-m", "s"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .expect("git commit starts");
+    let mut run = Reaper {
+        argv,
+        xdg: &e.x,
+        git: git_command_with_env(&e.r, &e.x, &e.h, &["commit", "-m", "s"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .expect("git commit starts"),
+    };
     let started = poll_until(HOOK_START_LIMIT, || {
-        reaper.0.extend(matching_processes(argv, &e.x));
-        !reaper.0.is_empty()
+        !matching_processes(argv, &e.x).is_empty()
     });
-    send_signal(&["-TERM", &git.id().to_string()]);
-    let no_orphan = poll_until(SIGNAL_LIMIT, || {
-        let found = matching_processes(argv, &e.x);
-        let none = found.is_empty();
-        reaper.0.extend(found);
-        none
-    });
-    wait_or_kill(&mut git, SIGNAL_LIMIT);
+    send_signal(&["-TERM", &run.git.id().to_string()]);
+    let no_orphan = poll_until(SIGNAL_LIMIT, || matching_processes(argv, &e.x).is_empty());
+    wait_or_kill(&mut run.git, SIGNAL_LIMIT);
 
     assert!(started, "the hook never started sleep 308");
     assert!(no_orphan, "sleep 308 outlived the killed git process");
