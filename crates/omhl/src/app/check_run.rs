@@ -71,6 +71,7 @@ enum Recording {
         stored: Option<String>,
     },
     Busy,
+    Failed(AppError),
 }
 
 /// `error` é o do primeiro check sem veredito; `details` seguem a ordem de execução.
@@ -320,6 +321,20 @@ impl Engine<'_> {
                     stops: false,
                 }
             }
+            Recording::Failed(error) => {
+                context["kind"] = json!("attestation-not-recorded");
+                context["output_tail"] = output_tail(&report);
+                Miss {
+                    error: AppError::attestation_not_recorded,
+                    detail: check_detail(
+                        check,
+                        "attestation-not-recorded",
+                        &format!("the attestation was not recorded: {}", error.code()),
+                        context,
+                    ),
+                    stops: false,
+                }
+            }
             Recording::Refused { code, stored } => {
                 if let Some(stored) = stored {
                     context["stored"] = json!(stored);
@@ -343,7 +358,7 @@ impl Engine<'_> {
         Ok(Step::Miss(miss))
     }
 
-    /// Só a recusa da guarda e o `Busy` esgotado viram resultado; o resto do motor é erro da execução.
+    /// Recusa da guarda, `Busy` esgotado e outro erro do motor viram resultado.
     fn record(
         &mut self,
         check: &PlannedCheck,
@@ -396,7 +411,7 @@ impl Engine<'_> {
                 stored: self.stored_outcome(code, &id),
             }),
             Err(error) if error.code() == ErrorCode::Busy.as_str() => Ok(Recording::Busy),
-            Err(error) => Err(error),
+            Err(error) => Ok(Recording::Failed(error)),
         }
     }
 
