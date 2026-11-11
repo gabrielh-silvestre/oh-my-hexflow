@@ -1,9 +1,13 @@
 mod attest;
+mod byproduct_tail;
+mod check_run;
 mod context;
 mod engine;
+mod hooks;
 mod load;
 mod read;
 mod wire;
+mod work_item;
 
 pub mod action;
 pub mod error;
@@ -11,6 +15,8 @@ pub mod input;
 pub mod output;
 pub mod retry;
 pub mod runtime;
+
+pub use crate::mechanical::RUNNABLE_EVENTS;
 
 use std::path::{Path, PathBuf};
 
@@ -21,8 +27,11 @@ use self::action::{Action, Caller};
 use self::engine::Engine;
 use self::error::AppError;
 use self::retry::{RetryPolicy, with_retry};
+use crate::byproduct::ByproductStore;
 use crate::error::OmhlError;
 use crate::facade::{Omhl, OmhlDeps};
+use crate::probe::DevelopMark;
+use crate::runner::CommandRunner;
 
 /// Ações do `omhl` sobre um tenant, com as novas tentativas de `Busy`.
 pub struct App<'d> {
@@ -51,6 +60,12 @@ impl<'d> App<'d> {
                 tenant: tenant.clone(),
                 probe: deps.probe,
                 project_root: None,
+                runner: None,
+                byproducts: None,
+                mark: None,
+                retry: retry.clone(),
+                retry_after_run: RetryPolicy::after_run(),
+                hooks_dir: None,
             },
             retry: retry.clone(),
         })
@@ -62,10 +77,41 @@ impl<'d> App<'d> {
         self
     }
 
+    pub fn with_exec(
+        mut self,
+        runner: &'d dyn CommandRunner,
+        byproducts: &'d dyn ByproductStore,
+    ) -> App<'d> {
+        self.engine.runner = Some(runner);
+        self.engine.byproducts = Some(byproducts);
+        self
+    }
+
+    pub fn with_develop_mark(mut self, mark: &'d dyn DevelopMark) -> App<'d> {
+        self.engine.mark = Some(mark);
+        self
+    }
+
+    /// Para o teste injetar pausas curtas na gravação depois do comando.
+    pub fn with_retry_after_run(mut self, policy: RetryPolicy) -> App<'d> {
+        self.engine.retry_after_run = policy;
+        self
+    }
+
+    /// Pasta de usuário dos hooks do git.
+    pub fn with_hooks_dir(mut self, dir: Option<PathBuf>) -> App<'d> {
+        self.engine.hooks_dir = dir;
+        self
+    }
+
+    /// O `check run` cuida das próprias tentativas: repeti-lo inteiro rodaria os comandos de novo.
     pub fn dispatch(&mut self, caller: &Caller, action: &Action) -> Result<Value, AppError> {
         let App { engine, retry } = self;
 
-        with_retry(retry, || engine.run(caller, action))
+        match action {
+            Action::CheckRun { .. } => engine.run(caller, action),
+            _ => with_retry(retry, || engine.run(caller, action)),
+        }
     }
 }
 

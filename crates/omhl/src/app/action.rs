@@ -35,6 +35,28 @@ pub enum Action {
         dry_run: bool,
     },
     Project,
+    /// Sem work item no pedido: ele vem da branch. `pre_push` é a stdin do git com `--pre-push`.
+    CheckRun {
+        target: CheckTarget,
+        pre_push: Option<String>,
+    },
+    ConsumeDevelopMark,
+    Byproduct {
+        check: String,
+        work_item: String,
+        tail: u32,
+    },
+    /// Tratada pelo `Runtime`, não pelo `Engine`.
+    CheckSweep,
+    HooksInstall {
+        force: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckTarget {
+    Event(String),
+    Check(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +91,14 @@ impl Caller {
         Caller {
             client: "loader",
             agent: "loader",
+        }
+    }
+
+    /// Só o `check run` grava com ele.
+    pub fn executor() -> Caller {
+        Caller {
+            client: "executor",
+            agent: "executor",
         }
     }
 

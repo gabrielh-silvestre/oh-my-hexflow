@@ -1,11 +1,13 @@
 pub mod adapters;
 pub mod app;
+pub mod byproduct;
 pub mod error;
 pub mod extensions;
 pub mod facade;
 pub mod gate;
 pub mod graphs;
 pub mod guard;
+pub mod mechanical;
 pub mod native;
 pub mod ports;
 pub mod pr_gate;
@@ -13,3 +15,4 @@ pub mod probe;
 pub mod project;
 pub mod projection;
 pub mod render;
+pub mod runner;

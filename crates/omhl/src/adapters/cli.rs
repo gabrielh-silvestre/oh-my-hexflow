@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::error::ErrorKind;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use serde_json::Value;
 
 use super::{hook, mcp};
-use crate::app::action::{Action, Caller};
+use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
 use crate::app::runtime::run_action;
@@ -82,6 +82,52 @@ pub enum ActionCommand {
     },
     /// Write the projection of the tenant under `.omhl/projection/`.
     Project,
+    /// Run mechanical checks.
+    Check {
+        #[command(subcommand)]
+        command: CheckCommand,
+    },
+    /// Print the last lines of the stored output of a check for a work item.
+    Byproduct {
+        check: String,
+        work_item: String,
+        #[arg(long, default_value_t = 50)]
+        tail: u32,
+    },
+    /// Manage the git hooks of omhl.
+    Hooks {
+        #[command(subcommand)]
+        command: HooksCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CheckCommand {
+    /// Run the mechanical checks of an event, or one check, and attest them for the work item of the current branch.
+    Run(CheckRunArgs),
+    /// Kill the processes that escaped from an earlier check run whose omhl already exited.
+    Sweep,
+}
+
+#[derive(Debug, Args)]
+pub struct CheckRunArgs {
+    #[arg(long)]
+    pub event: Option<String>,
+    #[arg(long)]
+    pub check: Option<String>,
+    #[arg(long)]
+    pub pre_push: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum HooksCommand {
+    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit) of this clone; these are git hooks, unrelated to the Claude Code hook `omhl hook session-start`.
+    Install {
+        #[arg(long)]
+        force: bool,
+    },
+    /// Consume the develop mark after a commit on develop; the git post-commit hook calls it.
+    PostCommit,
 }
 
 #[derive(Debug, Subcommand)]
@@ -179,12 +225,16 @@ fn execute(
     db: Option<&Path>,
     env: &Env<'_>,
 ) -> Result<Value, AppError> {
-    let action = to_action(command, stdin)?;
+    let action = to_action(command, stdin, env)?;
 
     run_action(start, db, env, &Caller::cli(), &action)
 }
 
-fn to_action(command: ActionCommand, stdin: &mut impl Read) -> Result<Action, AppError> {
+fn to_action(
+    command: ActionCommand,
+    stdin: &mut impl Read,
+    _env: &Env<'_>,
+) -> Result<Action, AppError> {
     Ok(match command {
         ActionCommand::List {
             type_name,
@@ -218,5 +268,40 @@ fn to_action(command: ActionCommand, stdin: &mut impl Read) -> Result<Action, Ap
         ActionCommand::Verify => Action::Verify,
         ActionCommand::Load { dry_run } => Action::Load { dry_run },
         ActionCommand::Project => Action::Project,
+        ActionCommand::Check {
+            command: CheckCommand::Run(args),
+        } => check_run(args),
+        ActionCommand::Check {
+            command: CheckCommand::Sweep,
+        } => Action::CheckSweep,
+        ActionCommand::Byproduct {
+            check,
+            work_item,
+            tail,
+        } => Action::Byproduct {
+            check,
+            work_item,
+            tail,
+        },
+        ActionCommand::Hooks {
+            command: HooksCommand::Install { force },
+        } => Action::HooksInstall { force },
+        ActionCommand::Hooks {
+            command: HooksCommand::PostCommit,
+        } => Action::ConsumeDevelopMark,
     })
+}
+
+fn check_run(args: CheckRunArgs) -> Action {
+    let target = match (args.event, args.check) {
+        (Some(event), _) => CheckTarget::Event(event),
+        (None, Some(check)) => CheckTarget::Check(check),
+        (None, None) => unreachable!("clap requires exactly one of --event and --check"),
+    };
+    let pre_push = match args.pre_push {
+        true => unimplemented!("the pre-push input is read from stdin"),
+        false => None,
+    };
+
+    Action::CheckRun { target, pre_push }
 }

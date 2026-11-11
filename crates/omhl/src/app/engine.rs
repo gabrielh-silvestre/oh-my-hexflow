@@ -5,13 +5,16 @@ use serde_json::{Value, json};
 
 use super::action::{Action, Caller};
 use super::error::AppError;
+use super::retry::RetryPolicy;
 use super::wire::append_request;
-use super::{context, output};
+use super::{context, output, work_item};
+use crate::byproduct::ByproductStore;
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::Omhl;
-use crate::probe::{ProbeOutcome, SnapshotProbe};
+use crate::probe::{DevelopMark, ProbeOutcome, SnapshotProbe};
 use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
+use crate::runner::CommandRunner;
 
 /// Tamanho de página quando o pedido não traz `limit` (o padrão do motor).
 const DEFAULT_PAGE_LIMIT: u32 = 50;
@@ -24,6 +27,20 @@ pub(super) struct Engine<'d> {
     pub(super) tenant: TenantId,
     pub(super) probe: &'d dyn SnapshotProbe,
     pub(super) project_root: Option<PathBuf>,
+    #[allow(dead_code)] // consumido pela S7 (`app/check_run.rs`)
+    pub(super) runner: Option<&'d dyn CommandRunner>,
+    #[allow(dead_code)] // consumido pela S7 (`app/check_run.rs`)
+    pub(super) byproducts: Option<&'d dyn ByproductStore>,
+    #[allow(dead_code)] // consumido pela S7 (`app/work_item.rs`)
+    pub(super) mark: Option<&'d dyn DevelopMark>,
+    /// Cópia da política do `App`, para a leitura inicial do `check run`.
+    #[allow(dead_code)] // consumido pela S7 (`app/check_run.rs`)
+    pub(super) retry: RetryPolicy,
+    #[allow(dead_code)] // consumido pela S7 (`app/check_run.rs`)
+    pub(super) retry_after_run: RetryPolicy,
+    /// Pasta de usuário dos hooks do git; `None` só com `--db` e sem `HOME` nem `XDG_DATA_HOME`.
+    #[allow(dead_code)] // consumido pela S15 (`app/hooks.rs`)
+    pub(super) hooks_dir: Option<PathBuf>,
 }
 
 /// Id ou nome do pedido que não passa em `parse`: erro do motor com o ponteiro do campo.
@@ -74,6 +91,15 @@ impl Engine<'_> {
             }
             Action::Load { dry_run } => self.load(*dry_run),
             Action::Project => self.project(),
+            Action::CheckRun { target, pre_push } => self.check_run(target, pre_push.as_deref()),
+            Action::Byproduct {
+                check,
+                work_item,
+                tail,
+            } => self.byproduct(check, work_item, *tail),
+            Action::HooksInstall { force } => self.hooks_install(*force),
+            Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
+            Action::CheckSweep => unreachable!("check sweep is dispatched by the runtime"),
         }
     }
 

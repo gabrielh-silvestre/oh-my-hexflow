@@ -7,6 +7,8 @@ pub(crate) mod text;
 pub struct Env<'e> {
     pub xdg_data_home: Option<&'e std::ffi::OsStr>,
     pub home: Option<&'e std::ffi::OsStr>,
+    pub git_index_file: Option<&'e std::ffi::OsStr>,
+    pub parent_pid: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

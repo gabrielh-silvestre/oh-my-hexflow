@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use hexlog::{Snapshot, SnapshotKind};
 
-use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe};
+use crate::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -48,6 +48,11 @@ impl GitProbe {
 
     pub fn with_timeout(self, timeout: Duration) -> GitProbe {
         GitProbe { timeout, ..self }
+    }
+
+    /// Caminho relativo é resolvido contra `base`; índice injetado que não existe é erro, nunca árvore vazia.
+    pub fn with_index_file(self, _index_file: Option<&Path>, _base: &Path) -> GitProbe {
+        unimplemented!()
     }
 
     fn command(&self) -> Command {
@@ -116,6 +121,28 @@ impl SnapshotProbe for GitProbe {
             ));
         }
         parse_status(&output.stdout)
+    }
+
+    fn probe_tree(&self, _source: TreeSource) -> Result<ProbeOutcome, ProbeError> {
+        unimplemented!()
+    }
+
+    fn tree_dirty(&self) -> Result<bool, ProbeError> {
+        unimplemented!()
+    }
+
+    fn head_facts(&self) -> Result<HeadFacts, ProbeError> {
+        unimplemented!()
+    }
+}
+
+impl DevelopMark for GitProbe {
+    fn present(&self) -> Result<bool, ProbeError> {
+        unimplemented!()
+    }
+
+    fn consume(&self) -> Result<(), ProbeError> {
+        unimplemented!()
     }
 }
 

@@ -25,6 +25,17 @@ impl Default for RetryPolicy {
     }
 }
 
+impl RetryPolicy {
+    /// Política da gravação depois do `check run`: o `busy_timeout` aqui não tem efeito, porque a
+    /// conexão já abriu; o orçamento real são as pausas, cerca de 74 s.
+    pub fn after_run() -> RetryPolicy {
+        RetryPolicy {
+            busy_timeout: BUSY_TIMEOUT,
+            pauses: [1, 2, 4, 8, 15, 30].map(Duration::from_secs).to_vec(),
+        }
+    }
+}
+
 /// Repete só o `BUSY`: nesse caso nada foi gravado. Esgotadas as pausas, devolve o último erro.
 pub(crate) fn with_retry<T>(
     policy: &RetryPolicy,
