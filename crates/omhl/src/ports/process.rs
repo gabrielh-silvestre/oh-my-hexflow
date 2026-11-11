@@ -75,7 +75,7 @@ mod platform {
     use nix::sys::prctl::set_pdeathsig;
     use nix::sys::signal::{Signal, kill, killpg};
     use nix::sys::wait::{Id, WaitPidFlag, waitid};
-    use nix::unistd::Pid;
+    use nix::unistd::{Pid, getpgid};
 
     use super::{SweepReport, SweptProcess};
     use crate::mechanical::sweep::{
@@ -189,6 +189,8 @@ mod platform {
             .env("LC_ALL", "C")
             .env(RUN_MARKER_VAR, marker)
             .process_group(group.as_raw());
+        // antes do spawn: quando ele volta, o comando já pode estar rodando há um tempo
+        let started = Instant::now();
         let mut leader = match command.spawn() {
             Ok(leader) => leader,
             Err(e) => {
@@ -197,7 +199,6 @@ mod platform {
                 return Err(spawn_error(program, &e));
             }
         };
-        let started = Instant::now();
 
         if !matches!(guardian.try_wait(), Ok(None)) {
             // sem guardião, o comando ficaria sem quem o limpe se este processo morrer
@@ -242,10 +243,21 @@ mod platform {
             Err(RecvTimeoutError::Timeout)
         );
         if timed_out {
+            // o líder ainda não foi colhido (WNOWAIT): o pid dele não é reusado.
+            // Só o líder que saiu do grupo recebe TERM/CONT direto (TERM duplicado vale como "segundo Ctrl+C").
+            let escaped = getpgid(Some(leader_pid)).is_ok_and(|pgid| pgid != group);
             let _ = killpg(group, Signal::SIGTERM);
+            if escaped {
+                let _ = kill(leader_pid, Signal::SIGTERM);
+            }
             let _ = killpg(group, Signal::SIGCONT);
+            if escaped {
+                let _ = kill(leader_pid, Signal::SIGCONT);
+            }
             if events.recv_timeout(TERM_GRACE).is_err() {
                 let _ = killpg(group, Signal::SIGKILL);
+                // um líder fora do grupo não recebe o KILL do grupo; sem isto o recv() esperaria para sempre
+                let _ = kill(leader_pid, Signal::SIGKILL);
                 let _ = events.recv();
             }
         }
