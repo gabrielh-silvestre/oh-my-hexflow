@@ -243,6 +243,13 @@ pub fn commit(fill: char) -> Snapshot {
     Snapshot::new(SnapshotKind::GitCommit, &id).expect("valid snapshot")
 }
 
+/// Tree de 40 caracteres iguais a `fill`.
+pub fn tree(fill: char) -> Snapshot {
+    let id = fill.to_string().repeat(40);
+
+    Snapshot::new(SnapshotKind::GitTree, &id).expect("valid snapshot")
+}
+
 /// Item `Node` sem `base`, `snapshot` nem `external_id`.
 pub fn node(id: &str, type_name: &str, data: Value) -> AppendItem {
     AppendItem {

@@ -4,7 +4,7 @@ use std::fs;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use hexlog::RelationQuery;
+use hexlog::{RelationQuery, Snapshot, SnapshotKind};
 use omhl::app::App;
 use omhl::app::action::{Action, Caller};
 use omhl::app::error::AppError;
@@ -12,6 +12,7 @@ use omhl::app::input::parse_json_text;
 use omhl::app::retry::RetryPolicy;
 use omhl::app::runtime::Runtime;
 use omhl::facade::{Omhl, OmhlDeps};
+use omhl::probe::{ProbeOutcome, TreeSource};
 use omhl::project::Env;
 use serde_json::{Value, json};
 use support::busy::with_write_lock;
@@ -25,6 +26,9 @@ const W1: &str = "work-items.w1";
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 const USE_WAL: &str = "decisions.use-wal";
+const TREE_A: &str = "08585692ce06452da6f82ae66b90d98b55536fca";
+const TREE_ATTESTATION: &str =
+    "attestations.08585692ce06452da6f82ae66b90d98b.55536fca.checks.run-tests.work-items.w1";
 const BUSY_MESSAGE: &str =
     "database is busy: another omhl process is writing; run the command again";
 
@@ -179,6 +183,39 @@ fn close_action() -> Action {
     Action::Close {
         work_item: W1.to_owned(),
     }
+}
+
+fn tree_a() -> Snapshot {
+    Snapshot::new(SnapshotKind::GitTree, TREE_A).expect("valid snapshot")
+}
+
+/// Sonda limpa sobre a tree `TREE_A`; `with_head` também responde à fonte `Head`.
+fn tree_probe(with_head: bool) -> FakeProbe {
+    let probe = FakeProbe::clean(tree_a())
+        .with_tree(TreeSource::Index, Ok(ProbeOutcome::Reproducible(tree_a())));
+    if with_head {
+        return probe.with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree_a())));
+    }
+
+    probe
+}
+
+/// Pedido cru que grava o atestado de `RUN_TESTS` em `W1` sobre `TREE_A` com o `kind` dado.
+fn tree_attestation_action(kind: &str) -> Action {
+    raw_append_action(json!({"items": [{
+        "body": {
+            "kind": "node",
+            "id": TREE_ATTESTATION,
+            "type": "attestation",
+            "data": {
+                "check": RUN_TESTS,
+                "work_item": W1,
+                "outcome": "passed",
+                "ok": true,
+            },
+        },
+        "snapshot": { "kind": kind, "id": TREE_A },
+    }]}))
 }
 
 fn open_work_item(app: &mut App<'_>) {
@@ -741,6 +778,68 @@ fn it_should_refuse_closing_when_the_tree_is_dirty_in_the_app() {
 
     assert_eq!(error.code(), "snapshot-dirty");
     assert_eq!(node["data"]["status"], json!("open"));
+}
+
+#[test]
+fn it_should_append_an_attestation_with_a_git_tree_snapshot_through_the_wire_format() {
+    let fixture = Fixture::new(tree_probe(false));
+    let mut app = fixture.open();
+    open_work_item(&mut app);
+
+    run(&mut app, &tree_attestation_action("git-tree"));
+    let node = node_of(&mut app, TREE_ATTESTATION);
+
+    assert_eq!(
+        node["snapshot"],
+        json!({ "kind": "git-tree", "id": TREE_A })
+    );
+    assert_eq!(
+        node["data"],
+        json!({
+            "check": RUN_TESTS,
+            "work_item": W1,
+            "outcome": "passed",
+            "ok": true,
+        })
+    );
+}
+
+#[test]
+fn it_should_refuse_an_unknown_snapshot_kind_through_the_wire_format() {
+    let fixture = Fixture::new(tree_probe(false));
+    let mut app = fixture.open();
+    open_work_item(&mut app);
+
+    let error = refuse(&mut app, &tree_attestation_action("git-blob"));
+    let listed = run(&mut app, &list_action(Some("attestation"), None, None));
+
+    assert_eq!(
+        error.to_json(),
+        append_invalid("/items/0/snapshot/kind", "unknown kind")
+    );
+    assert_eq!(listed["items"], json!([]));
+}
+
+#[test]
+fn it_should_still_refuse_a_git_tree_snapshot_in_the_work_item_gate() {
+    let fixture = Fixture::new(tree_probe(true));
+    let mut app = fixture.open();
+    open_work_item(&mut app);
+
+    let error = refuse(&mut app, &close_action());
+    let node = node_of(&mut app, W1);
+
+    assert_eq!(error.code(), "INVALID_RECORD");
+    assert_eq!(
+        error.to_json()["error"]["details"],
+        json!([{
+            "code": "const",
+            "message": "const",
+            "path": "/items/0/body/data/gate/snapshot/kind",
+        }])
+    );
+    assert_eq!(node["data"]["status"], json!("open"));
+    assert!(node["data"].get("gate").is_none());
 }
 
 // Erros em JSON
