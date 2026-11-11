@@ -3,12 +3,19 @@
 pub struct ByproductHash(String);
 
 impl ByproductHash {
-    pub fn parse(_text: &str) -> Result<ByproductHash, ByproductError> {
-        unimplemented!()
+    pub fn parse(text: &str) -> Result<ByproductHash, ByproductError> {
+        let is_lower_hex = |byte: u8| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte);
+        if text.len() == 64 && text.bytes().all(is_lower_hex) {
+            return Ok(ByproductHash(text.to_owned()));
+        }
+        Err(ByproductError {
+            kind: ByproductErrorKind::InvalidHash,
+            message: format!("hash is not 64 lowercase hex characters: {text}"),
+        })
     }
 
     pub fn as_str(&self) -> &str {
-        unimplemented!()
+        &self.0
     }
 }
 
