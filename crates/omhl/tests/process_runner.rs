@@ -311,8 +311,16 @@ fn it_should_report_the_exit_code_and_the_duration() {
     );
 
     assert_eq!(report.exit_code, Some(7));
-    assert!(report.duration >= Duration::from_millis(300));
-    assert!(report.duration < Duration::from_secs(10));
+    assert!(
+        report.duration >= Duration::from_millis(300),
+        "duration {:?}",
+        report.duration
+    );
+    assert!(
+        report.duration < Duration::from_secs(10),
+        "duration {:?}",
+        report.duration
+    );
     assert!(!report.timed_out);
 }
 
@@ -750,7 +758,7 @@ fn it_should_kill_a_command_that_left_its_process_group_on_timeout() {
     let started = Instant::now();
     thread::spawn(move || {
         let result = ProcessRunner::new().run(&spec(
-            &["sh", "-c", "exec setsid sleep 61"],
+            &["sh", "-c", "trap '' TERM; exec setsid sleep 61"],
             &cwd,
             Duration::from_secs(1),
         ));
