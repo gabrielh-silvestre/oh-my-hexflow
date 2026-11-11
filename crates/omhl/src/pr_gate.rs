@@ -67,15 +67,6 @@ fn is_replaced_by_mechanical_check(native: &NativeCheck, projects: &[&NodeView])
     })
 }
 
-impl GateSnapshots {
-    fn of(&self, kind: SnapshotKind) -> &Snapshot {
-        match kind {
-            SnapshotKind::GitTree => &self.head_tree,
-            _ => &self.head_commit,
-        }
-    }
-}
-
 /// Um `Occurred` por check obrigatório, na ordem, e depois um `NoOpenContradiction`.
 pub fn pr_gate_questions(
     required: &[(SemanticId, SnapshotKind)],
@@ -84,12 +75,19 @@ pub fn pr_gate_questions(
 ) -> Vec<GateQuestion> {
     required
         .iter()
-        .map(|(check, kind)| GateQuestion {
-            label: check.as_str().to_owned(),
-            question: Question::Occurred {
-                select: attestation_filter(check, work_item, snapshots.of(*kind)),
-                min: 1,
-            },
+        .map(|(check, kind)| {
+            let snapshot = match kind {
+                SnapshotKind::GitTree => &snapshots.head_tree,
+                _ => &snapshots.head_commit,
+            };
+
+            GateQuestion {
+                label: check.as_str().to_owned(),
+                question: Question::Occurred {
+                    select: attestation_filter(check, work_item, snapshot),
+                    min: 1,
+                },
+            }
         })
         .chain(once(contradiction_question(work_item)))
         .collect()
