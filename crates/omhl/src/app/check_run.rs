@@ -18,7 +18,7 @@ use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, 
 use crate::mechanical::evaluate::{Observation, evaluate};
 use crate::mechanical::plan::{CheckResult, PlannedCheck, exit_blocked, plan_run, summarize};
 use crate::mechanical::spec::{CheckSpec, Outcome};
-use crate::probe::ProbeOutcome;
+use crate::probe::{ProbeError, ProbeOutcome, TreeSource};
 use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
 
 const ATTESTATION: &str = "attestation";
@@ -33,9 +33,18 @@ const SNAPSHOT_REFUSED_HINT: &str =
     "the index changed while the command ran; do not stage during a hook, then run again";
 const PROBE_FAILED_HINT: &str =
     "git could not read the tree; run git status and fix the repository state";
+const TREE_CHANGED_HINT: &str = "the command changed the working tree; keep checks read-only, add generated files to .gitignore, or restore tracked files with git checkout -- <path>";
 const PARENT_GONE_HINT: &str = "the process that started omhl exited before the checks ran; nothing ran; run the same command again";
 const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
 const PUSH_INPUT_HINT: &str = "the pre-push input needs four fields per line; run git push again";
+/// Variáveis que o git exporta para um hook e que apontariam o comando para o índice do hook (Q14).
+const HOOK_GIT_ENV: [&str; 5] = [
+    "GIT_INDEX_FILE",
+    "GIT_DIR",
+    "GIT_PREFIX",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+];
 
 /// Construtor do erro sem veredito de um check (DP-16).
 type MissError = fn(Vec<CheckDetail>) -> AppError;
@@ -167,13 +176,14 @@ impl Engine<'_> {
             let step = match ready_spec(scope, check) {
                 Err(miss) => Step::Miss(miss),
                 Ok(spec) => {
-                    let snapshot = match &tally.snapshot {
-                        Some(snapshot) => snapshot.clone(),
-                        None => self.head_snapshot(scope)?,
-                    };
-                    let step = self.execute(runner, scope, check, spec, &snapshot)?;
-                    tally.snapshot = Some(snapshot);
-                    step
+                    match self.snapshot_before(scope, check, spec, tally.snapshot.as_ref())? {
+                        Err(miss) => Step::Miss(miss),
+                        Ok(snapshot) => {
+                            let step = self.execute(runner, scope, check, spec, &snapshot)?;
+                            tally.snapshot = Some(snapshot);
+                            step
+                        }
+                    }
                 }
             };
             match step {
@@ -203,23 +213,85 @@ impl Engine<'_> {
         Ok(tally)
     }
 
-    /// Sondado só antes do primeiro check `GitCommit` que vai executar (L14).
+    /// `GitCommit` é sondado só antes do primeiro check que vai executar (L14); `GitTree`, antes de cada um.
+    fn snapshot_before(
+        &self,
+        scope: &Scope<'_>,
+        check: &PlannedCheck,
+        spec: &CheckSpec,
+        taken: Option<&Snapshot>,
+    ) -> Result<Result<Snapshot, Miss>, AppError> {
+        match (check.snapshot, taken) {
+            (SnapshotKind::GitTree, _) => self.index_tree(scope, check, spec),
+            (_, Some(snapshot)) => Ok(Ok(snapshot.clone())),
+            (_, None) => self.head_snapshot(scope).map(Ok),
+        }
+    }
+
     fn head_snapshot(&self, scope: &Scope<'_>) -> Result<Snapshot, AppError> {
         match self.probe.probe() {
             Ok(ProbeOutcome::Reproducible(snapshot)) => Ok(snapshot),
             Ok(ProbeOutcome::Dirty) => {
-                let mut context = json!({
-                    "kind": "worktree-dirty",
-                    "event": scope.event,
-                    "branch": scope.branch,
-                });
-                if let Some(work_item) = scope.work_item {
-                    context["work_item"] = json!(work_item);
-                }
-                Err(AppError::worktree_dirty("").with_context(context))
+                Err(AppError::worktree_dirty("")
+                    .with_context(scope.refusal_context("worktree-dirty")))
             }
             Err(error) => Err(AppError::probe_failed(&error.message)),
         }
+    }
+
+    /// Árvore do índice; arquivo não rastreado também recusa (Q4) e a sonda que falha para a fila (L8).
+    fn index_tree(
+        &self,
+        scope: &Scope<'_>,
+        check: &PlannedCheck,
+        spec: &CheckSpec,
+    ) -> Result<Result<Snapshot, Miss>, AppError> {
+        match self.probe.probe_tree(TreeSource::Index) {
+            Ok(ProbeOutcome::Reproducible(tree)) => Ok(Ok(tree)),
+            Ok(ProbeOutcome::Dirty) => Err(AppError::worktree_differs_from_index("")
+                .with_context(scope.refusal_context("worktree-differs-from-index"))),
+            Err(error) => {
+                let context = scope.context("probe-failed", &check.id, Some(&spec.run));
+                Ok(Err(probe_stop(check, context, &error)))
+            }
+        }
+    }
+
+    /// Árvore alterada pelo comando, ou sonda que falha depois dele, param a fila sem gravar nada.
+    fn tree_change(
+        &self,
+        scope: &Scope<'_>,
+        check: &PlannedCheck,
+        spec: &CheckSpec,
+        snapshot: &Snapshot,
+        report: &RunReport,
+    ) -> Option<Miss> {
+        let (changed, code) = match check.snapshot {
+            SnapshotKind::GitTree => (self.probe.tree_dirty(), "command-changed-worktree"),
+            _ => (
+                self.probe
+                    .probe()
+                    .map(|outcome| outcome != ProbeOutcome::Reproducible(snapshot.clone())),
+                "command-changed-tree",
+            ),
+        };
+        let kind = match &changed {
+            Ok(false) => return None,
+            Ok(true) => "tree-changed",
+            Err(_) => "probe-failed",
+        };
+        let mut context = scope.ran_context(kind, &check.id, &spec.run, snapshot);
+        context["output_tail"] = output_tail(report);
+        if let Err(error) = changed {
+            return Some(probe_stop(check, context, &error));
+        }
+        context["hint"] = json!(TREE_CHANGED_HINT);
+
+        Some(Miss {
+            error: AppError::check_not_run,
+            detail: check_detail(check, code, "the command changed the tree", context),
+            stops: true,
+        })
     }
 
     fn execute(
@@ -235,13 +307,16 @@ impl Engine<'_> {
             cwd: scope.cwd.to_path_buf(),
             timeout: Duration::from_secs(u64::from(spec.timeout_secs)),
             env_set: Vec::new(),
-            env_remove: Vec::new(),
+            env_remove: HOOK_GIT_ENV.map(str::to_owned).to_vec(),
             max_stream_bytes: MAX_STREAM_BYTES,
         };
         let report = match runner.run(&request) {
             Ok(report) => report,
             Err(error) => return Ok(Step::Miss(run_error(scope, check, spec, snapshot, &error))),
         };
+        if let Some(miss) = self.tree_change(scope, check, spec, snapshot, &report) {
+            return Ok(Step::Miss(miss));
+        }
         let stdout = String::from_utf8_lossy(&report.stdout);
         let stderr = String::from_utf8_lossy(&report.stderr);
         let outcome = evaluate(
@@ -287,15 +362,13 @@ impl Engine<'_> {
 
         let Some(work_item) = scope.work_item else {
             // Na `develop` nada é gravado: a saída só existe no `context` (DP-29).
-            let mut context = scope.context("failed", &check.id, Some(&spec.run));
-            context["snapshot"] = json!(snapshot);
+            let mut context = scope.ran_context("failed", &check.id, &spec.run, snapshot);
             context["output_tail"] = output_tail(&report);
             let message = "output in context.output_tail".to_owned();
             return Ok(verdict(failed(message, Some(context))));
         };
         let recording = self.record(check, spec, work_item, snapshot, outcome, &report)?;
-        let mut context = scope.context("guard-refused", &check.id, Some(&spec.run));
-        context["snapshot"] = json!(snapshot);
+        let mut context = scope.ran_context("guard-refused", &check.id, &spec.run, snapshot);
         context["expected"] = json!(outcome_name(outcome));
         let miss = match recording {
             Recording::Recorded => {
@@ -350,7 +423,13 @@ impl Engine<'_> {
                         "the guard refused the attestation",
                         context,
                     ),
-                    stops: false,
+                    // A árvore mudou durante o comando: os checks seguintes rodariam sobre outra.
+                    stops: matches!(
+                        code,
+                        RuleCode::SnapshotTreeMismatch
+                            | RuleCode::SnapshotDirty
+                            | RuleCode::SnapshotNotHead
+                    ),
                 }
             }
         };
@@ -445,6 +524,30 @@ impl Scope<'_> {
 
         context
     }
+
+    /// `context` de um check cujo comando rodou sobre `snapshot`.
+    fn ran_context(
+        &self,
+        kind: &str,
+        check: &SemanticId,
+        argv: &[String],
+        snapshot: &Snapshot,
+    ) -> Value {
+        let mut context = self.context(kind, check, Some(argv));
+        context["snapshot"] = json!(snapshot);
+
+        context
+    }
+
+    /// `context` de uma recusa da árvore antes de qualquer check.
+    fn refusal_context(&self, kind: &str) -> Value {
+        let mut context = json!({ "kind": kind, "event": self.event, "branch": self.branch });
+        if let Some(work_item) = self.work_item {
+            context["work_item"] = json!(work_item);
+        }
+
+        context
+    }
 }
 
 /// `pre-push`: lê a stdin inteira antes de decidir (DP-15).
@@ -478,25 +581,21 @@ fn check_push(stdin: &str, facts: &HeadFacts, event: &str) -> Result<PushPlan, A
     })
 }
 
-/// Spec inválido e `GitTree` (até a S12) não executam e seguem para o próximo check.
+/// Spec inválido não executa e segue para o próximo check.
 fn ready_spec<'p>(scope: &Scope<'_>, check: &'p PlannedCheck) -> Result<&'p CheckSpec, Miss> {
-    let (code, message, context) = match &check.spec {
-        Err(error) => (
-            "spec-invalid",
-            format!("{} at {}", error.code, error.path),
-            scope.context("spec-invalid", &check.id, None),
-        ),
-        Ok(spec) if check.snapshot != SnapshotKind::GitCommit => (
-            "snapshot-tree-pending",
-            "the tree snapshot is not available yet".to_owned(),
-            scope.context("snapshot-tree-pending", &check.id, Some(&spec.run)),
-        ),
+    let error = match &check.spec {
         Ok(spec) => return Ok(spec),
+        Err(error) => error,
     };
 
     Err(Miss {
         error: AppError::check_not_run,
-        detail: check_detail(check, code, &message, context),
+        detail: check_detail(
+            check,
+            "spec-invalid",
+            &format!("{} at {}", error.code, error.path),
+            scope.context("spec-invalid", &check.id, None),
+        ),
         stops: false,
     })
 }
@@ -544,8 +643,7 @@ fn run_error(
             AppError::check_not_run,
         ),
     };
-    let mut context = scope.context(kind, &check.id, Some(&spec.run));
-    context["snapshot"] = json!(snapshot);
+    let mut context = scope.ran_context(kind, &check.id, &spec.run, snapshot);
     context["os_error"] = json!(error.message);
     if let Some(hint) = hint {
         context["hint"] = json!(hint);
@@ -558,6 +656,18 @@ fn run_error(
             error.kind,
             RunErrorKind::UnsupportedPlatform | RunErrorKind::ParentGone
         ),
+    }
+}
+
+/// Sonda que falha antes ou depois do comando para a fila (L8); só o `context.kind` a distingue.
+fn probe_stop(check: &PlannedCheck, mut context: Value, error: &ProbeError) -> Miss {
+    context["os_error"] = json!(error.message);
+    context["hint"] = json!(PROBE_FAILED_HINT);
+
+    Miss {
+        error: AppError::check_not_run,
+        detail: check_detail(check, "not-run", "git could not read the tree", context),
+        stops: true,
     }
 }
 

@@ -260,7 +260,6 @@ impl AppError {
         )
     }
 
-    #[allow(dead_code)] // consumidor S12
     pub(crate) fn worktree_differs_from_index(path: &str) -> AppError {
         AppError::at_pointer(
             "worktree-differs-from-index",
