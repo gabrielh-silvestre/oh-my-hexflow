@@ -4,8 +4,7 @@ pub struct ByproductHash(String);
 
 impl ByproductHash {
     pub fn parse(text: &str) -> Result<ByproductHash, ByproductError> {
-        let is_lower_hex = |byte: u8| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte);
-        if text.len() == 64 && text.bytes().all(is_lower_hex) {
+        if hexlog::Hash::parse(text).is_ok() {
             return Ok(ByproductHash(text.to_owned()));
         }
         Err(ByproductError {
