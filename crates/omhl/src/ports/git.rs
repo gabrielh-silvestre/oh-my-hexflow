@@ -83,19 +83,6 @@ impl GitProbe {
         command
     }
 
-    fn status_command(&self) -> Command {
-        self.git(&[
-            "status",
-            "--porcelain=v2",
-            "-z",
-            "--branch",
-            "--no-renames",
-            "--no-ahead-behind",
-            "--untracked-files=normal",
-            "--ignore-submodules=none",
-        ])
-    }
-
     fn git(&self, args: &[&str]) -> Command {
         let mut command = self.base_command();
         command.args(args);
@@ -214,7 +201,17 @@ impl GitProbe {
 
 impl SnapshotProbe for GitProbe {
     fn probe(&self) -> Result<ProbeOutcome, ProbeError> {
-        parse_status(&self.run_ok(self.status_command())?)
+        let status = self.git(&[
+            "status",
+            "--porcelain=v2",
+            "-z",
+            "--branch",
+            "--no-renames",
+            "--no-ahead-behind",
+            "--untracked-files=normal",
+            "--ignore-submodules=none",
+        ]);
+        parse_status(&self.run_ok(status)?)
     }
 
     fn probe_tree(&self, source: TreeSource) -> Result<ProbeOutcome, ProbeError> {
