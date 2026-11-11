@@ -7,18 +7,21 @@ use crate::ids::is_lower_hex;
 #[non_exhaustive]
 pub enum SnapshotKind {
     GitCommit,
+    GitTree,
 }
 
 impl SnapshotKind {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             SnapshotKind::GitCommit => "git-commit",
+            SnapshotKind::GitTree => "git-tree",
         }
     }
 
     pub(crate) fn parse(text: &str) -> Option<SnapshotKind> {
         match text {
             "git-commit" => Some(SnapshotKind::GitCommit),
+            "git-tree" => Some(SnapshotKind::GitTree),
             _ => None,
         }
     }

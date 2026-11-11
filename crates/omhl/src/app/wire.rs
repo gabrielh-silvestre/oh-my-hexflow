@@ -58,10 +58,13 @@ fn snapshot(item: &Fields<'_>) -> Result<Option<Snapshot>, AppError> {
         return Ok(None);
     };
     let fields = Fields::object(value, item.child("snapshot"))?.only(&SNAPSHOT_KEYS)?;
-    fields.kind(&["git-commit"])?;
+    let kind = match fields.kind(&["git-commit", "git-tree"])? {
+        "git-tree" => SnapshotKind::GitTree,
+        _ => SnapshotKind::GitCommit,
+    };
     let id = fields.text("id")?;
 
-    Snapshot::new(SnapshotKind::GitCommit, id)
+    Snapshot::new(kind, id)
         .map(Some)
         .map_err(|error| fields.refused(error))
 }
