@@ -1656,7 +1656,9 @@ fn marked_report(exit_code: i32) -> RunReport {
     }
 }
 
-/// O marcador não aparece em nenhum tipo listado, nos bytes do banco (com o `App` aberto) nem nos blobs.
+const MARKED_BYPRODUCT: &[u8] = b"omhl-byproduct v1 stdout=13 stderr=0\nTAIL-MARK-51\n";
+
+/// O marcador não aparece em nenhum tipo listado nem nos bytes do banco (com o `App` aberto); o único blob é o byproduct DP-37 da saída, sem nada do context.
 fn assert_marker_not_persisted(fx: &Fixture, app: &mut App<'_>) {
     for type_name in ["attestation", "check", "work-item", "premise"] {
         let listed = Value::Array(list(app, type_name)).to_string();
@@ -1675,9 +1677,11 @@ fn assert_marker_not_persisted(fx: &Fixture, app: &mut App<'_>) {
             "hexlog.db-wal has the marker"
         );
     }
-    for blob in fx.blob_files() {
-        assert!(!contains_bytes(&blob, MARKER), "a blob has the marker");
-    }
+    assert_eq!(
+        fx.blob_files(),
+        vec![MARKED_BYPRODUCT.to_vec()],
+        "the only blob is the byproduct of the marked output, with no error context"
+    );
 }
 
 #[test]
