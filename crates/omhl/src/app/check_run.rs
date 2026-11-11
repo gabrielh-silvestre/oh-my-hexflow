@@ -1,15 +1,633 @@
-use serde_json::Value;
+use std::path::Path;
+use std::slice;
+use std::time::Duration;
 
-use super::action::CheckTarget;
+use hexlog::{
+    AppendItem, AppendRequest, ErrorCode, ItemBody, SemanticId, Snapshot, SnapshotKind, TypeName,
+};
+use serde_json::{Value, json};
+
+use super::action::{Caller, CheckTarget};
+use super::attest::{attestation_data, derived_id};
 use super::engine::Engine;
-use super::error::AppError;
+use super::error::{AppError, CheckDetail};
+use super::retry::with_retry;
+use super::work_item::{WorkItemRoute, head_branch, resolve_work_item};
+use crate::error::{OmhlError, RuleCode};
+use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
+use crate::mechanical::evaluate::{Observation, evaluate};
+use crate::mechanical::plan::{CheckResult, PlannedCheck, exit_blocked, plan_run, summarize};
+use crate::mechanical::spec::{CheckSpec, Outcome};
+use crate::probe::ProbeOutcome;
+use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
+
+const ATTESTATION: &str = "attestation";
+/// 4 MiB por fluxo.
+const MAX_STREAM_BYTES: u64 = 4_194_304;
+const TAIL_LINES: usize = 20;
+const TAIL_LINE_CHARS: usize = 500;
+const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
+const BUSY_HINT: &str = "the database stayed locked for about 74 seconds; the verdict above was computed but not recorded; run the same command again when the other process ends";
+const OUTCOME_IMMUTABLE_HINT: &str = "this snapshot already has the stored outcome for this check; change the tree to get a new verdict";
+const SNAPSHOT_REFUSED_HINT: &str =
+    "the index changed while the command ran; do not stage during a hook, then run again";
+const PROBE_FAILED_HINT: &str =
+    "git could not read the tree; run git status and fix the repository state";
+const PARENT_GONE_HINT: &str = "the process that started omhl exited before the checks ran; nothing ran; run the same command again";
+const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
+const PUSH_INPUT_HINT: &str = "the pre-push input needs four fields per line; run git push again";
+
+/// Construtor do erro sem veredito de um check (DP-16).
+type MissError = fn(Vec<CheckDetail>) -> AppError;
+
+/// O que vale para todos os checks de uma execução; `work_item` é `None` na `develop`.
+struct Scope<'a> {
+    event: &'a str,
+    work_item: Option<&'a SemanticId>,
+    branch: &'a str,
+    cwd: &'a Path,
+}
+
+/// Check sem veredito gravado; `stops` para a fila (tabela 2.3).
+struct Miss {
+    error: MissError,
+    detail: CheckDetail,
+    stops: bool,
+}
+
+enum Step {
+    Verdict {
+        result: CheckResult,
+        output: Value,
+        failed: Option<CheckDetail>,
+    },
+    Miss(Miss),
+}
+
+enum Recording {
+    Recorded,
+    Refused {
+        code: RuleCode,
+        stored: Option<String>,
+    },
+    Busy,
+}
+
+/// `error` é o do primeiro check sem veredito; `details` seguem a ordem de execução.
+#[derive(Default)]
+struct Tally {
+    results: Vec<CheckResult>,
+    outputs: Vec<Value>,
+    details: Vec<CheckDetail>,
+    error: Option<MissError>,
+    snapshot: Option<Snapshot>,
+}
 
 impl Engine<'_> {
+    /// O autor da attestation é sempre o `executor` (DP-19); o `check run` cuida das próprias tentativas.
     pub(super) fn check_run(
-        &self,
-        _target: &CheckTarget,
-        _pre_push: Option<&str>,
+        &mut self,
+        target: &CheckTarget,
+        pre_push: Option<&str>,
     ) -> Result<Value, AppError> {
-        unimplemented!()
+        let root = self
+            .project_root
+            .clone()
+            .ok_or_else(|| AppError::plain("no-project-root", "no project root is available"))?;
+        let runner = self.runner.ok_or_else(|| {
+            AppError::plain("runner-unavailable", "no command runner is configured")
+        })?;
+        let (event, planned) = self.plan_target(target)?;
+        let facts = self
+            .probe
+            .head_facts()
+            .map_err(|error| AppError::probe_failed(&error.message))?;
+        if let Some(stdin) = pre_push
+            && check_push(stdin, &facts, &event)? == PushPlan::NothingToAttest
+        {
+            return Ok(json!({ "event": event, "push": "nothing-to-attest", "results": [] }));
+        }
+        let branch = head_branch(&facts, &event)?;
+        let route = resolve_work_item(self, &event, &branch)?;
+        let scope = Scope {
+            event: &event,
+            work_item: match &route {
+                WorkItemRoute::Recorded(id) => Some(id),
+                WorkItemRoute::DryRun => None,
+            },
+            branch: &branch,
+            cwd: &root,
+        };
+        let tally = self.run_planned(runner, &scope, &planned)?;
+
+        finish(&scope, tally)
+    }
+
+    /// Lê checks e relações `after` em valores próprios: nenhuma transação fica aberta durante a execução.
+    fn plan_target(
+        &mut self,
+        target: &CheckTarget,
+    ) -> Result<(String, Vec<PlannedCheck>), AppError> {
+        let (nodes, after) = with_retry(&self.retry, || {
+            Ok((
+                self.omhl.check_nodes(&self.tenant)?,
+                self.omhl.check_after_relations(&self.tenant)?,
+            ))
+        })?;
+
+        match target {
+            CheckTarget::Event(event) => Ok((event.clone(), plan_run(event, &nodes, &after))),
+            CheckTarget::Check(id) => {
+                let node = nodes
+                    .iter()
+                    .find(|node| node.id.as_str() == id)
+                    .ok_or_else(|| OmhlError::rule(RuleCode::CheckNotFound, "/check"))?;
+                let event = node.data["when"]["event"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned();
+                let planned = plan_run(&event, slice::from_ref(node), &[]);
+                if planned.is_empty() {
+                    return Err(AppError::check_not_mechanical("/check"));
+                }
+                Ok((event, planned))
+            }
+        }
+    }
+
+    fn run_planned(
+        &mut self,
+        runner: &dyn CommandRunner,
+        scope: &Scope<'_>,
+        planned: &[PlannedCheck],
+    ) -> Result<Tally, AppError> {
+        let mut tally = Tally::default();
+        for (index, check) in planned.iter().enumerate() {
+            let step = match ready_spec(scope, check) {
+                Err(miss) => Step::Miss(miss),
+                Ok(spec) => {
+                    let snapshot = match &tally.snapshot {
+                        Some(snapshot) => snapshot.clone(),
+                        None => self.head_snapshot(scope)?,
+                    };
+                    let step = self.execute(runner, scope, check, spec, &snapshot)?;
+                    tally.snapshot = Some(snapshot);
+                    step
+                }
+            };
+            match step {
+                Step::Verdict {
+                    result,
+                    output,
+                    failed,
+                } => {
+                    tally.results.push(result);
+                    tally.outputs.push(output);
+                    tally.details.extend(failed);
+                }
+                Step::Miss(miss) => {
+                    tally.error.get_or_insert(miss.error);
+                    tally.details.push(miss.detail);
+                    if miss.stops {
+                        let rest = &planned[index + 1..];
+                        tally
+                            .details
+                            .extend(rest.iter().map(|check| not_run(scope, check)));
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(tally)
+    }
+
+    /// Sondado só antes do primeiro check `GitCommit` que vai executar (L14).
+    fn head_snapshot(&self, scope: &Scope<'_>) -> Result<Snapshot, AppError> {
+        match self.probe.probe() {
+            Ok(ProbeOutcome::Reproducible(snapshot)) => Ok(snapshot),
+            Ok(ProbeOutcome::Dirty) => {
+                let mut context = json!({
+                    "kind": "worktree-dirty",
+                    "event": scope.event,
+                    "branch": scope.branch,
+                });
+                if let Some(work_item) = scope.work_item {
+                    context["work_item"] = json!(work_item);
+                }
+                Err(AppError::worktree_dirty("").with_context(context))
+            }
+            Err(error) => Err(AppError::probe_failed(&error.message)),
+        }
+    }
+
+    fn execute(
+        &mut self,
+        runner: &dyn CommandRunner,
+        scope: &Scope<'_>,
+        check: &PlannedCheck,
+        spec: &CheckSpec,
+        snapshot: &Snapshot,
+    ) -> Result<Step, AppError> {
+        let request = RunSpec {
+            argv: spec.run.clone(),
+            cwd: scope.cwd.to_path_buf(),
+            timeout: Duration::from_secs(u64::from(spec.timeout_secs)),
+            env_set: Vec::new(),
+            env_remove: Vec::new(),
+            max_stream_bytes: MAX_STREAM_BYTES,
+        };
+        let report = match runner.run(&request) {
+            Ok(report) => report,
+            Err(error) => return Ok(Step::Miss(run_error(scope, check, spec, snapshot, &error))),
+        };
+        let stdout = String::from_utf8_lossy(&report.stdout);
+        let stderr = String::from_utf8_lossy(&report.stderr);
+        let outcome = evaluate(
+            spec,
+            &Observation {
+                exit_code: report.exit_code,
+                stdout: &stdout,
+                stderr: &stderr,
+                timed_out: report.timed_out,
+                tree_changed: false,
+            },
+        );
+        let failed = |message: String, context: Option<Value>| {
+            let prefix = if check.blocking {
+                ""
+            } else {
+                NON_BLOCKING_PREFIX
+            };
+            (outcome == Outcome::Failed).then(|| CheckDetail {
+                check: check.id.as_str().to_owned(),
+                code: "failed",
+                message: format!("{prefix}{message}"),
+                context,
+            })
+        };
+        let verdict = |failed: Option<CheckDetail>| Step::Verdict {
+            result: CheckResult {
+                id: check.id.clone(),
+                outcome,
+                blocking: check.blocking,
+            },
+            output: with_run_fields(
+                json!({
+                    "check": check.id,
+                    "outcome": outcome_name(outcome),
+                    "ok": outcome != Outcome::Failed,
+                    "blocking": check.blocking,
+                }),
+                &report,
+            ),
+            failed,
+        };
+
+        let Some(work_item) = scope.work_item else {
+            // Na `develop` nada é gravado: a saída só existe no `context` (DP-29).
+            let mut context = scope.context("failed", &check.id, Some(&spec.run));
+            context["snapshot"] = json!(snapshot);
+            context["output_tail"] = output_tail(&report);
+            let message = "output in context.output_tail".to_owned();
+            return Ok(verdict(failed(message, Some(context))));
+        };
+        let recording = self.record(check, spec, work_item, snapshot, outcome, &report)?;
+        let mut context = scope.context("guard-refused", &check.id, Some(&spec.run));
+        context["snapshot"] = json!(snapshot);
+        context["expected"] = json!(outcome_name(outcome));
+        let miss = match recording {
+            Recording::Recorded => {
+                let message = format!(
+                    "omhl byproduct {} {} --tail 40",
+                    check.id.as_str(),
+                    work_item.as_str()
+                );
+                return Ok(verdict(failed(message, None)));
+            }
+            Recording::Busy => {
+                context["kind"] = json!("busy-exhausted");
+                context["output_tail"] = output_tail(&report);
+                context["hint"] = json!(BUSY_HINT);
+                Miss {
+                    error: AppError::attestation_not_recorded,
+                    detail: check_detail(
+                        check,
+                        "attestation-not-recorded",
+                        "the attestation was not recorded",
+                        context,
+                    ),
+                    stops: false,
+                }
+            }
+            Recording::Refused { code, stored } => {
+                if let Some(stored) = stored {
+                    context["stored"] = json!(stored);
+                }
+                if let Some(hint) = refusal_hint(code) {
+                    context["hint"] = json!(hint);
+                }
+                Miss {
+                    error: AppError::attestation_refused,
+                    detail: check_detail(
+                        check,
+                        code.as_str(),
+                        "the guard refused the attestation",
+                        context,
+                    ),
+                    stops: false,
+                }
+            }
+        };
+
+        Ok(Step::Miss(miss))
+    }
+
+    /// Só a recusa da guarda e o `Busy` esgotado viram resultado; o resto do motor é erro da execução.
+    fn record(
+        &mut self,
+        check: &PlannedCheck,
+        spec: &CheckSpec,
+        work_item: &SemanticId,
+        snapshot: &Snapshot,
+        outcome: Outcome,
+        report: &RunReport,
+    ) -> Result<Recording, AppError> {
+        let id = match derived_id(snapshot, &check.id, work_item) {
+            Ok(id) => id,
+            Err(OmhlError::Rule { code, .. }) => {
+                return Ok(Recording::Refused { code, stored: None });
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let mut data = attestation_data(&check.id, work_item, outcome_name(outcome), None);
+        data["command"] = json!(spec.run);
+        let data = with_run_fields(data, report);
+        let policy = self.retry_after_run.clone();
+        // O `get` do `base` fica dentro da tentativa: outro processo pode ter gravado entre elas (DP-18).
+        let attempt = with_retry(&policy, || {
+            let item = AppendItem {
+                body: ItemBody::Node {
+                    id: id.clone(),
+                    type_name: TypeName::parse(ATTESTATION)?,
+                    data: data.clone(),
+                },
+                base: self.current_base(&id)?,
+                snapshot: Some(snapshot.clone()),
+                external_id: None,
+            };
+            let request = AppendRequest {
+                tenant: self.tenant.clone(),
+                author: Caller::executor().author(),
+                key: None,
+                items: vec![item],
+            };
+            match self.omhl.append(&request) {
+                Ok(_) => Ok(None),
+                Err(OmhlError::Rule { code, .. }) => Ok(Some(code)),
+                Err(error) => Err(AppError::from(error)),
+            }
+        });
+
+        match attempt {
+            Ok(None) => Ok(Recording::Recorded),
+            Ok(Some(code)) => Ok(Recording::Refused {
+                code,
+                stored: self.stored_outcome(code, &id),
+            }),
+            Err(error) if error.code() == ErrorCode::Busy.as_str() => Ok(Recording::Busy),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Só para o `context`: uma leitura que falhe deixa o campo de fora em vez de esconder a recusa.
+    fn stored_outcome(&mut self, code: RuleCode, id: &SemanticId) -> Option<String> {
+        if code != RuleCode::OutcomeImmutable {
+            return None;
+        }
+        let view = self.omhl.get(&self.tenant, id).ok().flatten()?;
+
+        view.data["outcome"].as_str().map(str::to_owned)
+    }
+}
+
+impl Scope<'_> {
+    /// Campos do `context` (DP-31) comuns a todo detalhe de um check.
+    fn context(&self, kind: &str, check: &SemanticId, argv: Option<&[String]>) -> Value {
+        let mut context = json!({
+            "kind": kind,
+            "event": self.event,
+            "check": check,
+            "branch": self.branch,
+            "cwd": self.cwd.to_string_lossy(),
+        });
+        if let Some(work_item) = self.work_item {
+            context["work_item"] = json!(work_item);
+        }
+        if let Some(argv) = argv {
+            context["argv"] = json!(argv);
+        }
+
+        context
+    }
+}
+
+/// `pre-push`: lê a stdin inteira antes de decidir (DP-15).
+fn check_push(stdin: &str, facts: &HeadFacts, event: &str) -> Result<PushPlan, AppError> {
+    let checkout = current_branch(facts).ok();
+
+    plan_push(stdin, facts.head.as_deref(), checkout.as_deref()).map_err(|error| match error {
+        PushError::ProtectedTarget { remote_ref } => {
+            AppError::branch_protected("").with_context(json!({
+                "kind": "push-to-main",
+                "event": event,
+                "rref": remote_ref,
+                "hint": PUSH_TO_MAIN_HINT,
+            }))
+        }
+        PushError::NotCheckedOut {
+            local_ref,
+            remote_ref,
+        } => AppError::push_ref_not_checked_out("").with_context(json!({
+            "kind": "push-ref-not-checked-out",
+            "event": event,
+            "lref": local_ref,
+            "rref": remote_ref,
+            "hint": format!("push {local_ref} from its own worktree; the pre-push hook attests only HEAD"),
+        })),
+        PushError::Malformed { .. } => AppError::push_input_invalid("").with_context(json!({
+            "kind": "push-input-invalid",
+            "event": event,
+            "hint": PUSH_INPUT_HINT,
+        })),
+    })
+}
+
+/// Spec inválido e `GitTree` (até a S12) não executam e seguem para o próximo check.
+fn ready_spec<'p>(scope: &Scope<'_>, check: &'p PlannedCheck) -> Result<&'p CheckSpec, Miss> {
+    let (code, message, context) = match &check.spec {
+        Err(error) => (
+            "spec-invalid",
+            format!("{} at {}", error.code, error.path),
+            scope.context("spec-invalid", &check.id, None),
+        ),
+        Ok(spec) if check.snapshot != SnapshotKind::GitCommit => (
+            "snapshot-tree-pending",
+            "the tree snapshot is not available yet".to_owned(),
+            scope.context("snapshot-tree-pending", &check.id, Some(&spec.run)),
+        ),
+        Ok(spec) => return Ok(spec),
+    };
+
+    Err(Miss {
+        error: AppError::check_not_run,
+        detail: check_detail(check, code, &message, context),
+        stops: false,
+    })
+}
+
+/// Erro de spawn segue; plataforma sem suporte e pai perdido param a fila (tabela 2.3).
+fn run_error(
+    scope: &Scope<'_>,
+    check: &PlannedCheck,
+    spec: &CheckSpec,
+    snapshot: &Snapshot,
+    error: &RunError,
+) -> Miss {
+    let argv0 = spec.run.first().map_or("", String::as_str);
+    let (kind, code, hint, failure): (&str, &str, Option<String>, MissError) = match error.kind {
+        RunErrorKind::NotFound => (
+            "spawn-not-found",
+            "spawn-failed",
+            Some(format!(
+                "`{argv0}` was not found; install it or add it to the PATH that git hooks see, then run the same `omhl check run` again"
+            )),
+            AppError::check_not_run,
+        ),
+        RunErrorKind::PermissionDenied => (
+            "spawn-permission-denied",
+            "spawn-failed",
+            Some(format!("`{argv0}` is not executable; fix its permissions")),
+            AppError::check_not_run,
+        ),
+        RunErrorKind::Spawn | RunErrorKind::Io => (
+            "spawn-failed",
+            "spawn-failed",
+            None,
+            AppError::check_not_run,
+        ),
+        RunErrorKind::UnsupportedPlatform => (
+            "unsupported-platform",
+            "unsupported-platform",
+            None,
+            AppError::unsupported_platform,
+        ),
+        RunErrorKind::ParentGone => (
+            "parent-gone",
+            "not-run",
+            Some(PARENT_GONE_HINT.to_owned()),
+            AppError::check_not_run,
+        ),
+    };
+    let mut context = scope.context(kind, &check.id, Some(&spec.run));
+    context["snapshot"] = json!(snapshot);
+    context["os_error"] = json!(error.message);
+    if let Some(hint) = hint {
+        context["hint"] = json!(hint);
+    }
+
+    Miss {
+        error: failure,
+        detail: check_detail(check, code, "the command could not run", context),
+        stops: matches!(
+            error.kind,
+            RunErrorKind::UnsupportedPlatform | RunErrorKind::ParentGone
+        ),
+    }
+}
+
+/// Check que ficou na fila depois de um erro que para tudo (L13).
+fn not_run(scope: &Scope<'_>, check: &PlannedCheck) -> CheckDetail {
+    let argv = check.spec.as_ref().ok().map(|spec| spec.run.as_slice());
+    let context = scope.context("not-run", &check.id, argv);
+
+    check_detail(check, "not-run", "the check did not run", context)
+}
+
+fn check_detail(
+    check: &PlannedCheck,
+    code: &'static str,
+    message: &str,
+    context: Value,
+) -> CheckDetail {
+    CheckDetail {
+        check: check.id.as_str().to_owned(),
+        code,
+        message: message.to_owned(),
+        context: Some(context),
+    }
+}
+
+fn refusal_hint(code: RuleCode) -> Option<&'static str> {
+    match code {
+        RuleCode::OutcomeImmutable => Some(OUTCOME_IMMUTABLE_HINT),
+        RuleCode::ProbeFailed => Some(PROBE_FAILED_HINT),
+        _ if code.as_str().starts_with("snapshot-") => Some(SNAPSHOT_REFUSED_HINT),
+        _ => None,
+    }
+}
+
+/// Erro sem veredito vence `checks-failed`; entre eles vale o primeiro na ordem de execução.
+fn finish(scope: &Scope<'_>, tally: Tally) -> Result<Value, AppError> {
+    if let Some(error) = tally.error {
+        return Err(error(tally.details));
+    }
+    let summary = summarize(&tally.results);
+    if exit_blocked(&summary) {
+        return Err(AppError::checks_failed(tally.details));
+    }
+
+    Ok(json!({
+        "event": scope.event,
+        "work_item": scope.work_item,
+        "snapshot": tally.snapshot,
+        "recorded": scope.work_item.is_some(),
+        "results": tally.outputs,
+        "blocked": summary.blocked,
+    }))
+}
+
+/// `exit_code` fica de fora, nunca `null`, quando o comando não terminou com código.
+fn with_run_fields(mut value: Value, report: &RunReport) -> Value {
+    if let Some(code) = report.exit_code {
+        value["exit_code"] = json!(code);
+    }
+    value["duration_ms"] = json!(u64::try_from(report.duration.as_millis()).unwrap_or(u64::MAX));
+    value["timed_out"] = json!(report.timed_out);
+    value["truncated"] = json!(report.truncated);
+
+    value
+}
+
+/// As últimas linhas de cada fluxo, convertidas com perda e cortadas (L6).
+fn output_tail(report: &RunReport) -> Value {
+    json!({ "stdout": tail(&report.stdout), "stderr": tail(&report.stderr) })
+}
+
+fn tail(bytes: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let lines: Vec<&str> = text.lines().collect();
+
+    lines[lines.len().saturating_sub(TAIL_LINES)..]
+        .iter()
+        .map(|line| line.chars().take(TAIL_LINE_CHARS).collect())
+        .collect()
+}
+
+fn outcome_name(outcome: Outcome) -> &'static str {
+    match outcome {
+        Outcome::Passed => "passed",
+        Outcome::PassedWithWarning => "passed_with_warning",
+        Outcome::Failed => "failed",
     }
 }

@@ -7,6 +7,7 @@ use hexlog::{
 use crate::error::{OmhlError, RuleCode};
 use crate::gate::{self, GateQuestion, GateReport, GateSource, HexlogSource, read_consistent};
 use crate::graphs::WORK_ITEM_TYPES;
+use crate::mechanical::plan::CheckNode;
 use crate::native::NativeBase;
 use crate::pr_gate::{
     GATE_NAME, GateSnapshots, closing_request, pr_gate_questions, project_checks_filter,
@@ -27,6 +28,7 @@ const PROJECTED_NODE_TYPES: [&str; 5] = [
     "attestation",
 ];
 const PROJECTED_RELATIONS: [&str; 3] = ["supports", "contradicts", "answers"];
+const AFTER_RELATION: &str = "after";
 
 /// Portas que o `Omhl` empresta; o dono é quem chama.
 #[derive(Clone, Copy)]
@@ -179,6 +181,35 @@ impl<'d> Omhl<'d> {
         })?;
 
         Ok(state)
+    }
+
+    /// Todos os nodes `check` vigentes do projeto, todas as páginas.
+    pub fn check_nodes(&mut self, tenant: &TenantId) -> Result<Vec<CheckNode>, OmhlError> {
+        let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
+        let views = source.nodes(tenant, &project_checks_filter())?;
+
+        Ok(views
+            .into_iter()
+            .map(|view| CheckNode {
+                id: view.id,
+                data: view.data,
+                shadowed: view.shadowed,
+            })
+            .collect())
+    }
+
+    /// Relações `after` vigentes, como pares `(from, to)`.
+    pub fn check_after_relations(
+        &mut self,
+        tenant: &TenantId,
+    ) -> Result<Vec<(SemanticId, SemanticId)>, OmhlError> {
+        let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
+        let relations = source.relations(tenant, &RelationTypeName::parse(AFTER_RELATION)?)?;
+
+        Ok(relations
+            .into_iter()
+            .map(|relation| (relation.from, relation.to))
+            .collect())
     }
 
     fn gate_report(

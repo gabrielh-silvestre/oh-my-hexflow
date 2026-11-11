@@ -28,16 +28,12 @@ pub(super) struct Engine<'d> {
     pub(super) tenant: TenantId,
     pub(super) probe: &'d dyn SnapshotProbe,
     pub(super) project_root: Option<PathBuf>,
-    #[allow(dead_code)] // consumido pela S7 (`app/check_run.rs`)
     pub(super) runner: Option<&'d dyn CommandRunner>,
-    #[allow(dead_code)] // consumido pela S7 (`app/check_run.rs`)
+    #[allow(dead_code)] // consumido pela S13 (`app/check_run.rs`): a S7 não grava byproduct
     pub(super) byproducts: Option<&'d dyn ByproductStore>,
-    #[allow(dead_code)] // consumido pela S7 (`app/work_item.rs`)
     pub(super) mark: Option<&'d dyn DevelopMark>,
     /// Cópia da política do `App`, para a leitura inicial do `check run`.
-    #[allow(dead_code)] // consumido pela S7 (`app/check_run.rs`)
     pub(super) retry: RetryPolicy,
-    #[allow(dead_code)] // consumido pela S7 (`app/check_run.rs`)
     pub(super) retry_after_run: RetryPolicy,
     /// Pasta de usuário dos hooks do git; `None` só com `--db` e sem `HOME` nem `XDG_DATA_HOME`.
     #[allow(dead_code)] // consumido pela S15 (`app/hooks.rs`)
