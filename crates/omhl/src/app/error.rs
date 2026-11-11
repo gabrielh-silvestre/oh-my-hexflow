@@ -284,7 +284,6 @@ impl AppError {
         )
     }
 
-    #[allow(dead_code)] // consumidor S15
     pub(crate) fn hooks_existing(path: &str) -> AppError {
         AppError::at_pointer(
             "hooks-existing",
@@ -293,7 +292,6 @@ impl AppError {
         )
     }
 
-    #[allow(dead_code)] // consumidor S15
     pub(crate) fn hooks_path_conflict(path: &str) -> AppError {
         AppError::at_pointer(
             "hooks-path-conflict",
@@ -302,7 +300,6 @@ impl AppError {
         )
     }
 
-    #[allow(dead_code)] // consumidor S15
     pub(crate) fn hooks_path_unreachable(path: &str) -> AppError {
         AppError::at_pointer(
             "hooks-path-unreachable",
@@ -311,7 +308,6 @@ impl AppError {
         )
     }
 
-    #[allow(dead_code)] // consumidor S15
     pub(crate) fn hooks_dir_unwritable(path: &str) -> AppError {
         AppError::at_pointer(
             "hooks-dir-unwritable",

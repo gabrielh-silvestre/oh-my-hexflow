@@ -35,7 +35,6 @@ pub(super) struct Engine<'d> {
     pub(super) retry: RetryPolicy,
     pub(super) retry_after_run: RetryPolicy,
     /// Pasta de usuário dos hooks do git; `None` só com `--db` e sem `HOME` nem `XDG_DATA_HOME`.
-    #[allow(dead_code)] // consumido pela S15 (`app/hooks.rs`)
     pub(super) hooks_dir: Option<PathBuf>,
 }
 
