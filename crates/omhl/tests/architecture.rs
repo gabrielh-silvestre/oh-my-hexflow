@@ -34,6 +34,7 @@ const EXPECTED_DEPENDENCIES: &[&str] = &[
     "regex",
     "serde",
     "serde_json",
+    "sha2",
     "tempfile",
     "toml",
     "uuid",
@@ -738,6 +739,47 @@ fn dependency_failures(manifest: &str) -> Vec<String> {
     failures
 }
 
+/// `[dependencies].sha2` de um manifesto: texto da versão (string ou campo `version` da tabela inline).
+fn sha2_declared_version(manifest: &str) -> Result<Option<String>, ()> {
+    let table: toml::Table = toml::from_str(manifest).map_err(|_| ())?;
+    let declared = table
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .and_then(|dependencies| dependencies.get("sha2"));
+    let version = match declared {
+        Some(toml::Value::String(version)) => Some(version.clone()),
+        Some(toml::Value::Table(inline)) => inline
+            .get("version")
+            .and_then(toml::Value::as_str)
+            .map(str::to_owned),
+        _ => None,
+    };
+
+    Ok(version)
+}
+
+/// Falhas do pino do `sha2`: o `omhl` e o motor declaram a mesma versão em `[dependencies]`.
+fn sha2_pin_failures(omhl_manifest: &str, hexlog_manifest: &str) -> Vec<String> {
+    let mut failures = Vec::new();
+    let mut versions = Vec::new();
+    for (name, manifest) in [("omhl", omhl_manifest), ("hexlog", hexlog_manifest)] {
+        match sha2_declared_version(manifest) {
+            Err(()) => failures.push(format!("manifest is not valid TOML: {name}")),
+            Ok(None) => failures.push(format!("sha2 missing in manifest: {name}")),
+            Ok(Some(version)) => versions.push(version),
+        }
+    }
+    if let [omhl, hexlog] = versions.as_slice()
+        && omhl != hexlog
+    {
+        failures.push(format!(
+            "sha2 version differs: omhl {omhl}, hexlog {hexlog}"
+        ));
+    }
+
+    failures
+}
+
 fn relative_to_src(file: &Path) -> String {
     file.strip_prefix(src_dir())
         .unwrap_or(file)
@@ -756,6 +798,7 @@ hexlog = { path = "../hexlog" }
 regex = "=1.13.1"
 serde = "1"
 serde_json = "1"
+sha2 = "=0.11.1"
 tempfile = "3"
 toml = "1"
 uuid = "1"
@@ -1040,6 +1083,28 @@ fn it_should_report_a_target_specific_dependency_that_is_not_expected() {
     let failures = dependency_failures(&with_libc);
 
     assert_eq!(failures, ["unexpected dependency: libc"]);
+}
+
+#[test]
+fn it_should_pin_sha2_in_the_omhl_manifest_to_the_same_version_as_the_engine_manifest() {
+    let pinned = "[dependencies]\nsha2 = \"=0.11.1\"\n";
+    let older = "[dependencies]\nsha2 = \"=0.10.9\"\n";
+    let without_sha2 = "[dependencies]\nserde = \"1\"\n";
+    let omhl_manifest = read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"));
+    let hexlog_manifest = read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../hexlog/Cargo.toml"));
+
+    let same = sha2_pin_failures(pinned, pinned);
+    let differing = sha2_pin_failures(older, pinned);
+    let missing = sha2_pin_failures(without_sha2, pinned);
+    let real = sha2_pin_failures(&omhl_manifest, &hexlog_manifest);
+
+    assert_eq!(same, Vec::<String>::new());
+    assert_eq!(
+        differing,
+        ["sha2 version differs: omhl =0.10.9, hexlog =0.11.1"]
+    );
+    assert_eq!(missing, ["sha2 missing in manifest: omhl"]);
+    assert_eq!(real, Vec::<String>::new());
 }
 
 #[test]
