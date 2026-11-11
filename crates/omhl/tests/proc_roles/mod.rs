@@ -60,7 +60,7 @@ pub fn command_line(name: &str) -> &'static str {
             "echo $$ > cmd.pid.tmp; mv cmd.pid.tmp cmd.pid; sleep 61 & echo $! > neto.pid.tmp; mv neto.pid.tmp neto.pid; wait"
         }
         "coop" => {
-            "trap 'kill -s TERM -- -$g; exit 0' TERM INT; echo $$ > cmd.pid.tmp; mv cmd.pid.tmp cmd.pid; setsid sh -c 'echo $$ > neto.pid.tmp; mv neto.pid.tmp neto.pid; exec sleep 61' & g=$!; while [ ! -e neto.pid ]; do sleep 0.01; done; wait"
+            "trap 'kill -s TERM -- -$g; exit 0' TERM INT; echo $$ > cmd.pid.tmp; mv cmd.pid.tmp cmd.pid; setsid sh -c 'echo $$ > neto.pid.tmp; mv neto.pid.tmp neto.pid; exec sleep 61' & g=$!; while [ ! -e neto.pid ]; do sleep 0.01; done; : > armed; wait"
         }
         "ignore-term" => {
             "trap '' TERM; echo $$ > cmd.pid.tmp; mv cmd.pid.tmp cmd.pid; sleep 61 & echo $! > neto.pid.tmp; mv neto.pid.tmp neto.pid; wait"

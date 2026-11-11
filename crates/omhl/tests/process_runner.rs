@@ -493,6 +493,7 @@ fn it_should_let_a_cooperative_command_clean_its_own_process_group_after_an_inte
     let r = runner.id();
     let c = pid_file(dir.path(), "cmd.pid");
     let n = pid_file(dir.path(), "neto.pid");
+    wait_file(&dir.path().join("armed"), TWENTY_SECS);
     let g = guardian_of(r, c);
     assert_eq!(
         stat_field(n, 5),
@@ -660,6 +661,7 @@ fn it_should_continue_a_stopped_command_on_timeout_so_its_grandchild_is_cleaned_
     });
     let c = pid_file(dir.path(), "cmd.pid");
     let n = pid_file(dir.path(), "neto.pid");
+    wait_file(&dir.path().join("armed"), TWENTY_SECS);
     kill(pid(c), Signal::SIGSTOP).expect("the command is stopped");
     wait_until(TWENTY_SECS, "the stop of the command", || {
         proc_state(c) == Some('T')
@@ -691,6 +693,7 @@ fn it_should_stop_the_guardian_group_after_sigttin_when_the_runner_dies_under_a_
     let r = pid_file(dir.path(), "runner.pid");
     let c = pid_file(dir.path(), "cmd.pid");
     let n = pid_file(dir.path(), "neto.pid");
+    wait_file(&dir.path().join("armed"), TWENTY_SECS);
     assert_eq!(
         stat_field(n, 5),
         u64::from(n),
@@ -714,4 +717,66 @@ fn it_should_stop_the_guardian_group_after_sigttin_when_the_runner_dies_under_a_
     assert_dead_since(&[g, c, n], signaled, DEATH);
     fs::write(dir.path().join("done"), "").expect("the done file is written");
     assert_eq!(wait_child_exit(&mut reaper, TWENTY_SECS).code(), Some(0));
+}
+
+/// Filhos diretos deste processo de teste com o `comm` dado e a pasta de trabalho `dir`.
+fn own_children(comm: &str, dir: &Path) -> Vec<u32> {
+    let own = std::process::id().to_string();
+    let dir = fs::canonicalize(dir).expect("the directory resolves");
+    let entries = fs::read_dir("/proc").expect("/proc is readable");
+    entries
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<u32>().ok())
+        .filter(|pid| {
+            // o processo pode sumir entre a listagem e a leitura: ilegível conta como outro
+            let Ok(stat) = fs::read_to_string(format!("/proc/{pid}/stat")) else {
+                return false;
+            };
+            let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else {
+                return false;
+            };
+            let ppid = stat[close + 1..].split_whitespace().nth(1);
+            &stat[open + 1..close] == comm
+                && ppid == Some(own.as_str())
+                && fs::read_link(format!("/proc/{pid}/cwd")).is_ok_and(|cwd| cwd == dir)
+        })
+        .collect()
+}
+
+#[test]
+fn it_should_kill_a_command_that_left_its_process_group_on_timeout() {
+    let dir = TempDir::new().expect("work directory is created");
+    let cwd = dir.path().to_path_buf();
+    let (report_tx, report_rx) = mpsc::channel();
+    let started = Instant::now();
+    thread::spawn(move || {
+        let result = ProcessRunner::new().run(&spec(
+            &["sh", "-c", "exec setsid sleep 61"],
+            &cwd,
+            Duration::from_secs(1),
+        ));
+        let _ = report_tx.send(result);
+    });
+
+    let result = report_rx.recv_timeout(TWENTY_SECS);
+
+    let elapsed = started.elapsed();
+    // um run preso deixa o sleep 61 vivo: mata antes das asserções para não sobrar nada
+    for stray in own_children("sleep", dir.path()) {
+        let _ = kill(pid(stray), Signal::SIGKILL);
+    }
+    let report = match result {
+        Ok(Ok(report)) => report,
+        Ok(Err(e)) => panic!("run failed: {}", kind_name(&e.kind)),
+        Err(_) => panic!("the run did not return within {TWENTY_SECS:?}"),
+    };
+    assert!(report.timed_out);
+    assert_eq!(report.exit_code, None);
+    assert!(
+        elapsed >= Duration::from_secs(3),
+        "the run took {elapsed:?}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(10),
+        "the run took {elapsed:?}"
+    );
 }
