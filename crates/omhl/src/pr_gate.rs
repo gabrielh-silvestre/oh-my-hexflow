@@ -2,32 +2,49 @@ use std::iter::once;
 
 use hexlog::{
     AppendItem, AppendRequest, Author, FieldName, ItemBody, ListFilter, NodeView, Scalar,
-    SemanticId, Snapshot, TenantId, TypeName,
+    SemanticId, Snapshot, SnapshotKind, TenantId, TypeName,
 };
 use serde_json::json;
 
 use crate::gate::{GateQuestion, GateReport, Question};
+use crate::mechanical::{RUNNABLE_EVENTS, snapshot_for};
 use crate::native::NativeCheck;
 
 pub const GATE_NAME: &str = "pull-request";
-pub const REQUIRED_EVENTS: [&str; 2] = ["before-commit", "before-merge"];
+pub const REQUIRED_EVENTS: [&str; 3] = RUNNABLE_EVENTS;
+/// Fonte única do kind de snapshot dos checks nativos.
+pub const NATIVE_SNAPSHOT: SnapshotKind = SnapshotKind::GitCommit;
 
 const NO_OPEN_CONTRADICTION_LABEL: &str = "no-open-contradiction";
 
-/// Ids dos checks que o gate cobra: primeiro os nativos, depois os do projeto, sem repetir id.
-pub fn required_checks(native: &[NativeCheck], tenant_checks: &[NodeView]) -> Vec<SemanticId> {
+/// Os dois snapshots que o gate usa: cada check é atestado no kind que o seu `snapshot_for` manda.
+pub struct GateSnapshots {
+    pub head_commit: Snapshot,
+    pub head_tree: Snapshot,
+}
+
+/// Checks que o gate cobra, com o kind do snapshot de cada um: primeiro os nativos, depois os do projeto, sem repetir id.
+pub fn required_checks(
+    native: &[NativeCheck],
+    tenant_checks: &[NodeView],
+) -> Vec<(SemanticId, SnapshotKind)> {
+    let projects: Vec<&NodeView> = tenant_checks
+        .iter()
+        .filter(|node| is_required_project_check(node))
+        .collect();
     let natives = native
         .iter()
         .filter(|check| check.blocking && REQUIRED_EVENTS.contains(&check.event))
-        .filter_map(|check| SemanticId::parse(check.id).ok());
-    let projects = tenant_checks
+        .filter(|check| !is_replaced_by_mechanical_check(check, &projects))
+        .filter_map(|check| SemanticId::parse(check.id).ok())
+        .map(|id| (id, NATIVE_SNAPSHOT));
+    let projects = projects
         .iter()
-        .filter(|node| is_required_project_check(node))
-        .map(|node| node.id.clone());
-    let mut required = Vec::new();
-    for id in natives.chain(projects) {
-        if !required.contains(&id) {
-            required.push(id);
+        .map(|node| (node.id.clone(), snapshot_for(&node.data)));
+    let mut required: Vec<(SemanticId, SnapshotKind)> = Vec::new();
+    for (id, kind) in natives.chain(projects) {
+        if required.iter().all(|(existing, _)| *existing != id) {
+            required.push((id, kind));
         }
     }
 
@@ -43,18 +60,34 @@ fn is_required_project_check(node: &NodeView) -> bool {
     !node.shadowed && node.data["blocking"] == true && covered_event
 }
 
+/// Um check mecânico (com `run`) do projeto, obrigatório no mesmo evento, dispensa o nativo daquele evento.
+fn is_replaced_by_mechanical_check(native: &NativeCheck, projects: &[&NodeView]) -> bool {
+    projects.iter().any(|node| {
+        node.data.get("run").is_some() && node.data["when"]["event"].as_str() == Some(native.event)
+    })
+}
+
+impl GateSnapshots {
+    fn of(&self, kind: SnapshotKind) -> &Snapshot {
+        match kind {
+            SnapshotKind::GitTree => &self.head_tree,
+            _ => &self.head_commit,
+        }
+    }
+}
+
 /// Um `Occurred` por check obrigatório, na ordem, e depois um `NoOpenContradiction`.
 pub fn pr_gate_questions(
-    required: &[SemanticId],
+    required: &[(SemanticId, SnapshotKind)],
     work_item: &SemanticId,
-    snapshot: &Snapshot,
+    snapshots: &GateSnapshots,
 ) -> Vec<GateQuestion> {
     required
         .iter()
-        .map(|check| GateQuestion {
+        .map(|(check, kind)| GateQuestion {
             label: check.as_str().to_owned(),
             question: Question::Occurred {
-                select: attestation_filter(check, work_item, snapshot),
+                select: attestation_filter(check, work_item, snapshots.of(*kind)),
                 min: 1,
             },
         })

@@ -1,8 +1,7 @@
 use hexlog::{
     AppendOutcome, AppendRequest, Author, ChainHead, ChainReport, Clock, Config, Deps, Hash,
     Hexlog, IdGenerator, Lineage, ListFilter, NodeView, Page, PageRequest, RelationQuery,
-    RelationTypeName, RelationView, RevisionView, SemanticId, Snapshot, TenantId, TenantInfo,
-    TypeName,
+    RelationTypeName, RelationView, RevisionView, SemanticId, TenantId, TenantInfo, TypeName,
 };
 
 use crate::error::{OmhlError, RuleCode};
@@ -10,9 +9,10 @@ use crate::gate::{self, GateQuestion, GateReport, GateSource, HexlogSource, read
 use crate::graphs::WORK_ITEM_TYPES;
 use crate::native::NativeBase;
 use crate::pr_gate::{
-    GATE_NAME, closing_request, pr_gate_questions, project_checks_filter, required_checks,
+    GATE_NAME, GateSnapshots, closing_request, pr_gate_questions, project_checks_filter,
+    required_checks,
 };
-use crate::probe::SnapshotProbe;
+use crate::probe::{SnapshotProbe, TreeSource};
 use crate::projection::ProjectionState;
 use crate::{graphs, guard};
 
@@ -146,11 +146,11 @@ impl<'d> Omhl<'d> {
         &mut self,
         tenant: &TenantId,
         work_item: &SemanticId,
-        snapshot: &Snapshot,
+        snapshots: &GateSnapshots,
     ) -> Result<GateReport, OmhlError> {
         self.find_work_item(tenant, work_item)?;
 
-        self.gate_report(tenant, work_item, snapshot)
+        self.gate_report(tenant, work_item, snapshots)
     }
 
     /// Nodes e relações vigentes lidos entre duas leituras iguais do chain head.
@@ -185,13 +185,13 @@ impl<'d> Omhl<'d> {
         &mut self,
         tenant: &TenantId,
         work_item: &SemanticId,
-        snapshot: &Snapshot,
+        snapshots: &GateSnapshots,
     ) -> Result<GateReport, OmhlError> {
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
         let (head, reports) = read_consistent(&mut source, tenant, |source| {
             let checks = source.nodes(tenant, &project_checks_filter())?;
             let required = required_checks(NATIVE.checks(), &checks);
-            let questions = pr_gate_questions(&required, work_item, snapshot);
+            let questions = pr_gate_questions(&required, work_item, snapshots);
 
             gate::evaluate(source, tenant, &questions)
         })?;
@@ -200,23 +200,28 @@ impl<'d> Omhl<'d> {
     }
 
     /// Fecha mesmo com o gate reprovado: o resultado fica gravado no work item. Escreve direto, sem a guarda.
-    /// O snapshot tem de ser o `HEAD` de uma árvore limpa, conferido na sonda antes do gate.
+    /// Os snapshots têm de ser o `HEAD` e a árvore dele, de uma árvore limpa, conferidos na sonda antes do gate.
     pub fn close_work_item(
         &mut self,
         tenant: &TenantId,
         work_item: &SemanticId,
-        snapshot: &Snapshot,
+        snapshots: &GateSnapshots,
         author: &Author,
     ) -> Result<ClosedWorkItem, OmhlError> {
         let current = self.find_work_item(tenant, work_item)?;
         if current.data["status"] == "closed" {
             return Err(OmhlError::rule(RuleCode::InvalidTransition, "/work_item"));
         }
-        if let Some(code) = guard::probe_refusal(&self.probe.probe(), snapshot) {
+        let head_commit = guard::probe_refusal(&self.probe.probe(), &snapshots.head_commit);
+        let head_tree = guard::probe_refusal(
+            &self.probe.probe_tree(TreeSource::Head),
+            &snapshots.head_tree,
+        );
+        if let Some(code) = head_commit.or(head_tree) {
             return Err(OmhlError::rule(code, "/snapshot"));
         }
-        let report = self.gate_report(tenant, work_item, snapshot)?;
-        let request = closing_request(tenant, author, current, &report, snapshot);
+        let report = self.gate_report(tenant, work_item, snapshots)?;
+        let request = closing_request(tenant, author, current, &report, &snapshots.head_commit);
         let outcome = self.hexlog.append(&request)?;
 
         Ok(ClosedWorkItem { outcome, report })

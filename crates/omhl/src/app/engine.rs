@@ -11,7 +11,8 @@ use super::{context, output, work_item};
 use crate::byproduct::ByproductStore;
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::Omhl;
-use crate::probe::{DevelopMark, ProbeOutcome, SnapshotProbe};
+use crate::pr_gate::GateSnapshots;
+use crate::probe::{DevelopMark, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
@@ -57,6 +58,16 @@ fn is_id_prefix(prefix: &str) -> bool {
         && prefix
             .bytes()
             .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.'))
+}
+
+fn reproducible(probed: Result<ProbeOutcome, ProbeError>) -> Result<Snapshot, AppError> {
+    match probed {
+        Ok(ProbeOutcome::Reproducible(snapshot)) => Ok(snapshot),
+        Ok(ProbeOutcome::Dirty) => {
+            Err(OmhlError::rule(RuleCode::SnapshotDirty, "/snapshot").into())
+        }
+        Err(error) => Err(AppError::probe_failed(&error.message)),
+    }
 }
 
 impl Engine<'_> {
@@ -148,20 +159,20 @@ impl Engine<'_> {
 
     fn gate_pr(&mut self, work_item: &str) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
-        let snapshot = self.probe_snapshot()?;
+        let snapshots = self.probe_gate_snapshots()?;
         let report = self
             .omhl
-            .evaluate_pr_gate(&self.tenant, &work_item, &snapshot)?;
+            .evaluate_pr_gate(&self.tenant, &work_item, &snapshots)?;
 
         Ok(output::gate(&report))
     }
 
     fn close(&mut self, caller: &Caller, work_item: &str) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
-        let snapshot = self.probe_snapshot()?;
+        let snapshots = self.probe_gate_snapshots()?;
         let closed =
             self.omhl
-                .close_work_item(&self.tenant, &work_item, &snapshot, &caller.author())?;
+                .close_work_item(&self.tenant, &work_item, &snapshots, &caller.author())?;
 
         Ok(output::closed(&closed))
     }
@@ -186,12 +197,14 @@ impl Engine<'_> {
 
     /// O snapshot de uma árvore limpa; árvore suja e sonda com falha são recusas em `/snapshot`.
     pub(super) fn probe_snapshot(&self) -> Result<Snapshot, AppError> {
-        match self.probe.probe() {
-            Ok(ProbeOutcome::Reproducible(snapshot)) => Ok(snapshot),
-            Ok(ProbeOutcome::Dirty) => {
-                Err(OmhlError::rule(RuleCode::SnapshotDirty, "/snapshot").into())
-            }
-            Err(error) => Err(AppError::probe_failed(&error.message)),
-        }
+        reproducible(self.probe.probe())
+    }
+
+    /// O commit e a árvore do `HEAD`, com a mesma recusa de `probe_snapshot`.
+    fn probe_gate_snapshots(&self) -> Result<GateSnapshots, AppError> {
+        Ok(GateSnapshots {
+            head_commit: self.probe_snapshot()?,
+            head_tree: reproducible(self.probe.probe_tree(TreeSource::Head))?,
+        })
     }
 }
