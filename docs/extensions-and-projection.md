@@ -25,7 +25,7 @@ how = "Run `cargo clippy --workspace --all-targets -- -D warnings` and fix every
 after = ["checks.fmt"]   # opcional
 
 [when]
-event = "pull-request"
+event = "before-pr"       # fechado: before-commit, before-pr ou before-merge
 matcher = "*.rs"         # opcional
 ```
 

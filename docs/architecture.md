@@ -43,6 +43,12 @@ flowchart LR
       render["render"]
     end
 
+    subgraph mech["Gates mecânicos"]
+      mechanical["mechanical (branch, sweep)"]
+      runner["runner"]
+      byproduct["byproduct"]
+    end
+
     ports["ports"]
     project["project"]
   end
@@ -101,6 +107,16 @@ flowchart LR
   extensions --> project
 
   ports --> probe
+  app --> mechanical
+  app --> runner
+  app --> byproduct
+  extensions --> mechanical
+  prgate --> mechanical
+  probe --> mechanical
+  ports --> mechanical
+  ports -.-> runner
+  ports -.-> byproduct
+  mechanical -.-> hxfacade
   ports --> git
   ports -.-> hxfacade
 
@@ -117,6 +133,9 @@ Notas de leitura:
 - `app -> hxfacade` (pontilhada) cobre 12 arquivos de `app` que importam tipos do `hexlog`; os adapters não importam nenhum (travado, seção 4).
 - `projection -> extensions` existe só por um helper de filesystem (`extensions::files`); é um dos pontos da seção 5.
 - `projection`, `extensions` e `render` também tomam tipos de dado do `hexlog` (`NodeView`, `SemanticId`); omitido do diagrama.
+- `mechanical`, `runner` e `byproduct` são os gates mecânicos (seções 3.17 a 3.22). `ports -> runner` e `ports -> byproduct` (pontilhadas) são a implementação das ports `CommandRunner` e `ByproductStore` por `ports/process` e `ports/blob`. `mechanical -> hxfacade` (pontilhada) cobre os tipos de dado `SemanticId` e `SnapshotKind`.
+- `extensions -> mechanical` existe porque `extensions/parse.rs` usa `RUNNABLE_EVENTS` e `CheckSpec::from_data`. `pr_gate -> mechanical` existe porque o gate usa `snapshot_for` e `CheckSpec::from_data`. As travas atuais já permitem as duas: só proíbem `adapters`, `app` e `facade` nas camadas puras (seção 4).
+- `probe -> mechanical` existe porque `probe.rs` reexporta `HeadFacts`, que mora em `mechanical::branch`. `mechanical` não importa `probe`, `ports`, `runner` nem `byproduct`.
 - O SQLite só é tocado por `store sqlite`: o `omhl` não declara `sqlx` nem `rusqlite` (travado, seção 4).
 
 ## 2. Contexto em um parágrafo
@@ -146,6 +165,14 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `omhl::render` | 297 | `render` | funda |
 | `omhl::ports` | 250 | `SystemClock`, `V7Ids`, `GitProbe` | adapters |
 | `omhl::project` | 282 | `find_marker`, `default_db_path`, `prepare_db_file`, `Env` | rasa |
+| `omhl::mechanical` | n/d | `CheckSpec::from_data`, `snapshot_for`, `evaluate`, `plan_run`, `summarize`, `exit_blocked`, `RUNNABLE_EVENTS` | funda e pura |
+| `omhl::mechanical::branch` | n/d | `current_branch`, `classify`, `plan_push`, `HeadFacts` | funda e pura |
+| `omhl::mechanical::sweep` | n/d | `RunMarker`, `start_from_stat`, `select_strays` | funda e pura |
+| `omhl::runner` | n/d | `trait CommandRunner`, `RunSpec`, `RunReport`, `RunError` | dado e seam |
+| `omhl::byproduct` | n/d | `trait ByproductStore`, `ByproductHash` | dado e seam |
+| `omhl::ports` (gates mecânicos) | n/d | `ProcessRunner`, `sweep_strays`, `BlobStore`, `HookInstaller` | adapters |
+
+Os módulos dos gates mecânicos entram sem contagem de linhas (n/d): a medição acima é dos passos 3 a 6.
 
 ### 3.1 Núcleo: `hexlog` (facade `Hexlog`)
 
@@ -219,7 +246,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 
 **Escondido.** `Guard` e `NodeItem` (`guard/append.rs`), a regra de atestado (`guard/attestation.rs`), os filtros (`guard/filter.rs`), a sonda lida uma vez por batch (`probe_once`).
 
-**Profundidade.** Funda no comportamento: uma chamada valida o batch. É também o maior consumidor do vocabulário de tipos (seção 5, item 1).
+**Profundidade.** Funda no comportamento: uma chamada valida o batch. É também o maior consumidor do vocabulário de tipos (seção 5, item 1). Os gates mecânicos acrescentaram regras de atestado: seção 3.23.
 
 ### 3.8 Aninhada: `omhl::pr_gate`
 
@@ -242,7 +269,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 ### 3.10 Aninhada (folha): `omhl::native` e `omhl::probe`
 
 - `native`: `NativeBase` (`checks()`, `guidelines()`, impl de `NativeNodes`), `NativeCheck`, `NativeGuideline`, `NATIVE_CATALOG_VERSION` (`native/mod.rs`). Folha travada: não importa `gate`, `facade`, `guard`, `pr_gate`. Não é módulo profundo: é dado versionado com o plugin (decisão 16).
-- `probe`: `trait SnapshotProbe` (um método `probe`), `ProbeOutcome`, `ProbeError` (`probe.rs`, 17 linhas). É só o seam; adapters: `GitProbe` e `FakeProbe` (`crates/omhl/tests/support/mod.rs`). Seam real.
+- `probe`: `trait SnapshotProbe` (um método `probe`), `ProbeOutcome`, `ProbeError` (`probe.rs`, 17 linhas). É só o seam; adapters: `GitProbe` e `FakeProbe` (`crates/omhl/tests/support/mod.rs`). Seam real. Os gates mecânicos deram à trait mais métodos e criaram a trait `DevelopMark`: seção 3.23.
 
 ### 3.11 Gateway de consumo: `omhl::app`
 
@@ -298,8 +325,74 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 
 ### 3.16 Suporte: `omhl::ports` e `omhl::project`
 
-- `ports`: adapters de produção. `SystemClock` (`impl Clock`), `V7Ids` (`impl IdGenerator`), `GitProbe::{new, with_program, with_timeout}` (`impl SnapshotProbe`, executa o `git` com timeout), `format_system_time`, `format_utc`. Adapters finos de seam real.
+- `ports`: adapters de produção. `SystemClock` (`impl Clock`), `V7Ids` (`impl IdGenerator`), `GitProbe::{new, with_program, with_timeout}` (`impl SnapshotProbe`, executa o `git` com timeout), `format_system_time`, `format_utc`. Adapters finos de seam real. Os adapters dos gates mecânicos (`process`, `pipes`, `blob`, `hooks`) estão na seção 3.22.
 - `project`: descoberta do projeto. `find_marker`, `parse_marker`, `Marker`, `Located` (`project/marker.rs`), `default_db_path`, `prepare_db_file` (`project/paths.rs`), `Env`, `ProjectError` (`project/mod.rs`), 13 constantes em `project/layout.rs`, helpers de texto em `project/text.rs`. Rasa: metade é lista de constantes e helpers compartilhados por `extensions` e `projection` (item 7 da seção 5).
+
+### 3.17 Núcleo dos gates mecânicos: `omhl::mechanical`
+
+**Papel.** É a política pura de um check mecânico: decodifica o `data` de um check com `run`, avalia a saída do comando contra as regras de `expect`, ordena e planeja a fila de um evento.
+
+**Interface.** `CheckSpec::from_data(&Value) -> Result<Option<CheckSpec>, SpecError>` (`None` é um check só de texto), `snapshot_for(&Value) -> SnapshotKind`, `RUNNABLE_EVENTS` (`mechanical/spec.rs`); `evaluate(&CheckSpec, &Observation) -> Outcome` (`evaluate.rs`); `order` (`order.rs`); `plan_run`, `CheckNode`, `PlannedCheck`, `summarize`, `exit_blocked` (`plan.rs`).
+
+**Escondido.** O regex de cada regra, os limites de tamanho do `run`, do `expect` e do `timeout_secs`, a ordem em que o `SpecError` é escolhido (ele nunca ecoa o conteúdo), a ordenação por `after` com desempate alfabético. `snapshot_for` é o único decodificador do snapshot que um check cobra: `git-tree` só para `before-commit` com `run`, `git-commit` no resto.
+
+**Caixas aninhadas.** `branch` (3.18) e `sweep` (3.19).
+
+**Profundidade.** Funda e pura: sem E/S. Travado: não importa `adapters`, `app`, `facade`, `ports`, `runner` nem `byproduct` (`it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner_and_byproduct`).
+
+### 3.18 Aninhada: `omhl::mechanical::branch`
+
+**Papel.** Decide qual é a branch, o que ela é e o que um `pre-push` pode atestar, a partir de fatos já lidos do git.
+
+**Interface.** `HeadFacts`, `current_branch(&HeadFacts) -> Result<String, BranchError>`, `classify(&str) -> BranchKind` (`Main`, `Develop`, `WorkItem`, `Other`), `plan_push(&str, Option<&str>, Option<&str>) -> Result<PushPlan, PushError>` (`mechanical/branch.rs`).
+
+**Escondido.** A ordem de resolução da branch (`--show-current`, depois o estado do rebase, depois a única branch que contém o `HEAD`), o padrão `tipo/wi-<id>__<slug>`, as cinco regras do `plan_push` e a leitura de todas as linhas antes de decidir.
+
+**Profundidade.** Funda e pura: três funções sobre as regras de branch e de push.
+
+### 3.19 Aninhada: `omhl::mechanical::sweep`
+
+**Papel.** Escolhe, entre os processos que carregam a marca `OMHL_RUN_ID`, os que fugiram de um `check run` cujo `omhl` já morreu.
+
+**Interface.** `RunMarker` (`encode`, `parse`), `RUN_MARKER_VAR`, `start_from_stat`, `Candidate`, `select_strays` (`mechanical/sweep.rs`).
+
+**Escondido.** O formato exato da marca (qualquer outro texto nunca mata), a leitura do início do processo em `/proc/<pid>/stat` depois do último `)`, e o que se poupa: o próprio processo, a linhagem da mesma marca, a marca de outro namespace de pid e o grupo que um guardião vivo ainda limpa.
+
+**Profundidade.** Funda e pura. A leitura de `/proc` e os sinais ficam em `ports/process` (3.22).
+
+### 3.20 Seam: `omhl::runner`
+
+**Papel.** Define como executar um comando e devolver o que aconteceu, sem dizer como.
+
+**Interface.** `trait CommandRunner` (`run(&RunSpec) -> Result<RunReport, RunError>`), `RunSpec`, `RunReport`, `RunError` e `RunErrorKind` (`NotFound`, `PermissionDenied`, `Spawn`, `Io`, `UnsupportedPlatform`, `ParentGone`) (`runner.rs`).
+
+**Profundidade.** É só o seam. Seam real: dois adapters, `ProcessRunner` (3.22) e `FakeRunner` (`crates/omhl/tests/support/runner.rs`). Travado: não importa `adapters`, `app` nem `facade`.
+
+### 3.21 Seam: `omhl::byproduct`
+
+**Papel.** Define onde a saída de um comando fica guardada, endereçada pelo hash dela.
+
+**Interface.** `trait ByproductStore` (`put(&[u8]) -> Result<ByproductHash, ByproductError>`, `get(&ByproductHash) -> Result<Option<Vec<u8>>, ByproductError>`), `ByproductHash` (64 caracteres hexadecimais), `ByproductError` (`byproduct.rs`).
+
+**Profundidade.** É só o seam. Seam real: `BlobStore` (3.22) e o `ByproductStore` falso dos testes. Travado: não importa `adapters`, `app` nem `facade`.
+
+### 3.22 Adapters novos de `omhl::ports`
+
+- `ports/process`: `ProcessRunner::{new, bound_to_parent}` (`impl CommandRunner`), `sweep_strays`, `sweep_strays_in`, `SweepReport`, `SweptProcess`. Esconde o guardião (um `sh` líder de grupo próprio que mata o grupo do comando quando o `omhl` morre), a amarração ao pai com `set_pdeathsig`, a espera do líder com `waitid`, o `killpg` com carência de 2 segundos, a marca `OMHL_RUN_ID` no ambiente do comando e a leitura de `/proc`, com o prazo de 1 segundo. Só Linux: fora dele, `run` devolve `UnsupportedPlatform`. É o único arquivo que usa `nix::` (travado: `it_should_confine_nix_to_the_process_port`).
+- `ports/pipes`: as leitoras de `stdout` e `stderr` do runner. São `thread::spawn` soltas, que mandam a saída em pedaços por um canal e descartam o que passa do teto `max_stream_bytes`; assim um descendente fugido que segura o cano não prende o runner. Travado: nada de `thread::scope` nesses arquivos (`it_should_not_scope_the_threads_of_the_pipe_readers`).
+- `ports/blob`: `BlobStore::new(<pasta do banco>)` (`impl ByproductStore`). Guarda `blobs/<2 primeiros hex>/<hash>`, com a primeira linha `omhl-byproduct v1 stdout=<n> stderr=<n>`, e confere o SHA-256 na leitura. Grava em nome temporário único e renomeia.
+- `ports/hooks`: `HookInstaller`. É onde ficam `fs`, `chmod` e `git config` do `omhl hooks install`, nunca em `app/`.
+
+Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/` (travado: `it_should_confine_process_spawning_types_to_the_ports_module`).
+
+### 3.23 Mudanças nas caixas existentes
+
+- **`SnapshotProbe` e `DevelopMark`** (`probe.rs`). A trait tinha um método, `probe`. Agora tem `probe`, `probe_tree(TreeSource)` (a árvore do índice ou do `HEAD`; `Dirty` também com arquivo não rastreado e não ignorado), `tree_dirty()` e `head_facts()`. A marca da `develop` ganhou a trait própria `DevelopMark` (`present`, `consume`), porque a sonda de leitura não escreve. `GitProbe` e `FakeProbe` implementam as duas. `HeadFacts` mora em `mechanical::branch` e `probe.rs` o reexporta.
+- **`GitProbe::with_index_file(index_file, base)`.** Faz a sonda ler o índice temporário que o git passa ao hook em `GIT_INDEX_FILE`. Um caminho relativo vale contra `base`. Um índice que não existe é erro, nunca árvore vazia.
+- **`Env`** (`project/mod.rs`). Ganha `git_index_file: Option<&OsStr>` e `parent_pid: u32`. O `main.rs` lê `parent_id()` na primeira linha, antes do clap e do banco (travado: `it_should_read_the_parent_pid_before_anything_else_in_main`).
+- **`guard`.** Três regras novas de atestado. `snapshot-tree-mismatch`: uma attestation `git-tree` confere contra a árvore do índice. `check-run-author`: só o autor `loader` grava, revisa ou retira um check com `run`, e só o autor `executor` grava a attestation de um check com `run`. `attestation-incomplete`: a attestation de um check com `run` precisa de `byproduct`, de `command` e, para `passed` e `passed_with_warning`, de `exit_code`.
+- **`app`.** Novos arquivos `check_run`, `work_item`, `byproduct_tail` e `hooks`; novas ações `CheckRun`, `CheckSweep`, `ConsumeDevelopMark`, `Byproduct` e `HooksInstall`; novo `Caller::executor`. A ação `CheckRun` roda fora do `with_retry` do `dispatch`. O `Runtime` monta o `ProcessRunner`, o `BlobStore` e a sonda, e varre os processos fugidos antes de despachar um `check run`.
+- **`pr_gate`.** Cobra o snapshot que `snapshot_for` indica para cada check e dispensa o check nativo de um evento quando um check mecânico bloqueante cobre o mesmo evento.
 
 ## 4. Regras de dependência e o teste que trava cada uma
 
@@ -333,6 +426,13 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | Nenhuma escrita em stdout nos fontes (a saída vai pelo `out` recebido) | `it_should_keep_stdout_writes_out_of_every_source_file` |
 | Sem atômicos em `src` | `it_should_not_use_atomics_anywhere_in_src` |
 | O hook não procura o marcador duas vezes | `it_should_not_search_the_marker_twice_in_the_hook` |
+| `mechanical` não importa `adapters`, `app`, `facade`, `ports`, `runner` nem `byproduct` | `it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner_and_byproduct` |
+| `runner` e `byproduct` não importam `adapters`, `app` nem `facade` | `it_should_keep_runner_and_byproduct_free_of_adapters_app_and_facade` |
+| `nix::` só em `ports/process.rs` | `it_should_confine_nix_to_the_process_port` |
+| `Command`, `Child` e `Stdio` de `std::process` só em `ports/` | `it_should_confine_process_spawning_types_to_the_ports_module` (e `it_should_not_flag_the_exit_code_type_or_the_clap_command_enum_outside_the_ports_module`) |
+| Sem `thread::scope` nas leitoras de cano | `it_should_not_scope_the_threads_of_the_pipe_readers` |
+| Os adapters só importam `app` e `project::Env` | `it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_the_project_env` |
+| O `main.rs` lê o pid do pai antes de qualquer outra coisa | `it_should_read_the_parent_pid_before_anything_else_in_main` |
 
 ### Regras que valem hoje no código mas sem teste
 
