@@ -371,10 +371,7 @@ impl Engine<'_> {
             return Ok(verdict(failed(message, Some(context))));
         };
         let store = self.byproducts.ok_or_else(|| {
-            AppError::plain(
-                "byproduct-store-unavailable",
-                "no byproduct store is configured",
-            )
+            AppError::plain("byproducts-unavailable", "no byproduct store is configured")
         })?;
         let mut context = scope.ran_context("guard-refused", &check.id, &spec.run, snapshot);
         context["expected"] = json!(outcome_name(outcome));
