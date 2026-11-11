@@ -454,6 +454,7 @@ fn it_should_record_command_exit_code_duration_ms_timed_out_and_truncated_in_the
             "check": "checks.lint", "work_item": "work-items.w1", "outcome": "passed", "ok": true,
             "command": ["cargo", "clippy"], "exit_code": 0, "duration_ms": 1500,
             "timed_out": false, "truncated": true,
+            "byproduct": "a939fea7c32eeb59326e08723c45c1bba9bebea969012c3b7b02710e5e773c48",
         })
     );
 }
@@ -846,6 +847,7 @@ fn it_should_record_timed_out_and_fail_on_timeout() {
             "check": "checks.lint", "work_item": "work-items.w1", "outcome": "failed", "ok": false,
             "command": ["cargo", "clippy"], "duration_ms": 60000, "timed_out": true,
             "truncated": false,
+            "byproduct": "a939fea7c32eeb59326e08723c45c1bba9bebea969012c3b7b02710e5e773c48",
         })
     );
 }
@@ -1018,6 +1020,7 @@ fn it_should_fit_the_attestation_of_the_worst_valid_check_in_the_record_limit() 
             "check": check, "work_item": work_item, "outcome": "passed_with_warning", "ok": true,
             "command": run, "exit_code": -2_147_483_648_i64, "duration_ms": 7_202_000,
             "timed_out": false, "truncated": true,
+            "byproduct": "a939fea7c32eeb59326e08723c45c1bba9bebea969012c3b7b02710e5e773c48",
         })
     );
 }
@@ -1575,6 +1578,7 @@ fn it_should_carry_the_stored_outcome_when_the_outcome_is_immutable() {
             "snapshot": { "kind": "git-commit", "id": SHA },
             "expected": "passed",
             "stored": "failed",
+            "byproduct": "a939fea7c32eeb59326e08723c45c1bba9bebea969012c3b7b02710e5e773c48",
             "hint": "this snapshot already has the stored outcome for this check; change the tree to get a new verdict",
         })
     );
