@@ -498,11 +498,8 @@ fn it_should_accept_a_mechanical_check_with_run_timeout_and_expect() {
 #[test]
 fn it_should_accept_a_check_that_is_only_text() {
     let by_hand = check_data("before-commit", "Review the diff by hand.", false);
-    let with_matcher = with(
-        check_data("before-merge", "run the linter", true),
-        "when",
-        json!({ "vocabulary": "closed", "event": "before-merge", "matcher": "src/**" }),
-    );
+    let mut with_matcher = check_data("before-merge", "run the linter", true);
+    with_matcher["when"]["matcher"] = json!("src/**");
 
     let accepted = (
         is_accepted("check", &by_hand),
@@ -696,11 +693,8 @@ fn it_should_reject_an_exit_code_that_is_not_an_integer() {
 fn it_should_still_verify_a_chain_written_with_the_previous_catalog() {
     let raw = RawHarness::new();
     let acme = acme();
-    let old_data = with(
-        check_data("before-deploy", "Run lint", true),
-        "when",
-        json!({ "vocabulary": OLD_VOCABULARY, "event": "before-deploy" }),
-    );
+    let mut old_data = check_data("before-deploy", "Run lint", true);
+    old_data["when"]["vocabulary"] = json!(OLD_VOCABULARY);
     {
         let mut old = raw.hexlog(old_catalog(), &EmptyNative);
         old.ensure_tenant(&acme).expect("the tenant is created");
