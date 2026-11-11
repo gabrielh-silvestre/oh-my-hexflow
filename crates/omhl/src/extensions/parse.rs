@@ -4,6 +4,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 use super::model::{Extension, ExtensionIssue, ExtensionKind, RawExtension};
+use crate::mechanical::RUNNABLE_EVENTS;
 use crate::project::text::{
     is_invisible_format, normalize_line_breaks, normalize_line_breaks_owned, toml_error_position,
 };
@@ -76,25 +77,33 @@ fn parse_check(raw: &RawExtension) -> Result<Extension, Vec<ExtensionIssue>> {
 
 /// `None` quando algum campo de `[when]` foi recusado (o motivo vai para `issues`).
 fn when_data(path: &str, when: WhenToml, issues: &mut Vec<ExtensionIssue>) -> Option<Value> {
-    let event = keep(
-        issues,
-        short_field(path, "event", when.event, EVENT_MAX_CHARS),
-    );
+    let event = short_field(path, "event", when.event, EVENT_MAX_CHARS).and_then(|event| {
+        if RUNNABLE_EVENTS.contains(&event.as_str()) {
+            Ok(event)
+        } else {
+            Err(issue(
+                path,
+                "event-unsupported",
+                "`event` is not one of before-commit, before-pr, before-merge".to_owned(),
+            ))
+        }
+    });
+    let event = keep(issues, event);
     let matcher = when
         .matcher
         .map(|matcher| short_field(path, "matcher", matcher, MATCHER_MAX_CHARS))
         .transpose();
     let matcher = keep(issues, matcher);
-    if when.vocabulary.as_deref().is_some_and(|v| v != "free") {
+    if when.vocabulary.as_deref().is_some_and(|v| v != "closed") {
         issues.push(issue(
             path,
             "value-not-allowed",
-            "when.vocabulary must be \"free\"".to_owned(),
+            "when.vocabulary must be \"closed\"".to_owned(),
         ));
     }
 
     let mut data = Map::from_iter([
-        ("vocabulary".to_owned(), Value::String("free".to_owned())),
+        ("vocabulary".to_owned(), Value::String("closed".to_owned())),
         ("event".to_owned(), Value::String(event?)),
     ]);
     if let Some(matcher) = matcher? {
