@@ -17,7 +17,7 @@ use support::omhl::{
     pull_request_data, refusal, request, retirement_item, revision_item, seed_pull_request,
     with_snapshot, work_item_data,
 };
-use support::pr_gate::close;
+use support::pr_gate::{close, snapshots};
 use support::raw::RawHarness;
 use support::{
     FakeProbe, executor_attestation_data, executor_author, loader_author, sid, snap, snap64, tname,
@@ -690,10 +690,13 @@ fn it_should_refuse_an_attestation_whose_check_is_a_native_guideline() {
 
 #[test]
 fn it_should_refuse_reopening_a_closed_work_item_through_a_retirement() {
-    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let harness = OmhlHarness::new(
+        FakeProbe::clean(snap('a'))
+            .with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree('c')))),
+    );
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
-    let closed = close(&mut omhl, PR_7, &snap('a'));
+    let closed = close(&mut omhl, PR_7, &snapshots(&snap('a'), &tree('c')));
     let retired = append_ok(
         &mut omhl,
         vec![retirement_item(PR_7, &closed.outcome.records[0].id)],
