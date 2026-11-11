@@ -74,7 +74,7 @@ mod platform {
     use nix::errno::Errno;
     use nix::sys::prctl::set_pdeathsig;
     use nix::sys::signal::{Signal, kill, killpg};
-    use nix::sys::wait::{Id, WaitPidFlag, waitid};
+    use nix::sys::wait::{Id, WaitPidFlag, WaitStatus, waitid};
     use nix::unistd::{Pid, getpgid};
 
     use super::{SweepReport, SweptProcess};
@@ -87,6 +87,8 @@ mod platform {
     const TERM_GRACE: Duration = Duration::from_secs(2);
     const SWEEP_SCAN_BUDGET: Duration = Duration::from_secs(1);
     const POLL: Duration = Duration::from_millis(10);
+    /// Pids que a varredura pode sinalizar: o 0 e o 1 nunca, e acima de `i32::MAX` o `kill` leria um número negativo (-1 = todos).
+    const SWEEPABLE_PIDS: std::ops::RangeInclusive<u32> = 2..=0x7fff_ffff;
 
     /// Lê o stdin até o EOF (o runner morreu ou terminou) e limpa o próprio grupo, onde roda o comando.
     const GUARDIAN_SCRIPT: &str = "trap \"\" INT TERM HUP QUIT TTIN TTOU; read -r _; kill -s TERM -- -$$; kill -s CONT -- -$$; sleep 2; kill -s KILL -- -$$";
@@ -200,10 +202,21 @@ mod platform {
             }
         };
 
-        if !matches!(guardian.try_wait(), Ok(None)) {
+        // WNOWAIT: um guardião morto fica por colher e segura o número do grupo até o killpg
+        let guardian_alive = matches!(
+            waitid(
+                Id::Pid(group),
+                WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT
+            ),
+            Ok(WaitStatus::StillAlive)
+        );
+        if !guardian_alive {
             // sem guardião, o comando ficaria sem quem o limpe se este processo morrer
             let _ = killpg(group, Signal::SIGKILL);
+            // um líder que já saiu do grupo não recebe o KILL do grupo; sem isto o wait() esperaria para sempre
+            let _ = kill(pid_of(&leader), Signal::SIGKILL);
             let _ = leader.wait();
+            let _ = guardian.wait();
             return Err(error(
                 RunErrorKind::Spawn,
                 "the guardian exited before the command started".to_owned(),
@@ -354,7 +367,8 @@ mod platform {
             let Some(pid) = name
                 .to_str()
                 .filter(|name| name.bytes().all(|b| b.is_ascii_digit()))
-                .and_then(|name| name.parse().ok())
+                .and_then(|name| name.parse::<u32>().ok())
+                .filter(|pid| SWEEPABLE_PIDS.contains(pid))
             else {
                 continue;
             };
@@ -459,13 +473,6 @@ mod platform {
     use super::SweepReport;
     use crate::runner::{RunError, RunErrorKind, RunReport, RunSpec};
 
-    fn unsupported() -> RunError {
-        RunError {
-            kind: RunErrorKind::UnsupportedPlatform,
-            message: "running commands is supported only on Linux".to_owned(),
-        }
-    }
-
     pub fn own_marker() -> Option<String> {
         None
     }
@@ -475,10 +482,16 @@ mod platform {
         _parent_pid: Option<u32>,
         _spec: &RunSpec,
     ) -> Result<RunReport, RunError> {
-        Err(unsupported())
+        Err(RunError {
+            kind: RunErrorKind::UnsupportedPlatform,
+            message: "running commands is supported only on Linux".to_owned(),
+        })
     }
 
     pub fn sweep_in(_root: &Path) -> Result<SweepReport, RunError> {
-        Err(unsupported())
+        Err(RunError {
+            kind: RunErrorKind::UnsupportedPlatform,
+            message: "sweeping processes is supported only on Linux".to_owned(),
+        })
     }
 }
