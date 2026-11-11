@@ -244,7 +244,14 @@ fn compile(pattern: &str, rule_path: &str, stream: &str) -> Result<Regex, SpecEr
         })
 }
 
-/// Único decodificador do tipo de snapshot de um check (DP-6).
-pub fn snapshot_for(_data: &Value) -> hexlog::SnapshotKind {
-    unimplemented!()
+/// Único decodificador do tipo de snapshot de um check (DP-6). Não passa pelo
+/// `from_data`: um spec inválido também tem kind (AF-MINOR 22).
+pub fn snapshot_for(data: &Value) -> hexlog::SnapshotKind {
+    let before_commit =
+        data.pointer("/when/event").and_then(Value::as_str) == Some("before-commit");
+    if before_commit && data.get("run").is_some() {
+        hexlog::SnapshotKind::GitTree
+    } else {
+        hexlog::SnapshotKind::GitCommit
+    }
 }
