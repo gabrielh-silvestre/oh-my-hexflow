@@ -60,6 +60,8 @@ pub enum RuleCode {
     WhereEqValueTooLong,
     GateInconsistent,
     SnapshotTreeMismatch,
+    CheckRunAuthor,
+    AttestationIncomplete,
 }
 
 impl RuleCode {
@@ -82,6 +84,8 @@ impl RuleCode {
             RuleCode::WhereEqValueTooLong => "where-eq-value-too-long",
             RuleCode::GateInconsistent => "gate-inconsistent",
             RuleCode::SnapshotTreeMismatch => "snapshot-tree-mismatch",
+            RuleCode::CheckRunAuthor => "check-run-author",
+            RuleCode::AttestationIncomplete => "attestation-incomplete",
         }
     }
 }
