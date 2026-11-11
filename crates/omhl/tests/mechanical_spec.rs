@@ -1,6 +1,7 @@
 mod support;
 
-use omhl::mechanical::spec::{CheckSpec, Outcome, SpecError, StreamPattern};
+use hexlog::SnapshotKind;
+use omhl::mechanical::spec::{CheckSpec, Outcome, SpecError, StreamPattern, snapshot_for};
 use serde_json::{Value, json};
 use support::omhl::check_data;
 
@@ -251,6 +252,42 @@ fn it_should_reject_a_run_whose_canonical_size_exceeds_its_limit() {
 
     assert_eq!(over_result.unwrap_err(), error("/run", "run-too-large"));
     assert!(matches!(at_limit_result, Ok(Some(_))));
+}
+
+#[test]
+fn it_should_derive_git_tree_for_a_before_commit_check_with_run() {
+    let data = run_data("before-commit", passed_on_zero());
+
+    let kind = snapshot_for(&data);
+
+    assert_eq!(kind, SnapshotKind::GitTree);
+}
+
+#[test]
+fn it_should_derive_git_commit_for_a_before_pr_check_with_run() {
+    let data = run_data("before-pr", passed_on_zero());
+
+    let kind = snapshot_for(&data);
+
+    assert_eq!(kind, SnapshotKind::GitCommit);
+}
+
+#[test]
+fn it_should_derive_git_commit_for_a_before_merge_check_with_run() {
+    let data = run_data("before-merge", passed_on_zero());
+
+    let kind = snapshot_for(&data);
+
+    assert_eq!(kind, SnapshotKind::GitCommit);
+}
+
+#[test]
+fn it_should_derive_git_commit_for_a_before_commit_check_that_is_only_text() {
+    let data = check_data("before-commit", "Review the diff by hand.", true);
+
+    let kind = snapshot_for(&data);
+
+    assert_eq!(kind, SnapshotKind::GitCommit);
 }
 
 #[test]
