@@ -268,7 +268,6 @@ impl AppError {
         )
     }
 
-    #[allow(dead_code)] // consumidor S14
     pub(crate) fn attestation_not_found(path: &str) -> AppError {
         AppError::at_pointer(
             "attestation-not-found",
@@ -277,7 +276,6 @@ impl AppError {
         )
     }
 
-    #[allow(dead_code)] // consumidor S14
     pub(crate) fn byproduct_missing(path: &str) -> AppError {
         AppError::at_pointer(
             "byproduct-missing",

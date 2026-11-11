@@ -3,6 +3,8 @@ use serde_json::{Map, Value};
 
 use super::error::AppError;
 
+const DEFAULT_TAIL: u32 = 50;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     List {
@@ -133,7 +135,7 @@ pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError>
         "gate_pr" => work_item(&mut args).map(|work_item| Action::GatePr { work_item }),
         "close" => work_item(&mut args).map(|work_item| Action::Close { work_item }),
         "verify" => only(&args, &[]).map(|()| Action::Verify),
-        "load" => load(&mut args),
+        "byproduct" => byproduct(&mut args),
         "project" => only(&args, &[]).map(|()| Action::Project),
         _ => Err(AppError::plain("unknown-tool", "unknown tool")),
     }
@@ -167,15 +169,19 @@ fn attest(args: &mut Map<String, Value>) -> Result<Action, AppError> {
     })
 }
 
-fn load(args: &mut Map<String, Value>) -> Result<Action, AppError> {
-    only(args, &["dry_run"])?;
-    let dry_run = match args.remove("dry_run") {
-        None => false,
-        Some(Value::Bool(flag)) => flag,
-        Some(_) => return Err(AppError::invalid_arguments("/dry_run", "wrong type")),
+fn byproduct(args: &mut Map<String, Value>) -> Result<Action, AppError> {
+    only(args, &["check", "work_item", "tail"])?;
+    let tail = match optional_uint(args, "tail")? {
+        None => DEFAULT_TAIL,
+        Some(value) => u32::try_from(value)
+            .map_err(|_| AppError::invalid_arguments("/tail", "unknown value"))?,
     };
 
-    Ok(Action::Load { dry_run })
+    Ok(Action::Byproduct {
+        check: required_text(args, "check")?,
+        work_item: required_text(args, "work_item")?,
+        tail,
+    })
 }
 
 fn work_item(args: &mut Map<String, Value>) -> Result<String, AppError> {

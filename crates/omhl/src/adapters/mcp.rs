@@ -355,10 +355,14 @@ fn plain_tools() -> Vec<Value> {
 fn extension_tools() -> Vec<Value> {
     vec![
         tool(
-            "load",
-            "Load the project extensions into the tenant; dry_run only reports the plan.",
-            &json!({ "dry_run": { "type": "boolean", "description": "Report without writing." } }),
-            &[],
+            "byproduct",
+            "Print the last lines of the stored output of a check run for a work item; stderr comes last.",
+            &json!({
+                "check": { "type": "string", "description": "Check semantic id." },
+                "work_item": { "type": "string", "description": "Work item semantic id." },
+                "tail": { "type": "integer", "minimum": 1, "description": "Number of lines, 50 by default, 500 at most." },
+            }),
+            &["check", "work_item"],
         ),
         tool(
             "project",

@@ -1,15 +1,91 @@
-use serde_json::Value;
+use hexlog::{NodeView, SemanticId};
+use serde_json::{Value, json};
 
-use super::engine::Engine;
+use super::engine::{Engine, parse_at};
 use super::error::AppError;
+use super::read::all_nodes;
+use crate::byproduct::ByproductHash;
+use crate::error::{OmhlError, RuleCode};
+
+const TAIL_MAX: usize = 500;
+const LINE_MAX_CHARS: usize = 2_000;
+const HEADER_PREFIX: &str = "omhl-byproduct v1 stdout=";
 
 impl Engine<'_> {
+    /// Somente leitura: as últimas linhas da saída guardada da attestation mais recente.
     pub(super) fn byproduct(
-        &self,
-        _check: &str,
-        _work_item: &str,
-        _tail: u32,
+        &mut self,
+        check: &str,
+        work_item: &str,
+        tail: u32,
     ) -> Result<Value, AppError> {
-        unimplemented!()
+        if tail == 0 {
+            return Err(AppError::invalid_arguments("/tail", "unknown value"));
+        }
+        let check_id = parse_at(SemanticId::parse, check, "/check")?;
+        if self.omhl.get(&self.tenant, &check_id)?.is_none() {
+            return Err(OmhlError::rule(RuleCode::CheckNotFound, "/check").into());
+        }
+        let attestation = self
+            .latest_attestation(check, work_item)?
+            .ok_or_else(|| AppError::attestation_not_found("/work_item"))?;
+        let missing = || AppError::byproduct_missing("/work_item");
+        let hash = attestation.data["byproduct"]
+            .as_str()
+            .and_then(|text| ByproductHash::parse(text).ok())
+            .ok_or_else(missing)?;
+        let store = self.byproducts.ok_or_else(|| {
+            AppError::plain("byproducts-unavailable", "no byproduct store is configured")
+        })?;
+        // shortcut: blob corrompido ou ilegível vira byproduct-missing; a forma final é da S18 (lacuna L5)
+        let blob = store.get(&hash).ok().flatten().ok_or_else(missing)?;
+        let lines = tail_lines(&blob, tail).ok_or_else(missing)?;
+
+        Ok(json!({
+            "check": check,
+            "work_item": work_item,
+            "outcome": attestation.data["outcome"],
+            "byproduct": hash.as_str(),
+            "lines": lines,
+        }))
     }
+
+    /// A de maior `seq` entre as attestations do par; o id não ordena nada.
+    fn latest_attestation(
+        &mut self,
+        check: &str,
+        work_item: &str,
+    ) -> Result<Option<NodeView>, AppError> {
+        Ok(all_nodes(&mut self.omhl, &self.tenant, "attestation")?
+            .into_iter()
+            .filter(|node| node.data["check"] == check && node.data["work_item"] == work_item)
+            .max_by_key(|node| node.seq))
+    }
+}
+
+/// Cabeçalho `omhl-byproduct v1 stdout=<o> stderr=<e>\n`, depois `o` bytes de stdout e `e` de stderr.
+fn tail_lines(blob: &[u8], tail: u32) -> Option<Vec<String>> {
+    let newline = blob.iter().position(|byte| *byte == b'\n')?;
+    let header = std::str::from_utf8(&blob[..newline]).ok()?;
+    let (stdout_size, stderr_size) = header
+        .strip_prefix(HEADER_PREFIX)?
+        .split_once(" stderr=")
+        .and_then(|(out, err)| Some((out.parse::<usize>().ok()?, err.parse::<usize>().ok()?)))?;
+    let body = &blob[newline + 1..];
+    if body.len() != stdout_size.checked_add(stderr_size)? {
+        return None;
+    }
+    let (stdout, stderr) = body.split_at(stdout_size);
+    let lines: Vec<String> = [stdout, stderr]
+        .into_iter()
+        .flat_map(|stream| {
+            String::from_utf8_lossy(stream)
+                .split_terminator('\n')
+                .map(|line| line.chars().take(LINE_MAX_CHARS).collect::<String>())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let wanted = usize::try_from(tail).map_or(TAIL_MAX, |tail| tail.min(TAIL_MAX));
+
+    Some(lines[lines.len().saturating_sub(wanted)..].to_vec())
 }
