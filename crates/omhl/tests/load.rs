@@ -19,7 +19,7 @@ fn check_toml(how: &str, after: &[&str]) -> String {
         format!("after = [{}]\n", targets.join(", "))
     };
 
-    format!("blocking = true\nhow = \"{how}\"\n{after_line}\n[when]\nevent = \"pre-commit\"\n")
+    format!("blocking = true\nhow = \"{how}\"\n{after_line}\n[when]\nevent = \"before-commit\"\n")
 }
 
 fn guideline_toml(text: &str) -> String {
@@ -30,7 +30,7 @@ fn check_data(how: &str) -> Value {
     json!({
         "blocking": true,
         "how": how,
-        "when": {"vocabulary": "free", "event": "pre-commit"}
+        "when": {"vocabulary": "closed", "event": "before-commit"}
     })
 }
 

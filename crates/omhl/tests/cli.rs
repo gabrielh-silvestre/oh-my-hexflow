@@ -13,7 +13,8 @@ use tempfile::TempDir;
 
 const W1: &str = "work-items.w1";
 const LINT_CHECK: &str = "checks.lint";
-const LINT_TOML: &str = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"pre-commit\"\n";
+const LINT_TOML: &str =
+    "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 const COMMANDS: [&str; 10] = [

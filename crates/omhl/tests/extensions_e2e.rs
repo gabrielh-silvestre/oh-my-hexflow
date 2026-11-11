@@ -14,8 +14,8 @@ use support::project::Project;
 const W1: &str = "work-items.w1";
 const LINT_CHECK: &str = "checks.lint";
 const LINT_HOW: &str = "Run the lint suite before every commit";
-const LINT_TOML: &str = "blocking = true\nhow = \"Run the lint suite before every commit\"\n\n[when]\nevent = \"pre-commit\"\n";
-const LINT_TOML_EDITED: &str = "blocking = true\nhow = \"Run the lint suite and the formatter\"\n\n[when]\nevent = \"pre-commit\"\n";
+const LINT_TOML: &str = "blocking = true\nhow = \"Run the lint suite before every commit\"\n\n[when]\nevent = \"before-commit\"\n";
+const LINT_TOML_EDITED: &str = "blocking = true\nhow = \"Run the lint suite and the formatter\"\n\n[when]\nevent = \"before-commit\"\n";
 const TONE_TOML: &str = "text = \"Keep every answer brief\"\n";
 
 // Apoio

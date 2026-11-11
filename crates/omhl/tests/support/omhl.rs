@@ -156,7 +156,7 @@ pub fn closed_with_gate(mut data: Value) -> Value {
 }
 
 pub fn check_data(event: &str, how: &str, blocking: bool) -> Value {
-    json!({ "when": { "vocabulary": "free", "event": event }, "how": how, "blocking": blocking })
+    json!({ "when": { "vocabulary": "closed", "event": event }, "how": how, "blocking": blocking })
 }
 
 pub fn attestation_data(check: &str, work_item: &str, outcome: &str, ok: bool) -> Value {

@@ -20,7 +20,8 @@ const NATIVE_GUIDELINES: [&str; 2] = [
     "guidelines.commit-policy",
 ];
 const CONTEXT_CEILING: usize = 10_000;
-const LINT_TOML: &str = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"pre-commit\"\n";
+const LINT_TOML: &str =
+    "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
 const INVALID_TOML: &str = "this is = [not valid";
 const PENDING_NOTE: &str = "NOTE: 1 extension change(s) not loaded into tenant acme; run omhl load";
 
@@ -409,7 +410,7 @@ fn it_should_keep_the_warning_line_within_480_characters() {
         .file(".omhl/checks/binary.toml", [0xff, 0xfe, 0xfd])
         .check(
             "nohow",
-            "blocking = true\n\n[when]\nevent = \"pre-commit\"\n",
+            "blocking = true\n\n[when]\nevent = \"before-commit\"\n",
         );
 
     let context = context_of(&hook_for(&project));

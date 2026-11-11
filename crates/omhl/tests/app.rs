@@ -860,7 +860,7 @@ fn it_should_render_an_engine_error_with_its_wire_name_and_details() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();
     let data = json!({
-        "when": { "vocabulary": "free", "event": "before-commit" },
+        "when": { "vocabulary": "closed", "event": "before-commit" },
         "blocking": true,
     });
     let item = node_wire("checks.no-how", "check", &data);

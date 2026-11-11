@@ -12,7 +12,8 @@ use tempfile::TempDir;
 const TOOLS: [&str; 10] = [
     "list", "get", "append", "attest", "render", "gate_pr", "close", "verify", "load", "project",
 ];
-const LINT_TOML: &str = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"pre-commit\"\n";
+const LINT_TOML: &str =
+    "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
 const SECRET_MARKER: &str = "SECRET-MARKER-9f3";
 const MIB: usize = 1_048_576;
 

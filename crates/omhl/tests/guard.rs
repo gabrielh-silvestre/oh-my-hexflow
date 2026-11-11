@@ -176,7 +176,7 @@ fn it_should_accept_an_attestation_for_a_project_check() {
     let project_check = node_item(
         LINT_DOCS,
         "check",
-        check_data("before-lint", "run the linter", true),
+        check_data("before-commit", "run the linter", true),
     );
     append_ok(&mut omhl, vec![project_check]);
     let attestation = attestation_item(&snap('a'), LINT_DOCS, PR_7);
@@ -421,7 +421,7 @@ fn it_should_refuse_a_node_id_outside_the_namespace_of_its_type() {
     let misplaced_check = node_item(
         "lint.docs",
         "check",
-        check_data("before-lint", "run the linter", true),
+        check_data("before-commit", "run the linter", true),
     );
     let misplaced_decision = node_item("checks.x", "decision", decision_data("use sqlite", None));
 
@@ -443,7 +443,7 @@ fn it_should_refuse_a_node_id_outside_the_namespace_of_its_type() {
 fn it_should_refuse_reactivating_a_retired_check() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    let data = check_data("before-lint", "run the linter", true);
+    let data = check_data("before-commit", "run the linter", true);
     let created = append_ok(&mut omhl, vec![node_item(LINT_DOCS, "check", data.clone())]);
     let retired = append_ok(
         &mut omhl,
@@ -585,7 +585,7 @@ fn it_should_check_every_item_of_the_batch_before_writing_any() {
     let misplaced = node_item(
         "lint.docs",
         "check",
-        check_data("before-lint", "run the linter", true),
+        check_data("before-commit", "run the linter", true),
     );
 
     let error = refusal(&mut omhl, vec![valid, misplaced]);

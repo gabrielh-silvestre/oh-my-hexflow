@@ -147,7 +147,7 @@ fn check(id: &str) -> NodeView {
         id,
         "check",
         json!({
-            "when": { "vocabulary": "free", "event": "before-commit" },
+            "when": { "vocabulary": "closed", "event": "before-commit" },
             "how": "run it",
             "blocking": true,
         }),
@@ -197,7 +197,7 @@ fn golden_two_fixture() -> Fixture {
             "check",
             json!({
                 "when": {
-                    "vocabulary": "free",
+                    "vocabulary": "closed",
                     "event": "before-commit",
                     "matcher": "Bash(npm publish*)",
                 },
@@ -336,7 +336,7 @@ fn it_should_omit_the_matcher_and_after_lines_when_absent() {
             "checks.lint",
             "check",
             json!({
-                "when": { "vocabulary": "free", "event": "before-commit" },
+                "when": { "vocabulary": "closed", "event": "before-commit" },
                 "how": "run the linter",
                 "blocking": false,
             }),

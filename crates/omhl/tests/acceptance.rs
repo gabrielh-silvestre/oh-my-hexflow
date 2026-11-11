@@ -33,7 +33,7 @@ fn of_type(type_name: &str) -> ListFilter {
 fn it_should_register_a_project_check_and_read_it_back_by_semantic_id() {
     let harness = OmhlHarness::new(FakeProbe::dirty());
     let mut omhl = harness.open();
-    let data = check_data("before-publishing-docs", "run the docs linter", true);
+    let data = check_data("before-commit", "run the docs linter", true);
     append_ok(&mut omhl, vec![node_item(LINT_DOCS, "check", data.clone())]);
 
     let view = omhl

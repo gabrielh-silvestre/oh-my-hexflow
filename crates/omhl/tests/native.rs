@@ -38,7 +38,7 @@ fn catalog() -> Catalog {
 }
 
 fn check_data(event: &str, how: &str, blocking: bool) -> Value {
-    json!({ "when": { "vocabulary": "free", "event": event }, "how": how, "blocking": blocking })
+    json!({ "when": { "vocabulary": "closed", "event": event }, "how": how, "blocking": blocking })
 }
 
 fn guideline_data(text: &str) -> Value {
@@ -62,7 +62,7 @@ fn project_check_item(id: &str) -> AppendItem {
     node_item(
         id,
         "check",
-        check_data("before-lint", "run the linter", true),
+        check_data("before-commit", "run the linter", true),
     )
 }
 
@@ -241,7 +241,7 @@ fn it_should_mark_the_three_native_checks_blocking_with_the_contract_events() {
 }
 
 #[test]
-fn it_should_validate_every_native_check_against_the_check_type() {
+fn it_should_validate_every_native_check_but_the_review_one_against_the_check_type() {
     let native = NativeBase;
     let catalog = catalog();
 
@@ -257,7 +257,16 @@ fn it_should_validate_every_native_check_against_the_check_type() {
         })
         .collect();
 
-    assert_eq!(rejected, Vec::new());
+    assert_eq!(
+        rejected,
+        vec![(
+            "checks.verify-review-comment-anchoring",
+            vec![DataViolation {
+                pointer: "/when/event".to_owned(),
+                code: "enum".to_owned()
+            }]
+        )]
+    );
 }
 
 #[test]
@@ -303,7 +312,7 @@ fn it_should_refuse_a_tenant_node_with_each_native_id() {
         .iter()
         .map(|(id, type_name)| {
             let data = match *type_name {
-                "check" => check_data("before-lint", "run the linter", true),
+                "check" => check_data("before-commit", "run the linter", true),
                 _ => guideline_data("a project guideline"),
             };
             refusal(&mut hexlog, vec![node_item(id, type_name, data)])
