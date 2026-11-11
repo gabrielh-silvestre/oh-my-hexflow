@@ -30,6 +30,48 @@ pub fn git_in(dir: &Path, args: &[&str]) -> Output {
         .expect("the git executable must be on the PATH to run these tests")
 }
 
+/// O `Command` do `git` com o ambiente dos hooks de teste: como `git_in` (toda `GIT_*` herdada sai,
+/// config global e de sistema neutras, autor e committer fixos), mais `XDG_DATA_HOME` e `HOME`
+/// explícitos, `-C dir`, stdin nulo, stdout e stderr em cano. Não roda: quem chama faz `spawn` ou
+/// `output` (e pode pôr `process_group(0)` antes do `spawn`).
+pub fn git_command_with_env(
+    dir: &Path,
+    xdg_data_home: &Path,
+    home: &Path,
+    args: &[&str],
+) -> Command {
+    let mut command = Command::new("git");
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(&key);
+        }
+    }
+    command
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "Test Author")
+        .env("GIT_AUTHOR_EMAIL", "author@example.com")
+        .env("GIT_COMMITTER_NAME", "Test Committer")
+        .env("GIT_COMMITTER_EMAIL", "committer@example.com")
+        .env("LC_ALL", "C")
+        .env("XDG_DATA_HOME", xdg_data_home)
+        .env("HOME", home)
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
+}
+
+/// `git_command_with_env(..).output()`; não confere o código de saída.
+pub fn git_with_env(dir: &Path, xdg_data_home: &Path, home: &Path, args: &[&str]) -> Output {
+    git_command_with_env(dir, xdg_data_home, home, args)
+        .output()
+        .expect("the git executable must be on the PATH to run these tests")
+}
+
 pub struct GitRepo {
     dir: TempDir,
 }
