@@ -1,12 +1,16 @@
-use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::Barrier;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::Duration;
 
+use ::omhl::runner::{CommandRunner, RunError, RunReport, RunSpec};
 use hexlog::{AppendRequest, Config, Deps, Hexlog, IdGenerator, TenantId};
 use uuid::Uuid;
 
 use super::omhl::{node_item, premise_data};
-use super::{EmptyNative, FixedClock, author};
+use super::runner::FakeRunner;
+use super::{EmptyNative, FixedClock, SeqIds, author};
 
 const DEADLINE: Duration = Duration::from_secs(5);
 
@@ -88,4 +92,83 @@ pub fn with_write_lock<R>(
 
         body(&release)
     })
+}
+
+/// Runner que segura a PRIMEIRA chamada do argv `gate` até a trava do banco estar tomada (passa
+/// por `reached` e depois por `locked`); as outras chamadas vão direto ao `inner`. Torna
+/// determinístico "o 1º append grava, o 2º fica Busy".
+pub struct GatedRunner<'g> {
+    pub inner: FakeRunner,
+    pub gate: Vec<String>,
+    pub reached: &'g Barrier,
+    pub locked: &'g Barrier,
+    pub passed: &'g AtomicBool,
+}
+
+impl CommandRunner for GatedRunner<'_> {
+    fn run(&self, spec: &RunSpec) -> Result<RunReport, RunError> {
+        if spec.argv == self.gate && !self.passed.swap(true, Ordering::SeqCst) {
+            self.reached.wait();
+            self.locked.wait();
+        }
+
+        self.inner.run(spec)
+    }
+}
+
+/// Numa thread do `thread::scope` do teste: espera o `GatedRunner` chegar ao gate, toma a trava,
+/// libera o runner por `locked` e segura a trava até `done` (ou 30 s).
+pub fn lock_at_gate(
+    config: &Config,
+    tenant: &TenantId,
+    reached: &Barrier,
+    locked: &Barrier,
+    done: Receiver<()>,
+) {
+    reached.wait();
+    with_write_lock(config, tenant, move |_| {
+        locked.wait();
+        // estourar o prazo só solta a trava; o assert do teste é quem reprova
+        let _ = done.recv_timeout(Duration::from_secs(30));
+    });
+}
+
+/// Runner que, dentro de `run()`, abre outra conexão e grava `premises.concurrent`; manda o
+/// resultado do append em `appended` e depois responde como o `inner`.
+pub struct AppendingRunner<'a> {
+    pub inner: FakeRunner,
+    pub config: Config,
+    pub tenant: &'a TenantId,
+    pub ids: &'a SeqIds,
+    pub appended: Sender<Result<(), String>>,
+}
+
+impl CommandRunner for AppendingRunner<'_> {
+    fn run(&self, spec: &RunSpec) -> Result<RunReport, RunError> {
+        let clock = FixedClock::default();
+        let deps = Deps {
+            clock: &clock,
+            ids: self.ids,
+            catalog: ::omhl::graphs::catalog().expect("the embedded catalogs build"),
+            native: &EmptyNative,
+        };
+        let request = AppendRequest {
+            tenant: self.tenant.clone(),
+            author: author(),
+            key: None,
+            items: vec![node_item(
+                "premises.concurrent",
+                "premise",
+                premise_data("written while a command runs", None),
+            )],
+        };
+        let appended = Hexlog::open(&self.config, deps)
+            .and_then(|mut hexlog| hexlog.append(&request))
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        // o teste pode já ter largado o Receiver; a resposta do runner não muda
+        let _ = self.appended.send(appended);
+
+        self.inner.run(spec)
+    }
 }
