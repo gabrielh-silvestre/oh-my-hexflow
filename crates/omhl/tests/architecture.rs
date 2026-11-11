@@ -397,25 +397,6 @@ fn scan_paths(paths: &[PathBuf], count: impl Fn(&str) -> Result<usize, String>) 
     failures
 }
 
-/// Do passo 1 ao passo 3 da S0: caminho ausente conta como vazio; caminho existente segue a regra estrita.
-fn scan_present_dir(dir: &Path, count: impl Fn(&str) -> Result<usize, String>) -> Vec<String> {
-    if !dir.exists() {
-        return Vec::new();
-    }
-
-    scan_dir(dir, count)
-}
-
-/// Do passo 1 ao passo 3 da S0: os caminhos ausentes são descartados antes do `scan_paths`.
-fn scan_present_paths(
-    paths: &[PathBuf],
-    count: impl Fn(&str) -> Result<usize, String>,
-) -> Vec<String> {
-    let present: Vec<PathBuf> = paths.iter().filter(|path| path.exists()).cloned().collect();
-
-    scan_paths(&present, count)
-}
-
 /// Referências a `hexlog` fora de comentário e de string: o caminho `hexlog::` e as formas de
 /// importar a crate inteira (`use hexlog`, `extern crate hexlog`).
 fn hexlog_refs(source: &str) -> Result<usize, String> {
@@ -806,12 +787,7 @@ fn it_should_not_import_adapters_app_or_facade_in_extensions_and_projection() {
     );
 
     for dir in PURE_LAYER_DIRS {
-        let path = src_dir().join(dir);
-        if *dir == "mechanical" {
-            failures.extend(scan_present_dir(&path, pure_layer_refs));
-        } else {
-            failures.extend(scan_dir(&path, pure_layer_refs));
-        }
+        failures.extend(scan_dir(&src_dir().join(dir), pure_layer_refs));
     }
 
     assert_no_failures(&failures);
@@ -1088,10 +1064,7 @@ fn it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner
         ],
     );
 
-    failures.extend(scan_present_dir(
-        &src_dir().join("mechanical"),
-        mechanical_refs,
-    ));
+    failures.extend(scan_dir(&src_dir().join("mechanical"), mechanical_refs));
 
     assert_no_failures(&failures);
 }
@@ -1113,7 +1086,7 @@ fn it_should_keep_runner_and_byproduct_free_of_adapters_app_and_facade() {
     );
     let services = [src_dir().join("runner.rs"), src_dir().join("byproduct.rs")];
 
-    failures.extend(scan_present_paths(&services, service_refs));
+    failures.extend(scan_paths(&services, service_refs));
 
     assert_no_failures(&failures);
 }
@@ -1216,7 +1189,7 @@ fn it_should_not_scope_the_threads_of_the_pipe_readers() {
         src_dir().join("ports/process.rs"),
     ];
 
-    failures.extend(scan_present_paths(&pipe_readers, thread_scope_refs));
+    failures.extend(scan_paths(&pipe_readers, thread_scope_refs));
 
     assert_no_failures(&failures);
 }

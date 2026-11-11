@@ -880,6 +880,8 @@ fn it_should_report_no_marker_when_discovering_outside_a_project() {
     let env = Env {
         xdg_data_home: Some(xdg.path().as_os_str()),
         home: None,
+        git_index_file: None,
+        parent_pid: 1,
     };
 
     let error = match Runtime::discover(dir.path(), None, &env) {
@@ -898,6 +900,8 @@ fn it_should_open_the_database_from_the_environment_default() {
     let env = Env {
         xdg_data_home: Some(project.xdg().as_os_str()),
         home: None,
+        git_index_file: None,
+        parent_pid: 1,
     };
     let runtime = match Runtime::discover(project.dir(), None, &env) {
         Ok(runtime) => runtime,

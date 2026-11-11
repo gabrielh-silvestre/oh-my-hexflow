@@ -11,15 +11,18 @@ pub mod omhl;
 pub mod pr_gate;
 pub mod project;
 pub mod raw;
+pub mod runner;
 pub mod views;
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
 
-use ::omhl::probe::{ProbeError, ProbeOutcome, SnapshotProbe};
+use ::omhl::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 use hexlog::{
     Author, Clock, IdGenerator, NativeNode, NativeNodes, RelationTypeName, SemanticId, Snapshot,
     SnapshotKind, TenantId, TypeName,
 };
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 pub const DEFAULT_INSTANT: &str = "2026-11-07T12:00:00.000Z";
@@ -70,37 +73,122 @@ impl IdGenerator for SeqIds {
     }
 }
 
-/// Sonda sem estado mutável: devolve sempre o mesmo resultado. Para mudá-lo no meio de um teste,
-/// larga-se o `Omhl`, troca-se o falso e reabre-se.
+/// Sonda sem estado mutável: uma resposta fixa por método. Para mudá-la no meio de um teste,
+/// larga-se o `Omhl`, troca-se o falso e reabre-se. Método sem resposta configurada devolve erro,
+/// para o teste falhar alto em vez de passar por acaso.
 pub struct FakeProbe {
     result: Result<ProbeOutcome, ProbeError>,
+    index_tree: Option<Result<ProbeOutcome, ProbeError>>,
+    head_tree: Option<Result<ProbeOutcome, ProbeError>>,
+    tree_dirty: Option<bool>,
+    head_facts: Option<HeadFacts>,
+    develop_mark: Option<bool>,
+    consume_log: Option<mpsc::Sender<()>>,
 }
 
 impl FakeProbe {
-    pub fn clean(snapshot: Snapshot) -> FakeProbe {
+    fn answering(result: Result<ProbeOutcome, ProbeError>) -> FakeProbe {
         FakeProbe {
-            result: Ok(ProbeOutcome::Reproducible(snapshot)),
+            result,
+            index_tree: None,
+            head_tree: None,
+            tree_dirty: None,
+            head_facts: None,
+            develop_mark: None,
+            consume_log: None,
         }
+    }
+
+    pub fn clean(snapshot: Snapshot) -> FakeProbe {
+        FakeProbe::answering(Ok(ProbeOutcome::Reproducible(snapshot)))
     }
 
     pub fn dirty() -> FakeProbe {
-        FakeProbe {
-            result: Ok(ProbeOutcome::Dirty),
-        }
+        FakeProbe::answering(Ok(ProbeOutcome::Dirty))
     }
 
     pub fn failing() -> FakeProbe {
-        FakeProbe {
-            result: Err(ProbeError {
-                message: "probe unavailable".to_owned(),
-            }),
+        FakeProbe::answering(Err(probe_error("probe unavailable")))
+    }
+
+    pub fn with_tree(
+        mut self,
+        source: TreeSource,
+        result: Result<ProbeOutcome, ProbeError>,
+    ) -> FakeProbe {
+        match source {
+            TreeSource::Index => self.index_tree = Some(result),
+            TreeSource::Head => self.head_tree = Some(result),
         }
+        self
+    }
+
+    pub fn with_tree_dirty(mut self, dirty: bool) -> FakeProbe {
+        self.tree_dirty = Some(dirty);
+        self
+    }
+
+    pub fn with_head_facts(mut self, facts: HeadFacts) -> FakeProbe {
+        self.head_facts = Some(facts);
+        self
+    }
+
+    pub fn with_develop_mark(mut self, present: bool) -> FakeProbe {
+        self.develop_mark = Some(present);
+        self
+    }
+
+    pub fn with_consume_log(mut self, log: mpsc::Sender<()>) -> FakeProbe {
+        self.consume_log = Some(log);
+        self
+    }
+}
+
+fn probe_error(message: &str) -> ProbeError {
+    ProbeError {
+        message: message.to_owned(),
     }
 }
 
 impl SnapshotProbe for FakeProbe {
     fn probe(&self) -> Result<ProbeOutcome, ProbeError> {
         self.result.clone()
+    }
+
+    fn probe_tree(&self, source: TreeSource) -> Result<ProbeOutcome, ProbeError> {
+        let configured = match source {
+            TreeSource::Index => &self.index_tree,
+            TreeSource::Head => &self.head_tree,
+        };
+        configured
+            .clone()
+            .unwrap_or_else(|| Err(probe_error("tree probe not configured")))
+    }
+
+    fn tree_dirty(&self) -> Result<bool, ProbeError> {
+        self.tree_dirty
+            .ok_or_else(|| probe_error("tree dirty probe not configured"))
+    }
+
+    fn head_facts(&self) -> Result<HeadFacts, ProbeError> {
+        self.head_facts
+            .clone()
+            .ok_or_else(|| probe_error("head facts probe not configured"))
+    }
+}
+
+impl DevelopMark for FakeProbe {
+    fn present(&self) -> Result<bool, ProbeError> {
+        self.develop_mark
+            .ok_or_else(|| probe_error("develop mark probe not configured"))
+    }
+
+    fn consume(&self) -> Result<(), ProbeError> {
+        if let Some(log) = &self.consume_log {
+            // o teste pode já ter largado o Receiver; a chamada continua valendo
+            let _ = log.send(());
+        }
+        Ok(())
     }
 }
 
@@ -143,6 +231,53 @@ pub fn author() -> Author {
         model: None,
         client: "tests".to_owned(),
     }
+}
+
+pub fn loader_author() -> Author {
+    Author {
+        agent: "loader".to_owned(),
+        model: None,
+        client: "loader".to_owned(),
+    }
+}
+
+pub fn executor_author() -> Author {
+    Author {
+        agent: "executor".to_owned(),
+        model: None,
+        client: "executor".to_owned(),
+    }
+}
+
+/// Fatos crus de um HEAD na branch `feat/wi-w1__x`, a única que o contém.
+pub fn wi_head_facts() -> HeadFacts {
+    HeadFacts {
+        current: Some("feat/wi-w1__x".to_owned()),
+        rebase_head: None,
+        containing: vec!["feat/wi-w1__x".to_owned()],
+        head: Some("a".repeat(40)),
+    }
+}
+
+/// Dados completos de uma attestation de check com `run`; `byproduct` é o hash de 64 hex.
+pub fn executor_attestation_data(
+    check: &str,
+    work_item: &str,
+    outcome: &str,
+    byproduct: &str,
+) -> Value {
+    json!({
+        "check": check,
+        "work_item": work_item,
+        "outcome": outcome,
+        "ok": outcome != "failed",
+        "command": ["true"],
+        "exit_code": if outcome == "failed" { 1 } else { 0 },
+        "duration_ms": 1,
+        "timed_out": false,
+        "truncated": false,
+        "byproduct": byproduct,
+    })
 }
 
 /// Commit de 40 caracteres iguais a `fill`.
