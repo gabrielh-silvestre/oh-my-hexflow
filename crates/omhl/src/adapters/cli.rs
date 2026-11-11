@@ -3,14 +3,16 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use clap::builder::PossibleValuesParser;
 use clap::error::ErrorKind;
-use clap::{Args, Parser, Subcommand};
-use serde_json::Value;
+use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand};
+use serde_json::{Value, json};
 
 use super::{hook, mcp};
+use crate::app::RUNNABLE_EVENTS;
 use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
-use crate::app::input::read_json_input;
+use crate::app::input::{INPUT_MAX_BYTES, read_json_input};
 use crate::app::runtime::run_action;
 use crate::project::Env;
 
@@ -110,12 +112,13 @@ pub enum CheckCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(group(ArgGroup::new("target").required(true).multiple(false).args(["event", "check"])))]
 pub struct CheckRunArgs {
-    #[arg(long)]
+    #[arg(long, value_parser = PossibleValuesParser::new(RUNNABLE_EVENTS))]
     pub event: Option<String>,
     #[arg(long)]
     pub check: Option<String>,
-    #[arg(long)]
+    #[arg(long, requires = "event")]
     pub pre_push: bool,
 }
 
@@ -147,6 +150,9 @@ pub fn run(
         Ok(cli) => cli,
         Err(usage) => return report_usage(&usage, out, err),
     };
+    if let Some(usage) = pre_push_misuse(&cli) {
+        return report_usage(&usage, out, err);
+    }
     let Cli {
         db,
         project_dir,
@@ -185,6 +191,23 @@ fn report_usage(
     let _ = write!(err, "{}", usage.render());
 
     ExitCode::from(2)
+}
+
+/// O clap não exprime "só com este valor de `--event`"; o erro sai pelo mesmo caminho do de uso.
+fn pre_push_misuse(cli: &Cli) -> Option<clap::Error> {
+    let Command::Action(ActionCommand::Check {
+        command: CheckCommand::Run(args),
+    }) = &cli.command
+    else {
+        return None;
+    };
+
+    (args.pre_push && args.event.as_deref() != Some("before-pr")).then(|| {
+        Cli::command().error(
+            ErrorKind::ArgumentConflict,
+            "--pre-push is only valid with --event before-pr",
+        )
+    })
 }
 
 fn report(
@@ -270,7 +293,7 @@ fn to_action(
         ActionCommand::Project => Action::Project,
         ActionCommand::Check {
             command: CheckCommand::Run(args),
-        } => check_run(args),
+        } => check_run(args, stdin)?,
         ActionCommand::Check {
             command: CheckCommand::Sweep,
         } => Action::CheckSweep,
@@ -292,16 +315,34 @@ fn to_action(
     })
 }
 
-fn check_run(args: CheckRunArgs) -> Action {
+fn check_run(args: CheckRunArgs, stdin: &mut impl Read) -> Result<Action, AppError> {
     let target = match (args.event, args.check) {
         (Some(event), _) => CheckTarget::Event(event),
         (None, Some(check)) => CheckTarget::Check(check),
         (None, None) => unreachable!("clap requires exactly one of --event and --check"),
     };
     let pre_push = match args.pre_push {
-        true => unimplemented!("the pre-push input is read from stdin"),
+        true => Some(read_pre_push_input(stdin)?),
         false => None,
     };
 
-    Action::CheckRun { target, pre_push }
+    Ok(Action::CheckRun { target, pre_push })
+}
+
+/// Lê um byte além do limite: a entrada grande demais é recusada sem ler o resto.
+fn read_pre_push_input(stdin: &mut impl Read) -> Result<String, AppError> {
+    let mut bytes = Vec::new();
+    stdin
+        .take(INPUT_MAX_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| AppError::plain("input-unreadable", "input could not be read"))?;
+    if bytes.len() > INPUT_MAX_BYTES {
+        return Err(push_input_refused("input-too-large"));
+    }
+
+    String::from_utf8(bytes).map_err(|_| push_input_refused("input-not-utf8"))
+}
+
+fn push_input_refused(kind: &str) -> AppError {
+    AppError::push_input_invalid("").with_context(json!({ "kind": kind, "event": "before-pr" }))
 }

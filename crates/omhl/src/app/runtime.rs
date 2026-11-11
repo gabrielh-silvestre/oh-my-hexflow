@@ -1,19 +1,23 @@
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use hexlog::TenantId;
-use serde_json::Value;
+use hexlog::{Clock, TenantId};
+use serde_json::{Value, json};
 
 use super::App;
 use super::action::{Action, Caller};
 use super::error::AppError;
 use super::retry::RetryPolicy;
 use crate::facade::OmhlDeps;
+use crate::ports::blob::BlobStore;
 use crate::ports::clock::SystemClock;
 use crate::ports::git::GitProbe;
 use crate::ports::ids::V7Ids;
+use crate::ports::process::{ProcessRunner, SweepReport, SweptProcess, sweep_strays};
 use crate::project::Env;
 use crate::project::marker::find_marker;
-use crate::project::paths::{default_db_path, prepare_db_file};
+use crate::project::paths::{data_root, default_db_path, prepare_db_file};
 
 /// Dono do projeto e das portas de produção; cada `app()` as empresta.
 pub struct Runtime {
@@ -24,11 +28,22 @@ pub struct Runtime {
     probe: GitProbe,
     root: PathBuf,
     retry: RetryPolicy,
+    runner: ProcessRunner,
+    byproducts: BlobStore,
+    /// Diretório do processo, não o `--project-dir`: é contra ele que o git resolve um `GIT_INDEX_FILE` relativo.
+    cwd: PathBuf,
+    data_root: Option<PathBuf>,
 }
 
 impl Runtime {
     /// O banco só é preparado depois que o marcador é achado.
     pub fn discover(start: &Path, db: Option<&Path>, env: &Env<'_>) -> Result<Runtime, AppError> {
+        let cwd = std::env::current_dir().map_err(|_| {
+            AppError::plain(
+                "invalid-project-dir",
+                "the project directory cannot be resolved",
+            )
+        })?;
         let located = find_marker(start)?.ok_or_else(|| {
             AppError::plain(
                 "no-marker",
@@ -43,12 +58,17 @@ impl Runtime {
 
         Ok(Runtime {
             tenant: located.marker.tenant,
+            byproducts: BlobStore::new(db_path.parent().unwrap_or(Path::new(""))),
             db_path,
             clock: SystemClock,
             ids: V7Ids,
-            probe: GitProbe::new(&located.root),
+            probe: GitProbe::new(&located.root)
+                .with_index_file(env.git_index_file.map(Path::new), &cwd),
             root: located.root,
             retry: RetryPolicy::default(),
+            runner: ProcessRunner::bound_to_parent(env.parent_pid),
+            cwd,
+            data_root: data_root(env),
         })
     }
 
@@ -58,12 +78,73 @@ impl Runtime {
             ids: &self.ids,
             probe: &self.probe,
         };
+        let hooks_dir = self
+            .data_root
+            .as_ref()
+            .map(|dir| dir.join("omhl").join("hooks"));
 
-        Ok(
-            App::open(&self.db_path, &self.tenant, deps, &self.retry)?
-                .with_project_root(&self.root),
-        )
+        Ok(App::open(&self.db_path, &self.tenant, deps, &self.retry)?
+            .with_project_root(&self.root)
+            .with_exec(&self.runner, &self.byproducts)
+            .with_develop_mark(&self.probe)
+            .with_hooks_dir(hooks_dir))
     }
+
+    fn check_sweep(&self) -> Result<Value, AppError> {
+        let report = sweep_strays().map_err(|_| {
+            AppError::plain(
+                "unsupported-platform",
+                "the process table cannot be read on this platform",
+            )
+        })?;
+        self.append_sweep_log(&report);
+
+        Ok(json!({
+            "scan_timed_out": report.scan_timed_out,
+            "swept": swept_json(&report.swept),
+            "unreadable": report.unreadable,
+        }))
+    }
+
+    /// Antes do `check run`: nada do que acontece aqui muda a saída nem o código de saída.
+    fn sweep_quietly(&self) {
+        if let Ok(report) = sweep_strays() {
+            self.append_sweep_log(&report);
+        }
+    }
+
+    /// Uma linha em `<data_root>/omhl/sweep.jsonl` quando algo foi varrido; erro de escrita é descartado.
+    fn append_sweep_log(&self, report: &SweepReport) {
+        let Some(data_root) = &self.data_root else {
+            return;
+        };
+        if report.swept.is_empty() {
+            return;
+        }
+        let dir = data_root.join("omhl");
+        let line = json!({
+            "cwd": self.cwd.to_string_lossy(),
+            "pid": std::process::id(),
+            "swept": swept_json(&report.swept),
+            "ts": self.clock.now(),
+        });
+        let _ = std::fs::create_dir_all(&dir).and_then(|()| {
+            let mut log = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(dir.join("sweep.jsonl"))?;
+            writeln!(log, "{line}")
+        });
+    }
+}
+
+fn swept_json(swept: &[SweptProcess]) -> Value {
+    swept
+        .iter()
+        .map(|process| {
+            json!({ "comm": process.comm, "owner_pid": process.owner_pid, "pid": process.pid })
+        })
+        .collect()
 }
 
 /// Descobre o projeto, abre o `App` e executa uma ação, para quem só precisa de uma chamada.
@@ -74,7 +155,14 @@ pub fn run_action(
     caller: &Caller,
     action: &Action,
 ) -> Result<Value, AppError> {
-    Runtime::discover(start, db, env)?
-        .app()?
-        .dispatch(caller, action)
+    let runtime = Runtime::discover(start, db, env)?;
+
+    match action {
+        Action::CheckSweep => runtime.check_sweep(),
+        Action::CheckRun { .. } => {
+            runtime.sweep_quietly();
+            runtime.app()?.dispatch(caller, action)
+        }
+        _ => runtime.app()?.dispatch(caller, action),
+    }
 }

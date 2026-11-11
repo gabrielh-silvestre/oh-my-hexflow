@@ -5,25 +5,26 @@ use std::path::{Path, PathBuf};
 use super::{Env, ProjectError};
 
 pub fn default_db_path(env: &Env<'_>) -> Result<PathBuf, ProjectError> {
-    let xdg_base = env
-        .xdg_data_home
-        .map(Path::new)
-        .filter(|base| base.is_absolute());
-    let base = match xdg_base {
-        Some(base) => base.to_path_buf(),
-        None => home_data_dir(env)?,
-    };
+    let base = data_root(env).ok_or_else(|| ProjectError {
+        code: "no-database-path",
+        message: "cannot locate the database: set HOME or XDG_DATA_HOME, or pass --db".into(),
+    })?;
 
     Ok(base.join("omhl").join("omhl.db"))
 }
 
-fn home_data_dir(env: &Env<'_>) -> Result<PathBuf, ProjectError> {
-    match env.home.filter(|home| !home.is_empty()) {
-        Some(home) => Ok(Path::new(home).join(".local").join("share")),
-        None => Err(ProjectError {
-            code: "no-database-path",
-            message: "cannot locate the database: set HOME or XDG_DATA_HOME, or pass --db".into(),
-        }),
+/// `XDG_DATA_HOME` absoluto, senão `<HOME>/.local/share`; `None` sem nenhum dos dois.
+pub fn data_root(env: &Env<'_>) -> Option<PathBuf> {
+    let xdg_base = env
+        .xdg_data_home
+        .map(Path::new)
+        .filter(|base| base.is_absolute());
+    match xdg_base {
+        Some(base) => Some(base.to_path_buf()),
+        None => env
+            .home
+            .filter(|home| !home.is_empty())
+            .map(|home| Path::new(home).join(".local").join("share")),
     }
 }
 
