@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::error::{OmhlError, RuleCode};
 use crate::graphs::WORK_ITEM_TYPES;
-use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe};
+use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
 /// Namespace que o id de um node deve ter, por tipo (D4-1).
 fn namespace_of(type_name: &str) -> Option<&'static str> {
@@ -68,6 +68,7 @@ pub(super) struct Guard<'a, 'd> {
     pub(super) tenant: &'a TenantId,
     probe: &'a dyn SnapshotProbe,
     probed: Option<Result<ProbeOutcome, ProbeError>>,
+    probed_index_tree: Option<Result<ProbeOutcome, ProbeError>>,
 }
 
 /// Valida o lote inteiro, lendo só o banco; o primeiro achado encerra com erro.
@@ -81,6 +82,7 @@ pub(crate) fn check_append(
         tenant: &req.tenant,
         probe,
         probed: None,
+        probed_index_tree: None,
     };
     for (index, item) in req.items.iter().enumerate() {
         if let Some(node) = NodeItem::from_item(index, item) {
@@ -188,5 +190,13 @@ impl Guard<'_, '_> {
         let probe = self.probe;
 
         self.probed.get_or_insert_with(|| probe.probe())
+    }
+
+    /// A sonda de árvore do índice roda no máximo uma vez por `append`.
+    pub(super) fn probe_index_tree_once(&mut self) -> &Result<ProbeOutcome, ProbeError> {
+        let probe = self.probe;
+
+        self.probed_index_tree
+            .get_or_insert_with(|| probe.probe_tree(TreeSource::Index))
     }
 }

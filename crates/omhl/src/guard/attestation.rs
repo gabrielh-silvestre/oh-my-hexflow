@@ -6,7 +6,7 @@ use super::attestation_id;
 use crate::error::{OmhlError, RuleCode};
 use crate::native::NativeBase;
 use crate::probe::{ProbeError, ProbeOutcome};
-use hexlog::Snapshot;
+use hexlog::{Snapshot, SnapshotKind};
 
 impl Guard<'_, '_> {
     /// Regras 6 a 10 da attestation (work item, check, id derivado, sonda e desfecho).
@@ -55,13 +55,19 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// Attestation criada: o snapshot é o `HEAD` de uma árvore limpa.
+    /// Attestation criada: o snapshot é o `HEAD` de uma árvore limpa (`git-commit`) ou a árvore do índice (`git-tree`).
     fn check_head(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         let Some(snapshot) = node.snapshot else {
             return Ok(());
         };
 
-        match probe_refusal(self.probe_once(), snapshot) {
+        let refusal = match snapshot.kind() {
+            SnapshotKind::GitTree => tree_probe_refusal(self.probe_index_tree_once(), snapshot),
+            // `SnapshotKind` é non_exhaustive: tipo futuro cai na regra de `HEAD`, que o recusa
+            _ => probe_refusal(self.probe_once(), snapshot),
+        };
+
+        match refusal {
             Some(code) => Err(node.error(code, "snapshot")),
             None => Ok(()),
         }
@@ -111,6 +117,21 @@ pub(crate) fn probe_refusal(
         Err(_) => Some(RuleCode::ProbeFailed),
         Ok(ProbeOutcome::Dirty) => Some(RuleCode::SnapshotDirty),
         Ok(ProbeOutcome::Reproducible(head)) if head != snapshot => Some(RuleCode::SnapshotNotHead),
+        Ok(ProbeOutcome::Reproducible(_)) => None,
+    }
+}
+
+/// Por que a resposta da sonda de árvore não aceita o snapshot como a árvore do índice.
+pub(crate) fn tree_probe_refusal(
+    probed: &Result<ProbeOutcome, ProbeError>,
+    snapshot: &Snapshot,
+) -> Option<RuleCode> {
+    match probed {
+        Err(_) => Some(RuleCode::ProbeFailed),
+        Ok(ProbeOutcome::Dirty) => Some(RuleCode::SnapshotDirty),
+        Ok(ProbeOutcome::Reproducible(tree)) if tree != snapshot => {
+            Some(RuleCode::SnapshotTreeMismatch)
+        }
         Ok(ProbeOutcome::Reproducible(_)) => None,
     }
 }
