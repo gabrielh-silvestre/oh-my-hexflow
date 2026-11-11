@@ -1,5 +1,4 @@
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -123,10 +122,27 @@ impl GitRepo {
     }
 }
 
+/// Grava `content` em `path` com modo 0755 sem abrir o arquivo para escrita neste processo: quem grava
+/// é um `sh` filho, que já terminou quando a função volta. Gravar com `fs::write` nesta thread deixa
+/// o descritor de escrita aberto enquanto outra thread do teste faz `fork`; o filho herda o
+/// descritor até o seu `exec`, e executar o script nessa janela dá `ETXTBSY` ("Text file busy").
+pub fn write_executable(path: &Path, content: &str) {
+    let status = Command::new("sh")
+        .args([
+            "-c",
+            r#"printf '%s' "$1" > "$2" && chmod 755 "$2""#,
+            "sh",
+            content,
+        ])
+        .arg(path)
+        .status()
+        .expect("run sh to write the executable");
+    assert!(status.success(), "could not write {}", path.display());
+}
+
 /// Grava `#!/bin/sh\n<script_body>` em `dir/fake-git` com modo 0755 e devolve o caminho.
 pub fn fake_program(dir: &Path, script_body: &str) -> PathBuf {
     let path = dir.join("fake-git");
-    fs::write(&path, format!("#!/bin/sh\n{script_body}\n")).expect("write fake program");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("make it executable");
+    write_executable(&path, &format!("#!/bin/sh\n{script_body}\n"));
     path
 }
