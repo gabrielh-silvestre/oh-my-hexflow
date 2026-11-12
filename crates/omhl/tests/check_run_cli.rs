@@ -506,25 +506,40 @@ fn it_should_refuse_a_before_pr_run_when_the_committed_file_differs_from_the_sto
 }
 
 #[test]
-fn it_should_refuse_with_spec_stale_when_the_check_file_was_deleted() {
-    let p = cli_repo(&[("gate", GATE_V1)]);
+fn it_should_ignore_and_warn_an_orphaned_check_when_its_file_was_deleted() {
+    let out = TempDir::new().expect("the marker directory is created");
+    let marker = out.path().join("ran");
+    let p = cli_repo(&[("gate", &touch(&marker))]);
     fs::remove_file(p.dir().join(".omhl/checks/gate.toml")).expect("the check file is deleted");
     git(&p, &["add", "-A"]);
     git(&p, &["commit", "-q", "-m", "drop gate"]);
 
     let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
 
-    assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
-    let error = error_of(&output.stderr);
-    assert_eq!(error["code"], json!("check-not-run"));
-    assert_eq!(error["details"][0]["code"], json!("spec-stale"));
-    assert!(
-        error["details"][0]["context"]["hint"]
-            .as_str()
-            .is_some_and(|hint| hint.contains("omhl load")),
-        "error: {error}"
-    );
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    let result = json_line(&output.stdout);
+    assert_eq!(result["results"], json!([]));
+    assert_eq!(result["warnings"][0]["code"], json!("check-orphaned"));
+    assert_eq!(result["warnings"][0]["check"], json!("checks.gate"));
+    assert!(!marker.exists(), "the orphaned command must not run");
     assert_eq!(attestations(&p), Vec::<Value>::new());
+}
+
+#[test]
+fn it_should_run_the_live_checks_and_warn_the_orphaned_one_in_the_same_run() {
+    let p = cli_repo(&[("gone", RED), ("live", GREEN)]);
+    fs::remove_file(p.dir().join(".omhl/checks/gone.toml")).expect("the check file is deleted");
+    git(&p, &["add", "-A"]);
+    git(&p, &["commit", "-q", "-m", "drop gone"]);
+
+    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    let result = json_line(&output.stdout);
+    assert_eq!(result["results"][0]["check"], json!("checks.live"));
+    assert_eq!(result["results"].as_array().map(Vec::len), Some(1));
+    assert_eq!(result["warnings"][0]["check"], json!("checks.gone"));
+    assert_eq!(attestations(&p).len(), 1);
 }
 
 #[test]

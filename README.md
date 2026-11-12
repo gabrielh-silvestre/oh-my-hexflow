@@ -248,9 +248,11 @@ continua indistinguível do usuário.
 
 Cada attestation do `omhl check run` leva o `spec_digest` (sha256 de `run`,
 `timeout_secs` e `expect`), e o `gate-pr` só aceita a que bate com a definição
-vigente do check. Se o TOML do disco diverge do banco, foi apagado ou ficou inválido, o
+vigente do check. Se o TOML do disco diverge do banco ou ficou inválido, o
 `check run` recusa com `spec-stale` em qualquer evento (corrija o arquivo e
-rode `omhl load`). Detalhes em
+rode `omhl load`). Se o TOML foi apagado, o check é órfão: o `check run` não
+roda o `run` gravado e avisa com `check-orphaned` a cada execução, sem
+bloquear o commit. Detalhes em
 [docs/mechanical-gates.md](docs/mechanical-gates.md).
 
 ## Desenvolvimento

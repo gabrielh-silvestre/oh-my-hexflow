@@ -16,7 +16,7 @@ use super::retry::with_retry;
 use super::work_item::{WorkItemRoute, head_branch, resolve_work_item};
 use crate::byproduct::{self, ByproductHash};
 use crate::error::{OmhlError, RuleCode};
-use crate::extensions::collect::collect;
+use crate::extensions::collect::{check_file_exists, collect};
 use crate::extensions::model::ExtensionKind;
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
 use crate::mechanical::evaluate::{Observation, evaluate};
@@ -42,7 +42,8 @@ const TREE_CHANGED_HINT: &str = "the command changed the working tree; keep chec
 const BLOB_FAILED_HINT: &str =
     "the output store is not writable; fix its permissions or free disk space";
 const PARENT_GONE_HINT: &str = "the process that started omhl exited before the checks ran; nothing ran; run the same command again";
-const SPEC_STALE_HINT: &str = "the check file on disk is missing, invalid or differs from the stored definition; fix the file and run omhl load, then run the same command again";
+const SPEC_STALE_HINT: &str = "the check file on disk is invalid or differs from the stored definition; fix the file and run omhl load, then run the same command again";
+const ORPHANED_HINT: &str = "the check file is gone, so the stored command no longer runs; restore the file, or run omhl check retire to drop the check";
 const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
 const PUSH_INPUT_HINT: &str = "the pre-push input needs four fields per line; run git push again";
 /// Variáveis que o git exporta para um hook e que apontariam o comando para o índice do hook (Q14).
@@ -123,6 +124,10 @@ impl Engine<'_> {
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
         let runner = self.runner.ok_or_else(AppError::runner_unavailable)?;
         let (event, planned) = self.plan_target(target)?;
+        let checks_planned = planned.len();
+        let (planned, orphans): (Vec<_>, Vec<_>) = planned
+            .into_iter()
+            .partition(|check| check_file_exists(&root, check.id.as_str()));
         let facts = self
             .probe
             .head_facts()
@@ -147,7 +152,7 @@ impl Engine<'_> {
         };
         let tally = self.run_planned(runner, &scope, &planned)?;
 
-        finish(&scope, tally, planned.len())
+        finish(&scope, tally, checks_planned, &orphans)
     }
 
     /// Lê checks e relações `after` em valores próprios: nenhuma transação fica aberta durante a execução.
@@ -559,7 +564,7 @@ impl Engine<'_> {
 }
 
 impl Scope<'_> {
-    /// O TOML da working tree não declara o check (apagado ou inválido) ou o declara com outra definição que a do banco.
+    /// O TOML da working tree não declara o check (inválido) ou o declara com outra definição que a do banco.
     fn stale(&self, check: &PlannedCheck) -> bool {
         self.tree_digests.get(check.id.as_str()) != Some(&check.spec_digest)
     }
@@ -639,7 +644,7 @@ fn check_push(stdin: &str, facts: &HeadFacts, event: &str) -> Result<PushPlan, A
     })
 }
 
-/// Digest da definição de cada check que o TOML da working tree declara; arquivo inválido fica de fora, e o banco é a fonte da verdade só enquanto o arquivo o confirma.
+/// Digest da definição de cada check que o TOML da working tree declara; arquivo inválido fica de fora, e o banco é a fonte da verdade só enquanto o arquivo o confirma (arquivo ausente é órfão e nem chega aqui).
 fn tree_digests(root: &Path) -> HashMap<String, String> {
     collect(root)
         .extensions
@@ -649,7 +654,7 @@ fn tree_digests(root: &Path) -> HashMap<String, String> {
         .collect()
 }
 
-/// A recusa de um check cujo TOML da working tree falta, é inválido ou diverge do banco: nada roda.
+/// A recusa de um check cujo TOML da working tree é inválido ou diverge do banco: nada roda.
 fn spec_stale_miss(scope: &Scope<'_>, check: &PlannedCheck) -> Miss {
     let mut context = scope.context("spec-stale", &check.id, None);
     context["hint"] = json!(SPEC_STALE_HINT);
@@ -659,7 +664,7 @@ fn spec_stale_miss(scope: &Scope<'_>, check: &PlannedCheck) -> Miss {
         detail: check_detail(
             check,
             "spec-stale",
-            "the check file is missing, invalid or differs from the stored definition",
+            "the check file is invalid or differs from the stored definition",
             context,
         ),
         stops: false,
@@ -788,7 +793,12 @@ fn refusal_hint(code: RuleCode) -> Option<&'static str> {
 }
 
 /// Erro sem veredito vence `checks-failed`; entre eles vale o primeiro na ordem de execução.
-fn finish(scope: &Scope<'_>, tally: Tally, checks_planned: usize) -> Result<Value, AppError> {
+fn finish(
+    scope: &Scope<'_>,
+    tally: Tally,
+    checks_planned: usize,
+    orphans: &[PlannedCheck],
+) -> Result<Value, AppError> {
     if let Some(error) = tally.error {
         return Err(error(tally.details));
     }
@@ -805,10 +815,17 @@ fn finish(scope: &Scope<'_>, tally: Tally, checks_planned: usize) -> Result<Valu
         "results": tally.outputs,
         "blocked": summary.blocked,
     });
+    let mut warnings = Vec::new();
     if checks_planned == 0 {
         // Evento sem check no banco sai com 0, mas o aviso evita confundir vazio com aprovado.
         output["checks_planned"] = json!(0);
-        output["warnings"] = json!([{ "code": "no-checks-for-event" }]);
+        warnings.push(json!({ "code": "no-checks-for-event" }));
+    }
+    warnings.extend(orphans.iter().map(
+        |check| json!({ "code": "check-orphaned", "check": check.id, "hint": ORPHANED_HINT }),
+    ));
+    if !warnings.is_empty() {
+        output["warnings"] = json!(warnings);
     }
 
     Ok(output)
