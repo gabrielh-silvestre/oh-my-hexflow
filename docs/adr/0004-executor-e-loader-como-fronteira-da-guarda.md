@@ -6,7 +6,7 @@ status: accepted
 
 ## Contexto
 
-O `omhl` executa o que está no banco, não o que está no TOML: o arquivo é proposta e o `omhl load` aprova. Sem uma restrição de autoria, qualquer cliente (CLI, MCP) poderia gravar à mão um check com `run`, ou a attestation de um check com `run` com os campos de conteúdo forjados. Só o freio de conteúdo (a attestation exige `byproduct`, `command` e `exit_code`) deixaria qualquer cliente forjar esses campos. O dono decidiu em 2026-11-10 aceitar a restrição por autor.
+O `omhl` executa o que está no banco, não o que está no TOML: o arquivo é proposta e o `omhl load` aprova. Sem uma restrição de autoria, qualquer cliente (CLI, MCP) poderia gravar à mão um check com `run`, ou a attestation de um check com `run` com os campos de conteúdo forjados. Só o freio de conteúdo (a attestation exige `byproduct`, `command` e `exit_code`) deixaria qualquer cliente forjar esses campos. O dono decidiu em 2026-11-10 aceitar a restrição por autor. Alternativa mais forte que esse freio, considerada ou descartada: não encontrada no registro.
 
 ## Decisão
 

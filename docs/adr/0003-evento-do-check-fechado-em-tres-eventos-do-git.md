@@ -10,6 +10,8 @@ Antes, o campo `when.event` de um check aceitava qualquer texto (`when.vocabular
 
 O nativo `checks.verify-review-comment-anchoring` usa `before-publishing-review-comments`, que nenhum hook do `omhl` absorve. Das três opções (fechar só os checks com `run`; fechar todo check carregado e manter os nativos; fechar também os nativos), o dono escolheu a segunda.
 
+Motivo registrado pelo dono para a escolha exata de `before-commit`, `before-pr` e `before-merge`: não encontrado. O princípio acima explica o fechamento da lista, não quais eventos entram nela.
+
 ## Decisão
 
 Todo check carregado, com ou sem `run`, tem `when.event` em `before-commit`, `before-pr` ou `before-merge` (`RUNNABLE_EVENTS`), e o catálogo exige `when.vocabulary = "closed"`. Um evento fora da lista é recusado pelo `omhl load` com o código `event-unsupported`. O nativo `checks.verify-review-comment-anchoring` fica como exceção do produto, como instrução de texto.

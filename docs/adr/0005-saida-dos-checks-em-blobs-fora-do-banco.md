@@ -6,7 +6,9 @@ status: accepted
 
 ## Contexto
 
-O `check run` captura o `stdout` e o `stderr` do comando, até 4 MiB por fluxo, e o agente precisa ler essa saída para corrigir um check que falhou. O `hexlog` guarda a chain num SQLite append-only e valida cada record contra o catalog; ele não tem blob store, e um campo `format: attachment` só valida um hash de 64 caracteres hexadecimais. O limite padrão de `data` por record é de 16.000 caracteres (`Limits::data_max_chars`), muito abaixo do teto de saída do runner. O dono aceitou em 2026-11-10 o campo `byproduct` da attestation (vocabulário do SLSA Provenance) como o hash desse arquivo.
+O `check run` captura o `stdout` e o `stderr` do comando, até 4 MiB por fluxo, e o agente precisa ler essa saída para corrigir um check que falhou. O `hexlog` guarda a chain num SQLite append-only e valida cada record contra o catalog; ele não tem blob store, e um campo `format: attachment` só valida um hash de 64 caracteres hexadecimais. O limite padrão de `data` por record é de 16.000 caracteres (`Limits::data_max_chars`). O dono aceitou em 2026-11-10 o campo `byproduct` da attestation (vocabulário do SLSA Provenance) como o hash desse arquivo.
+
+Motivo registrado pelo dono para guardar a saída fora do banco: não encontrado. Inferência, não confirmada: o limite de 16.000 caracteres por record é muito menor que o teto de 4 MiB por fluxo do runner, então a saída não caberia no record.
 
 ## Decisão
 
