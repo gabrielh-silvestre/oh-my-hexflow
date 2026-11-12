@@ -19,7 +19,7 @@ use crate::error::{OmhlError, RuleCode};
 use crate::extensions::collect::{check_file_exists, collect};
 use crate::extensions::model::ExtensionKind;
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
-use crate::mechanical::evaluate::{Observation, evaluate};
+use crate::mechanical::evaluate::{Observation, evaluate_with_reason};
 use crate::mechanical::plan::{CheckResult, PlannedCheck, plan_run, summarize};
 use crate::mechanical::spec::{CheckSpec, Outcome, spec_digest};
 use crate::probe::{ProbeError, ProbeOutcome, TreeSource};
@@ -348,7 +348,7 @@ impl Engine<'_> {
         }
         let stdout = String::from_utf8_lossy(&report.stdout);
         let stderr = String::from_utf8_lossy(&report.stderr);
-        let outcome = evaluate(
+        let evaluation = evaluate_with_reason(
             spec,
             &Observation {
                 exit_code: report.exit_code,
@@ -359,12 +359,12 @@ impl Engine<'_> {
                 truncated: report.truncated,
             },
         );
-        let cut_note =
-            if report.truncated && outcome == Outcome::Failed && spec.has_stream_pattern() {
-                CUT_OUTPUT_NOTE
-            } else {
-                ""
-            };
+        let outcome = evaluation.outcome;
+        let cut_note = if evaluation.pattern_unchecked {
+            CUT_OUTPUT_NOTE
+        } else {
+            ""
+        };
         let failed = |message: String, context: Option<Value>| {
             let prefix = if check.blocking {
                 ""

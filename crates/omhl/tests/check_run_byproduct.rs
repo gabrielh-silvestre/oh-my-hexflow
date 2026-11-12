@@ -579,3 +579,28 @@ fn it_should_fail_a_stream_rule_and_say_so_when_the_output_was_cut() {
         json!("failed")
     );
 }
+
+#[test]
+fn it_should_not_blame_the_cut_when_the_failure_comes_from_the_exit_code() {
+    let fx = Fixture::new();
+    let mut data = mechanical_check("before-pr", &["true"]);
+    data["expect"] = json!([{ "exit": 0, "stdout": "x$", "outcome": "passed" }]);
+    fx.seed_check_data("checks.fmt", data);
+    let cut = RunReport {
+        exit_code: Some(2),
+        truncated: true,
+        ..report(b"done", b"")
+    };
+    let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], cut)]);
+    let probe = probe();
+    let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
+
+    let error = run_before_pr(&mut app).expect_err("the exit code has no rule");
+
+    assert_eq!(error.code(), "checks-failed");
+    let message = details(&error)[0]["message"]
+        .as_str()
+        .expect("the message is text")
+        .to_owned();
+    assert!(!message.contains("output was cut"), "message: {message}");
+}

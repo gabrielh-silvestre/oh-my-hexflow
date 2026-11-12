@@ -115,7 +115,7 @@ O `how` vem do arquivo `lint.md`, ao lado do TOML. `concern` e `variant` são ca
 
 Cada regra do `expect` tem `exit` e, no máximo, um padrão em `stdout` ou em `stderr`. Uma regra com os dois falha no `omhl load` com `rule-two-streams`, e a mensagem repete a boa prática: `keep one command per check`.
 
-Com a saída cortada (`truncated`), uma regra de padrão que chegaria a decidir não pode ser conferida e o veredito é `failed`, com a `message` começando por `output was cut at 4 MiB; the rule could not be checked`. As regras só de `exit` continuam valendo.
+Com a saída cortada (`truncated`), uma regra de padrão que chegaria a decidir não pode ser conferida e o veredito é `failed`, com a `message` começando por `output was cut at 4 MiB; the rule could not be checked`. O prefixo só aparece quando a falha vem dessa regra: um `failed` por outro motivo (código de saída sem regra, por exemplo) não o ganha. As regras só de `exit` continuam valendo.
 
 A boa prática trata de juntar comandos, não de usar `sh -c`. Um `run` como `["sh", "-c", "gh ..."]` com um único `gh` é válido. Nesse caso, um `gh` ausente não é erro de spawn: o `sh` existe e sai com 127. O resultado é um `failed` com `exit_code` 127, gravado e imutável para aquele snapshot. Só um `run` com argv direto (`["gh", ...]`) produz o erro de spawn da linha 1 da tabela.
 

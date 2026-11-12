@@ -10,26 +10,44 @@ pub struct Observation<'a> {
     pub truncated: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Evaluation {
+    pub outcome: Outcome,
+    /// O veredito é `Failed` porque uma regra de padrão não pôde ser conferida com a saída cortada.
+    pub pattern_unchecked: bool,
+}
+
+pub fn evaluate(spec: &CheckSpec, observed: &Observation<'_>) -> Outcome {
+    evaluate_with_reason(spec, observed).outcome
+}
+
 /// A primeira regra que casa decide; nenhuma casa é `Failed`.
 /// Com a saída cortada, uma regra de padrão que chegaria a decidir não pode ser conferida: falha fechada.
-pub fn evaluate(spec: &CheckSpec, observed: &Observation<'_>) -> Outcome {
+pub fn evaluate_with_reason(spec: &CheckSpec, observed: &Observation<'_>) -> Evaluation {
+    let decided = |outcome| Evaluation {
+        outcome,
+        pattern_unchecked: false,
+    };
     if observed.timed_out || observed.tree_changed {
-        return Outcome::Failed;
+        return decided(Outcome::Failed);
     }
     let Some(code) = observed.exit_code else {
-        return Outcome::Failed;
+        return decided(Outcome::Failed);
     };
 
     for rule in spec.expect.iter().filter(|rule| rule.exit == code) {
         if rule.pattern.is_some() && observed.truncated {
-            return Outcome::Failed;
+            return Evaluation {
+                outcome: Outcome::Failed,
+                pattern_unchecked: true,
+            };
         }
         if pattern_matches(rule.pattern.as_ref(), observed) {
-            return rule.outcome;
+            return decided(rule.outcome);
         }
     }
 
-    Outcome::Failed
+    decided(Outcome::Failed)
 }
 
 /// O regex olha o fluxo inteiro, não linha a linha.

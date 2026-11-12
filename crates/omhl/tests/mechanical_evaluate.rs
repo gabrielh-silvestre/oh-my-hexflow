@@ -1,6 +1,6 @@
 mod support;
 
-use omhl::mechanical::evaluate::{Observation, evaluate};
+use omhl::mechanical::evaluate::{Observation, evaluate, evaluate_with_reason};
 use omhl::mechanical::spec::{CheckSpec, Outcome};
 use serde_json::{Value, json};
 use support::omhl::check_data;
@@ -246,4 +246,20 @@ fn it_should_ignore_a_stream_rule_with_another_exit_when_the_output_was_cut() {
     let outcome = evaluate(&spec, &observation);
 
     assert_eq!(outcome, Outcome::Passed);
+}
+
+#[test]
+fn it_should_flag_the_unchecked_pattern_only_when_a_stream_rule_for_the_exit_was_skipped() {
+    let spec = spec(json!([{"exit": 0, "stdout": "x$", "outcome": "passed"}]));
+    let cut = |exit_code| Observation {
+        truncated: true,
+        ..observed(exit_code)
+    };
+
+    let skipped = evaluate_with_reason(&spec, &cut(Some(0)));
+    let other_exit = evaluate_with_reason(&spec, &cut(Some(2)));
+
+    assert!(skipped.pattern_unchecked);
+    assert!(!other_exit.pattern_unchecked);
+    assert_eq!(other_exit.outcome, Outcome::Failed);
 }
