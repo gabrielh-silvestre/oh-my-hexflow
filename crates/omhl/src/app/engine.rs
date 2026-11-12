@@ -97,6 +97,7 @@ impl Engine<'_> {
             Action::Load { dry_run } => self.load(*dry_run),
             Action::Project => self.project(),
             Action::CheckRun { target, pre_push } => self.check_run(target, pre_push.as_deref()),
+            Action::CheckRetire { check } => self.check_retire(check),
             Action::Byproduct {
                 check,
                 work_item,

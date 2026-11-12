@@ -42,6 +42,10 @@ pub enum Action {
         target: CheckTarget,
         pre_push: Option<String>,
     },
+    /// Aposenta o node de um check órfão.
+    CheckRetire {
+        check: String,
+    },
     ConsumeDevelopMark,
     Byproduct {
         check: String,

@@ -109,6 +109,8 @@ pub enum CheckCommand {
     Run(CheckRunArgs),
     /// Kill the processes that escaped from an earlier check run whose omhl already exited.
     Sweep,
+    /// Retire the stored check whose file was deleted from the working tree.
+    Retire { check: String },
 }
 
 #[derive(Debug, Args)]
@@ -292,6 +294,9 @@ fn to_action(
         ActionCommand::Check {
             command: CheckCommand::Sweep,
         } => Action::CheckSweep,
+        ActionCommand::Check {
+            command: CheckCommand::Retire { check },
+        } => Action::CheckRetire { check },
         ActionCommand::Byproduct {
             check,
             work_item,

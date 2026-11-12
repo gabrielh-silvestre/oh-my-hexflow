@@ -1,5 +1,6 @@
 mod attest;
 mod byproduct_tail;
+mod check_retire;
 mod check_run;
 mod context;
 mod engine;

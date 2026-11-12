@@ -112,6 +112,7 @@ JSON.
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
 | `check run --event <evento>` ou `check run --check <id>` | Roda os checks mecânicos de um evento (ou um só) e grava as attestations do work item da branch atual. `--pre-push` é do hook `pre-push` |
 | `check sweep` | Encerra os processos que fugiram de um `check run` anterior |
+| `check retire <check-id>` | Aposenta o check órfão, cujo arquivo `.omhl/checks/<slug>.toml` foi apagado da árvore, e some o aviso `check-orphaned` |
 | `byproduct <check> <work-item> [--tail <n>]` | Imprime as últimas linhas da saída guardada de um check |
 | `hooks install [--force]` | Instala os hooks do git deste clone |
 | `hooks post-commit` | Apaga a marca da `develop` depois de um commit (o hook `post-commit` o chama) |
@@ -121,7 +122,7 @@ com o código de saída 1.
 
 O servidor MCP expõe dez ferramentas com a mesma saída da CLI: `list`, `get`,
 `append`, `attest`, `render`, `gate_pr`, `close`, `verify`, `byproduct` e
-`project`. O `load`, o `check run`, o `check sweep` e os comandos `hooks`
+`project`. O `load`, o `check run`, o `check sweep`, o `check retire` e os comandos `hooks`
 existem só na CLI.
 
 ## Extensions e projeção

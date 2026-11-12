@@ -47,7 +47,7 @@ omhl load             # grava no tenant do .omhl.toml
 
 O relatório lista `created`, `revised`, `unchanged`, `skipped` e `orphans`. Carregar duas vezes seguidas não grava nada na segunda.
 
-**Arquivo apagado não aposenta o node.** O id passa a aparecer em `orphans`, e o node continua vigente e injetado na sessão até ser retirado de propósito. Um check órfão com `run` deixa de ser executado pelo `check run`, que avisa com `check-orphaned`. Assim, trocar de branch não perde nada.
+**Arquivo apagado não aposenta o node.** O id passa a aparecer em `orphans`, e o node continua vigente e injetado na sessão até ser retirado de propósito (`omhl check retire <check-id>`, só para check cujo arquivo sumiu). Um check órfão com `run` deixa de ser executado pelo `check run`, que avisa com `check-orphaned`. Assim, trocar de branch não perde nada.
 
 O hook `SessionStart` nunca grava. Quando as extensions divergem do banco, ele acrescenta ao contexto uma linha `NOTE`, ou uma `WARNING` se houver extension inválida. A linha traz só códigos e contagens e pede `omhl load`. Com check órfão (arquivo apagado, node ainda vigente), ele acrescenta uma segunda linha `NOTE` com os ids dos checks órfãos: o `run` já carregado não roda mais depois que o arquivo some, e o `check run` só avisa (veja [mechanical-gates.md](mechanical-gates.md)).
 

@@ -311,6 +311,14 @@ impl AppError {
         AppError::at_pointer("check-not-mechanical", path, "the check has no command")
     }
 
+    pub(crate) fn check_not_orphaned(path: &str) -> AppError {
+        AppError::at_pointer(
+            "check-not-orphaned",
+            path,
+            "the check file still exists in the working tree",
+        )
+    }
+
     pub(crate) fn branch_name_invalid(path: &str) -> AppError {
         AppError::at_pointer(
             "branch-name-invalid",
