@@ -124,7 +124,7 @@ mod platform {
         root_hash(&fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf()))
     }
 
-    /// A marca deste processo para um comando que roda em `root`; `None` se o `/proc` não se leu.
+    /// A marca deste processo para um comando do projeto em `root`; `None` se o `/proc` não se leu.
     fn own_marker(root: &Path) -> Option<String> {
         let stat = fs::read_to_string("/proc/self/stat").ok()?;
         let marker = RunMarker {
@@ -175,7 +175,7 @@ mod platform {
     }
 
     pub fn run(parent_pid: Option<u32>, spec: &RunSpec) -> Result<RunReport, RunError> {
-        let Some(marker) = own_marker(&spec.cwd) else {
+        let Some(marker) = own_marker(&spec.project_root) else {
             return Err(error(
                 RunErrorKind::Io,
                 "the run marker of this process could not be read from /proc".to_owned(),

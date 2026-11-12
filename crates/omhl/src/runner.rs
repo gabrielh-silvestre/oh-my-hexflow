@@ -5,6 +5,8 @@ use std::time::Duration;
 pub struct RunSpec {
     pub argv: Vec<String>,
     pub cwd: PathBuf,
+    /// Raiz do projeto de quem chama: a marca de varredura leva o hash dela, nunca o do `cwd` do check.
+    pub project_root: PathBuf,
     pub timeout: Duration,
     pub env_set: Vec<(String, String)>,
     pub env_remove: Vec<String>,

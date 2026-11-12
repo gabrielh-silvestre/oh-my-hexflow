@@ -450,6 +450,7 @@ fn it_should_attest_a_passing_check_with_the_head_commit() {
     assert_eq!(spec.timeout, Duration::from_secs(60));
     assert_eq!(spec.max_stream_bytes, 4_194_304);
     assert_eq!(spec.cwd, fx.root.path());
+    assert_eq!(spec.project_root, fx.root.path());
 }
 
 #[test]

@@ -14,7 +14,7 @@ use ::omhl::mechanical::sweep::root_hash;
 use ::omhl::ports::process::{
     ProcessRunner, SweepReport, sweep_project_strays, sweep_strays, sweep_strays_in,
 };
-use ::omhl::runner::{CommandRunner, RunError};
+use ::omhl::runner::{CommandRunner, RunError, RunSpec};
 use nix::errno::Errno;
 use nix::sys::signal::{Signal, kill};
 use nix::sys::stat::Mode;
@@ -107,16 +107,34 @@ fn it_should_put_the_run_marker_of_the_caller_in_the_command_environment() {
     );
 }
 
-fn marker_root_of(cwd: &Path) -> String {
-    let run_spec = spec(
+fn marker_root_of(run_spec: &RunSpec) -> String {
+    let report = run_ok(&ProcessRunner::new(), run_spec);
+    let marker = String::from_utf8(report.stdout).expect("the marker is UTF-8");
+
+    marker.rsplit(':').next().unwrap_or_default().to_owned()
+}
+
+fn print_marker(cwd: &Path, project_root: &Path) -> RunSpec {
+    let mut run_spec = spec(
         &["sh", "-c", "printf %s \"$OMHL_RUN_ID\""],
         cwd,
         TWENTY_SECS,
     );
-    let report = run_ok(&ProcessRunner::new(), &run_spec);
-    let marker = String::from_utf8(report.stdout).expect("the marker is UTF-8");
+    run_spec.project_root = project_root.to_path_buf();
 
-    marker.rsplit(':').next().unwrap_or_default().to_owned()
+    run_spec
+}
+
+#[test]
+fn it_should_hash_the_project_root_and_not_the_cwd_of_the_check() {
+    let project = TempDir::new().expect("project directory is created");
+    let own_cwd = project.path().join("sub");
+    fs::create_dir(&own_cwd).expect("the check cwd is created");
+
+    let root = marker_root_of(&print_marker(&own_cwd, project.path()));
+
+    let canonical = fs::canonicalize(project.path()).expect("the project is canonical");
+    assert_eq!(root, root_hash(&canonical));
 }
 
 #[test]
@@ -128,8 +146,8 @@ fn it_should_hash_the_same_root_through_a_symlink_or_a_trailing_slash() {
     let trailing = project.path().join("");
     let canonical = fs::canonicalize(project.path()).expect("the project is canonical");
 
-    let through_link = marker_root_of(&link);
-    let through_slash = marker_root_of(&trailing);
+    let through_link = marker_root_of(&print_marker(project.path(), &link));
+    let through_slash = marker_root_of(&print_marker(project.path(), &trailing));
 
     assert_eq!(through_link, root_hash(&canonical));
     assert_eq!(through_slash, root_hash(&canonical));

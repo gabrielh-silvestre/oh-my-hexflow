@@ -72,6 +72,7 @@ struct Scope<'a> {
     work_item: Option<&'a SemanticId>,
     branch: &'a str,
     cwd: &'a Path,
+    project_root: &'a Path,
     /// Digest da definição de cada check lida do TOML da working tree (id -> digest).
     tree_digests: HashMap<String, String>,
 }
@@ -143,6 +144,7 @@ impl Engine<'_> {
             },
             branch: &branch,
             cwd: &root,
+            project_root: &root,
             tree_digests: tree_digests(&root),
         };
         let tally = self.run_planned(runner, &scope, &planned)?;
@@ -323,6 +325,7 @@ impl Engine<'_> {
         let request = RunSpec {
             argv: spec.run.clone(),
             cwd: scope.cwd.to_path_buf(),
+            project_root: scope.project_root.to_path_buf(),
             timeout: Duration::from_secs(u64::from(spec.timeout_secs)),
             env_set: Vec::new(),
             env_remove: HOOK_GIT_ENV

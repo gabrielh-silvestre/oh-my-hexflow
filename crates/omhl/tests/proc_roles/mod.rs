@@ -28,6 +28,7 @@ pub fn spec(argv: &[&str], cwd: &Path, timeout: Duration) -> RunSpec {
     RunSpec {
         argv: argv.iter().map(|item| (*item).to_owned()).collect(),
         cwd: cwd.to_path_buf(),
+        project_root: cwd.to_path_buf(),
         timeout,
         env_set: Vec::new(),
         env_remove: Vec::new(),
