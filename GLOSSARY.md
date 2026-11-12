@@ -49,7 +49,7 @@ Um node, de um tipo do graph de checks, cuja revision grava o desfecho de um che
 _Avoid_: approval (no GitHub é aprovação humana), result, verdict, evidence
 
 **Snapshot**:
-O instante do código ao qual uma attestation fica amarrada; hoje, um commit do git. Não é o estado aberto ou fechado de um work item.
+O instante do código ao qual uma attestation fica amarrada; hoje, um commit do git ou a árvore do índice (`git-commit` e `git-tree`, os dois kinds que o engine conhece). Não é o estado aberto ou fechado de um work item.
 _Avoid_: state, revision
 
 **Work item**:

@@ -58,9 +58,15 @@ fn snapshot(item: &Fields<'_>) -> Result<Option<Snapshot>, AppError> {
         return Ok(None);
     };
     let fields = Fields::object(value, item.child("snapshot"))?.only(&SNAPSHOT_KEYS)?;
-    let kind = match fields.kind(&["git-commit", "git-tree"])? {
+    let kind = match fields.text("kind")? {
+        "git-commit" => SnapshotKind::GitCommit,
         "git-tree" => SnapshotKind::GitTree,
-        _ => SnapshotKind::GitCommit,
+        _ => {
+            return Err(AppError::append_invalid(
+                &fields.child("kind"),
+                "unknown kind",
+            ));
+        }
     };
     let id = fields.text("id")?;
 
