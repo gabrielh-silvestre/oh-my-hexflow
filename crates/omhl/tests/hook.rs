@@ -24,6 +24,7 @@ const LINT_TOML: &str =
     "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
 const INVALID_TOML: &str = "this is = [not valid";
 const PENDING_NOTE: &str = "NOTE: 1 extension change(s) not loaded into tenant acme; run omhl load";
+const ORPHAN_NOTE: &str = "NOTE: 1 check(s) lost their file and their loaded command no longer runs: checks.lint; restore the file or run omhl check retire <id>";
 
 // Apoio
 
@@ -324,6 +325,20 @@ fn it_should_append_a_note_when_extension_changes_are_pending() {
         .strip_prefix(baseline.as_str())
         .expect("the rendered text comes first");
     assert_eq!(appended.trim_end(), format!("\n{PENDING_NOTE}"));
+}
+
+#[test]
+fn it_should_list_the_orphaned_checks_in_a_note() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).check("lint", LINT_TOML);
+    let loaded = in_project(&project, &["load"]);
+    fs::remove_file(project.dir().join(".omhl/checks/lint.toml")).expect("the file is deleted");
+
+    let context = context_of(&hook_for(&project));
+
+    assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
+    assert!(context.contains(ORPHAN_NOTE), "context: {context}");
+    assert!(!context.contains(PENDING_NOTE), "context: {context}");
 }
 
 #[test]

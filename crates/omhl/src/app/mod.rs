@@ -16,6 +16,7 @@ pub mod output;
 pub mod retry;
 pub mod runtime;
 
+pub use crate::extensions::model::ExtensionKind;
 pub use crate::mechanical::RUNNABLE_EVENTS;
 
 use std::path::{Path, PathBuf};

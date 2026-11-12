@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 use serde_json::{Value, json};
 
+use crate::app::ExtensionKind;
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
@@ -61,7 +62,14 @@ fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<St
 
 fn extension_notice(checked: &Result<Value, AppError>) -> Option<String> {
     match checked {
-        Ok(report) => pending_note(report),
+        Ok(report) => {
+            let notes: Vec<String> = [pending_note(report), orphan_note(report)]
+                .into_iter()
+                .flatten()
+                .collect();
+
+            (!notes.is_empty()).then(|| notes.join("\n"))
+        }
         Err(error) => Some(warning(error)),
     }
 }
@@ -77,6 +85,24 @@ fn pending_note(report: &Value) -> Option<String> {
 
         format!(
             "NOTE: {pending} extension change(s) not loaded into tenant {tenant}; run omhl load"
+        )
+    })
+}
+
+/// Only the checks: the load report also lists guideline orphans, which `omhl check retire` does not cover.
+fn orphan_note(report: &Value) -> Option<String> {
+    let orphans: Vec<&str> = report["orphans"]
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|id| id.starts_with(ExtensionKind::Check.id_prefix()))
+        .collect();
+
+    (!orphans.is_empty()).then(|| {
+        format!(
+            "NOTE: {} check(s) lost their file and their loaded command no longer runs: {}; restore the file or run omhl check retire <id>",
+            orphans.len(),
+            orphans.join(", ")
         )
     })
 }
