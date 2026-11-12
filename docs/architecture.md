@@ -161,25 +161,25 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `hexlog::engine` | 2.510 | `decide`, `verify_chain`, `instant_is_well_formed` | funda |
 | `hexlog::catalog` | 1.149 | `Catalog::new` + 5 consultas | funda |
 | `hexlog::store` | 932 | `Store` (3 métodos) | funda, seam de 1 adapter |
-| `omhl::facade` (`Omhl`) | 271 | 13 operações | média |
+| `omhl::facade` (`Omhl`) | 272 | 13 operações | média |
 | `omhl::gate` | 352 | `evaluate`, `read_consistent`, `GateSource` | funda |
-| `omhl::guard` | 520 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id` | funda |
-| `omhl::pr_gate` | 185 | `required_checks`, `pr_gate_questions`, `spec_digests` | média |
+| `omhl::guard` | 519 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id` | funda |
+| `omhl::pr_gate` | 221 | `required_checks`, `pr_gate_questions`, `spec_digests` | média |
 | `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |
-| `omhl::app` | 3.311 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
-| `omhl::adapters` | 843 | `cli::run`, `mcp::serve`, `hook::session_start` | funda por adapter |
-| `omhl::extensions` | 1.002 | `collect`, `plan` | funda |
+| `omhl::app` | 3.559 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
+| `omhl::adapters` | 863 | `cli::run`, `mcp::serve`, `hook::session_start` | funda por adapter |
+| `omhl::extensions` | 1.015 | `collect`, `plan` | funda |
 | `omhl::projection` | 569 | `build`, `write` | funda |
 | `omhl::render` | 297 | `render` | funda |
-| `omhl::ports` | 1.219 | `SystemClock`, `V7Ids`, `GitProbe` | adapters |
+| `omhl::ports` | 1.291 | `SystemClock`, `V7Ids`, `GitProbe` | adapters |
 | `omhl::project` | 285 | `find_marker`, `default_db_path`, `prepare_db_file`, `Env` | rasa |
-| `omhl::mechanical` | 632 | `CheckSpec::from_data`, `snapshot_for`, `evaluate`, `plan_run`, `summarize`, `RUNNABLE_EVENTS` | funda e pura |
+| `omhl::mechanical` | 685 | `CheckSpec::from_data`, `snapshot_for`, `evaluate`, `plan_run`, `summarize`, `RUNNABLE_EVENTS` | funda e pura |
 | `omhl::mechanical::branch` | 142 | `current_branch`, `classify`, `plan_push`, `HeadFacts` | funda e pura |
-| `omhl::mechanical::sweep` | 88 | `RunMarker`, `start_from_stat`, `select_strays` | funda e pura |
-| `omhl::runner` | 43 | `trait CommandRunner`, `RunSpec`, `RunReport`, `RunError` | dado e seam |
-| `omhl::byproduct` | 38 | `trait ByproductStore`, `ByproductHash` | dado e seam |
-| `omhl::ports` (gates mecânicos) | 795 | `ProcessRunner`, `sweep_strays`, `BlobStore`, `HookInstaller` | adapters |
+| `omhl::mechanical::sweep` | 115 | `RunMarker`, `start_from_stat`, `select_strays` | funda e pura |
+| `omhl::runner` | 50 | `trait CommandRunner`, `RunSpec`, `RunReport`, `RunError` | dado e seam |
+| `omhl::byproduct` | 71 | `trait ByproductStore`, `ByproductHash`, `encode`, `decode` | dado e seam |
+| `omhl::ports` (gates mecânicos) | 846 | `ProcessRunner`, `sweep_strays`, `BlobStore`, `HookInstaller` | adapters |
 
 As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os `.rs` do módulo em `src`, sem os arquivos `tests.rs`; um módulo aninhado entra no total do pai. A linha `omhl::ports` (gates mecânicos) soma `process`, `pipes`, `blob` e `hooks`, que também estão no total de `omhl::ports`; `omhl::mechanical` inclui `branch` e `sweep`.
 
@@ -284,7 +284,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** É o caso de uso: transforma uma `Action` de qualquer gateway numa chamada ao `Omhl` e devolve JSON, com repetição de `Busy`.
 
-**Interface.** `App::open`, `App::with_project_root`, `App::dispatch(&Caller, &Action) -> Result<Value, AppError>` (`app/mod.rs`); `Runtime::discover`, `Runtime::app`, `run_action` (`app/runtime.rs`); `Action` (10 variantes), `Caller::{cli, mcp, hook, loader}`, `parse_tool_call` (`app/action.rs`); `read_json_input`, `parse_json_text`, `INPUT_MAX_BYTES` (`app/input.rs`); `RetryPolicy` (`app/retry.rs`); `AppError::{code, message, to_json}` (`app/error.rs`); `output::{node, page, appended, gate, closed, verify}`. Invariantes: `load` e `project` respondem `no-project-root` sem `with_project_root`; só `Busy` é repetido (nada foi gravado nesse caso).
+**Interface.** `App::open`, `App::with_project_root`, `App::dispatch(&Caller, &Action) -> Result<Value, AppError>` (`app/mod.rs`); `Runtime::discover`, `Runtime::app`, `run_action` (`app/runtime.rs`); `Action` (16 variantes), `Caller::{cli, mcp, hook, loader, executor}`, `parse_tool_call` (`app/action.rs`); `read_json_input`, `parse_json_text`, `INPUT_MAX_BYTES` (`app/input.rs`); `RetryPolicy` (`app/retry.rs`); `AppError::{code, message, to_json}` (`app/error.rs`); `output::{node, page, appended, gate, closed, verify}`. Invariantes: `load` e `project` respondem `no-project-root` sem `with_project_root`; só `Busy` é repetido (nada foi gravado nesse caso).
 
 **Escondido.** `Engine` (`app/engine.rs`) que despacha cada ação; `attest` (`app/attest.rs`), `load` (`app/load.rs`), `context` (`app/context.rs`), `wire` (`app/wire.rs`: JSON para `AppendRequest`), `read` (`app/read.rs`), a tradução de erros do motor, do domínio e do projeto para um `AppError`.
 
@@ -292,7 +292,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Aninhadas.** `extensions`, `projection`, `render` (3.13 a 3.15) são orquestradas por `Engine`.
 
-**Profundidade.** Funda no uso (3 adapters passam por 3 funções), com a fuga de contrato descrita nos itens 2, 5 e 6 da seção 5. É onde o contexto mais cresceu em `omhl`: 1.735 linhas, o maior módulo.
+**Profundidade.** Funda no uso (3 adapters passam por 3 funções), com a fuga de contrato descrita nos itens 2, 5 e 6 da seção 5. É onde o contexto mais cresceu em `omhl`: 3.559 linhas, o maior módulo.
 
 ### 3.12 Gateway de consumo: `omhl::adapters`
 
@@ -383,7 +383,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** Define onde a saída de um comando fica guardada, endereçada pelo hash dela.
 
-**Interface.** `trait ByproductStore` (`put(&[u8]) -> Result<ByproductHash, ByproductError>`, `get(&ByproductHash) -> Result<Option<Vec<u8>>, ByproductError>`), `ByproductHash` (64 caracteres hexadecimais), `ByproductError` (`byproduct.rs`).
+**Interface.** `trait ByproductStore` (`put(&[u8]) -> Result<ByproductHash, ByproductError>`, `get(&ByproductHash) -> Result<Option<Vec<u8>>, ByproductError>`), `ByproductHash` (64 caracteres hexadecimais), `ByproductError`, e `encode(stdout, stderr)` com `decode(blob)`, que são o único dono do formato do arquivo: a linha `omhl-byproduct v1 stdout=<n> stderr=<n>` e o corpo (`byproduct.rs`).
 
 **Profundidade.** É só o seam. Seam real: `BlobStore` (3.22) e o `ByproductStore` falso dos testes. Travado: não importa `adapters`, `app` nem `facade`.
 
@@ -391,7 +391,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 - `ports/process`: `ProcessRunner::{new, bound_to_parent}` (`impl CommandRunner`), `sweep_strays`, `sweep_project_strays`, `sweep_strays_in`, `SweepReport`, `SweptProcess`. Esconde o guardião (um `sh` líder de grupo próprio que mata o grupo do comando quando o `omhl` morre), a amarração ao pai com `set_pdeathsig`, a espera do líder com `waitid`, o `killpg` com carência de 2 segundos, a marca `OMHL_RUN_ID` no ambiente do comando e a leitura de `/proc`, com o prazo de 1 segundo. Só Linux: fora dele, `run` devolve `UnsupportedPlatform`. É o único arquivo que usa `nix::` (travado: `it_should_confine_nix_to_the_process_port`).
 - `ports/pipes`: as leitoras de `stdout` e `stderr` do runner. São `thread::spawn` soltas, que mandam a saída em pedaços por um canal e descartam o que passa do teto `max_stream_bytes`; assim um descendente fugido que segura o cano não prende o runner. Travado: nada de `thread::scope` nesses arquivos (`it_should_not_scope_the_threads_of_the_pipe_readers`).
-- `ports/blob`: `BlobStore::new(<pasta do banco>)` (`impl ByproductStore`). Guarda `blobs/<2 primeiros hex>/<hash>` e confere o SHA-256 na leitura. O conteúdo, montado pelo `check run`, começa com a linha `omhl-byproduct v1 stdout=<n> stderr=<n>`. Grava em nome temporário único e renomeia.
+- `ports/blob`: `BlobStore::new(<pasta do banco>)` (`impl ByproductStore`). Guarda `blobs/<2 primeiros hex>/<hash>` e confere o SHA-256 na leitura. O conteúdo, montado por `byproduct::encode`, começa com a linha `omhl-byproduct v1 stdout=<n> stderr=<n>`. Grava em nome temporário único e renomeia.
 - `ports/hooks`: `HookInstaller`. É onde ficam `fs`, `chmod` e `git config` do `omhl hooks install`, nunca em `app/`.
 
 Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/` (travado: `it_should_confine_process_spawning_types_to_the_ports_module`).
@@ -458,7 +458,7 @@ Oito itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 
 2. **`app` entra no domínio por mais de uma porta (corte barato, decisão sua no segundo passo).** `app/attest.rs:9` chama `guard::attestation_id`, `app/engine.rs:14` chama `projection::{build, write}`, `app/load.rs:1,11-17` chama `hexlog::chain::fingerprint`, `extensions::{collect, plan}` e `NativeBase`, e `app/context.rs` lê `NativeBase` direto. Enquanto isso, 6 das 13 operações de `Omhl` só repassam (`facade.rs:69,80,89,108,116,120`). Nada trava o que `app` pode importar (seção 4). Corte barato: um teste que fixe o conjunto permitido de `app`. Corte maior, só se valer: mover a montagem do atestado para dentro de `Omhl`, o que acrescenta uma operação à facade e tira o conhecimento de `guard` de `app`.
 
-3. **Paginação e constantes duplicadas (corte).** O laço de páginas existe em `app/read.rs:all_nodes` (`PAGE_LIMIT = 50`, `:6`) e em `gate/source.rs:HexlogSource::nodes` (usa `config.limits.page_default`, `facade.rs:65`), e `app/engine.rs:17` tem um terceiro `DEFAULT_PAGE_LIMIT = 50`. A relation `after` aparece como constante em `app/context.rs:10` e `app/load.rs:21` e como literal em `native/mod.rs:88`. Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade (a 14ª), em troca de um só laço.
+3. **Paginação e constantes duplicadas (corte).** O laço de páginas existe em `app/read.rs:nodes_matching` (`PAGE_LIMIT = 50`, `:6`; `all_nodes` e `latest_attestation` o chamam) e em `gate/source.rs:HexlogSource::nodes` (usa `config.limits.page_default`, `facade.rs:65`), e `app/engine.rs:17` tem um terceiro `DEFAULT_PAGE_LIMIT = 50`. A relation `after` aparece como constante em `app/context.rs:10` e `app/load.rs:21` e como literal em `native/mod.rs:88`. Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade (a 14ª), em troca de um só laço.
 
 4. **A sonda do git vive em duas camadas (dívida).** `Engine` guarda o `probe` (`app/mod.rs`, campo `probe: deps.probe`; `app/engine.rs:probe_snapshot`) e `Omhl` guarda outro (`facade.rs:46-50`, usado em `:75` e `:215`). Em `close`, `Engine::close` sonda e `close_work_item` sonda de novo (`facade.rs:215`): dois `git` por fechamento, e a segunda leitura é a que vale. Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito, o que o `tests/pr_gate.rs` aproveita. Vira corte se aparecer um caso em que as duas leituras discordem.
 

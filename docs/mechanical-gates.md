@@ -64,6 +64,8 @@ omhl byproduct checks.lint work-items.w1 --tail 40
 
 Na branch `develop` não há `byproduct`: o erro de um check reprovado leva a cauda da saída no `context.output_tail`.
 
+O `omhl byproduct <check> <work-item>` lê a attestation mais recente do par e recusa com `attestation-not-found` quando não há nenhuma, com `byproduct-missing` quando a attestation não aponta para um arquivo de saída que exista (ou o arquivo tem o formato errado) e com `byproduct-corrupt` quando o arquivo não pôde ser lido de volta íntegro (o SHA-256 do conteúdo não bate com o hash).
+
 ### O `context` do erro
 
 O `context` carrega só os campos que se aplicam ao caso: `kind`, `event`, `check`, `work_item`, `branch`, `argv`, `cwd`, `snapshot`, `expected`, `stored`, `byproduct`, `os_error`, `output_tail`, `hint` e, nos erros do `pre-push`, `lref` e `rref`. O `hint` é uma frase fixa em inglês que diz o que tentar.
