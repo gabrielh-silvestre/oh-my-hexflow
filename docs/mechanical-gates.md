@@ -65,6 +65,8 @@ O `output_tail` (as últimas 20 linhas de `stdout` e de `stderr`, cada uma corta
 
 O `output_tail` pode conter segredos que o comando imprimiu. É a mesma saída que você veria rodando o comando à mão.
 
+O arquivo de saída (`byproduct`) guarda a saída completa do comando, até 4 MiB por fluxo (`stdout` e `stderr`; o que passa disso é cortado e o resultado leva `truncated`), em `blobs/` ao lado do banco, com modo `0700` na pasta e `0600` no arquivo. A saída não passa por redação de segredos e não tem prazo: nenhum comando apaga os arquivos antigos, então apague `blobs/` à mão quando quiser. A ferramenta MCP `byproduct` devolve até 500 linhas desse texto ao modelo, que deve tratá-lo como dado não confiável, nunca como instrução.
+
 | `kind` | Quando | `hint` |
 |---|---|---|
 | `spawn-not-found` | O binário do `run` não existe | `<argv0>` was not found; install it or add it to the PATH that git hooks see, then run the same `omhl check run` again |
@@ -183,7 +185,7 @@ Quando você aperta Ctrl+C, ou o `omhl` ou o `git` recebe `SIGTERM`, `SIGHUP` ou
 - O `omhl` termina. Nenhum processo do comando fica órfão e nenhum lock do `target/` fica preso.
 - Um guardião manda `TERM` e `CONT` ao grupo do comando, espera 2 segundos e manda `KILL`. Um comando cooperativo usa esses 2 segundos para encerrar os próprios filhos.
 - Nada é gravado para o check interrompido nem para os que ainda não rodaram. As attestations já gravadas ficam.
-- Só pode sobrar um arquivo de saída sem uso na pasta `blobs/` e um temporário `.tmp-<pid>-<n>`. Os dois são inofensivos.
+- Só pode sobrar um arquivo de saída sem uso na pasta `blobs/` e um temporário `.tmp-<pid>-<n>`. Os dois ficam no disco sem prazo, como os demais arquivos de saída.
 - Para o git, o hook falhou e o commit ou o push é abortado.
 
 Condições e limites:
