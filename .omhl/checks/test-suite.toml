@@ -1,0 +1,8 @@
+concern = "test"
+variant = "suite"
+blocking = true
+after = ["checks.compile-build"]
+run = ["cargo", "test", "--workspace", "--locked"]
+timeout_secs = 660
+expect = [{ exit = 0, outcome = "passed" }]
+when = { event = "before-pr" }

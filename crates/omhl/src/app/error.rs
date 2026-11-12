@@ -20,6 +20,7 @@ struct Detail {
     message: String,
     current: Option<String>,
     retired: Option<bool>,
+    context: Option<Value>,
 }
 
 impl Detail {
@@ -30,6 +31,7 @@ impl Detail {
             message: message.to_owned(),
             current: None,
             retired: None,
+            context: None,
         }
     }
 
@@ -40,6 +42,9 @@ impl Detail {
         }
         if let Some(retired) = self.retired {
             detail["retired"] = json!(retired);
+        }
+        if let Some(context) = &self.context {
+            detail["context"] = context.clone();
         }
         detail
     }
@@ -72,8 +77,8 @@ impl AppError {
         json!({ "error": { "code": self.code, "message": self.message, "details": details } })
     }
 
-    /// Erro sem detalhes: entrada, projeto e ferramenta desconhecida.
-    pub(crate) fn plain(code: &str, message: &str) -> AppError {
+    /// Erro sem detalhes. Privado: todo código estável tem construtor nomeado; só o código dinâmico de `ProjectError` passa por aqui direto.
+    fn plain(code: &str, message: &str) -> AppError {
         AppError {
             code: code.to_owned(),
             message: message.to_owned(),
@@ -96,6 +101,101 @@ impl AppError {
 
     pub(crate) fn invalid_arguments(pointer: &str, message: &str) -> AppError {
         AppError::at_pointer("invalid-arguments", pointer, message)
+    }
+
+    pub(crate) fn input_too_large(limit: usize) -> AppError {
+        AppError::plain(
+            "input-too-large",
+            &format!("input is larger than {limit} bytes"),
+        )
+    }
+
+    pub(crate) fn input_not_utf8() -> AppError {
+        AppError::plain("input-not-utf8", "input is not valid UTF-8")
+    }
+
+    pub(crate) fn input_too_deep() -> AppError {
+        AppError::plain("input-too-deep", "input is nested too deeply")
+    }
+
+    pub(crate) fn input_invalid_json(line: usize, column: usize) -> AppError {
+        AppError::plain(
+            "input-invalid-json",
+            &format!("input is not valid JSON at line {line} column {column}"),
+        )
+    }
+
+    pub(crate) fn input_unreadable() -> AppError {
+        AppError::plain("input-unreadable", "input could not be read")
+    }
+
+    pub(crate) fn invalid_hook_input() -> AppError {
+        AppError::plain(
+            "invalid-hook-input",
+            "hook input must be a JSON object with an absolute string cwd",
+        )
+    }
+
+    pub(crate) fn invalid_project_dir() -> AppError {
+        AppError::plain(
+            "invalid-project-dir",
+            "the project directory cannot be resolved",
+        )
+    }
+
+    pub(crate) fn no_marker() -> AppError {
+        AppError::plain(
+            "no-marker",
+            "no .omhl.toml found in the project directory or any parent; a branch older than the marker needs a rebase onto main",
+        )
+    }
+
+    pub(crate) fn db_inside_project() -> AppError {
+        AppError::plain(
+            "db-inside-project",
+            "the database folder is inside the project; its blobs/ folder would dirty the attested tree",
+        )
+    }
+
+    pub(crate) fn no_project_root() -> AppError {
+        AppError::plain("no-project-root", "no project root is available")
+    }
+
+    pub(crate) fn render_failed() -> AppError {
+        AppError::plain("render-failed", "the render result has no text")
+    }
+
+    pub(crate) fn unknown_tool() -> AppError {
+        AppError::plain("unknown-tool", "unknown tool")
+    }
+
+    pub(crate) fn runner_unavailable() -> AppError {
+        AppError::plain("runner-unavailable", "no command runner is configured")
+    }
+
+    pub(crate) fn byproducts_unavailable() -> AppError {
+        AppError::plain("byproducts-unavailable", "no byproduct store is configured")
+    }
+
+    pub(crate) fn develop_mark_unavailable() -> AppError {
+        AppError::plain(
+            "develop-mark-unavailable",
+            "the develop mark is not configured",
+        )
+    }
+
+    pub(crate) fn binary_path_unreadable() -> AppError {
+        AppError::plain(
+            "unsupported-platform",
+            "the path of the omhl binary cannot be read",
+        )
+    }
+
+    pub(crate) fn process_table_unreadable() -> AppError {
+        AppError::plain(
+            "unsupported-platform",
+            "the process table cannot be read on this platform",
+        )
     }
 
     /// Mostra até `ISSUES_MAX` problemas; `omitted` conta os que a coleta já descartou.
@@ -154,6 +254,195 @@ impl AppError {
             details: vec![Detail::new("/snapshot", code, code)],
         }
     }
+
+    pub(crate) fn checks_failed(details: Vec<CheckDetail>) -> AppError {
+        AppError::per_check("checks-failed", "a blocking check failed", details)
+    }
+
+    pub(crate) fn check_not_run(details: Vec<CheckDetail>) -> AppError {
+        AppError::per_check(
+            "check-not-run",
+            "a check could not run to a verdict",
+            details,
+        )
+    }
+
+    pub(crate) fn attestation_refused(details: Vec<CheckDetail>) -> AppError {
+        AppError::per_check(
+            "attestation-refused",
+            "the guard refused an attestation",
+            details,
+        )
+    }
+
+    pub(crate) fn attestation_not_recorded(details: Vec<CheckDetail>) -> AppError {
+        AppError::per_check(
+            "attestation-not-recorded",
+            "a verdict was computed but its attestation was not recorded",
+            details,
+        )
+    }
+
+    pub(crate) fn unsupported_platform(details: Vec<CheckDetail>) -> AppError {
+        AppError::per_check(
+            "unsupported-platform",
+            "checks cannot run on this platform",
+            details,
+        )
+    }
+
+    fn per_check(code: &str, message: &str, details: Vec<CheckDetail>) -> AppError {
+        let details = details
+            .into_iter()
+            .map(|detail| Detail {
+                context: detail.context,
+                ..Detail::new(&detail.check, detail.code, &detail.message)
+            })
+            .collect();
+
+        AppError {
+            code: code.to_owned(),
+            message: message.to_owned(),
+            details,
+        }
+    }
+
+    pub(crate) fn check_not_mechanical(path: &str) -> AppError {
+        AppError::at_pointer("check-not-mechanical", path, "the check has no command")
+    }
+
+    pub(crate) fn check_not_orphaned(path: &str) -> AppError {
+        AppError::at_pointer(
+            "check-not-orphaned",
+            path,
+            "the check file still exists in the working tree",
+        )
+    }
+
+    pub(crate) fn branch_name_invalid(path: &str) -> AppError {
+        AppError::at_pointer(
+            "branch-name-invalid",
+            path,
+            "the branch name does not name a work item",
+        )
+    }
+
+    pub(crate) fn head_ambiguous(path: &str) -> AppError {
+        AppError::at_pointer("head-ambiguous", path, "the branch of HEAD is ambiguous")
+    }
+
+    pub(crate) fn branch_protected(path: &str) -> AppError {
+        AppError::at_pointer("branch-protected", path, "the branch is protected")
+    }
+
+    pub(crate) fn develop_mark_missing(path: &str) -> AppError {
+        AppError::at_pointer(
+            "develop-mark-missing",
+            path,
+            "a commit on develop needs the develop mark",
+        )
+    }
+
+    pub(crate) fn push_ref_not_checked_out(path: &str) -> AppError {
+        AppError::at_pointer(
+            "push-ref-not-checked-out",
+            path,
+            "a pushed ref is not the checked-out HEAD",
+        )
+    }
+
+    pub(crate) fn push_input_invalid(path: &str) -> AppError {
+        AppError::at_pointer("push-input-invalid", path, "the pre-push input is invalid")
+    }
+
+    pub(crate) fn worktree_dirty(path: &str) -> AppError {
+        AppError::at_pointer(
+            "worktree-dirty",
+            path,
+            "the working tree has uncommitted changes",
+        )
+    }
+
+    pub(crate) fn worktree_differs_from_index(path: &str) -> AppError {
+        AppError::at_pointer(
+            "worktree-differs-from-index",
+            path,
+            "the working tree differs from the index",
+        )
+    }
+
+    pub(crate) fn attestation_not_found(path: &str) -> AppError {
+        AppError::at_pointer(
+            "attestation-not-found",
+            path,
+            "no attestation exists for this check and work item",
+        )
+    }
+
+    pub(crate) fn byproduct_missing(path: &str) -> AppError {
+        AppError::at_pointer(
+            "byproduct-missing",
+            path,
+            "the attestation has no stored output",
+        )
+    }
+
+    pub(crate) fn byproduct_corrupt(path: &str) -> AppError {
+        AppError::at_pointer(
+            "byproduct-corrupt",
+            path,
+            "the stored output could not be read back intact",
+        )
+    }
+
+    pub(crate) fn hooks_existing(path: &str) -> AppError {
+        AppError::at_pointer(
+            "hooks-existing",
+            path,
+            "the repository already has hooks that would be disabled",
+        )
+    }
+
+    pub(crate) fn hooks_path_conflict(path: &str) -> AppError {
+        AppError::at_pointer(
+            "hooks-path-conflict",
+            path,
+            "core.hooksPath already points elsewhere",
+        )
+    }
+
+    pub(crate) fn hooks_path_unreachable(path: &str) -> AppError {
+        AppError::at_pointer(
+            "hooks-path-unreachable",
+            path,
+            "the hook does not resolve through core.hooksPath",
+        )
+    }
+
+    pub(crate) fn hooks_dir_unwritable(path: &str) -> AppError {
+        AppError::at_pointer(
+            "hooks-dir-unwritable",
+            path,
+            "the hooks folder cannot be written",
+        )
+    }
+
+    /// Único caminho, além de `CheckDetail.context`, por onde `context` entra num detalhe; nunca é gravado.
+    pub(crate) fn with_context(mut self, context: Value) -> AppError {
+        if let Some(detail) = self.details.last_mut() {
+            detail.context = Some(context);
+        }
+
+        self
+    }
+}
+
+/// Um detalhe por check; o `path` do detalhe é o id do check.
+pub(crate) struct CheckDetail {
+    pub check: String,
+    pub code: &'static str,
+    pub message: String,
+    pub context: Option<Value>,
 }
 
 fn item_index(path: &str) -> Option<usize> {
@@ -188,6 +477,7 @@ impl From<HexlogError> for AppError {
                 message: detail.message,
                 current: detail.current.map(|id| id.as_str().to_owned()),
                 retired: detail.retired,
+                context: None,
             })
             .collect();
 

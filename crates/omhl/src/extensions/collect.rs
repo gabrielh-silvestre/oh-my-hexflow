@@ -1,10 +1,11 @@
+use std::fs;
 use std::path::Path;
 
-use super::model::{Extension, ExtensionIssue};
+use super::model::{Extension, ExtensionIssue, ExtensionKind};
 use super::parse::parse;
 use super::scan::scan;
 use crate::native::NativeBase;
-use crate::project::layout::ISSUES_MAX;
+use crate::project::layout::{ISSUES_MAX, OMHL_DIR};
 
 #[derive(Debug, Default)]
 pub struct Collected {
@@ -41,6 +42,18 @@ pub fn collect(root: &Path) -> Collected {
         omitted_errors,
         warnings: scanned.warnings,
     }
+}
+
+/// O arquivo TOML que declara o check `id` ainda está na working tree, válido ou não.
+pub fn check_file_exists(root: &Path, id: &str) -> bool {
+    id.strip_prefix(ExtensionKind::Check.id_prefix())
+        .is_some_and(|slug| {
+            let file = Path::new(OMHL_DIR)
+                .join(ExtensionKind::Check.dir())
+                .join(format!("{slug}.toml"));
+
+            fs::symlink_metadata(root.join(file)).is_ok()
+        })
 }
 
 fn is_native_id(id: &str) -> bool {

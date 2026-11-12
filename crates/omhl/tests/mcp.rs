@@ -1,19 +1,48 @@
 mod support;
 
+use std::fs;
+
+use ::omhl::byproduct::ByproductStore;
+use ::omhl::facade::{Omhl, OmhlDeps};
+use ::omhl::ports::blob::BlobStore;
+use hexlog::{AppendRequest, Config};
 use serde_json::{Value, json};
-use support::child::omhl;
+use support::child::{Output, omhl};
 use support::ext::ExtTree;
 use support::git::git_in;
 use support::mcp_session::McpSession;
-use support::omhl::work_item_data;
+use support::omhl::{acme, attestation_id_for, node_item, with_snapshot, work_item_data};
 use support::project::Project;
+use support::{FakeProbe, FixedClock, SeqIds, executor_attestation_data, executor_author, snap};
 use tempfile::TempDir;
 
 const TOOLS: [&str; 10] = [
-    "list", "get", "append", "attest", "render", "gate_pr", "close", "verify", "load", "project",
+    "list",
+    "get",
+    "append",
+    "attest",
+    "render",
+    "gate_pr",
+    "close",
+    "verify",
+    "byproduct",
+    "project",
 ];
-const LINT_TOML: &str = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"pre-commit\"\n";
-const SECRET_MARKER: &str = "SECRET-MARKER-9f3";
+const LINT_TOML: &str =
+    "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
+const LINT_RUN_TOML: &str = r#"blocking = true
+how = "Run lint"
+run = ["cargo", "clippy"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }]
+
+[when]
+event = "before-pr"
+"#;
+const CHECK: &str = "checks.lint";
+const W1: &str = "work-items.w1";
+const W2: &str = "work-items.w2";
+const BSMALL_SHA: &str = "a834c640cc27439d8a70b00733ebf8165a1a9d5aac5ccb6a48cb33dff45c48cd";
 const MIB: usize = 1_048_576;
 
 // Apoio
@@ -91,6 +120,113 @@ fn open_work_item(project: &Project) {
         .run();
 
     assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+}
+
+/// Projeto fora de repositório git, com `checks.lint` carregado e os work items `w1` e `w2` abertos.
+struct Fixture {
+    project: Project,
+    clock: FixedClock,
+    ids: SeqIds,
+}
+
+impl Fixture {
+    fn new() -> Fixture {
+        let project = Project::new("acme");
+        ExtTree::at(project.dir()).check("lint", LINT_RUN_TOML);
+        let fixture = Fixture {
+            project,
+            clock: FixedClock::default(),
+            ids: SeqIds::new(),
+        };
+        let loaded = fixture.cli(&["load"]);
+        assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
+        let items: Vec<Value> = [W1, W2]
+            .iter()
+            .map(|id| {
+                json!({ "body": {
+                    "kind": "node", "id": id, "type": "work-item", "data": work_item_data("t"),
+                } })
+            })
+            .collect();
+        let appended = omhl(&["append"])
+            .cwd(fixture.project.dir())
+            .xdg(fixture.project.xdg())
+            .stdin(json!({ "items": items }).to_string())
+            .run();
+        assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+
+        fixture
+    }
+
+    fn cli(&self, args: &[&str]) -> Output {
+        omhl(args)
+            .cwd(self.project.dir())
+            .xdg(self.project.xdg())
+            .run()
+    }
+
+    fn session(&self) -> McpSession {
+        McpSession::start(self.project.dir(), self.project.xdg())
+    }
+
+    /// Grava o blob `BSMALL` (`one`, `two` no stdout e `three` no stderr) pelo `BlobStore` real.
+    fn put_bsmall(&self) -> String {
+        let bytes = b"omhl-byproduct v1 stdout=8 stderr=6\none\ntwo\nthree\n";
+        let store = BlobStore::new(&self.project.xdg().join("omhl"));
+
+        let hash = store.put(bytes).expect("the blob is stored");
+
+        assert_eq!(hash.as_str(), BSMALL_SHA);
+        hash.as_str().to_owned()
+    }
+
+    fn remove_blob(&self, sha: &str) {
+        let file = self
+            .project
+            .xdg()
+            .join("omhl/blobs")
+            .join(&sha[..2])
+            .join(sha);
+        fs::remove_file(file).expect("the blob file is removed");
+    }
+
+    /// Grava a attestation `failed` de `checks.lint` em `snap('a')` para o work item.
+    fn attest_failed(&self, work_item: &str, byproduct: &str) {
+        let probe = FakeProbe::clean(snap('a'));
+        let deps = OmhlDeps {
+            clock: &self.clock,
+            ids: &self.ids,
+            probe: &probe,
+        };
+        let mut db = Omhl::open(&Config::new(self.project.db_path()), deps).expect("omhl opens");
+        db.ensure_tenant(&acme()).expect("the tenant is created");
+        let id = attestation_id_for(&snap('a'), CHECK, work_item);
+        let data = executor_attestation_data(CHECK, work_item, "failed", byproduct);
+        let item = with_snapshot(node_item(&id, "attestation", data), &snap('a'));
+
+        db.append(&AppendRequest {
+            tenant: acme(),
+            author: executor_author(),
+            key: None,
+            items: vec![item],
+        })
+        .expect("the attestation is appended");
+    }
+}
+
+fn json_line(text: &str) -> Value {
+    assert_eq!(text.lines().count(), 1, "expected one line, got: {text:?}");
+
+    serde_json::from_str(text).expect("the line is JSON")
+}
+
+fn tool_names(listed: &Value) -> Vec<&str> {
+    listed["result"]["tools"]
+        .as_array()
+        .expect("tools is an array")
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("the name is text"))
+        .collect()
 }
 
 // Ciclo de vida e descoberta
@@ -332,65 +468,7 @@ fn it_should_report_no_marker_as_is_error_without_dying() {
     assert_eq!(pinged["result"], json!({}));
 }
 
-// load e project
-
-#[test]
-fn it_should_call_load_through_mcp() {
-    let project = Project::new("acme");
-    ExtTree::at(project.dir()).check("lint", LINT_TOML);
-    let session = McpSession::start(project.dir(), project.xdg());
-
-    session.send(&tool_call(1, "load", json!({}), None));
-
-    let result = &session.recv()["result"];
-    assert!(result.get("isError").is_none(), "the call succeeds");
-    assert_eq!(text_of(result)["created"], json!(["checks.lint"]));
-}
-
-#[test]
-fn it_should_accept_dry_run_as_a_boolean_in_the_load_schema() {
-    let (_project, session) = serve();
-
-    session.send(&rpc(json!(1), "tools/list", json!({})));
-
-    let response = session.recv();
-    let load = response["result"]["tools"]
-        .as_array()
-        .expect("tools is an array")
-        .iter()
-        .find(|tool| tool["name"] == json!("load"))
-        .expect("the load tool is listed");
-    let schema = &load["inputSchema"];
-    let mut required = schema["required"].as_array().into_iter().flatten();
-    assert_eq!(schema["properties"]["dry_run"]["type"], json!("boolean"));
-    assert!(
-        !required.any(|name| name == "dry_run"),
-        "dry_run is optional"
-    );
-}
-
-#[test]
-fn it_should_return_an_error_result_for_invalid_extensions_through_mcp() {
-    let project = Project::new("acme");
-    ExtTree::at(project.dir()).check("lint", &format!("this is = [not valid {SECRET_MARKER}"));
-    let session = McpSession::start(project.dir(), project.xdg());
-
-    session.send(&tool_call(1, "load", json!({}), None));
-
-    let result = &session.recv()["result"];
-    let text = result["content"][0]["text"]
-        .as_str()
-        .expect("the first content block is text");
-    assert_eq!(result["isError"], json!(true));
-    assert_eq!(
-        text_of(result)["error"]["code"],
-        json!("extensions-invalid")
-    );
-    assert!(
-        !text.contains(SECRET_MARKER),
-        "the error does not echo the file"
-    );
-}
+// project
 
 #[test]
 fn it_should_call_project_through_mcp() {
@@ -403,6 +481,178 @@ fn it_should_call_project_through_mcp() {
     let result = &session.recv()["result"];
     assert!(result.get("isError").is_none(), "the call succeeds");
     assert_eq!(text_of(result)["written"], json!(["work-items.w1.md"]));
+}
+
+// byproduct e a superfície de ferramentas
+
+#[test]
+fn it_should_expose_byproduct_through_the_mcp_tool_with_the_same_json_as_the_cli() {
+    let fixture = Fixture::new();
+    let blob = fixture.put_bsmall();
+    fixture.attest_failed(W1, &blob);
+    let session = fixture.session();
+    let expected = json!({
+        "check": CHECK,
+        "work_item": W1,
+        "outcome": "failed",
+        "byproduct": BSMALL_SHA,
+        "lines": ["one", "two", "three"],
+    });
+
+    let cli = fixture.cli(&["byproduct", CHECK, W1]);
+    session.send(&tool_call(
+        1,
+        "byproduct",
+        json!({ "check": CHECK, "work_item": W1 }),
+        None,
+    ));
+    let result = session.recv()["result"].clone();
+    session.send(&rpc(json!(2), "tools/list", json!({})));
+    let listed = session.recv();
+
+    assert_eq!(cli.code, Some(0), "stderr: {}", cli.stderr);
+    assert!(result.get("isError").is_none(), "the call succeeds");
+    assert_eq!(result["structuredContent"], expected);
+    assert_eq!(text_of(&result), expected);
+    assert_eq!(json_line(&cli.stdout), expected);
+    let tool = listed["result"]["tools"]
+        .as_array()
+        .expect("tools is an array")
+        .iter()
+        .find(|tool| tool["name"] == json!("byproduct"))
+        .expect("the byproduct tool is listed");
+    assert_eq!(
+        tool["inputSchema"]["properties"]["tail"]["type"],
+        json!("integer")
+    );
+    assert_eq!(
+        tool["inputSchema"]["required"],
+        json!(["check", "work_item"])
+    );
+}
+
+#[test]
+fn it_should_not_expose_check_run_through_the_mcp_tools() {
+    let (_project, session) = serve();
+    let calls = ["check_run", "check-run", "check_sweep", "check-sweep"];
+
+    session.send(&rpc(json!(1), "tools/list", json!({})));
+    let listed = session.recv();
+    let mut answers = Vec::new();
+    for (index, name) in (2..).zip(calls) {
+        session.send(&tool_call(index, name, json!({}), None));
+        answers.push(session.recv());
+    }
+
+    assert_eq!(tool_names(&listed), TOOLS);
+    for (name, answer) in calls.iter().zip(&answers) {
+        assert_eq!(answer["error"]["code"], json!(-32602), "{name}");
+        assert!(answer.get("result").is_none(), "{name} has no result");
+    }
+}
+
+#[test]
+fn it_should_not_expose_hooks_install_through_the_mcp_tools() {
+    let (_project, session) = serve();
+    let calls = [
+        "hooks_install",
+        "hooks-install",
+        "hooks_post_commit",
+        "hooks-post-commit",
+    ];
+
+    session.send(&rpc(json!(1), "tools/list", json!({})));
+    let listed = session.recv();
+    let mut answers = Vec::new();
+    for (index, name) in (2..).zip(calls) {
+        session.send(&tool_call(index, name, json!({}), None));
+        answers.push(session.recv());
+    }
+
+    let names = tool_names(&listed);
+    assert!(
+        names.iter().all(|name| !name.starts_with("hooks")),
+        "no hooks tool is listed: {names:?}"
+    );
+    for (name, answer) in calls.iter().zip(&answers) {
+        assert_eq!(answer["error"]["code"], json!(-32602), "{name}");
+    }
+}
+
+#[test]
+fn it_should_report_the_same_error_codes_in_the_cli_and_in_the_mcp() {
+    let fixture = Fixture::new();
+    let blob = fixture.put_bsmall();
+    fixture.attest_failed(W2, &blob);
+    fixture.remove_blob(&blob);
+    let session = fixture.session();
+    let cases = [
+        (
+            "check-not-found",
+            vec!["byproduct", "checks.nope", W1],
+            json!({ "check": "checks.nope", "work_item": W1 }),
+        ),
+        (
+            "attestation-not-found",
+            vec!["byproduct", CHECK, W1],
+            json!({ "check": CHECK, "work_item": W1 }),
+        ),
+        (
+            "byproduct-missing",
+            vec!["byproduct", CHECK, W2],
+            json!({ "check": CHECK, "work_item": W2 }),
+        ),
+        (
+            "invalid-arguments",
+            vec!["byproduct", CHECK, W2, "--tail", "0"],
+            json!({ "check": CHECK, "work_item": W2, "tail": 0 }),
+        ),
+    ];
+
+    for (index, (code, cli_args, mcp_args)) in (1..).zip(cases) {
+        let cli = fixture.cli(&cli_args);
+        session.send(&tool_call(index, "byproduct", mcp_args, None));
+        let result = session.recv()["result"].clone();
+
+        assert_eq!(cli.code, Some(1), "{code}: stdout {}", cli.stdout);
+        assert_eq!(cli.stdout, "", "{code}");
+        assert_eq!(result["isError"], json!(true), "{code}");
+        assert_eq!(
+            result["structuredContent"],
+            json_line(&cli.stderr),
+            "{code}"
+        );
+        assert_eq!(result["structuredContent"]["error"]["code"], json!(code));
+    }
+}
+
+#[test]
+fn it_should_not_expose_load_through_the_mcp_tools() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).check("lint", LINT_TOML);
+    let session = McpSession::start(project.dir(), project.xdg());
+
+    session.send(&rpc(json!(1), "tools/list", json!({})));
+    let listed = session.recv();
+    session.send(&tool_call(2, "load", json!({}), None));
+    let plain = session.recv();
+    session.send(&tool_call(3, "load", json!({ "dry_run": true }), None));
+    let dry = session.recv();
+    let items = omhl(&["list", "--type", "check"])
+        .cwd(project.dir())
+        .xdg(project.xdg())
+        .run();
+
+    let names = tool_names(&listed);
+    assert!(!names.contains(&"load"), "load is not listed: {names:?}");
+    assert_eq!(plain["error"]["code"], json!(-32602));
+    assert_eq!(dry["error"]["code"], json!(-32602));
+    assert_eq!(items.code, Some(0), "stderr: {}", items.stderr);
+    assert!(
+        !items.stdout.contains(CHECK),
+        "nothing was loaded: {}",
+        items.stdout
+    );
 }
 
 // Erros de protocolo

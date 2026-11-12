@@ -43,6 +43,12 @@ flowchart LR
       render["render"]
     end
 
+    subgraph mech["Gates mecânicos"]
+      mechanical["mechanical (branch, sweep)"]
+      runner["runner"]
+      byproduct["byproduct"]
+    end
+
     ports["ports"]
     project["project"]
   end
@@ -86,6 +92,7 @@ flowchart LR
   guard --> gate
   guard --> graphs
   guard --> native
+  guard --> mechanical
   guard --> probe
   prgate --> gate
   prgate --> native
@@ -101,6 +108,17 @@ flowchart LR
   extensions --> project
 
   ports --> probe
+  app --> mechanical
+  app --> runner
+  app --> byproduct
+  extensions --> mechanical
+  facade --> mechanical
+  prgate --> mechanical
+  probe --> mechanical
+  ports --> mechanical
+  ports -.-> runner
+  ports -.-> byproduct
+  mechanical -.-> hxfacade
   ports --> git
   ports -.-> hxfacade
 
@@ -117,11 +135,21 @@ Notas de leitura:
 - `app -> hxfacade` (pontilhada) cobre 12 arquivos de `app` que importam tipos do `hexlog`; os adapters não importam nenhum (travado, seção 4).
 - `projection -> extensions` existe só por um helper de filesystem (`extensions::files`); é um dos pontos da seção 5.
 - `projection`, `extensions` e `render` também tomam tipos de dado do `hexlog` (`NodeView`, `SemanticId`); omitido do diagrama.
+- `mechanical`, `runner` e `byproduct` são os gates mecânicos (seções 3.17 a 3.22). `ports -> runner` e `ports -> byproduct` (pontilhadas) são a implementação das ports `CommandRunner` e `ByproductStore` por `ports/process` e `ports/blob`. `mechanical -> hxfacade` (pontilhada) cobre os tipos `SemanticId`, `SnapshotKind` e `Name` e a função `chain::canonical`.
+- `extensions -> mechanical` existe porque `extensions/parse.rs` usa `RUNNABLE_EVENTS` e `CheckSpec::from_data`. `pr_gate -> mechanical` existe porque o gate usa `RUNNABLE_EVENTS` (como `REQUIRED_EVENTS`), `snapshot_for` e `is_mechanical`. `guard -> mechanical` existe só por `is_mechanical`, o único critério de "check mecânico". `facade -> mechanical` existe porque `facade.rs` monta `CheckNode`. As travas atuais já permitem as quatro: só proíbem `adapters`, `app` e `facade` nas camadas puras (seção 4).
+- `probe -> mechanical` existe porque `probe.rs` reexporta `HeadFacts`, que mora em `mechanical::branch`. `mechanical` não importa `probe`, `ports`, `runner` nem `byproduct`.
 - O SQLite só é tocado por `store sqlite`: o `omhl` não declara `sqlx` nem `rusqlite` (travado, seção 4).
 
 ## 2. Contexto em um parágrafo
 
 O workspace tem dois crates. O `hexlog` é o motor agnóstico: guarda a chain de records por tenant num SQLite, valida contra um catalog dado por quem o abre e não conhece decisão, check, gate nem PRD. O `omhl` é o plugin opinativo: monta o catalog dos graphs, embute o native, guarda as regras de domínio na escrita, avalia gates, renderiza o contexto, carrega extensions e gera a projection, e expõe tudo por três gateways (CLI, MCP, hook) que dividem uma única camada de casos de uso (`app`). A separação não é só convenção: oito testes de arquitetura a travam (seção 4).
+
+As decisões estruturais dos gates mecânicos, com o porquê de cada uma:
+
+- [0002](adr/0002-pasta-de-hooks-unica-por-usuario.md): a pasta de hooks do git é única por usuário (3.22, `ports/hooks`).
+- [0003](adr/0003-evento-do-check-fechado-em-tres-eventos-do-git.md): o evento do check é fechado em `before-commit`, `before-pr` e `before-merge` (3.17).
+- [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor` e `loader` são a fronteira da guarda (3.23, `guard`).
+- [0005](adr/0005-saida-dos-checks-em-blobs-fora-do-banco.md): a saída dos checks fica em blobs fora do banco (3.21, `ports/blob`).
 
 ## 3. Caixas cinzas
 
@@ -129,23 +157,31 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 
 | Caixa | Linhas | Interface (ponto de entrada) | Profundidade |
 |---|---|---|---|
-| `hexlog` | 5.490 | 10 operações em `Hexlog` + 58 nomes exportados | funda |
-| `hexlog::engine` | 2.507 | `decide`, `verify_chain`, `instant_is_well_formed` | funda |
+| `hexlog` | 5.493 | 10 operações em `Hexlog` + 58 nomes exportados | funda |
+| `hexlog::engine` | 2.510 | `decide`, `verify_chain`, `instant_is_well_formed` | funda |
 | `hexlog::catalog` | 1.149 | `Catalog::new` + 5 consultas | funda |
 | `hexlog::store` | 932 | `Store` (3 métodos) | funda, seam de 1 adapter |
-| `omhl::facade` (`Omhl`) | 235 | 13 operações | média |
+| `omhl::facade` (`Omhl`) | 272 | 13 operações | média |
 | `omhl::gate` | 352 | `evaluate`, `read_consistent`, `GateSource` | funda |
-| `omhl::guard` | 390 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id` | funda |
-| `omhl::pr_gate` | 154 | `required_checks`, `pr_gate_questions` | média |
+| `omhl::guard` | 519 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id` | funda |
+| `omhl::pr_gate` | 221 | `required_checks`, `pr_gate_questions`, `spec_digests` | média |
 | `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |
-| `omhl::app` | 1.735 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
-| `omhl::adapters` | 713 | `cli::run`, `mcp::serve`, `hook::session_start` | funda por adapter |
-| `omhl::extensions` | 872 | `collect`, `plan` | funda |
+| `omhl::app` | 3.559 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
+| `omhl::adapters` | 863 | `cli::run`, `mcp::serve`, `hook::session_start` | funda por adapter |
+| `omhl::extensions` | 1.015 | `collect`, `plan` | funda |
 | `omhl::projection` | 569 | `build`, `write` | funda |
 | `omhl::render` | 297 | `render` | funda |
-| `omhl::ports` | 250 | `SystemClock`, `V7Ids`, `GitProbe` | adapters |
-| `omhl::project` | 282 | `find_marker`, `default_db_path`, `prepare_db_file`, `Env` | rasa |
+| `omhl::ports` | 1.291 | `SystemClock`, `V7Ids`, `GitProbe` | adapters |
+| `omhl::project` | 285 | `find_marker`, `default_db_path`, `prepare_db_file`, `Env` | rasa |
+| `omhl::mechanical` | 685 | `CheckSpec::from_data`, `snapshot_for`, `evaluate`, `plan_run`, `summarize`, `RUNNABLE_EVENTS` | funda e pura |
+| `omhl::mechanical::branch` | 142 | `current_branch`, `classify`, `plan_push`, `HeadFacts` | funda e pura |
+| `omhl::mechanical::sweep` | 115 | `RunMarker`, `start_from_stat`, `select_strays` | funda e pura |
+| `omhl::runner` | 50 | `trait CommandRunner`, `RunSpec`, `RunReport`, `RunError` | dado e seam |
+| `omhl::byproduct` | 71 | `trait ByproductStore`, `ByproductHash`, `encode`, `decode` | dado e seam |
+| `omhl::ports` (gates mecânicos) | 846 | `ProcessRunner`, `sweep_strays`, `BlobStore`, `HookInstaller` | adapters |
+
+As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os `.rs` do módulo em `src`, sem os arquivos `tests.rs`; um módulo aninhado entra no total do pai. A linha `omhl::ports` (gates mecânicos) soma `process`, `pipes`, `blob` e `hooks`, que também estão no total de `omhl::ports`; `omhl::mechanical` inclui `branch` e `sweep`.
 
 ### 3.1 Núcleo: `hexlog` (facade `Hexlog`)
 
@@ -219,13 +255,13 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 
 **Escondido.** `Guard` e `NodeItem` (`guard/append.rs`), a regra de atestado (`guard/attestation.rs`), os filtros (`guard/filter.rs`), a sonda lida uma vez por batch (`probe_once`).
 
-**Profundidade.** Funda no comportamento: uma chamada valida o batch. É também o maior consumidor do vocabulário de tipos (seção 5, item 1).
+**Profundidade.** Funda no comportamento: uma chamada valida o batch. É também o maior consumidor do vocabulário de tipos (seção 5, item 1). Os gates mecânicos acrescentaram regras de atestado: seção 3.23.
 
 ### 3.8 Aninhada: `omhl::pr_gate`
 
 **Papel.** Define o gate do pull request: quais checks são obrigatórios e que perguntas fazer.
 
-**Interface.** `required_checks`, `pr_gate_questions`, `GATE_NAME`, `REQUIRED_EVENTS`, e `project_checks_filter`, `closing_request` (`pub(crate)`) em `pr_gate.rs`.
+**Interface.** `required_checks`, `pr_gate_questions`, `spec_digests`, `GATE_NAME`, `REQUIRED_EVENTS`, e `project_checks_filter`, `closing_request` (`pub(crate)`) em `pr_gate.rs`.
 
 **Profundidade.** Média: política em forma de função. Interface e interior têm tamanho parecido (154 linhas, 4 funções); é aceitável porque é a tabela de política do plugin e muda por motivo próprio.
 
@@ -242,19 +278,21 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 ### 3.10 Aninhada (folha): `omhl::native` e `omhl::probe`
 
 - `native`: `NativeBase` (`checks()`, `guidelines()`, impl de `NativeNodes`), `NativeCheck`, `NativeGuideline`, `NATIVE_CATALOG_VERSION` (`native/mod.rs`). Folha travada: não importa `gate`, `facade`, `guard`, `pr_gate`. Não é módulo profundo: é dado versionado com o plugin (decisão 16).
-- `probe`: `trait SnapshotProbe` (um método `probe`), `ProbeOutcome`, `ProbeError` (`probe.rs`, 17 linhas). É só o seam; adapters: `GitProbe` e `FakeProbe` (`crates/omhl/tests/support/mod.rs`). Seam real.
+- `probe`: `trait SnapshotProbe` (quatro métodos: `probe`, `probe_tree`, `tree_dirty`, `head_facts`), `trait DevelopMark`, `ProbeOutcome`, `ProbeError` (`probe.rs`, 37 linhas). É só o seam; adapters: `GitProbe` e `FakeProbe` (`crates/omhl/tests/support/mod.rs`). Seam real. Os métodos além de `probe` e a trait `DevelopMark` vieram com os gates mecânicos: seção 3.23.
 
 ### 3.11 Gateway de consumo: `omhl::app`
 
 **Papel.** É o caso de uso: transforma uma `Action` de qualquer gateway numa chamada ao `Omhl` e devolve JSON, com repetição de `Busy`.
 
-**Interface.** `App::open`, `App::with_project_root`, `App::dispatch(&Caller, &Action) -> Result<Value, AppError>` (`app/mod.rs`); `Runtime::discover`, `Runtime::app`, `run_action` (`app/runtime.rs`); `Action` (10 variantes), `Caller::{cli, mcp, hook, loader}`, `parse_tool_call` (`app/action.rs`); `read_json_input`, `parse_json_text`, `INPUT_MAX_BYTES` (`app/input.rs`); `RetryPolicy` (`app/retry.rs`); `AppError::{code, message, to_json}` (`app/error.rs`); `output::{node, page, appended, gate, closed, verify}`. Invariantes: `load` e `project` respondem `no-project-root` sem `with_project_root`; só `Busy` é repetido (nada foi gravado nesse caso).
+**Interface.** `App::open`, `App::with_project_root`, `App::dispatch(&Caller, &Action) -> Result<Value, AppError>` (`app/mod.rs`); `Runtime::discover`, `Runtime::app`, `run_action` (`app/runtime.rs`); `Action` (16 variantes), `Caller::{cli, mcp, hook, loader, executor}`, `parse_tool_call` (`app/action.rs`); `read_json_input`, `parse_json_text`, `INPUT_MAX_BYTES` (`app/input.rs`); `RetryPolicy` (`app/retry.rs`); `AppError::{code, message, to_json}` (`app/error.rs`); `output::{node, page, appended, gate, closed, verify}`. Invariantes: `load` e `project` respondem `no-project-root` sem `with_project_root`; só `Busy` é repetido (nada foi gravado nesse caso).
 
 **Escondido.** `Engine` (`app/engine.rs`) que despacha cada ação; `attest` (`app/attest.rs`), `load` (`app/load.rs`), `context` (`app/context.rs`), `wire` (`app/wire.rs`: JSON para `AppendRequest`), `read` (`app/read.rs`), a tradução de erros do motor, do domínio e do projeto para um `AppError`.
 
+**Catálogo de erros.** `app/error.rs` é o catálogo de códigos de erro; todo código estável ganha construtor nomeado, mesmo com 1 uso (os códigos são contrato externo: JSON da CLI, MCP e hook).
+
 **Aninhadas.** `extensions`, `projection`, `render` (3.13 a 3.15) são orquestradas por `Engine`.
 
-**Profundidade.** Funda no uso (3 adapters passam por 3 funções), com a fuga de contrato descrita nos itens 2, 5 e 6 da seção 5. É onde o contexto mais cresceu em `omhl`: 1.735 linhas, o maior módulo.
+**Profundidade.** Funda no uso (3 adapters passam por 3 funções), com a fuga de contrato descrita nos itens 2, 5 e 6 da seção 5. É onde o contexto mais cresceu em `omhl`: 3.559 linhas, o maior módulo.
 
 ### 3.12 Gateway de consumo: `omhl::adapters`
 
@@ -298,8 +336,74 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 
 ### 3.16 Suporte: `omhl::ports` e `omhl::project`
 
-- `ports`: adapters de produção. `SystemClock` (`impl Clock`), `V7Ids` (`impl IdGenerator`), `GitProbe::{new, with_program, with_timeout}` (`impl SnapshotProbe`, executa o `git` com timeout), `format_system_time`, `format_utc`. Adapters finos de seam real.
+- `ports`: adapters de produção. `SystemClock` (`impl Clock`), `V7Ids` (`impl IdGenerator`), `GitProbe::{new, with_program, with_timeout}` (`impl SnapshotProbe`, executa o `git` com timeout), `format_system_time`, `format_utc`. Adapters finos de seam real. Os adapters dos gates mecânicos (`process`, `pipes`, `blob`, `hooks`) estão na seção 3.22.
 - `project`: descoberta do projeto. `find_marker`, `parse_marker`, `Marker`, `Located` (`project/marker.rs`), `default_db_path`, `prepare_db_file` (`project/paths.rs`), `Env`, `ProjectError` (`project/mod.rs`), 13 constantes em `project/layout.rs`, helpers de texto em `project/text.rs`. Rasa: metade é lista de constantes e helpers compartilhados por `extensions` e `projection` (item 7 da seção 5).
+
+### 3.17 Núcleo dos gates mecânicos: `omhl::mechanical`
+
+**Papel.** É a política pura de um check mecânico: decodifica o `data` de um check com `run`, avalia a saída do comando contra as regras de `expect`, ordena e planeja a fila de um evento.
+
+**Interface.** `CheckSpec::from_data(&Value) -> Result<Option<CheckSpec>, SpecError>` (`None` é um check só de texto), `snapshot_for(&Value) -> SnapshotKind`, `RUNNABLE_EVENTS` (`mechanical/spec.rs`); `evaluate(&CheckSpec, &Observation) -> Outcome` (`evaluate.rs`); `order` (`order.rs`); `plan_run`, `CheckNode`, `PlannedCheck`, `summarize` (`plan.rs`).
+
+**Escondido.** O regex de cada regra, os limites de tamanho do `run`, do `expect` e do `timeout_secs`, a ordem em que o `SpecError` é escolhido (ele nunca ecoa o conteúdo), a ordenação por `after` com desempate alfabético. `snapshot_for` é o único decodificador do snapshot que um check cobra: `git-tree` só para `before-commit` com `run`, `git-commit` no resto.
+
+**Caixas aninhadas.** `branch` (3.18) e `sweep` (3.19).
+
+**Profundidade.** Funda e pura: sem E/S. Travado: não importa `adapters`, `app`, `facade`, `ports`, `runner` nem `byproduct` (`it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner_and_byproduct`).
+
+### 3.18 Aninhada: `omhl::mechanical::branch`
+
+**Papel.** Decide qual é a branch, o que ela é e o que um `pre-push` pode atestar, a partir de fatos já lidos do git.
+
+**Interface.** `HeadFacts`, `current_branch(&HeadFacts) -> Result<String, BranchError>`, `classify(&str) -> BranchKind` (`Main`, `Develop`, `WorkItem`, `Other`), `plan_push(&str, Option<&str>, Option<&str>) -> Result<PushPlan, PushError>` (`mechanical/branch.rs`).
+
+**Escondido.** A ordem de resolução da branch (`--show-current`, depois o estado do rebase, depois a única branch que contém o `HEAD`), o padrão `tipo/wi-<id>__<slug>`, as cinco regras do `plan_push` e a leitura de todas as linhas antes de decidir.
+
+**Profundidade.** Funda e pura: três funções sobre as regras de branch e de push.
+
+### 3.19 Aninhada: `omhl::mechanical::sweep`
+
+**Papel.** Escolhe, entre os processos que carregam a marca `OMHL_RUN_ID`, os que fugiram de um `check run` cujo `omhl` já morreu.
+
+**Interface.** `RunMarker` (`encode`, `parse`), `RUN_MARKER_VAR`, `root_hash`, `start_from_stat`, `Candidate`, `select_strays` (`mechanical/sweep.rs`).
+
+**Escondido.** O formato exato da marca (qualquer outro texto nunca mata), a leitura do início do processo em `/proc/<pid>/stat` depois do último `)`, e o que se poupa: o próprio processo, a linhagem da mesma marca, a marca de outro namespace de pid, a marca de outra raiz de projeto (quando a varredura recebe a raiz) e o grupo que um guardião vivo ainda limpa.
+
+**Profundidade.** Funda e pura. A leitura de `/proc` e os sinais ficam em `ports/process` (3.22).
+
+### 3.20 Seam: `omhl::runner`
+
+**Papel.** Define como executar um comando e devolver o que aconteceu, sem dizer como.
+
+**Interface.** `trait CommandRunner` (`run(&RunSpec) -> Result<RunReport, RunError>` e `resolve_program(&RunSpec) -> Option<PathBuf>`, que por padrão devolve `None`), `RunSpec`, `RunReport`, `RunError` e `RunErrorKind` (`NotFound`, `PermissionDenied`, `Spawn`, `Io`, `UnsupportedPlatform`, `ParentGone`) (`runner.rs`).
+
+**Profundidade.** É só o seam. Seam real: dois adapters, `ProcessRunner` (3.22) e `FakeRunner` (`crates/omhl/tests/support/runner.rs`). Travado: não importa `adapters`, `app` nem `facade`.
+
+### 3.21 Seam: `omhl::byproduct`
+
+**Papel.** Define onde a saída de um comando fica guardada, endereçada pelo hash dela.
+
+**Interface.** `trait ByproductStore` (`put(&[u8]) -> Result<ByproductHash, ByproductError>`, `get(&ByproductHash) -> Result<Option<Vec<u8>>, ByproductError>`), `ByproductHash` (64 caracteres hexadecimais), `ByproductError`, e `encode(stdout, stderr)` com `decode(blob)`, que são o único dono do formato do arquivo: a linha `omhl-byproduct v1 stdout=<n> stderr=<n>` e o corpo (`byproduct.rs`).
+
+**Profundidade.** É só o seam. Seam real: `BlobStore` (3.22) e o `ByproductStore` falso dos testes. Travado: não importa `adapters`, `app` nem `facade`.
+
+### 3.22 Adapters novos de `omhl::ports`
+
+- `ports/process`: `ProcessRunner::{new, bound_to_parent}` (`impl CommandRunner`), `sweep_strays`, `sweep_project_strays`, `sweep_strays_in`, `SweepReport`, `SweptProcess`. Esconde o guardião (um `sh` líder de grupo próprio que mata o grupo do comando quando o `omhl` morre), a amarração ao pai com `set_pdeathsig`, a espera do líder com `waitid`, o `killpg` com carência de 2 segundos, a marca `OMHL_RUN_ID` no ambiente do comando e a leitura de `/proc`, com o prazo de 1 segundo. Só Linux: fora dele, `run` devolve `UnsupportedPlatform`. É o único arquivo que usa `nix::` (travado: `it_should_confine_nix_to_the_process_port`).
+- `ports/pipes`: as leitoras de `stdout` e `stderr` do runner. São `thread::spawn` soltas, que mandam a saída em pedaços por um canal e descartam o que passa do teto `max_stream_bytes`; assim um descendente fugido que segura o cano não prende o runner. Travado: nada de `thread::scope` nesses arquivos (`it_should_not_scope_the_threads_of_the_pipe_readers`).
+- `ports/blob`: `BlobStore::new(<pasta do banco>)` (`impl ByproductStore`). Guarda `blobs/<2 primeiros hex>/<hash>` e confere o SHA-256 na leitura. O conteúdo, montado por `byproduct::encode`, começa com a linha `omhl-byproduct v1 stdout=<n> stderr=<n>`. Grava em nome temporário único e renomeia.
+- `ports/hooks`: `HookInstaller`. É onde ficam `fs`, `chmod` e `git config` do `omhl hooks install`, nunca em `app/`.
+
+Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/` (travado: `it_should_confine_process_spawning_types_to_the_ports_module`).
+
+### 3.23 Mudanças nas caixas existentes
+
+- **`SnapshotProbe` e `DevelopMark`** (`probe.rs`). A trait tinha um método, `probe`. Agora tem `probe`, `probe_tree(TreeSource)` (a árvore do índice ou do `HEAD`; `Dirty` também com arquivo não rastreado e não ignorado), `tree_dirty()` e `head_facts()`. A marca da `develop` ganhou a trait própria `DevelopMark` (`present`, `consume`), porque a sonda de leitura não escreve. `GitProbe` e `FakeProbe` implementam as duas. `HeadFacts` mora em `mechanical::branch` e `probe.rs` o reexporta.
+- **`GitProbe::with_index_file(index_file, base)`.** Faz a sonda ler o índice temporário que o git passa ao hook em `GIT_INDEX_FILE`. Um caminho relativo vale contra `base`. Um índice que não existe é erro, nunca árvore vazia.
+- **`Env`** (`project/mod.rs`). Ganha `git_index_file: Option<&OsStr>` e `parent_pid: u32`. O `main.rs` lê `parent_id()` na primeira linha, antes do clap e do banco (travado: `it_should_read_the_parent_pid_before_anything_else_in_main`).
+- **`guard`.** Três regras novas de atestado. `snapshot-tree-mismatch`: uma attestation `git-tree` confere contra a árvore do índice. `check-run-author`: só o autor `loader` grava, revisa ou retira um check com `run`, e só o autor `executor` grava a attestation de um check com `run`. `attestation-incomplete`: a attestation de um check com `run` precisa de `byproduct`, de `command`, de `spec_digest` e, para `passed` e `passed_with_warning`, de `exit_code`.
+- **`app`.** Novos arquivos `check_run`, `check_retire`, `work_item`, `byproduct_tail` e `hooks`; novas ações `CheckRun`, `CheckRetire`, `CheckSweep`, `ConsumeDevelopMark`, `Byproduct` e `HooksInstall`; novo `Caller::executor`. A ação `CheckRun` roda fora do `with_retry` do `dispatch`. O `Runtime` monta o `ProcessRunner`, o `BlobStore` e a sonda, e varre os processos fugidos antes de despachar um `check run`. `check_run` e `check_retire` dependem de `extensions::collect::check_file_exists`: um check do banco cujo `.omhl/checks/<slug>.toml` sumiu da árvore é órfão, o `check run` o ignora e avisa, e `check retire` grava a retirement dele como `loader`. Só a CLI expõe `check retire` (como `load` e `check run`, sem ferramenta MCP).
+- **`pr_gate`.** Cobra o snapshot que `snapshot_for` indica para cada check e dispensa o check nativo de um evento quando um check mecânico bloqueante cobre o mesmo evento. Para cada check com `run`, pergunta também `spec-digest-match:<check>` (`spec_digests`, `pr_gate_questions`): só vale a attestation com o `spec_digest` da definição vigente, calculado por `mechanical::spec::spec_digest`.
 
 ## 4. Regras de dependência e o teste que trava cada uma
 
@@ -328,11 +432,18 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `app`, `render`, `project`, `ports` não importam `adapters` | `it_should_not_import_adapters_from_the_inner_layers` |
 | `extensions` e `projection` não importam `adapters`, `app`, `facade` | `it_should_not_import_adapters_app_or_facade_in_extensions_and_projection` |
 | `tempfile` só em `projection/write.rs` | `it_should_use_tempfile_only_in_projection_write` |
-| Dependências diretas exatas (`clap`, `hexlog`, `serde`, `serde_json`, `tempfile`, `toml`, `uuid`): o SQLite só chega por `hexlog` | `it_should_declare_exactly_the_expected_direct_dependencies` |
+| Dependências diretas exatas (`clap`, `hexlog`, `regex`, `serde`, `serde_json`, `sha2`, `tempfile`, `toml`, `uuid` e, só no Linux, `nix`): o SQLite só chega por `hexlog` | `it_should_declare_exactly_the_expected_direct_dependencies` |
 | Sem async, HTTP, `git2`, `gix*` e `serde_yaml` no lockfile | `it_should_keep_forbidden_crates_out_of_the_lockfile` |
 | Nenhuma escrita em stdout nos fontes (a saída vai pelo `out` recebido) | `it_should_keep_stdout_writes_out_of_every_source_file` |
 | Sem atômicos em `src` | `it_should_not_use_atomics_anywhere_in_src` |
 | O hook não procura o marcador duas vezes | `it_should_not_search_the_marker_twice_in_the_hook` |
+| `mechanical` não importa `adapters`, `app`, `facade`, `ports`, `runner` nem `byproduct` | `it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner_and_byproduct` |
+| `runner` e `byproduct` não importam `adapters`, `app` nem `facade` | `it_should_keep_runner_and_byproduct_free_of_adapters_app_and_facade` |
+| `nix::` só em `ports/process.rs` | `it_should_confine_nix_to_the_process_port` |
+| `Command`, `Child` e `Stdio` de `std::process` só em `ports/` | `it_should_confine_process_spawning_types_to_the_ports_module` (e `it_should_not_flag_the_exit_code_type_or_the_clap_command_enum_outside_the_ports_module`) |
+| Sem `thread::scope` nas leitoras de cano | `it_should_not_scope_the_threads_of_the_pipe_readers` |
+| Os adapters só importam `app` e `project::Env` | `it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_the_project_env` |
+| O `main.rs` lê o pid do pai antes de qualquer outra coisa | `it_should_read_the_parent_pid_before_anything_else_in_main` |
 
 ### Regras que valem hoje no código mas sem teste
 
@@ -347,14 +458,14 @@ Oito itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 
 2. **`app` entra no domínio por mais de uma porta (corte barato, decisão sua no segundo passo).** `app/attest.rs:9` chama `guard::attestation_id`, `app/engine.rs:14` chama `projection::{build, write}`, `app/load.rs:1,11-17` chama `hexlog::chain::fingerprint`, `extensions::{collect, plan}` e `NativeBase`, e `app/context.rs` lê `NativeBase` direto. Enquanto isso, 6 das 13 operações de `Omhl` só repassam (`facade.rs:69,80,89,108,116,120`). Nada trava o que `app` pode importar (seção 4). Corte barato: um teste que fixe o conjunto permitido de `app`. Corte maior, só se valer: mover a montagem do atestado para dentro de `Omhl`, o que acrescenta uma operação à facade e tira o conhecimento de `guard` de `app`.
 
-3. **Paginação e constantes duplicadas (corte).** O laço de páginas existe em `app/read.rs:all_nodes` (`PAGE_LIMIT = 50`, `:6`) e em `gate/source.rs:HexlogSource::nodes` (usa `config.limits.page_default`, `facade.rs:65`), e `app/engine.rs:17` tem um terceiro `DEFAULT_PAGE_LIMIT = 50`. A relation `after` aparece como constante em `app/context.rs:10` e `app/load.rs:21` e como literal em `native/mod.rs:88`. Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade (a 14ª), em troca de um só laço.
+3. **Paginação e constantes duplicadas (corte).** O laço de páginas existe em `app/read.rs:nodes_matching` (`PAGE_LIMIT = 50`, `:6`; `all_nodes` e `latest_attestation` o chamam) e em `gate/source.rs:HexlogSource::nodes` (usa `config.limits.page_default`, `facade.rs:65`), e `app/engine.rs:17` tem um terceiro `DEFAULT_PAGE_LIMIT = 50`. A relation `after` aparece como constante em `app/context.rs:10` e `app/load.rs:21` e como literal em `native/mod.rs:88`. Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade (a 14ª), em troca de um só laço.
 
 4. **A sonda do git vive em duas camadas (dívida).** `Engine` guarda o `probe` (`app/mod.rs`, campo `probe: deps.probe`; `app/engine.rs:probe_snapshot`) e `Omhl` guarda outro (`facade.rs:46-50`, usado em `:75` e `:215`). Em `close`, `Engine::close` sonda e `close_work_item` sonda de novo (`facade.rs:215`): dois `git` por fechamento, e a segunda leitura é a que vale. Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito, o que o `tests/pr_gate.rs` aproveita. Vira corte se aparecer um caso em que as duas leituras discordem.
 
 5. **Vocabulário do MCP dentro de `app` (corte).** `parse_tool_call` (`app/action.rs:86`) conhece os nomes das ferramentas MCP, e só `adapters/mcp.rs:7,177` o usa (nenhum teste). Os schemas das ferramentas estão em `mcp.rs` (`tools()`). Acrescentar uma ação toca 6 pontos: `Action` (`action.rs`), `parse_tool_call`, `Engine::run`, `ActionCommand` e `to_action` (`cli.rs`), `tools()` (`mcp.rs`). Corte: mover `parse_tool_call` para `adapters/mcp.rs`; a direção `adapters -> app` se mantém. Trade-off: nenhum relevante; é só mover.
 
-6. **Contrato de saída sem tipo (dívida).** `App::dispatch` devolve `Result<Value, AppError>` e o hook decodifica por chave de string: `pending_note` lê `created`, `revised`, `relations_created`, `tenant`; `context_for_session` compara com `"no-marker"`; `warning` compara com `"extensions-invalid"` (`adapters/hook.rs`). As chaves nascem em `app/load.rs`. Hoje só o teste `tests/hook.rs` pega uma divergência. Aceitável porque CLI, MCP e hook compartilham um único formato JSON de propósito; vira corte (um `LoadReport` tipado em `app`) quando um segundo consumidor ler o mesmo relatório.
+6. **Contrato de saída sem tipo (dívida).** `App::dispatch` devolve `Result<Value, AppError>` e o hook decodifica por chave de string: `pending_note` lê `created`, `revised`, `relations_created`, `tenant`; `orphan_note` lê `orphans` (e usa `app::ExtensionKind`, reexportado, para ficar só nos checks); `context_for_session` compara com `"no-marker"`; `warning` compara com `"extensions-invalid"` (`adapters/hook.rs`). As chaves nascem em `app/load.rs`. Hoje só o teste `tests/hook.rs` pega uma divergência. Aceitável porque CLI, MCP e hook compartilham um único formato JSON de propósito; vira corte (um `LoadReport` tipado em `app`) quando um segundo consumidor ler o mesmo relatório.
 
 7. **Helpers no lugar errado (corte pequeno).** `projection/write.rs` importa `extensions::files::list_sorted_capped`, `projection/build.rs` importa `render::sort_by_id`, e `project/layout.rs` mistura constantes de `extensions` (`EXT_FILE_MAX_BYTES`, `CHECKS_DIR`), de `projection` (`PROJECTION_*`) e de arquivo temporário (`TMP_*`). O teste de pureza só proíbe `adapters`/`app`/`facade`, não o acoplamento `projection -> extensions`. Corte: `extensions/files.rs` e `render::sort_by_id` vão para `project` (que já hospeda `text.rs`).
 
-8. **Superfície pública do `hexlog` maior que o consumo (dívida consciente).** `lib.rs:25-29` exporta 6 funções de `chain` e o `omhl` usa só `fingerprint` (`app/load.rs:1`); `CHECKED_FIELDS` (`lib.rs:9`) só serve a `tests/chain_tamper.rs`; `Hexlog::catalog` (`facade.rs:331`) não tem chamador no workspace. A causa é a regra de que os testes de integração usem só a API pública (`it_should_keep_integration_tests_on_the_public_api`): o que os testes de adulteração precisam vira público. Cortar exige uma feature de cargo para test support. Também é o único conhecimento de host dentro do motor: `SnapshotKind::GitCommit` (`engine/snapshot.rs:8-10`), assumido e travado por `it_should_mention_git_only_in_engine_snapshot`.
+8. **Superfície pública do `hexlog` maior que o consumo (dívida consciente).** `lib.rs:25-29` exporta 6 funções de `chain` e o `omhl` usa só `fingerprint` (`app/load.rs:1`); `CHECKED_FIELDS` (`lib.rs:9`) só serve a `tests/chain_tamper.rs`; `Hexlog::catalog` (`facade.rs:331`) não tem chamador no workspace. A causa é a regra de que os testes de integração usem só a API pública (`it_should_keep_integration_tests_on_the_public_api`): o que os testes de adulteração precisam vira público. Cortar exige uma feature de cargo para test support. Também é o único conhecimento de host dentro do motor: `SnapshotKind::GitCommit` e `SnapshotKind::GitTree` (`engine/snapshot.rs:8-11`), enum fechado de propósito, assumido e travado por `it_should_mention_git_only_in_engine_snapshot`.

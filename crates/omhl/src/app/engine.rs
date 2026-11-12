@@ -1,17 +1,21 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use hexlog::{HexlogError, ListFilter, PageRequest, SemanticId, Snapshot, TenantId, TypeName};
 use serde_json::{Value, json};
 
 use super::action::{Action, Caller};
 use super::error::AppError;
+use super::retry::RetryPolicy;
 use super::wire::append_request;
-use super::{context, output};
+use super::{context, output, work_item};
+use crate::byproduct::ByproductStore;
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::Omhl;
-use crate::probe::{ProbeOutcome, SnapshotProbe};
+use crate::pr_gate::GateSnapshots;
+use crate::probe::{DevelopMark, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
+use crate::runner::CommandRunner;
 
 /// Tamanho de página quando o pedido não traz `limit` (o padrão do motor).
 const DEFAULT_PAGE_LIMIT: u32 = 50;
@@ -24,6 +28,14 @@ pub(super) struct Engine<'d> {
     pub(super) tenant: TenantId,
     pub(super) probe: &'d dyn SnapshotProbe,
     pub(super) project_root: Option<PathBuf>,
+    pub(super) runner: Option<&'d dyn CommandRunner>,
+    pub(super) byproducts: Option<&'d dyn ByproductStore>,
+    pub(super) mark: Option<&'d dyn DevelopMark>,
+    /// Cópia da política do `App`, para a leitura inicial do `check run`.
+    pub(super) retry: RetryPolicy,
+    pub(super) retry_after_run: RetryPolicy,
+    /// Pasta de usuário dos hooks do git; `None` só com `--db` e sem `HOME` nem `XDG_DATA_HOME`.
+    pub(super) hooks_dir: Option<PathBuf>,
 }
 
 /// Id ou nome do pedido que não passa em `parse`: erro do motor com o ponteiro do campo.
@@ -40,6 +52,16 @@ fn is_id_prefix(prefix: &str) -> bool {
         && prefix
             .bytes()
             .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.'))
+}
+
+fn reproducible(probed: Result<ProbeOutcome, ProbeError>) -> Result<Snapshot, AppError> {
+    match probed {
+        Ok(ProbeOutcome::Reproducible(snapshot)) => Ok(snapshot),
+        Ok(ProbeOutcome::Dirty) => {
+            Err(OmhlError::rule(RuleCode::SnapshotDirty, "/snapshot").into())
+        }
+        Err(error) => Err(AppError::probe_failed(&error.message)),
+    }
 }
 
 impl Engine<'_> {
@@ -74,6 +96,16 @@ impl Engine<'_> {
             }
             Action::Load { dry_run } => self.load(*dry_run),
             Action::Project => self.project(),
+            Action::CheckRun { target, pre_push } => self.check_run(target, pre_push.as_deref()),
+            Action::CheckRetire { check } => self.check_retire(check),
+            Action::Byproduct {
+                check,
+                work_item,
+                tail,
+            } => self.byproduct(check, work_item, *tail),
+            Action::HooksInstall { force } => self.hooks_install(*force),
+            Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
+            Action::CheckSweep => unreachable!("check sweep is dispatched by the runtime"),
         }
     }
 
@@ -122,30 +154,27 @@ impl Engine<'_> {
 
     fn gate_pr(&mut self, work_item: &str) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
-        let snapshot = self.probe_snapshot()?;
+        let snapshots = self.probe_gate_snapshots()?;
         let report = self
             .omhl
-            .evaluate_pr_gate(&self.tenant, &work_item, &snapshot)?;
+            .evaluate_pr_gate(&self.tenant, &work_item, &snapshots)?;
 
         Ok(output::gate(&report))
     }
 
     fn close(&mut self, caller: &Caller, work_item: &str) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
-        let snapshot = self.probe_snapshot()?;
+        let snapshots = self.probe_gate_snapshots()?;
         let closed =
             self.omhl
-                .close_work_item(&self.tenant, &work_item, &snapshot, &caller.author())?;
+                .close_work_item(&self.tenant, &work_item, &snapshots, &caller.author())?;
 
         Ok(output::closed(&closed))
     }
 
     /// Regenera `.omhl/projection` a partir do estado vigente; não grava nenhum record.
     fn project(&mut self) -> Result<Value, AppError> {
-        let root = self
-            .project_root
-            .as_deref()
-            .ok_or_else(|| AppError::plain("no-project-root", "no project root is available"))?;
+        let root = require_project_root(self.project_root.as_deref())?;
         let state = self.omhl.read_projection_state(&self.tenant)?;
         let files = build(&state).map_err(|error| AppError::projection_failed(&error))?;
         let report = write(root, &files).map_err(|error| AppError::projection_failed(&error))?;
@@ -160,12 +189,18 @@ impl Engine<'_> {
 
     /// O snapshot de uma árvore limpa; árvore suja e sonda com falha são recusas em `/snapshot`.
     pub(super) fn probe_snapshot(&self) -> Result<Snapshot, AppError> {
-        match self.probe.probe() {
-            Ok(ProbeOutcome::Reproducible(snapshot)) => Ok(snapshot),
-            Ok(ProbeOutcome::Dirty) => {
-                Err(OmhlError::rule(RuleCode::SnapshotDirty, "/snapshot").into())
-            }
-            Err(error) => Err(AppError::probe_failed(&error.message)),
-        }
+        reproducible(self.probe.probe())
     }
+
+    /// O commit e a árvore do `HEAD`, com a mesma recusa de `probe_snapshot`.
+    fn probe_gate_snapshots(&self) -> Result<GateSnapshots, AppError> {
+        Ok(GateSnapshots {
+            head_commit: self.probe_snapshot()?,
+            head_tree: reproducible(self.probe.probe_tree(TreeSource::Head))?,
+        })
+    }
+}
+
+pub(super) fn require_project_root(root: Option<&Path>) -> Result<&Path, AppError> {
+    root.ok_or_else(AppError::no_project_root)
 }

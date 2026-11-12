@@ -12,26 +12,13 @@ const DEPTH_LIMIT_MESSAGE: &str = "recursion limit exceeded";
 /// Tamanho, UTF-8, profundidade e JSON, nessa ordem; o erro não repete o texto recebido.
 pub fn parse_json_text(bytes: &[u8]) -> Result<Value, AppError> {
     if bytes.len() > INPUT_MAX_BYTES {
-        return Err(AppError::plain(
-            "input-too-large",
-            &format!("input is larger than {INPUT_MAX_BYTES} bytes"),
-        ));
+        return Err(AppError::input_too_large(INPUT_MAX_BYTES));
     }
-    let text = std::str::from_utf8(bytes)
-        .map_err(|_| AppError::plain("input-not-utf8", "input is not valid UTF-8"))?;
+    let text = std::str::from_utf8(bytes).map_err(|_| AppError::input_not_utf8())?;
 
     serde_json::from_str(text).map_err(|error| match error.to_string() {
-        message if message.starts_with(DEPTH_LIMIT_MESSAGE) => {
-            AppError::plain("input-too-deep", "input is nested too deeply")
-        }
-        _ => AppError::plain(
-            "input-invalid-json",
-            &format!(
-                "input is not valid JSON at line {} column {}",
-                error.line(),
-                error.column()
-            ),
-        ),
+        message if message.starts_with(DEPTH_LIMIT_MESSAGE) => AppError::input_too_deep(),
+        _ => AppError::input_invalid_json(error.line(), error.column()),
     })
 }
 
@@ -41,7 +28,7 @@ pub fn read_json_input(input: &mut impl Read) -> Result<Value, AppError> {
     input
         .take(INPUT_MAX_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| AppError::plain("input-unreadable", "input could not be read"))?;
+        .map_err(|_| AppError::input_unreadable())?;
 
     parse_json_text(&bytes)
 }

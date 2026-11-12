@@ -4,7 +4,8 @@ use ::omhl::extensions::collect::collect;
 use ::omhl::extensions::model::ExtensionIssue;
 use support::ext::ExtTree;
 
-const VALID_CHECK: &str = "blocking = true\nhow = \"Run it\"\n\n[when]\nevent = \"pre-commit\"\n";
+const VALID_CHECK: &str =
+    "blocking = true\nhow = \"Run it\"\n\n[when]\nevent = \"before-commit\"\n";
 const VALID_GUIDELINE: &str = "text = \"Be brief\"\n";
 const INVALID_TOML: &str = "this is = [not valid";
 

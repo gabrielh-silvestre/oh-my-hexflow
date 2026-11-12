@@ -52,7 +52,7 @@ pub struct Extension {
     pub kind: ExtensionKind,
     pub id: String,
     pub path: String,
-    /// Exatamente o `data` do node, já com `"vocabulary":"free"` no check.
+    /// Exatamente o `data` do node, já com `"vocabulary":"closed"` no check.
     pub data: serde_json::Value,
     /// Só ids de check, na ordem do arquivo.
     pub after: Vec<String>,

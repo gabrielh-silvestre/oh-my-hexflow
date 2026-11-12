@@ -11,7 +11,7 @@ fn check_data(how: &str) -> Value {
     json!({
         "blocking": true,
         "how": how,
-        "when": {"vocabulary": "free", "event": "pre-commit"}
+        "when": {"vocabulary": "closed", "event": "before-commit"}
     })
 }
 
@@ -254,7 +254,7 @@ fn it_should_revise_a_node_whose_data_changed() {
 fn it_should_compare_data_by_value() {
     let extension = check("a", "Run a");
     let reordered: Value = serde_json::from_str(
-        r#"{"when":{"event":"pre-commit","vocabulary":"free"},"how":"Run a","blocking":true}"#,
+        r#"{"when":{"event":"before-commit","vocabulary":"closed"},"how":"Run a","blocking":true}"#,
     )
     .expect("the stored data parses");
     let nodes = [ExistingNode {

@@ -4,6 +4,8 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 use super::model::{Extension, ExtensionIssue, ExtensionKind, RawExtension};
+use crate::mechanical::RUNNABLE_EVENTS;
+use crate::mechanical::spec::{CheckSpec, SpecError};
 use crate::project::text::{
     is_invisible_format, normalize_line_breaks, normalize_line_breaks_owned, toml_error_position,
 };
@@ -13,6 +15,11 @@ const TEXT_MAX_CHARS: usize = 2_000;
 const EVENT_MAX_CHARS: usize = 100;
 const MATCHER_MAX_CHARS: usize = 200;
 const AFTER_MAX_ITEMS: usize = 16;
+const CONCERN_VARIANTS: [(&str, [&str; 2]); 3] = [
+    ("style", ["format", "lint"]),
+    ("test", ["suite", "coverage"]),
+    ("compile", ["validate", "build"]),
+];
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -22,6 +29,20 @@ struct CheckToml {
     #[serde(default)]
     after: Vec<String>,
     when: WhenToml,
+    concern: Option<String>,
+    variant: Option<String>,
+    run: Option<Vec<String>>,
+    timeout_secs: Option<i64>,
+    expect: Option<Vec<ExpectToml>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpectToml {
+    exit: Option<i64>,
+    stdout: Option<String>,
+    stderr: Option<String>,
+    outcome: String,
 }
 
 #[derive(Deserialize)]
@@ -56,45 +77,154 @@ fn parse_check(raw: &RawExtension) -> Result<Extension, Vec<ExtensionIssue>> {
     );
     let when = when_data(&raw.toml_path, parsed.when, &mut issues);
     check_after(&raw.toml_path, &id, &parsed.after, &mut issues);
+    issues.extend(check_concern_pair(
+        &raw.toml_path,
+        parsed.concern.as_deref(),
+        parsed.variant.as_deref(),
+    ));
 
     let (Some(how), Some(when), true) = (how, when, issues.is_empty()) else {
         return Err(issues);
     };
 
+    let mut data = Map::from_iter([
+        ("blocking".to_owned(), Value::Bool(parsed.blocking)),
+        ("how".to_owned(), Value::String(how)),
+        ("when".to_owned(), when),
+    ]);
+    data.extend(mechanical_fields(
+        parsed.concern,
+        parsed.variant,
+        parsed.run,
+        parsed.timeout_secs,
+        parsed.expect,
+    ));
+    let data = Value::Object(data);
+    if let Err(error) = CheckSpec::from_data(&data) {
+        return Err(vec![spec_issue(&raw.toml_path, &error)]);
+    }
+
     Ok(Extension {
         kind: raw.kind,
         id,
         path: raw.toml_path.clone(),
-        data: Value::Object(Map::from_iter([
-            ("blocking".to_owned(), Value::Bool(parsed.blocking)),
-            ("how".to_owned(), Value::String(how)),
-            ("when".to_owned(), when),
-        ])),
+        data,
         after: parsed.after,
     })
 }
 
+/// Só as chaves presentes no TOML entram: um check de texto não ganha `null`.
+fn mechanical_fields(
+    concern: Option<String>,
+    variant: Option<String>,
+    run: Option<Vec<String>>,
+    timeout_secs: Option<i64>,
+    expect: Option<Vec<ExpectToml>>,
+) -> Vec<(String, Value)> {
+    [
+        ("concern", concern.map(Value::String)),
+        ("variant", variant.map(Value::String)),
+        (
+            "run",
+            run.map(|argv| argv.into_iter().map(Value::String).collect()),
+        ),
+        ("timeout_secs", timeout_secs.map(Value::from)),
+        (
+            "expect",
+            expect.map(|rules| rules.into_iter().map(rule_data).collect()),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+    .collect()
+}
+
+fn rule_data(rule: ExpectToml) -> Value {
+    let mut data = Map::new();
+    if let Some(exit) = rule.exit {
+        data.insert("exit".to_owned(), Value::from(exit));
+    }
+    if let Some(stdout) = rule.stdout {
+        data.insert("stdout".to_owned(), Value::String(stdout));
+    }
+    if let Some(stderr) = rule.stderr {
+        data.insert("stderr".to_owned(), Value::String(stderr));
+    }
+    data.insert("outcome".to_owned(), Value::String(rule.outcome));
+
+    Value::Object(data)
+}
+
+/// Um issue por caso: o `variant` só é conferido quando o `concern` é conhecido.
+fn check_concern_pair(
+    path: &str,
+    concern: Option<&str>,
+    variant: Option<&str>,
+) -> Option<ExtensionIssue> {
+    let message = match (concern, variant) {
+        (None, None) => return None,
+        (Some(_), None) | (None, Some(_)) => "`concern` and `variant` go together",
+        (Some(concern), Some(variant)) => {
+            let Some((_, variants)) = CONCERN_VARIANTS.iter().find(|(known, _)| *known == concern)
+            else {
+                return Some(issue(
+                    path,
+                    "value-not-allowed",
+                    "`concern` is not one of style, test, compile".to_owned(),
+                ));
+            };
+            if variants.contains(&variant) {
+                return None;
+            }
+            "`variant` does not belong to `concern`"
+        }
+    };
+
+    Some(issue(path, "value-not-allowed", message.to_owned()))
+}
+
+/// Nunca ecoa o regex, o argv nem o texto: só o código, o ponteiro e texto fixo.
+fn spec_issue(path: &str, error: &SpecError) -> ExtensionIssue {
+    let message = match (error.path.as_str(), error.code) {
+        ("", code) => code.to_owned(),
+        (pointer, "rule-two-streams") => format!(
+            "rule-two-streams at {pointer}: a rule matches stdout or stderr, not both; keep one command per check"
+        ),
+        (pointer, code) => format!("{code} at {pointer}"),
+    };
+
+    issue(path, error.code, message)
+}
+
 /// `None` quando algum campo de `[when]` foi recusado (o motivo vai para `issues`).
 fn when_data(path: &str, when: WhenToml, issues: &mut Vec<ExtensionIssue>) -> Option<Value> {
-    let event = keep(
-        issues,
-        short_field(path, "event", when.event, EVENT_MAX_CHARS),
-    );
+    let event = short_field(path, "event", when.event, EVENT_MAX_CHARS).and_then(|event| {
+        if RUNNABLE_EVENTS.contains(&event.as_str()) {
+            Ok(event)
+        } else {
+            Err(issue(
+                path,
+                "event-unsupported",
+                "`event` is not one of before-commit, before-pr, before-merge".to_owned(),
+            ))
+        }
+    });
+    let event = keep(issues, event);
     let matcher = when
         .matcher
         .map(|matcher| short_field(path, "matcher", matcher, MATCHER_MAX_CHARS))
         .transpose();
     let matcher = keep(issues, matcher);
-    if when.vocabulary.as_deref().is_some_and(|v| v != "free") {
+    if when.vocabulary.as_deref().is_some_and(|v| v != "closed") {
         issues.push(issue(
             path,
             "value-not-allowed",
-            "when.vocabulary must be \"free\"".to_owned(),
+            "when.vocabulary must be \"closed\"".to_owned(),
         ));
     }
 
     let mut data = Map::from_iter([
-        ("vocabulary".to_owned(), Value::String("free".to_owned())),
+        ("vocabulary".to_owned(), Value::String("closed".to_owned())),
         ("event".to_owned(), Value::String(event?)),
     ]);
     if let Some(matcher) = matcher? {

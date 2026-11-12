@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 use serde_json::{Value, json};
 
+use crate::app::ExtensionKind;
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
@@ -48,10 +49,7 @@ fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<St
     let caller = Caller::hook();
     let mut rendered = app.dispatch(&caller, &Action::Render)?;
     let Value::String(mut text) = rendered["text"].take() else {
-        return Err(AppError::plain(
-            "render-failed",
-            "the render result has no text",
-        ));
+        return Err(AppError::render_failed());
     };
     // A dry run never writes: the hook only tells what `omhl load` would do.
     let checked = app.dispatch(&caller, &Action::Load { dry_run: true });
@@ -64,7 +62,14 @@ fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<St
 
 fn extension_notice(checked: &Result<Value, AppError>) -> Option<String> {
     match checked {
-        Ok(report) => pending_note(report),
+        Ok(report) => {
+            let notes: Vec<String> = [pending_note(report), orphan_note(report)]
+                .into_iter()
+                .flatten()
+                .collect();
+
+            (!notes.is_empty()).then(|| notes.join("\n"))
+        }
         Err(error) => Some(warning(error)),
     }
 }
@@ -80,6 +85,24 @@ fn pending_note(report: &Value) -> Option<String> {
 
         format!(
             "NOTE: {pending} extension change(s) not loaded into tenant {tenant}; run omhl load"
+        )
+    })
+}
+
+/// Only the checks: the load report also lists guideline orphans, which `omhl check retire` does not cover.
+fn orphan_note(report: &Value) -> Option<String> {
+    let orphans: Vec<&str> = report["orphans"]
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|id| id.starts_with(ExtensionKind::Check.id_prefix()))
+        .collect();
+
+    (!orphans.is_empty()).then(|| {
+        format!(
+            "NOTE: {} check(s) have no file in this working tree: {}; if this branch or worktree predates the check, rebase it onto main (or restore the file); omhl check retire <id> is permanent for every clone and branch (the id never comes back), so run it only after the file removal is merged",
+            orphans.len(),
+            orphans.join(", ")
         )
     })
 }
@@ -110,9 +133,6 @@ fn issue_counts(error: &AppError) -> String {
 fn read_cwd(stdin: &mut impl Read) -> Result<String, AppError> {
     match read_json_input(stdin)?.get_mut("cwd").map(Value::take) {
         Some(Value::String(cwd)) if Path::new(&cwd).is_absolute() => Ok(cwd),
-        _ => Err(AppError::plain(
-            "invalid-hook-input",
-            "hook input must be a JSON object with an absolute string cwd",
-        )),
+        _ => Err(AppError::invalid_hook_input()),
     }
 }

@@ -7,15 +7,14 @@ use serde_json::{Value, json};
 use support::child::{Cmd, Output as Child, omhl};
 use support::ext::ExtTree;
 use support::git::git_in;
-use support::mcp_session::McpSession;
 use support::omhl::work_item_data;
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
 const LINT_CHECK: &str = "checks.lint";
 const LINT_HOW: &str = "Run the lint suite before every commit";
-const LINT_TOML: &str = "blocking = true\nhow = \"Run the lint suite before every commit\"\n\n[when]\nevent = \"pre-commit\"\n";
-const LINT_TOML_EDITED: &str = "blocking = true\nhow = \"Run the lint suite and the formatter\"\n\n[when]\nevent = \"pre-commit\"\n";
+const LINT_TOML: &str = "blocking = true\nhow = \"Run the lint suite before every commit\"\n\n[when]\nevent = \"before-commit\"\n";
+const LINT_TOML_EDITED: &str = "blocking = true\nhow = \"Run the lint suite and the formatter\"\n\n[when]\nevent = \"before-commit\"\n";
 const TONE_TOML: &str = "text = \"Keep every answer brief\"\n";
 
 // Apoio
@@ -223,29 +222,6 @@ fn it_should_load_twice_without_changes() {
     assert_eq!(second["revised"], json!([]));
     assert_eq!(second["unchanged"], json!([LINT_CHECK, "guidelines.tone"]));
     assert_eq!(total_records(&project), records_after_first);
-}
-
-// CLI e MCP
-
-#[test]
-fn it_should_give_cli_and_mcp_the_same_report_shape() {
-    let project = Project::new("acme");
-    ExtTree::at(project.dir())
-        .check("lint", LINT_TOML)
-        .guideline("tone", TONE_TOML);
-    let session = McpSession::start(project.dir(), project.xdg());
-
-    let cli = run_ok(&project, &["load", "--dry-run"]);
-    session.send(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": { "name": "load", "arguments": { "dry_run": true } },
-    }));
-    let mcp = session.recv()["result"].clone();
-
-    assert!(mcp.get("isError").is_none(), "the MCP call succeeds");
-    assert_eq!(json_line(&cli.stdout), mcp["structuredContent"]);
 }
 
 // Documentação

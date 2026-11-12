@@ -4,16 +4,33 @@ use serde_json::Value;
 use super::append::{Guard, NodeItem, status_of};
 use super::attestation_id;
 use crate::error::{OmhlError, RuleCode};
+use crate::mechanical::is_mechanical;
 use crate::native::NativeBase;
 use crate::probe::{ProbeError, ProbeOutcome};
-use hexlog::Snapshot;
+use hexlog::{Snapshot, SnapshotKind};
+
+/// Único client que grava attestation de check com `run`.
+const ATTESTER: &str = "executor";
+
+struct FoundCheck {
+    id: SemanticId,
+    mechanical: bool,
+}
 
 impl Guard<'_, '_> {
     /// Regras 6 a 10 da attestation (work item, check, id derivado, sonda e desfecho).
     pub(super) fn check_attestation(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         let work_item = self.find_open_work_item(node)?;
         let check = self.find_check(node)?;
-        check_derived_id(node, check.as_ref(), work_item.as_ref())?;
+        check_derived_id(
+            node,
+            check.as_ref().map(|found| &found.id),
+            work_item.as_ref(),
+        )?;
+        // `spec_digest` é o selo do `check run`: quem o declara também é o `executor`
+        if check.is_some_and(|found| found.mechanical) || node.has_field("spec_digest") {
+            self.check_mechanical_authorship(node)?;
+        }
         match node.base {
             None => self.check_head(node),
             Some(_) => self.check_outcome_unchanged(node),
@@ -35,33 +52,55 @@ impl Guard<'_, '_> {
     }
 
     /// O check é nativo ou um node vigente, e nos dois casos do tipo `check`.
-    fn find_check(&mut self, node: &NodeItem<'_>) -> Result<Option<SemanticId>, OmhlError> {
+    fn find_check(&mut self, node: &NodeItem<'_>) -> Result<Option<FoundCheck>, OmhlError> {
         let Some(raw) = node.field("check") else {
             return Ok(None);
         };
         let id = SemanticId::parse(raw)
             .map_err(|_| node.error(RuleCode::CheckNotFound, "body/data/check"))?;
-        let type_name = match NativeBase.lookup(&id) {
-            Some(native) => Some(native.type_name),
-            None => self
-                .hexlog
-                .get(self.tenant, &id)?
-                .map(|view| view.type_name),
+        // check nativo nunca tem `run`
+        let (type_name, mechanical) = match NativeBase.lookup(&id) {
+            Some(native) => (Some(native.type_name), false),
+            None => match self.hexlog.get(self.tenant, &id)? {
+                Some(view) => (Some(view.type_name), is_mechanical(&view.data)),
+                None => (None, false),
+            },
         };
 
         match type_name {
-            Some(found) if found.as_str() == "check" => Ok(Some(id)),
+            Some(found) if found.as_str() == "check" => Ok(Some(FoundCheck { id, mechanical })),
             _ => Err(node.error(RuleCode::CheckNotFound, "body/data/check")),
         }
     }
 
-    /// Attestation criada: o snapshot é o `HEAD` de uma árvore limpa.
+    /// Attestation de check mecânico: só o `executor`, com o rastro da execução completo.
+    fn check_mechanical_authorship(&self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
+        if self.author.client != ATTESTER {
+            return Err(node.error(RuleCode::CheckRunAuthor, "body/data/check"));
+        }
+
+        match first_missing_field(node) {
+            Some(field) => Err(node.error(
+                RuleCode::AttestationIncomplete,
+                &format!("body/data/{field}"),
+            )),
+            None => Ok(()),
+        }
+    }
+
+    /// Attestation criada: o snapshot é o `HEAD` de uma árvore limpa (`git-commit`) ou a árvore do índice (`git-tree`).
     fn check_head(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         let Some(snapshot) = node.snapshot else {
             return Ok(());
         };
 
-        match probe_refusal(self.probe_once(), snapshot) {
+        let refusal = match snapshot.kind() {
+            SnapshotKind::GitTree => tree_probe_refusal(self.probe_index_tree_once(), snapshot),
+            // `SnapshotKind` é non_exhaustive: tipo futuro cai na regra de `HEAD`, que o recusa
+            _ => probe_refusal(self.probe_once(), snapshot),
+        };
+
+        match refusal {
             Some(code) => Err(node.error(code, "snapshot")),
             None => Ok(()),
         }
@@ -82,6 +121,20 @@ impl Guard<'_, '_> {
             Ok(())
         }
     }
+}
+
+/// Um `failed` sem `exit_code` é o timeout ou a morte por sinal.
+fn first_missing_field(node: &NodeItem<'_>) -> Option<&'static str> {
+    ["byproduct", "command", "spec_digest"]
+        .into_iter()
+        .find(|key| !node.has_field(key))
+        .or_else(|| {
+            let exited = matches!(
+                node.field("outcome"),
+                Some("passed" | "passed_with_warning")
+            );
+            (exited && !node.has_field("exit_code")).then_some("exit_code")
+        })
 }
 
 /// O id da attestation é derivado do snapshot, do check e do work item.
@@ -111,6 +164,21 @@ pub(crate) fn probe_refusal(
         Err(_) => Some(RuleCode::ProbeFailed),
         Ok(ProbeOutcome::Dirty) => Some(RuleCode::SnapshotDirty),
         Ok(ProbeOutcome::Reproducible(head)) if head != snapshot => Some(RuleCode::SnapshotNotHead),
+        Ok(ProbeOutcome::Reproducible(_)) => None,
+    }
+}
+
+/// Por que a resposta da sonda de árvore não aceita o snapshot como a árvore do índice.
+pub(crate) fn tree_probe_refusal(
+    probed: &Result<ProbeOutcome, ProbeError>,
+    snapshot: &Snapshot,
+) -> Option<RuleCode> {
+    match probed {
+        Err(_) => Some(RuleCode::ProbeFailed),
+        Ok(ProbeOutcome::Dirty) => Some(RuleCode::SnapshotDirty),
+        Ok(ProbeOutcome::Reproducible(tree)) if tree != snapshot => {
+            Some(RuleCode::SnapshotTreeMismatch)
+        }
         Ok(ProbeOutcome::Reproducible(_)) => None,
     }
 }

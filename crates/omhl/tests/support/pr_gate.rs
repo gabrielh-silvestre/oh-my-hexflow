@@ -1,8 +1,10 @@
 use ::omhl::facade::{ClosedWorkItem, Omhl};
 use ::omhl::gate::{GateReport, QuestionReport};
 use ::omhl::native::NativeCheck;
+use ::omhl::pr_gate::GateSnapshots;
 use hexlog::{
     AppendItem, AppendOutcome, ItemBody, Lineage, NodeView, RecordId, SemanticId, Snapshot,
+    SnapshotKind,
 };
 use serde_json::{Value, json};
 
@@ -10,7 +12,7 @@ use super::omhl::{
     PR_7, RUN_TESTS, acme, append_ok, attestation_data, attestation_id_for, check_data,
     decision_data, node_item, premise_data, with_snapshot,
 };
-use super::{DEFAULT_INSTANT, author, rty, sid, tname};
+use super::{DEFAULT_INSTANT, author, loader_author, rty, sid, tname};
 
 pub const CI_GREEN: &str = "checks.ci-green-before-merge";
 pub const FEATURE_1: &str = "work-items.feature-1";
@@ -56,6 +58,32 @@ pub fn project_check(id: &str, event: &str, blocking: bool, shadowed: bool) -> N
         external_id: None,
         author: author(),
         shadowed,
+    }
+}
+
+/// Como `project_check`, mas com `run`, `timeout_secs` e `expect` e gravado pelo `loader`.
+pub fn mechanical_project_check(id: &str, event: &str, blocking: bool, shadowed: bool) -> NodeView {
+    let mut data = check_data(event, "run it", blocking);
+    data["run"] = json!(["true"]);
+    data["timeout_secs"] = json!(60);
+    data["expect"] = json!([{"exit": 0, "outcome": "passed"}]);
+
+    NodeView {
+        data,
+        author: loader_author(),
+        ..project_check(id, event, blocking, shadowed)
+    }
+}
+
+/// O que `required_checks` devolve, escrito por ids de texto: `(id, kind)` na ordem dada.
+pub fn required_pairs(pairs: &[(&str, SnapshotKind)]) -> Vec<(SemanticId, SnapshotKind)> {
+    pairs.iter().map(|(id, kind)| (sid(id), *kind)).collect()
+}
+
+pub fn snapshots(commit: &Snapshot, tree: &Snapshot) -> GateSnapshots {
+    GateSnapshots {
+        head_commit: commit.clone(),
+        head_tree: tree.clone(),
     }
 }
 
@@ -142,13 +170,13 @@ pub fn seed_contradicted_decision(omhl: &mut Omhl<'_>) -> RecordId {
 
 // Leitura
 
-pub fn gate_of(omhl: &mut Omhl<'_>, snapshot: &Snapshot) -> GateReport {
-    omhl.evaluate_pr_gate(&acme(), &sid(PR_7), snapshot)
+pub fn gate_of(omhl: &mut Omhl<'_>, snapshots: &GateSnapshots) -> GateReport {
+    omhl.evaluate_pr_gate(&acme(), &sid(PR_7), snapshots)
         .expect("the gate is evaluated")
 }
 
-pub fn close(omhl: &mut Omhl<'_>, work_item: &str, snapshot: &Snapshot) -> ClosedWorkItem {
-    omhl.close_work_item(&acme(), &sid(work_item), snapshot, &author())
+pub fn close(omhl: &mut Omhl<'_>, work_item: &str, snapshots: &GateSnapshots) -> ClosedWorkItem {
+    omhl.close_work_item(&acme(), &sid(work_item), snapshots, &author())
         .expect("the work item is closed")
 }
 
@@ -193,4 +221,12 @@ pub fn closed_data(open: Value, passed: bool, chain_head_seq: u64, snapshot: &Sn
     });
 
     data
+}
+
+/// `outcomes` esperado, escrito por ids de texto.
+pub fn expected_outcomes(expected: &[(&str, bool)]) -> Vec<(String, bool)> {
+    expected
+        .iter()
+        .map(|(label, passed)| ((*label).to_owned(), *passed))
+        .collect()
 }

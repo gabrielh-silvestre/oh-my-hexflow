@@ -1,0 +1,1 @@
+Runs `cargo test --workspace --locked`; it passes when every test passes. If chain_properties fails, restore crates/hexlog/tests/chain_properties.proptest-regressions with `git checkout --` before running again.

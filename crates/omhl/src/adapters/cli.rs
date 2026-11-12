@@ -3,14 +3,16 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use clap::builder::PossibleValuesParser;
 use clap::error::ErrorKind;
-use clap::{Parser, Subcommand};
-use serde_json::Value;
+use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand};
+use serde_json::{Value, json};
 
 use super::{hook, mcp};
-use crate::app::action::{Action, Caller};
+use crate::app::RUNNABLE_EVENTS;
+use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
-use crate::app::input::read_json_input;
+use crate::app::input::{INPUT_MAX_BYTES, read_json_input};
 use crate::app::runtime::run_action;
 use crate::project::Env;
 
@@ -82,6 +84,55 @@ pub enum ActionCommand {
     },
     /// Write the projection of the tenant under `.omhl/projection/`.
     Project,
+    /// Run mechanical checks.
+    Check {
+        #[command(subcommand)]
+        command: CheckCommand,
+    },
+    /// Print the last lines of the stored output of a check for a work item.
+    Byproduct {
+        check: String,
+        work_item: String,
+        #[arg(long, default_value_t = 50)]
+        tail: u32,
+    },
+    /// Manage the git hooks of omhl.
+    Hooks {
+        #[command(subcommand)]
+        command: HooksCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CheckCommand {
+    /// Run the mechanical checks of an event, or one check, and attest them for the work item of the current branch.
+    Run(CheckRunArgs),
+    /// Kill the processes that escaped from an earlier check run whose omhl already exited.
+    Sweep,
+    /// Retire the stored check whose file was deleted from the working tree.
+    Retire { check: String },
+}
+
+#[derive(Debug, Args)]
+#[command(group(ArgGroup::new("target").required(true).multiple(false).args(["event", "check"])))]
+pub struct CheckRunArgs {
+    #[arg(long, value_parser = PossibleValuesParser::new(RUNNABLE_EVENTS))]
+    pub event: Option<String>,
+    #[arg(long)]
+    pub check: Option<String>,
+    #[arg(long, requires = "event")]
+    pub pre_push: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum HooksCommand {
+    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit) of this clone; these are git hooks, unrelated to the Claude Code hook `omhl hook session-start`.
+    Install {
+        #[arg(long)]
+        force: bool,
+    },
+    /// Consume the develop mark after a commit on develop; the git post-commit hook calls it.
+    PostCommit,
 }
 
 #[derive(Debug, Subcommand)]
@@ -101,6 +152,9 @@ pub fn run(
         Ok(cli) => cli,
         Err(usage) => return report_usage(&usage, out, err),
     };
+    if let Some(usage) = pre_push_misuse(&cli) {
+        return report_usage(&usage, out, err);
+    }
     let Cli {
         db,
         project_dir,
@@ -141,6 +195,23 @@ fn report_usage(
     ExitCode::from(2)
 }
 
+/// O clap não exprime "só com este valor de `--event`"; o erro sai pelo mesmo caminho do de uso.
+fn pre_push_misuse(cli: &Cli) -> Option<clap::Error> {
+    let Command::Action(ActionCommand::Check {
+        command: CheckCommand::Run(args),
+    }) = &cli.command
+    else {
+        return None;
+    };
+
+    (args.pre_push && args.event.as_deref() != Some("before-pr")).then(|| {
+        Cli::command().error(
+            ErrorKind::ArgumentConflict,
+            "--pre-push is only valid with --event before-pr",
+        )
+    })
+}
+
 fn report(
     result: Result<Value, AppError>,
     out: &mut impl std::io::Write,
@@ -164,12 +235,7 @@ fn start_dir(project_dir: Option<&Path>) -> Result<PathBuf, AppError> {
         None => std::env::current_dir(),
     };
 
-    resolved.map_err(|_| {
-        AppError::plain(
-            "invalid-project-dir",
-            "the project directory cannot be resolved",
-        )
-    })
+    resolved.map_err(|_| AppError::invalid_project_dir())
 }
 
 fn execute(
@@ -179,12 +245,16 @@ fn execute(
     db: Option<&Path>,
     env: &Env<'_>,
 ) -> Result<Value, AppError> {
-    let action = to_action(command, stdin)?;
+    let action = to_action(command, stdin, env)?;
 
     run_action(start, db, env, &Caller::cli(), &action)
 }
 
-fn to_action(command: ActionCommand, stdin: &mut impl Read) -> Result<Action, AppError> {
+fn to_action(
+    command: ActionCommand,
+    stdin: &mut impl Read,
+    _env: &Env<'_>,
+) -> Result<Action, AppError> {
     Ok(match command {
         ActionCommand::List {
             type_name,
@@ -218,5 +288,61 @@ fn to_action(command: ActionCommand, stdin: &mut impl Read) -> Result<Action, Ap
         ActionCommand::Verify => Action::Verify,
         ActionCommand::Load { dry_run } => Action::Load { dry_run },
         ActionCommand::Project => Action::Project,
+        ActionCommand::Check {
+            command: CheckCommand::Run(args),
+        } => check_run(args, stdin)?,
+        ActionCommand::Check {
+            command: CheckCommand::Sweep,
+        } => Action::CheckSweep,
+        ActionCommand::Check {
+            command: CheckCommand::Retire { check },
+        } => Action::CheckRetire { check },
+        ActionCommand::Byproduct {
+            check,
+            work_item,
+            tail,
+        } => Action::Byproduct {
+            check,
+            work_item,
+            tail,
+        },
+        ActionCommand::Hooks {
+            command: HooksCommand::Install { force },
+        } => Action::HooksInstall { force },
+        ActionCommand::Hooks {
+            command: HooksCommand::PostCommit,
+        } => Action::ConsumeDevelopMark,
     })
+}
+
+fn check_run(args: CheckRunArgs, stdin: &mut impl Read) -> Result<Action, AppError> {
+    let target = match (args.event, args.check) {
+        (Some(event), _) => CheckTarget::Event(event),
+        (None, Some(check)) => CheckTarget::Check(check),
+        (None, None) => unreachable!("clap requires exactly one of --event and --check"),
+    };
+    let pre_push = match args.pre_push {
+        true => Some(read_pre_push_input(stdin)?),
+        false => None,
+    };
+
+    Ok(Action::CheckRun { target, pre_push })
+}
+
+/// Lê um byte além do limite: a entrada grande demais é recusada sem ler o resto.
+fn read_pre_push_input(stdin: &mut impl Read) -> Result<String, AppError> {
+    let mut bytes = Vec::new();
+    stdin
+        .take(INPUT_MAX_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| AppError::input_unreadable())?;
+    if bytes.len() > INPUT_MAX_BYTES {
+        return Err(push_input_refused("input-too-large"));
+    }
+
+    String::from_utf8(bytes).map_err(|_| push_input_refused("input-not-utf8"))
+}
+
+fn push_input_refused(kind: &str) -> AppError {
+    AppError::push_input_invalid("").with_context(json!({ "kind": kind, "event": "before-pr" }))
 }

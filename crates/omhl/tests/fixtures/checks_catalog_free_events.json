@@ -1,0 +1,49 @@
+{
+  "types": [
+    {
+      "name": "check",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["when", "how", "blocking"],
+        "properties": {
+          "when": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["vocabulary", "event"],
+            "properties": {
+              "vocabulary": {"const": "free"},
+              "event": {"type": "string", "minLength": 1, "maxLength": 100},
+              "matcher": {"type": "string", "minLength": 1, "maxLength": 200}
+            }
+          },
+          "how": {"type": "string", "minLength": 1, "maxLength": 8000},
+          "blocking": {"type": "boolean"}
+        }
+      }
+    },
+    {
+      "name": "attestation",
+      "requires_snapshot": true,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["check", "work_item", "outcome", "ok"],
+        "properties": {
+          "check": {"type": "string", "minLength": 1, "maxLength": 200},
+          "work_item": {"type": "string", "minLength": 1, "maxLength": 200},
+          "outcome": {"enum": ["passed", "passed_with_warning", "failed"]},
+          "ok": {"type": "boolean"},
+          "note": {"type": "string", "minLength": 1, "maxLength": 2000}
+        },
+        "oneOf": [
+          {"properties": {"outcome": {"const": "failed"}, "ok": {"const": false}}},
+          {"properties": {"outcome": {"enum": ["passed", "passed_with_warning"]}, "ok": {"const": true}}}
+        ]
+      }
+    }
+  ],
+  "relations": [
+    {"name": "after", "from": ["check"], "to": ["check"], "acyclic": true}
+  ]
+}

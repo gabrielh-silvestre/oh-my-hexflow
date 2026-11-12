@@ -12,14 +12,50 @@
             "additionalProperties": false,
             "required": ["vocabulary", "event"],
             "properties": {
-              "vocabulary": {"const": "free"},
-              "event": {"type": "string", "minLength": 1, "maxLength": 100},
+              "vocabulary": {"const": "closed"},
+              "event": {"enum": ["before-commit", "before-pr", "before-merge"]},
               "matcher": {"type": "string", "minLength": 1, "maxLength": 200}
             }
           },
           "how": {"type": "string", "minLength": 1, "maxLength": 8000},
-          "blocking": {"type": "boolean"}
-        }
+          "blocking": {"type": "boolean"},
+          "concern": {"enum": ["style", "test", "compile"]},
+          "variant": {"enum": ["format", "lint", "suite", "coverage", "validate", "build"]},
+          "run": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {"type": "string", "minLength": 1, "maxLength": 1000}
+          },
+          "timeout_secs": {"type": "integer", "minimum": 1, "maximum": 7200},
+          "expect": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["exit", "outcome"],
+              "properties": {
+                "exit": {"type": "integer"},
+                "stdout": {"type": "string"},
+                "stderr": {"type": "string"},
+                "outcome": {"enum": ["passed", "passed_with_warning", "failed"]}
+              },
+              "not": {"required": ["stdout", "stderr"]}
+            }
+          }
+        },
+        "anyOf": [
+          {"not": {"required": ["run"]}},
+          {"required": ["run", "timeout_secs", "expect"]}
+        ],
+        "oneOf": [
+          {"not": {"anyOf": [{"required": ["concern"]}, {"required": ["variant"]}]}},
+          {"required": ["concern", "variant"], "properties": {"concern": {"const": "style"}, "variant": {"enum": ["format", "lint"]}}},
+          {"required": ["concern", "variant"], "properties": {"concern": {"const": "test"}, "variant": {"enum": ["suite", "coverage"]}}},
+          {"required": ["concern", "variant"], "properties": {"concern": {"const": "compile"}, "variant": {"enum": ["validate", "build"]}}}
+        ]
       }
     },
     {
@@ -34,7 +70,14 @@
           "work_item": {"type": "string", "minLength": 1, "maxLength": 200},
           "outcome": {"enum": ["passed", "passed_with_warning", "failed"]},
           "ok": {"type": "boolean"},
-          "note": {"type": "string", "minLength": 1, "maxLength": 2000}
+          "note": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "exit_code": {"type": "integer"},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "timed_out": {"type": "boolean"},
+          "truncated": {"type": "boolean"},
+          "command": {"type": "array", "items": {"type": "string"}},
+          "spec_digest": {"type": "string", "minLength": 64, "maxLength": 64},
+          "byproduct": {"type": "string", "format": "attachment"}
         },
         "oneOf": [
           {"properties": {"outcome": {"const": "failed"}, "ok": {"const": false}}},

@@ -13,7 +13,8 @@ use tempfile::TempDir;
 
 const W1: &str = "work-items.w1";
 const LINT_CHECK: &str = "checks.lint";
-const LINT_TOML: &str = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"pre-commit\"\n";
+const LINT_TOML: &str =
+    "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 const COMMANDS: [&str; 10] = [
@@ -169,6 +170,13 @@ fn it_should_exit_one_with_a_json_error_when_there_is_no_marker() {
         json_line(&output.stderr)["error"]["code"],
         json!("no-marker")
     );
+    assert!(
+        json_line(&output.stderr)["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("rebase")),
+        "the message points to a rebase: {}",
+        output.stderr
+    );
 }
 
 #[test]
@@ -310,6 +318,18 @@ fn it_should_attest_both_required_checks_and_pass_the_gate_in_a_real_repo() {
     )
     .run();
     let gate = in_project(&project, &["gate-pr", W1]).run();
+    let gate_json = json_line(&gate.stdout);
+    let questions: Vec<(&str, bool)> = gate_json["questions"]
+        .as_array()
+        .expect("the gate lists its questions")
+        .iter()
+        .map(|question| {
+            (
+                question["label"].as_str().expect("the label is text"),
+                question["passed"].as_bool().expect("passed is a bool"),
+            )
+        })
+        .collect();
     let first_json = json_line(&first.stdout);
     let attestation_id = first_json["attestation"]["id"]
         .as_str()
@@ -322,7 +342,19 @@ fn it_should_attest_both_required_checks_and_pass_the_gate_in_a_real_repo() {
         json_line(&second.stdout)["attestation"]["snapshot"]["id"],
         json!(head)
     );
+    assert_eq!(
+        first_json["attestation"]["snapshot"]["kind"],
+        json!("git-commit")
+    );
     assert_eq!(json_line(&gate.stdout)["passed"], json!(true));
+    assert_eq!(
+        questions,
+        vec![
+            (RUN_TESTS, true),
+            (CI_GREEN, true),
+            ("no-open-contradiction", true),
+        ]
+    );
     assert_eq!(
         json_line(&fetched.stdout)["node"]["data"]["outcome"],
         json!("passed")
@@ -413,6 +445,26 @@ fn it_should_create_the_database_at_the_db_flag_with_mode_0600() {
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(file_mode & 0o777, 0o600);
     assert_eq!(dir_mode & 0o777, 0o700);
+}
+
+#[test]
+fn it_should_refuse_a_db_inside_the_project_root_without_creating_files() {
+    let project = Project::new("acme");
+    let inside = project.dir().join("abs.db");
+    let cases = ["rel.db", inside.to_str().expect("the path is UTF-8")];
+
+    for db in cases {
+        let output = omhl(&["--db", db, "list"]).cwd(project.dir()).run();
+
+        assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+        assert_eq!(
+            json_line(&output.stderr)["error"]["code"],
+            json!("db-inside-project")
+        );
+    }
+    assert!(!project.dir().join("rel.db").exists());
+    assert!(!project.dir().join("abs.db").exists());
+    assert!(!project.dir().join("blobs").exists());
 }
 
 // load e project

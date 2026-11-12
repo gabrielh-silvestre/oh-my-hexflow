@@ -7,12 +7,19 @@ use ::omhl::app::action::{Action, Caller};
 use ::omhl::app::error::AppError;
 use ::omhl::app::retry::RetryPolicy;
 use ::omhl::facade::OmhlDeps;
+use ::omhl::probe::{ProbeOutcome, TreeSource};
+use hexlog::{Snapshot, SnapshotKind};
 use serde_json::Value;
 
 use super::ext::ExtTree;
 use super::omhl::acme;
 use super::raw::RawHarness;
 use super::{FakeProbe, snap};
+
+/// A árvore do HEAD que a sonda limpa responde ao fechamento.
+fn head_tree() -> Snapshot {
+    Snapshot::new(SnapshotKind::GitTree, &"c".repeat(40)).expect("valid snapshot")
+}
 
 pub struct AppFixture {
     raw: RawHarness,
@@ -26,7 +33,10 @@ impl AppFixture {
     pub fn new() -> AppFixture {
         AppFixture {
             raw: RawHarness::new(),
-            probe: FakeProbe::clean(snap('a')),
+            probe: FakeProbe::clean(snap('a')).with_tree(
+                TreeSource::Head,
+                Ok(ProbeOutcome::Reproducible(head_tree())),
+            ),
             tree: ExtTree::new(),
             with_root: true,
         }

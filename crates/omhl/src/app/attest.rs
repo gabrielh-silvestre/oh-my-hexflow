@@ -1,4 +1,4 @@
-use hexlog::{AppendItem, AppendRequest, ItemBody, SemanticId, Snapshot, TypeName};
+use hexlog::{AppendItem, AppendRequest, ItemBody, RecordId, SemanticId, Snapshot, TypeName};
 use serde_json::{Value, json};
 
 use super::action::Caller;
@@ -29,12 +29,8 @@ impl Engine<'_> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshot = self.probe_snapshot()?;
         let id = derived_id(&snapshot, &check, &work_item)?;
-        let data = attestation_data(&check, &work_item, outcome, note);
-        // Sem `base` o motor responderia `FORK_REJECTED`: repetir o atestado é uma revisão dele.
-        let base = self
-            .omhl
-            .get(&self.tenant, &id)?
-            .map(|existing| existing.record_id);
+        let data = attestation_data(&check, &work_item, outcome, note, None);
+        let base = self.current_base(&id)?;
         let attestation = json!({ "id": id, "snapshot": snapshot });
         let item = AppendItem {
             body: ItemBody::Node {
@@ -56,9 +52,17 @@ impl Engine<'_> {
 
         Ok(response(attestation, data, output::appended(&appended)))
     }
+
+    /// Sem `base` o motor responderia `FORK_REJECTED`: repetir o atestado é uma revisão dele.
+    pub(super) fn current_base(&mut self, id: &SemanticId) -> Result<Option<RecordId>, AppError> {
+        Ok(self
+            .omhl
+            .get(&self.tenant, id)?
+            .map(|existing| existing.record_id))
+    }
 }
 
-fn derived_id(
+pub(super) fn derived_id(
     snapshot: &Snapshot,
     check: &SemanticId,
     work_item: &SemanticId,
@@ -69,11 +73,12 @@ fn derived_id(
     })
 }
 
-fn attestation_data(
+pub(super) fn attestation_data(
     check: &SemanticId,
     work_item: &SemanticId,
     outcome: &str,
     note: Option<&str>,
+    byproduct: Option<&str>,
 ) -> Value {
     let mut data = json!({
         "check": check,
@@ -83,6 +88,9 @@ fn attestation_data(
     });
     if let Some(note) = note {
         data["note"] = json!(note);
+    }
+    if let Some(byproduct) = byproduct {
+        data["byproduct"] = json!(byproduct);
     }
 
     data

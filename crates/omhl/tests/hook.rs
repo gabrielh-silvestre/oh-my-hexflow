@@ -20,9 +20,11 @@ const NATIVE_GUIDELINES: [&str; 2] = [
     "guidelines.commit-policy",
 ];
 const CONTEXT_CEILING: usize = 10_000;
-const LINT_TOML: &str = "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"pre-commit\"\n";
+const LINT_TOML: &str =
+    "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
 const INVALID_TOML: &str = "this is = [not valid";
 const PENDING_NOTE: &str = "NOTE: 1 extension change(s) not loaded into tenant acme; run omhl load";
+const ORPHAN_NOTE: &str = "NOTE: 1 check(s) have no file in this working tree: checks.lint; if this branch or worktree predates the check, rebase it onto main (or restore the file); omhl check retire <id> is permanent for every clone and branch (the id never comes back), so run it only after the file removal is merged";
 
 // Apoio
 
@@ -326,6 +328,20 @@ fn it_should_append_a_note_when_extension_changes_are_pending() {
 }
 
 #[test]
+fn it_should_list_the_orphaned_checks_in_a_note() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).check("lint", LINT_TOML);
+    let loaded = in_project(&project, &["load"]);
+    fs::remove_file(project.dir().join(".omhl/checks/lint.toml")).expect("the file is deleted");
+
+    let context = context_of(&hook_for(&project));
+
+    assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
+    assert!(context.contains(ORPHAN_NOTE), "context: {context}");
+    assert!(!context.contains(PENDING_NOTE), "context: {context}");
+}
+
+#[test]
 fn it_should_not_append_anything_when_extensions_are_synced() {
     let project = Project::new("acme");
     ExtTree::at(project.dir()).check("lint", LINT_TOML);
@@ -409,7 +425,7 @@ fn it_should_keep_the_warning_line_within_480_characters() {
         .file(".omhl/checks/binary.toml", [0xff, 0xfe, 0xfd])
         .check(
             "nohow",
-            "blocking = true\n\n[when]\nevent = \"pre-commit\"\n",
+            "blocking = true\n\n[when]\nevent = \"before-commit\"\n",
         );
 
     let context = context_of(&hook_for(&project));

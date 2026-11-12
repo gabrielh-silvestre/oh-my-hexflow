@@ -1,10 +1,9 @@
 mod support;
 
 use std::fs;
-use std::thread;
 use std::time::{Duration, Instant};
 
-use hexlog::RelationQuery;
+use hexlog::{RelationQuery, Snapshot, SnapshotKind};
 use omhl::app::App;
 use omhl::app::action::{Action, Caller};
 use omhl::app::error::AppError;
@@ -12,9 +11,10 @@ use omhl::app::input::parse_json_text;
 use omhl::app::retry::RetryPolicy;
 use omhl::app::runtime::Runtime;
 use omhl::facade::{Omhl, OmhlDeps};
+use omhl::probe::{ProbeOutcome, TreeSource};
 use omhl::project::Env;
 use serde_json::{Value, json};
-use support::busy::with_write_lock;
+use support::busy::{AttemptClock, with_write_lock, with_write_lock_until_attempt};
 use support::omhl::{acme, check_data, decision_data, premise_data, work_item_data};
 use support::project::Project;
 use support::raw::RawHarness;
@@ -25,6 +25,9 @@ const W1: &str = "work-items.w1";
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 const USE_WAL: &str = "decisions.use-wal";
+const TREE_A: &str = "08585692ce06452da6f82ae66b90d98b55536fca";
+const TREE_ATTESTATION: &str =
+    "attestations.08585692ce06452da6f82ae66b90d98b.55536fca.checks.run-tests.work-items.w1";
 const BUSY_MESSAGE: &str =
     "database is busy: another omhl process is writing; run the command again";
 
@@ -44,7 +47,10 @@ impl Fixture {
     }
 
     fn clean() -> Fixture {
-        Fixture::new(FakeProbe::clean(snap('a')))
+        Fixture::new(
+            FakeProbe::clean(snap('a'))
+                .with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree('c')))),
+        )
     }
 
     fn deps(&self) -> OmhlDeps<'_> {
@@ -179,6 +185,43 @@ fn close_action() -> Action {
     Action::Close {
         work_item: W1.to_owned(),
     }
+}
+
+fn tree(fill: char) -> Snapshot {
+    Snapshot::new(SnapshotKind::GitTree, &fill.to_string().repeat(40)).expect("valid snapshot")
+}
+
+fn tree_a() -> Snapshot {
+    Snapshot::new(SnapshotKind::GitTree, TREE_A).expect("valid snapshot")
+}
+
+/// Sonda limpa sobre a tree `TREE_A`; `with_head` também responde à fonte `Head`.
+fn tree_probe(with_head: bool) -> FakeProbe {
+    let probe = FakeProbe::clean(tree_a())
+        .with_tree(TreeSource::Index, Ok(ProbeOutcome::Reproducible(tree_a())));
+    if with_head {
+        return probe.with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree_a())));
+    }
+
+    probe
+}
+
+/// Pedido cru que grava o atestado de `RUN_TESTS` em `W1` sobre `TREE_A` com o `kind` dado.
+fn tree_attestation_action(kind: &str) -> Action {
+    raw_append_action(json!({"items": [{
+        "body": {
+            "kind": "node",
+            "id": TREE_ATTESTATION,
+            "type": "attestation",
+            "data": {
+                "check": RUN_TESTS,
+                "work_item": W1,
+                "outcome": "passed",
+                "ok": true,
+            },
+        },
+        "snapshot": { "kind": kind, "id": TREE_A },
+    }]}))
 }
 
 fn open_work_item(app: &mut App<'_>) {
@@ -743,6 +786,68 @@ fn it_should_refuse_closing_when_the_tree_is_dirty_in_the_app() {
     assert_eq!(node["data"]["status"], json!("open"));
 }
 
+#[test]
+fn it_should_append_an_attestation_with_a_git_tree_snapshot_through_the_wire_format() {
+    let fixture = Fixture::new(tree_probe(false));
+    let mut app = fixture.open();
+    open_work_item(&mut app);
+
+    run(&mut app, &tree_attestation_action("git-tree"));
+    let node = node_of(&mut app, TREE_ATTESTATION);
+
+    assert_eq!(
+        node["snapshot"],
+        json!({ "kind": "git-tree", "id": TREE_A })
+    );
+    assert_eq!(
+        node["data"],
+        json!({
+            "check": RUN_TESTS,
+            "work_item": W1,
+            "outcome": "passed",
+            "ok": true,
+        })
+    );
+}
+
+#[test]
+fn it_should_refuse_an_unknown_snapshot_kind_through_the_wire_format() {
+    let fixture = Fixture::new(tree_probe(false));
+    let mut app = fixture.open();
+    open_work_item(&mut app);
+
+    let error = refuse(&mut app, &tree_attestation_action("git-blob"));
+    let listed = run(&mut app, &list_action(Some("attestation"), None, None));
+
+    assert_eq!(
+        error.to_json(),
+        append_invalid("/items/0/snapshot/kind", "unknown kind")
+    );
+    assert_eq!(listed["items"], json!([]));
+}
+
+#[test]
+fn it_should_still_refuse_a_git_tree_snapshot_in_the_work_item_gate() {
+    let fixture = Fixture::new(tree_probe(true));
+    let mut app = fixture.open();
+    open_work_item(&mut app);
+
+    let error = refuse(&mut app, &close_action());
+    let node = node_of(&mut app, W1);
+
+    assert_eq!(error.code(), "INVALID_RECORD");
+    assert_eq!(
+        error.to_json()["error"]["details"],
+        json!([{
+            "code": "const",
+            "message": "const",
+            "path": "/items/0/body/data/gate/snapshot/kind",
+        }])
+    );
+    assert_eq!(node["data"]["status"], json!("open"));
+    assert!(node["data"].get("gate").is_none());
+}
+
 // Erros em JSON
 
 #[test]
@@ -761,7 +866,7 @@ fn it_should_render_an_engine_error_with_its_wire_name_and_details() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();
     let data = json!({
-        "when": { "vocabulary": "free", "event": "before-commit" },
+        "when": { "vocabulary": "closed", "event": "before-commit" },
         "blocking": true,
     });
     let item = node_wire("checks.no-how", "check", &data);
@@ -815,17 +920,20 @@ fn it_should_succeed_when_the_lock_is_released_during_the_retries() {
         busy_timeout: Duration::from_millis(50),
         pauses: vec![Duration::from_millis(150), Duration::from_millis(300)],
     };
-    let mut app = fixture.open_with(&retry);
+    {
+        // o tenant nasce antes: criá-lo leria o `AttemptClock` sem ninguém para responder
+        let _created = fixture.open();
+    }
+    let (clock, attempts) = AttemptClock::new();
+    let deps = OmhlDeps {
+        clock: &clock,
+        ..fixture.deps()
+    };
+    let mut app = App::open(&fixture.raw.db_path(), &acme(), deps, &retry)
+        .unwrap_or_else(|error| panic!("the app opens: {error}"));
 
-    let result = with_write_lock(&fixture.raw.config(), &acme(), |release| {
-        thread::scope(|scope| {
-            scope.spawn(|| {
-                thread::sleep(Duration::from_millis(100));
-                release.now();
-            });
-
-            app.dispatch(&Caller::cli(), &append_action(vec![decision_wire(USE_WAL)]))
-        })
+    let result = with_write_lock_until_attempt(&fixture.raw.config(), &acme(), attempts, 2, || {
+        app.dispatch(&Caller::cli(), &append_action(vec![decision_wire(USE_WAL)]))
     });
 
     assert!(result.is_ok());
@@ -880,6 +988,8 @@ fn it_should_report_no_marker_when_discovering_outside_a_project() {
     let env = Env {
         xdg_data_home: Some(xdg.path().as_os_str()),
         home: None,
+        git_index_file: None,
+        parent_pid: 1,
     };
 
     let error = match Runtime::discover(dir.path(), None, &env) {
@@ -898,6 +1008,8 @@ fn it_should_open_the_database_from_the_environment_default() {
     let env = Env {
         xdg_data_home: Some(project.xdg().as_os_str()),
         home: None,
+        git_index_file: None,
+        parent_pid: 1,
     };
     let runtime = match Runtime::discover(project.dir(), None, &env) {
         Ok(runtime) => runtime,
