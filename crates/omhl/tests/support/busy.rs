@@ -5,7 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use ::omhl::runner::{CommandRunner, RunError, RunReport, RunSpec};
-use hexlog::{AppendRequest, Config, Deps, Hexlog, IdGenerator, TenantId};
+use hexlog::{AppendRequest, Clock, Config, Deps, Hexlog, IdGenerator, TenantId};
 use uuid::Uuid;
 
 use super::omhl::{node_item, premise_data};
@@ -46,6 +46,39 @@ impl IdGenerator for WaitingIds {
     }
 }
 
+/// Relógio cujo `now()` espera o teste largar o `Sender` que ele entrega em `attempts`. O `Hexlog`
+/// lê o relógio uma vez por `append`, logo antes de pedir a trava de escrita: cada leitura marca uma
+/// tentativa de gravação. Depois que o teste larga o receptor, as leituras não esperam.
+pub struct AttemptClock {
+    inner: FixedClock,
+    attempts: Sender<Sender<()>>,
+}
+
+impl AttemptClock {
+    pub fn new() -> (AttemptClock, Receiver<Sender<()>>) {
+        let (attempts, reached) = mpsc::channel();
+        let clock = AttemptClock {
+            inner: FixedClock::default(),
+            attempts,
+        };
+
+        (clock, reached)
+    }
+}
+
+impl Clock for AttemptClock {
+    fn now(&self) -> String {
+        let (resume, resumed) = mpsc::channel::<()>();
+        if self.attempts.send(resume).is_ok()
+            && let Err(RecvTimeoutError::Timeout) = resumed.recv_timeout(DEADLINE * 6)
+        {
+            panic!("the append attempt was never resumed");
+        }
+
+        self.inner.now()
+    }
+}
+
 /// Segura a trava de escrita do banco enquanto `body` roda: grava um node pelo `Hexlog` com um
 /// `IdGenerator` que espera dentro de `next()`. O tenant já deve existir. `Release::now()` solta a
 /// trava; ao fim de `body` (ou se ele entrar em pânico) ela é solta.
@@ -54,10 +87,49 @@ pub fn with_write_lock<R>(
     tenant: &TenantId,
     body: impl FnOnce(&Release) -> R,
 ) -> R {
+    hold_write_lock(config, tenant, |release, _| body(release))
+}
+
+/// Como `with_write_lock`, mas a soltura vem da tentativa `attempt` de `append`, contada pelo
+/// `AttemptClock` que deu `attempts`: as anteriores esgotam o `busy_timeout` e dão `Busy`; a de número
+/// `attempt` só segue depois que o node do segurador foi gravado, então pega a trava livre sem
+/// depender de quanto o disco demora.
+pub fn with_write_lock_until_attempt<R>(
+    config: &Config,
+    tenant: &TenantId,
+    attempts: Receiver<Sender<()>>,
+    attempt: usize,
+    body: impl FnOnce() -> R,
+) -> R {
+    hold_write_lock(config, tenant, |release, written| {
+        thread::scope(|scope| {
+            scope.spawn(move || {
+                // largar o `Sender` recebido deixa a tentativa seguir; estourar o prazo só solta a
+                // trava, e o assert do teste é quem reprova
+                let last = (1..attempt)
+                    .try_for_each(|_| attempts.recv_timeout(DEADLINE).map(drop))
+                    .and_then(|()| attempts.recv_timeout(DEADLINE));
+                release.now();
+                let _ = written.recv_timeout(DEADLINE * 6);
+                drop(last);
+            });
+
+            body()
+        })
+    })
+}
+
+/// `body` recebe a soltura e o aviso de que o node do segurador foi gravado (a trava está livre).
+fn hold_write_lock<R>(
+    config: &Config,
+    tenant: &TenantId,
+    body: impl FnOnce(&Release, Receiver<()>) -> R,
+) -> R {
     let (locked, lock_taken) = mpsc::channel();
+    let (committed, written) = mpsc::channel();
 
     thread::scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(move || {
             let ids = WaitingIds { locked };
             let clock = FixedClock::default();
             let deps = Deps {
@@ -81,6 +153,8 @@ pub fn with_write_lock<R>(
             hexlog
                 .append(&request)
                 .expect("the lock holder writes its node");
+            // ninguém esperando o aviso: nada a fazer
+            let _ = committed.send(());
         });
 
         let release = Release(
@@ -90,7 +164,7 @@ pub fn with_write_lock<R>(
         );
         drop(lock_taken);
 
-        body(&release)
+        body(&release, written)
     })
 }
 

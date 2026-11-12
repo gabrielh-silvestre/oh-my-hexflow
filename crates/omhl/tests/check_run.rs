@@ -9,7 +9,9 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
 
-use hexlog::{AppendItem, AppendOutcome, AppendRequest, Author, Config, Snapshot, SnapshotKind};
+use hexlog::{
+    AppendItem, AppendOutcome, AppendRequest, Author, Clock, Config, Snapshot, SnapshotKind,
+};
 use omhl::app::App;
 use omhl::app::action::{Action, Caller, CheckTarget};
 use omhl::app::error::AppError;
@@ -19,7 +21,10 @@ use omhl::ports::blob::BlobStore;
 use omhl::probe::{HeadFacts, ProbeOutcome, TreeSource};
 use omhl::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
 use serde_json::{Value, json};
-use support::busy::{AppendingRunner, GatedRunner, lock_at_gate, with_write_lock};
+use support::busy::{
+    AppendingRunner, AttemptClock, GatedRunner, lock_at_gate, with_write_lock,
+    with_write_lock_until_attempt,
+};
 use support::gate::relation_item;
 use support::omhl::{acme, check_data, node_item, with_snapshot, work_item_data};
 use support::raw::RawHarness;
@@ -132,8 +137,18 @@ impl Fixture {
         runner: &'a dyn CommandRunner,
         retry: &RetryPolicy,
     ) -> App<'a> {
+        self.app_on_clock(probe, runner, retry, &self.raw.clock)
+    }
+
+    fn app_on_clock<'a>(
+        &'a self,
+        probe: &'a FakeProbe,
+        runner: &'a dyn CommandRunner,
+        retry: &RetryPolicy,
+        clock: &'a dyn Clock,
+    ) -> App<'a> {
         let deps = OmhlDeps {
-            clock: &self.raw.clock,
+            clock,
             ids: &self.raw.ids,
             probe,
         };
@@ -734,17 +749,11 @@ fn it_should_not_rerun_commands_when_the_append_is_busy() {
     fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
-    let mut app = fx.app_with(&probe, &runner, &busy_policy());
+    let (clock, attempts) = AttemptClock::new();
+    let mut app = fx.app_on_clock(&probe, &runner, &busy_policy(), &clock);
 
-    let result = with_write_lock(&fx.config(), &acme(), |release| {
-        thread::scope(|scope| {
-            scope.spawn(|| {
-                thread::sleep(Duration::from_millis(100));
-                release.now();
-            });
-            run_pr(&mut app)
-        })
-    });
+    let result =
+        with_write_lock_until_attempt(&fx.config(), &acme(), attempts, 2, || run_pr(&mut app));
 
     let output = result.expect("the run succeeds once the lock is released");
     assert_eq!(output["recorded"], json!(true));
@@ -758,17 +767,12 @@ fn it_should_retry_the_append_with_its_own_budget_after_the_run() {
     fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
-    let mut app = fx.app_with(&probe, &runner, &busy_policy());
+    let (clock, attempts) = AttemptClock::new();
+    let mut app = fx.app_on_clock(&probe, &runner, &busy_policy(), &clock);
 
-    let result = with_write_lock(&fx.config(), &acme(), |release| {
-        thread::scope(|scope| {
-            scope.spawn(|| {
-                thread::sleep(Duration::from_millis(150));
-                release.now();
-            });
-            run_pr(&mut app)
-        })
-    });
+    // a 7ª tentativa é a última das 6 pausas de `after_run_policy`; o `busy_policy` só daria a 1ª
+    let result =
+        with_write_lock_until_attempt(&fx.config(), &acme(), attempts, 7, || run_pr(&mut app));
 
     result.expect("the append retries past the lock");
     assert!(!get(&mut app, &att("lint")).is_null());

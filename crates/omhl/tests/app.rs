@@ -1,7 +1,6 @@
 mod support;
 
 use std::fs;
-use std::thread;
 use std::time::{Duration, Instant};
 
 use hexlog::{RelationQuery, Snapshot, SnapshotKind};
@@ -15,7 +14,7 @@ use omhl::facade::{Omhl, OmhlDeps};
 use omhl::probe::{ProbeOutcome, TreeSource};
 use omhl::project::Env;
 use serde_json::{Value, json};
-use support::busy::with_write_lock;
+use support::busy::{AttemptClock, with_write_lock, with_write_lock_until_attempt};
 use support::omhl::{acme, check_data, decision_data, premise_data, work_item_data};
 use support::project::Project;
 use support::raw::RawHarness;
@@ -921,17 +920,20 @@ fn it_should_succeed_when_the_lock_is_released_during_the_retries() {
         busy_timeout: Duration::from_millis(50),
         pauses: vec![Duration::from_millis(150), Duration::from_millis(300)],
     };
-    let mut app = fixture.open_with(&retry);
+    {
+        // o tenant nasce antes: criá-lo leria o `AttemptClock` sem ninguém para responder
+        let _created = fixture.open();
+    }
+    let (clock, attempts) = AttemptClock::new();
+    let deps = OmhlDeps {
+        clock: &clock,
+        ..fixture.deps()
+    };
+    let mut app = App::open(&fixture.raw.db_path(), &acme(), deps, &retry)
+        .unwrap_or_else(|error| panic!("the app opens: {error}"));
 
-    let result = with_write_lock(&fixture.raw.config(), &acme(), |release| {
-        thread::scope(|scope| {
-            scope.spawn(|| {
-                thread::sleep(Duration::from_millis(100));
-                release.now();
-            });
-
-            app.dispatch(&Caller::cli(), &append_action(vec![decision_wire(USE_WAL)]))
-        })
+    let result = with_write_lock_until_attempt(&fixture.raw.config(), &acme(), attempts, 2, || {
+        app.dispatch(&Caller::cli(), &append_action(vec![decision_wire(USE_WAL)]))
     });
 
     assert!(result.is_ok());
