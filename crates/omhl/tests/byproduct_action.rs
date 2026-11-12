@@ -349,3 +349,16 @@ fn it_should_pick_the_attestation_with_the_highest_sequence() {
         })
     );
 }
+
+#[test]
+fn it_should_reject_a_work_item_above_256_characters() {
+    let fixture = Fixture::new();
+    let long_work_item = format!("work-items.{}", "a".repeat(256));
+
+    let output = fixture.omhl(&["byproduct", CHECK, &long_work_item]);
+
+    assert_eq!(
+        failure(&output)["error"]["details"][0]["code"],
+        json!("where-eq-value-too-long")
+    );
+}

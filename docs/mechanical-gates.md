@@ -66,7 +66,7 @@ omhl byproduct checks.lint work-items.w1 --tail 40
 
 Na branch `develop` não há `byproduct`: o erro de um check reprovado leva a cauda da saída no `context.output_tail`.
 
-O `omhl byproduct <check> <work-item>` lê a attestation mais recente do par e recusa com `attestation-not-found` quando não há nenhuma, com `byproduct-missing` quando a attestation não aponta para um arquivo de saída que exista (ou o arquivo tem o formato errado) e com `byproduct-corrupt` quando o arquivo não pôde ser lido de volta íntegro (o SHA-256 do conteúdo não bate com o hash).
+O `omhl byproduct <check> <work-item>` lê a attestation mais recente do par e recusa com `attestation-not-found` quando não há nenhuma, com `byproduct-missing` quando a attestation não aponta para um arquivo de saída que exista (ou o arquivo tem o formato errado) e com `byproduct-corrupt` quando o arquivo não pôde ser lido de volta íntegro (o SHA-256 do conteúdo não bate com o hash). Um `<work-item>` com mais de 256 caracteres é recusado com `where-eq-value-too-long` (`details[0].code`), em vez de `attestation-not-found`; um `<check>` com mais de 200 caracteres já falha antes, com `semantic-id-format`.
 
 ### O `context` do erro
 
