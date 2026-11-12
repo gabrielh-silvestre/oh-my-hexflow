@@ -582,6 +582,11 @@ fn it_should_report_an_empty_result_when_the_event_has_no_checks() {
     assert_eq!(output["recorded"], json!(true));
     assert_eq!(output["results"], json!([]));
     assert_eq!(output["blocked"], json!([]));
+    assert_eq!(output["checks_planned"], json!(0));
+    assert_eq!(
+        output["warnings"],
+        json!([{ "code": "no-checks-for-event" }])
+    );
     assert_eq!(output.get("snapshot"), Some(&Value::Null));
     assert_eq!(received(&specs), Vec::<Vec<String>>::new());
 }

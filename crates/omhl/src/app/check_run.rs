@@ -140,7 +140,7 @@ impl Engine<'_> {
         };
         let tally = self.run_planned(runner, &scope, &planned)?;
 
-        finish(&scope, tally)
+        finish(&scope, tally, planned.len())
     }
 
     /// Lê checks e relações `after` em valores próprios: nenhuma transação fica aberta durante a execução.
@@ -773,7 +773,7 @@ fn refusal_hint(code: RuleCode) -> Option<&'static str> {
 }
 
 /// Erro sem veredito vence `checks-failed`; entre eles vale o primeiro na ordem de execução.
-fn finish(scope: &Scope<'_>, tally: Tally) -> Result<Value, AppError> {
+fn finish(scope: &Scope<'_>, tally: Tally, checks_planned: usize) -> Result<Value, AppError> {
     if let Some(error) = tally.error {
         return Err(error(tally.details));
     }
@@ -782,14 +782,21 @@ fn finish(scope: &Scope<'_>, tally: Tally) -> Result<Value, AppError> {
         return Err(AppError::checks_failed(tally.details));
     }
 
-    Ok(json!({
+    let mut output = json!({
         "event": scope.event,
         "work_item": scope.work_item,
         "snapshot": tally.snapshot,
         "recorded": scope.work_item.is_some(),
         "results": tally.outputs,
         "blocked": summary.blocked,
-    }))
+    });
+    if checks_planned == 0 {
+        // Evento sem check no banco sai com 0, mas o aviso evita confundir vazio com aprovado.
+        output["checks_planned"] = json!(0);
+        output["warnings"] = json!([{ "code": "no-checks-for-event" }]);
+    }
+
+    Ok(output)
 }
 
 /// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context` (DP-37).

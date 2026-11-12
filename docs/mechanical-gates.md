@@ -16,6 +16,8 @@ O `omhl check run` só roda no Linux. Em outro sistema ele responde `unsupported
 
 Códigos de saída: `0` quando nenhum check bloqueante reprovou, `1` para qualquer erro (uma linha JSON no stderr, stdout vazio) e `2` para erro de uso da linha de comando.
 
+**Evento sem checks.** Um `check run` cujo evento não tem nenhum check no banco sai com `0`, sem rodar nada. Para não passar por aprovação, a saída traz `checks_planned: 0` e `warnings: [{"code": "no-checks-for-event"}]`. O `recorded` continua significando o modo de gravação (work item), não que algo foi gravado.
+
 ## 1. Falhas sem veredito
 
 Um erro sem veredito é um problema que impede o `omhl` de dizer se o check passou. Ele não é um `failed`. O `omhl` não grava attestation nesses casos, exceto onde a tabela diz o contrário, e termina com o código de saída 1.
