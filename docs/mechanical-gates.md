@@ -280,15 +280,17 @@ Limites:
 
 ### Reajustar os `timeout_secs`
 
-Os valores ficam fixos no TOML de cada check. O `omhl` não os calcula nem os reajusta. Os atuais, medidos em execução fria:
+Os valores ficam fixos no TOML de cada check. O `omhl` não os calcula nem os reajusta. Os atuais, medidos em execução fria (`CARGO_TARGET_DIR` novo e vazio, quatro rodadas por check, máquina com outros processos ativos):
 
-| Check | `timeout_secs` |
-|---|---|
-| `checks.fmt` | 10 |
-| `checks.lint` | 21 |
-| `checks.compile-validate` | 19 |
-| `checks.compile-build` | 24 |
-| `checks.test-suite` | 660 |
+| Check | Pior rodada fria | `timeout_secs` |
+|---|---|---|
+| `checks.fmt` | 1,3 s | 10 (piso) |
+| `checks.lint` | 114,3 s | 149 |
+| `checks.compile-validate` | 68,2 s | 89 |
+| `checks.compile-build` | 153,6 s | 200 |
+| `checks.test-suite` | não remedido | 660 |
+
+Sem carga, as mesmas rodadas ficam entre 17 s e 25 s (22 s no `lint`, 23 s no `build`). A pior rodada vem da disputa por disco e CPU, e é ela que dita o prazo. O `test-suite` ficou longo demais para remedir a frio; vale o valor já gravado.
 
 Para reajustar:
 
@@ -297,7 +299,7 @@ Para reajustar:
 3. Aplique o piso de 10 segundos.
 4. Grave o número no `timeout_secs` do TOML do check e rode `omhl load`.
 
-Se o timeout estourar muitas vezes, revise o valor. Um `timed_out` grava `failed`, imutável para aquela árvore naquele banco (linha 2 da tabela). Só uma árvore nova libera um novo veredito. Um `cargo test` travado segura o hook por cerca de 11 minutos antes de virar `timed_out`.
+Se o timeout estourar muitas vezes, revise o valor. Um `timed_out` grava `failed`, imutável para aquela árvore naquele banco (linha 2 da tabela). Só uma árvore nova libera um novo veredito. A imutabilidade do `failed` por `timed_out` é mantida de propósito; uma issue futura pode permitir a substituição. Um `cargo test` travado segura o hook por cerca de 11 minutos antes de virar `timed_out`.
 
 ### O custo do `pre-push`
 
@@ -306,7 +308,12 @@ Cada `wt merge` para um destino que não é a `main` roda o `before-pr` inteiro.
 Uma worktree nova nasce com o `target/` vazio, então o primeiro `before-commit` e o primeiro `before-pr` dela são frios. Antes do primeiro `git push` numa worktree nova, rode:
 
 ```bash
+cargo check --workspace --all-targets --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo build --workspace --locked
 cargo test --workspace --locked --no-run
 ```
+
+Cada comando aquece um check com prazo: `compile-validate`, `lint`, `compile-build` e a compilação do `test-suite`. O `cargo test --no-run` sozinho não aquece os três primeiros.
 
 Se um teste falhar por flaky e o `proptest` gravar uma semente nova em `crates/hexlog/tests/chain_properties.proptest-regressions` (arquivo rastreado), o `test-suite` termina em `check-not-run` com `command-changed-tree`. Restaure o arquivo e repita, como descreve o [README](../README.md).

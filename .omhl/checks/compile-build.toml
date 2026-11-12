@@ -3,6 +3,6 @@ variant = "build"
 blocking = true
 after = ["checks.compile-validate"]
 run = ["cargo", "build", "--workspace", "--locked"]
-timeout_secs = 24
+timeout_secs = 200
 expect = [{ exit = 0, outcome = "passed" }]
 when = { event = "before-pr" }
