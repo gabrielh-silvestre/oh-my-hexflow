@@ -204,9 +204,10 @@ O `check run` descobre o work item pelo nome da branch, que segue o padrão
 - **Escopo do `pre-push`.** Ele barra a `main`, pula a remoção de ref e a tag, e
   atesta só o `HEAD` do checkout. Não se empurra outra branch sem trocar de
   checkout.
-- **Arquivo não rastreado.** Um arquivo não rastreado e não ignorado faz o
-  `pre-commit` e o `pre-push` falharem. Faça commit dele, ponha no `.gitignore`
-  ou apague.
+- **Arquivo fora do stage.** Uma alteração de arquivo rastreado que não está
+  no stage, ou um arquivo não rastreado e não ignorado, faz o `pre-commit`
+  falhar. O `pre-push` falha com qualquer arquivo sujo ou não rastreado. Faça
+  o stage, o commit, ponha no `.gitignore` ou apague.
 - **Arquivo rastreado alterado pelo hook.** Se um check altera um arquivo
   rastreado, a execução se perde: o `omhl` não grava nada e sai com
   `check-not-run`. Um exemplo é o `chain_properties.proptest-regressions`, que o

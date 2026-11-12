@@ -14,7 +14,7 @@ O `check run` roda em três eventos, todos do git:
 
 O `omhl check run` só roda no Linux. Em outro sistema ele responde `unsupported-platform`.
 
-Códigos de saída: `0` quando tudo passou, `1` para qualquer erro (uma linha JSON no stderr, stdout vazio) e `2` para erro de uso da linha de comando.
+Códigos de saída: `0` quando nenhum check bloqueante reprovou, `1` para qualquer erro (uma linha JSON no stderr, stdout vazio) e `2` para erro de uso da linha de comando.
 
 ## 1. Falhas sem veredito
 
@@ -35,18 +35,18 @@ Depois de uma falha, o `omhl` segue com os checks restantes do evento ou para tu
 | 1 | Erro de spawn: o binário do `run` não existe, não é executável ou não pôde ser lançado (por exemplo `cargo` fora do `PATH` que o git enxerga). Vale só para `run` com argv direto | Segue para os demais checks. No fim, sai com erro | `check-not-run`, detalhe `spawn-failed`; `kind` `spawn-not-found`, `spawn-permission-denied` ou `spawn-failed` | Nada | Instale o binário ou ponha o diretório dele no `PATH` dos hooks, ou corrija a permissão. Repita o mesmo `omhl check run` |
 | 2 | Desfecho imutável diferente: o mesmo snapshot, check e work item já têm outro desfecho gravado | Não substitui o desfecho gravado. Segue para os demais. No fim, sai com erro | `attestation-refused`, detalhe `outcome-immutable`; `kind` `guard-refused` | O desfecho antigo permanece. O `context` traz o `stored` (desfecho gravado), o `expected` (o novo) e o hash do `byproduct` novo | Mude a árvore (um novo commit ou uma nova alteração) para obter um veredito novo |
 | 3 | Árvore alterada pelo comando: o check mudou um arquivo rastreado, ou criou um arquivo não rastreado e não ignorado | Para tudo. O check afetado não é gravado e os restantes não rodam | `check-not-run`, detalhe `command-changed-worktree` (`before-commit`, inclui arquivo não rastreado) ou `command-changed-tree` (`before-pr` e `before-merge`); `kind` `tree-changed`; os restantes `not-run` | Nada. O `context` traz a cauda da saída (`output_tail`) | Mantenha o check somente leitura. Ponha arquivos gerados no `.gitignore` ou restaure os rastreados com `git checkout -- <caminho>` |
-| 4 | `Busy` esgotado: o banco ficou travado por cerca de 74 segundos depois de o comando rodar | Segue para os demais. No fim, sai com erro. O erro nunca usa o código `busy` | `attestation-not-recorded`; `kind` `busy-exhausted` | Nada no banco. O `byproduct` já está no disco e o `context` traz o hash dele, o `expected` e o `output_tail` | Repita o mesmo comando quando o outro processo terminar |
-| 5 | Recusa da guarda por snapshot: o índice mudou entre a sonda e a gravação, ou o comando fez `git add` | Para tudo. Os restantes não rodam | `attestation-refused`, com o código da guarda no detalhe: `snapshot-tree-mismatch`, `snapshot-dirty` ou `snapshot-not-head`; `kind` `guard-refused`; os restantes `not-run` | Nada. O `context` traz o `output_tail` | Não faça stage durante o hook. Rode de novo |
+| 4 | `Busy` esgotado: o banco ficou travado por cerca de 74 segundos depois de o comando rodar. Vale também para outro erro do banco ao gravar a attestation | Segue para os demais. No fim, sai com erro. O erro nunca usa o código `busy` | `attestation-not-recorded`; `kind` `busy-exhausted` (ou `attestation-not-recorded`, quando o banco falha ao gravar por outro motivo) | Nada no banco. O `byproduct` já está no disco e o `context` traz o hash dele, o `expected` e o `output_tail` | Repita o mesmo comando quando o outro processo terminar |
+| 5 | Recusa da guarda por snapshot: o índice mudou entre a sonda e a gravação, ou o comando fez `git add` | Para tudo. Os restantes não rodam | `attestation-refused`, com o código da guarda no detalhe: `snapshot-tree-mismatch`, `snapshot-dirty` ou `snapshot-not-head`; `kind` `guard-refused`; os restantes `not-run` | Nada no banco. O `context` traz o hash do `byproduct` (a saída já está no disco), o `expected` e o `snapshot` | Não faça stage durante o hook. Rode de novo |
 | 6 | Outra recusa da guarda: o work item foi fechado durante a execução (`work-item-closed`) ou a sonda falhou dentro da guarda (`probe-failed`) | Segue para os demais. No fim, sai com erro | `attestation-refused`, com `work-item-closed` ou `probe-failed` no detalhe; `kind` `guard-refused` | Nada | `work-item-closed`: confira o work item com `omhl get <work-item>`. `probe-failed`: rode `git status` e corrija o estado do repositório |
 | 7 | Falha do blob: o `omhl` não consegue gravar o `byproduct` | Para tudo. Sem o arquivo de saída o veredito não seria recuperável | `check-not-run`, detalhe `not-run`; `kind` `blob-failed`; os restantes `not-run` | Nada. O `context` traz o `expected` e o `output_tail` | Corrija a permissão da pasta de saída ou libere espaço em disco. A pasta fica ao lado do banco, em `blobs/` |
-| 8 | Falha da sonda: o `omhl` não consegue ler a árvore ou o `HEAD` com o `git` | Para tudo | `probe-failed`. Quando a sonda da árvore do índice falha num check de `before-commit`, o erro é `check-not-run` com detalhe `not-run` e `kind` `probe-failed`; os restantes `not-run` | Nada | Rode `git status` e corrija o estado do repositório |
+| 8 | Falha da sonda: o `omhl` não consegue ler a árvore ou o `HEAD` com o `git` | Para tudo | Antes de qualquer comando (leitura do `HEAD`, no começo ou antes do primeiro check de `before-pr` e `before-merge`): `probe-failed`, sem `context`. Antes de um check de `before-commit` (árvore do índice) ou depois de qualquer comando: `check-not-run` com detalhe `not-run` e `kind` `probe-failed`; os restantes `not-run` | Nada. Quando a sonda falha depois do comando, o `context` traz o `output_tail` | Rode `git status` e corrija o estado do repositório |
 | 9 | Spec gravado inválido: o `data` do check no banco tem `run`, mas o `omhl` não consegue decodificá-lo | Não executa esse check. Segue para os demais. No fim, sai com erro | `check-not-run`, detalhe `spec-invalid` (com o `path` e o `code` do problema, sem eco do conteúdo); `kind` `spec-invalid` | Nada | Corrija o TOML do check e rode `omhl load` |
 | 10 | Plataforma sem suporte: o sistema não é Linux | Para tudo. Nada executa | `unsupported-platform`; os restantes `not-run` | Nada | Rode o `check run` no Linux ou no WSL |
 | 11 | Interrupção por sinal: Ctrl+C, `SIGTERM`, `SIGHUP` ou `kill` ao `omhl` ou só ao `git` | O `omhl` morre pela ação padrão do sistema. Nenhum erro sai. Veja a seção 4 | Sem código de erro. Se o `git` morreu antes de o `omhl` amarrar-se a ele, o erro é `check-not-run`, detalhe `not-run`, `kind` `parent-gone`, e nada rodou | Nada para o check interrompido nem para os que não rodaram. As attestations já gravadas ficam | Rode o mesmo comando de novo. Se sobrar processo de um check, rode `omhl check sweep` |
 
 **Erro final.** Um problema sem veredito (`check-not-run`, `attestation-refused`, `attestation-not-recorded`) tem precedência sobre `checks-failed`. Entre eles vale o primeiro na ordem de execução. Os detalhes listam todos os checks afetados e os que falharam.
 
-Quando só há checks reprovados, o erro é `checks-failed`. Cada check reprovado traz um detalhe `failed` cuja `message` diz como ler a saída:
+Quando só há checks bloqueantes reprovados, o erro é `checks-failed`. Um check não bloqueante reprovado aparece em `results` com `ok: false` e não muda o código de saída. Cada check bloqueante reprovado traz um detalhe `failed` cuja `message` diz como ler a saída:
 
 ```bash
 omhl byproduct checks.lint work-items.w1 --tail 40
@@ -56,9 +56,9 @@ Na branch `develop` não há `byproduct`: o erro de um check reprovado leva a ca
 
 ### O `context` do erro
 
-O `context` carrega só os campos que se aplicam ao caso: `kind`, `event`, `check`, `work_item`, `branch`, `argv`, `cwd`, `snapshot`, `expected`, `stored`, `os_error`, `output_tail`, `hint` e, nos erros do `pre-push`, `lref` e `rref`. O `hint` é uma frase fixa em inglês que diz o que tentar.
+O `context` carrega só os campos que se aplicam ao caso: `kind`, `event`, `check`, `work_item`, `branch`, `argv`, `cwd`, `snapshot`, `expected`, `stored`, `byproduct`, `os_error`, `output_tail`, `hint` e, nos erros do `pre-push`, `lref` e `rref`. O `hint` é uma frase fixa em inglês que diz o que tentar.
 
-O `output_tail` (as últimas 20 linhas de `stdout` e de `stderr`, cada uma cortada em 500 caracteres) aparece só quando o comando rodou e nada foi gravado: `Busy` esgotado, árvore alterada, recusa por snapshot, falha do blob e `develop`. Quando a attestation foi gravada, o erro não repete a saída. Use `omhl byproduct`.
+O `output_tail` (as últimas 20 linhas de `stdout` e de `stderr`, cada uma cortada em 500 caracteres) aparece só quando o comando rodou e nada foi gravado: `Busy` esgotado, outro erro de gravação da attestation, árvore alterada, sonda que falha depois do comando, falha do blob e `develop`. Quando a attestation foi gravada, o erro não repete a saída. Use `omhl byproduct`.
 
 O `output_tail` pode conter segredos que o comando imprimiu. É a mesma saída que você veria rodando o comando à mão.
 
@@ -68,6 +68,7 @@ O `output_tail` pode conter segredos que o comando imprimiu. É a mesma saída q
 | `spawn-permission-denied` | O binário não é executável | `<argv0>` is not executable; fix its permissions |
 | `spawn-failed` | Outro erro ao lançar o comando | Sem frase fixa. Veja o `os_error` |
 | `busy-exhausted` | Banco travado depois de o comando rodar | the database stayed locked for about 74 seconds; the verdict above was computed but not recorded; run the same command again when the other process ends |
+| `attestation-not-recorded` | O banco falhou ao gravar por outro motivo que não `Busy` | Sem frase fixa. A `message` do detalhe traz o código do erro do banco |
 | `guard-refused` | A guarda recusou a gravação | `snapshot-*`: the index changed while the command ran; do not stage during a hook, then run again. `outcome-immutable`: this snapshot already has the stored outcome for this check; change the tree to get a new verdict |
 | `blob-failed` | O `byproduct` não foi gravado | the output store is not writable; fix its permissions or free disk space |
 | `probe-failed` | O `git` não leu a árvore | git could not read the tree; run git status and fix the repository state |
@@ -100,7 +101,7 @@ Cada regra do `expect` tem `exit` e, no máximo, um padrão em `stdout` ou em `s
 
 A boa prática trata de juntar comandos, não de usar `sh -c`. Um `run` como `["sh", "-c", "gh ..."]` com um único `gh` é válido. Nesse caso, um `gh` ausente não é erro de spawn: o `sh` existe e sai com 127. O resultado é um `failed` com `exit_code` 127, gravado e imutável para aquele snapshot. Só um `run` com argv direto (`["gh", ...]`) produz o erro de spawn da linha 1 da tabela.
 
-O evento do check é fechado: `before-commit`, `before-pr` ou `before-merge`. O `omhl load` recusa qualquer outro valor com `extensions-invalid` e o código `event-unsupported`. O formato completo do arquivo está em [extensions-and-projection.md](extensions-and-projection.md).
+O evento do check é fechado: `before-commit`, `before-pr` ou `before-merge`. O `omhl load` recusa qualquer outro valor com `extensions-invalid` e o código `event-unsupported`. As chaves `blocking`, `how`, `after` e `when` estão em [extensions-and-projection.md](extensions-and-projection.md); as chaves mecânicas (`run`, `timeout_secs`, `expect`, `concern`, `variant`) são as desta seção.
 
 ## 3. Branch, marca da `develop` e `main`
 
@@ -130,8 +131,8 @@ Erros que barram antes de rodar qualquer comando:
 | `branch-protected` | Commit ou `check run` na `main`; ou push com destino `main` (`kind` `push-to-main`) | Crie uma branch `tipo/wi-<id>__<slug>`. Para a `main`, abra um pull request |
 | `work-item-not-found`, `work-item-closed` | A branch segue o padrão, mas o work item não existe ou já foi fechado | Grave o work item ou use outra branch |
 | `develop-mark-missing` | `before-commit` na `develop` sem a marca | Crie a marca (abaixo) |
-| `worktree-differs-from-index` | `before-commit` com a working tree diferente do índice: arquivo não rastreado e não ignorado, ou `git commit <caminho>` com outro arquivo rastreado sujo | Faça commit, ignore ou apague o arquivo |
-| `worktree-dirty` | `before-pr` com a árvore suja, inclusive arquivo não rastreado e não ignorado | Faça commit, ignore ou apague o arquivo |
+| `worktree-differs-from-index` | `before-commit` com a working tree diferente do índice: alteração de arquivo rastreado que não está no stage (vale para um commit sem a opção `-a` e para `git commit <caminho>` com outro arquivo sujo), ou arquivo não rastreado e não ignorado | Faça o stage, ignore ou apague o arquivo |
+| `worktree-dirty` | `before-pr` ou `before-merge` com a árvore suja, inclusive arquivo não rastreado e não ignorado | Faça commit, ignore ou apague o arquivo |
 | `push-ref-not-checked-out`, `push-input-invalid` | Problemas do `pre-push`, explicados abaixo | Veja a regra `lsha == HEAD` |
 
 ### A marca da `develop`
@@ -192,7 +193,7 @@ Condições e limites:
 
 ## 5. Escopo dos hooks
 
-O `omhl hooks install` grava quatro scripts de uma linha (modo `0755`) e define `core.hooksPath`:
+O `omhl hooks install` grava quatro scripts `sh` curtos (modo `0755`) e define `core.hooksPath`:
 
 | Hook | O que roda | Quando |
 |---|---|---|

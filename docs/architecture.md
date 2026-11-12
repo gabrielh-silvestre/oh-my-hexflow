@@ -111,6 +111,7 @@ flowchart LR
   app --> runner
   app --> byproduct
   extensions --> mechanical
+  facade --> mechanical
   prgate --> mechanical
   probe --> mechanical
   ports --> mechanical
@@ -133,8 +134,8 @@ Notas de leitura:
 - `app -> hxfacade` (pontilhada) cobre 12 arquivos de `app` que importam tipos do `hexlog`; os adapters não importam nenhum (travado, seção 4).
 - `projection -> extensions` existe só por um helper de filesystem (`extensions::files`); é um dos pontos da seção 5.
 - `projection`, `extensions` e `render` também tomam tipos de dado do `hexlog` (`NodeView`, `SemanticId`); omitido do diagrama.
-- `mechanical`, `runner` e `byproduct` são os gates mecânicos (seções 3.17 a 3.22). `ports -> runner` e `ports -> byproduct` (pontilhadas) são a implementação das ports `CommandRunner` e `ByproductStore` por `ports/process` e `ports/blob`. `mechanical -> hxfacade` (pontilhada) cobre os tipos de dado `SemanticId` e `SnapshotKind`.
-- `extensions -> mechanical` existe porque `extensions/parse.rs` usa `RUNNABLE_EVENTS` e `CheckSpec::from_data`. `pr_gate -> mechanical` existe porque o gate usa `snapshot_for` e `CheckSpec::from_data`. As travas atuais já permitem as duas: só proíbem `adapters`, `app` e `facade` nas camadas puras (seção 4).
+- `mechanical`, `runner` e `byproduct` são os gates mecânicos (seções 3.17 a 3.22). `ports -> runner` e `ports -> byproduct` (pontilhadas) são a implementação das ports `CommandRunner` e `ByproductStore` por `ports/process` e `ports/blob`. `mechanical -> hxfacade` (pontilhada) cobre os tipos `SemanticId`, `SnapshotKind` e `Name` e a função `chain::canonical`.
+- `extensions -> mechanical` existe porque `extensions/parse.rs` usa `RUNNABLE_EVENTS` e `CheckSpec::from_data`. `pr_gate -> mechanical` existe porque o gate usa `RUNNABLE_EVENTS` (como `REQUIRED_EVENTS`) e `snapshot_for`. `facade -> mechanical` existe porque `facade.rs` monta `CheckNode`. As travas atuais já permitem as três: só proíbem `adapters`, `app` e `facade` nas camadas puras (seção 4).
 - `probe -> mechanical` existe porque `probe.rs` reexporta `HeadFacts`, que mora em `mechanical::branch`. `mechanical` não importa `probe`, `ports`, `runner` nem `byproduct`.
 - O SQLite só é tocado por `store sqlite`: o `omhl` não declara `sqlx` nem `rusqlite` (travado, seção 4).
 
@@ -148,31 +149,31 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 
 | Caixa | Linhas | Interface (ponto de entrada) | Profundidade |
 |---|---|---|---|
-| `hexlog` | 5.490 | 10 operações em `Hexlog` + 58 nomes exportados | funda |
-| `hexlog::engine` | 2.507 | `decide`, `verify_chain`, `instant_is_well_formed` | funda |
+| `hexlog` | 5.493 | 10 operações em `Hexlog` + 58 nomes exportados | funda |
+| `hexlog::engine` | 2.510 | `decide`, `verify_chain`, `instant_is_well_formed` | funda |
 | `hexlog::catalog` | 1.149 | `Catalog::new` + 5 consultas | funda |
 | `hexlog::store` | 932 | `Store` (3 métodos) | funda, seam de 1 adapter |
-| `omhl::facade` (`Omhl`) | 235 | 13 operações | média |
+| `omhl::facade` (`Omhl`) | 271 | 13 operações | média |
 | `omhl::gate` | 352 | `evaluate`, `read_consistent`, `GateSource` | funda |
-| `omhl::guard` | 390 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id` | funda |
-| `omhl::pr_gate` | 154 | `required_checks`, `pr_gate_questions` | média |
+| `omhl::guard` | 520 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id` | funda |
+| `omhl::pr_gate` | 185 | `required_checks`, `pr_gate_questions` | média |
 | `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |
-| `omhl::app` | 1.735 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
-| `omhl::adapters` | 713 | `cli::run`, `mcp::serve`, `hook::session_start` | funda por adapter |
-| `omhl::extensions` | 872 | `collect`, `plan` | funda |
+| `omhl::app` | 3.311 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
+| `omhl::adapters` | 843 | `cli::run`, `mcp::serve`, `hook::session_start` | funda por adapter |
+| `omhl::extensions` | 1.002 | `collect`, `plan` | funda |
 | `omhl::projection` | 569 | `build`, `write` | funda |
 | `omhl::render` | 297 | `render` | funda |
-| `omhl::ports` | 250 | `SystemClock`, `V7Ids`, `GitProbe` | adapters |
-| `omhl::project` | 282 | `find_marker`, `default_db_path`, `prepare_db_file`, `Env` | rasa |
-| `omhl::mechanical` | n/d | `CheckSpec::from_data`, `snapshot_for`, `evaluate`, `plan_run`, `summarize`, `exit_blocked`, `RUNNABLE_EVENTS` | funda e pura |
-| `omhl::mechanical::branch` | n/d | `current_branch`, `classify`, `plan_push`, `HeadFacts` | funda e pura |
-| `omhl::mechanical::sweep` | n/d | `RunMarker`, `start_from_stat`, `select_strays` | funda e pura |
-| `omhl::runner` | n/d | `trait CommandRunner`, `RunSpec`, `RunReport`, `RunError` | dado e seam |
-| `omhl::byproduct` | n/d | `trait ByproductStore`, `ByproductHash` | dado e seam |
-| `omhl::ports` (gates mecânicos) | n/d | `ProcessRunner`, `sweep_strays`, `BlobStore`, `HookInstaller` | adapters |
+| `omhl::ports` | 1.219 | `SystemClock`, `V7Ids`, `GitProbe` | adapters |
+| `omhl::project` | 285 | `find_marker`, `default_db_path`, `prepare_db_file`, `Env` | rasa |
+| `omhl::mechanical` | 632 | `CheckSpec::from_data`, `snapshot_for`, `evaluate`, `plan_run`, `summarize`, `exit_blocked`, `RUNNABLE_EVENTS` | funda e pura |
+| `omhl::mechanical::branch` | 142 | `current_branch`, `classify`, `plan_push`, `HeadFacts` | funda e pura |
+| `omhl::mechanical::sweep` | 88 | `RunMarker`, `start_from_stat`, `select_strays` | funda e pura |
+| `omhl::runner` | 43 | `trait CommandRunner`, `RunSpec`, `RunReport`, `RunError` | dado e seam |
+| `omhl::byproduct` | 38 | `trait ByproductStore`, `ByproductHash` | dado e seam |
+| `omhl::ports` (gates mecânicos) | 795 | `ProcessRunner`, `sweep_strays`, `BlobStore`, `HookInstaller` | adapters |
 
-Os módulos dos gates mecânicos entram sem contagem de linhas (n/d): a medição acima é dos passos 3 a 6.
+As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os `.rs` do módulo em `src`, sem os arquivos `tests.rs`; um módulo aninhado entra no total do pai. A linha `omhl::ports` (gates mecânicos) soma `process`, `pipes`, `blob` e `hooks`, que também estão no total de `omhl::ports`; `omhl::mechanical` inclui `branch` e `sweep`.
 
 ### 3.1 Núcleo: `hexlog` (facade `Hexlog`)
 
@@ -269,7 +270,7 @@ Os módulos dos gates mecânicos entram sem contagem de linhas (n/d): a mediçã
 ### 3.10 Aninhada (folha): `omhl::native` e `omhl::probe`
 
 - `native`: `NativeBase` (`checks()`, `guidelines()`, impl de `NativeNodes`), `NativeCheck`, `NativeGuideline`, `NATIVE_CATALOG_VERSION` (`native/mod.rs`). Folha travada: não importa `gate`, `facade`, `guard`, `pr_gate`. Não é módulo profundo: é dado versionado com o plugin (decisão 16).
-- `probe`: `trait SnapshotProbe` (um método `probe`), `ProbeOutcome`, `ProbeError` (`probe.rs`, 17 linhas). É só o seam; adapters: `GitProbe` e `FakeProbe` (`crates/omhl/tests/support/mod.rs`). Seam real. Os gates mecânicos deram à trait mais métodos e criaram a trait `DevelopMark`: seção 3.23.
+- `probe`: `trait SnapshotProbe` (quatro métodos: `probe`, `probe_tree`, `tree_dirty`, `head_facts`), `trait DevelopMark`, `ProbeOutcome`, `ProbeError` (`probe.rs`, 37 linhas). É só o seam; adapters: `GitProbe` e `FakeProbe` (`crates/omhl/tests/support/mod.rs`). Seam real. Os métodos além de `probe` e a trait `DevelopMark` vieram com os gates mecânicos: seção 3.23.
 
 ### 3.11 Gateway de consumo: `omhl::app`
 
@@ -380,7 +381,7 @@ Os módulos dos gates mecânicos entram sem contagem de linhas (n/d): a mediçã
 
 - `ports/process`: `ProcessRunner::{new, bound_to_parent}` (`impl CommandRunner`), `sweep_strays`, `sweep_strays_in`, `SweepReport`, `SweptProcess`. Esconde o guardião (um `sh` líder de grupo próprio que mata o grupo do comando quando o `omhl` morre), a amarração ao pai com `set_pdeathsig`, a espera do líder com `waitid`, o `killpg` com carência de 2 segundos, a marca `OMHL_RUN_ID` no ambiente do comando e a leitura de `/proc`, com o prazo de 1 segundo. Só Linux: fora dele, `run` devolve `UnsupportedPlatform`. É o único arquivo que usa `nix::` (travado: `it_should_confine_nix_to_the_process_port`).
 - `ports/pipes`: as leitoras de `stdout` e `stderr` do runner. São `thread::spawn` soltas, que mandam a saída em pedaços por um canal e descartam o que passa do teto `max_stream_bytes`; assim um descendente fugido que segura o cano não prende o runner. Travado: nada de `thread::scope` nesses arquivos (`it_should_not_scope_the_threads_of_the_pipe_readers`).
-- `ports/blob`: `BlobStore::new(<pasta do banco>)` (`impl ByproductStore`). Guarda `blobs/<2 primeiros hex>/<hash>`, com a primeira linha `omhl-byproduct v1 stdout=<n> stderr=<n>`, e confere o SHA-256 na leitura. Grava em nome temporário único e renomeia.
+- `ports/blob`: `BlobStore::new(<pasta do banco>)` (`impl ByproductStore`). Guarda `blobs/<2 primeiros hex>/<hash>` e confere o SHA-256 na leitura. O conteúdo, montado pelo `check run`, começa com a linha `omhl-byproduct v1 stdout=<n> stderr=<n>`. Grava em nome temporário único e renomeia.
 - `ports/hooks`: `HookInstaller`. É onde ficam `fs`, `chmod` e `git config` do `omhl hooks install`, nunca em `app/`.
 
 Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/` (travado: `it_should_confine_process_spawning_types_to_the_ports_module`).
@@ -421,7 +422,7 @@ Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/`
 | `app`, `render`, `project`, `ports` não importam `adapters` | `it_should_not_import_adapters_from_the_inner_layers` |
 | `extensions` e `projection` não importam `adapters`, `app`, `facade` | `it_should_not_import_adapters_app_or_facade_in_extensions_and_projection` |
 | `tempfile` só em `projection/write.rs` | `it_should_use_tempfile_only_in_projection_write` |
-| Dependências diretas exatas (`clap`, `hexlog`, `serde`, `serde_json`, `tempfile`, `toml`, `uuid`): o SQLite só chega por `hexlog` | `it_should_declare_exactly_the_expected_direct_dependencies` |
+| Dependências diretas exatas (`clap`, `hexlog`, `regex`, `serde`, `serde_json`, `sha2`, `tempfile`, `toml`, `uuid` e, só no Linux, `nix`): o SQLite só chega por `hexlog` | `it_should_declare_exactly_the_expected_direct_dependencies` |
 | Sem async, HTTP, `git2`, `gix*` e `serde_yaml` no lockfile | `it_should_keep_forbidden_crates_out_of_the_lockfile` |
 | Nenhuma escrita em stdout nos fontes (a saída vai pelo `out` recebido) | `it_should_keep_stdout_writes_out_of_every_source_file` |
 | Sem atômicos em `src` | `it_should_not_use_atomics_anywhere_in_src` |
