@@ -82,7 +82,7 @@ fn work_item_id(branch: &str) -> Option<SemanticId> {
     SemanticId::parse(&format!("work-items.{id}")).ok()
 }
 
-/// Lê todas as linhas da stdin do `pre-push` antes de decidir (DP-15).
+/// Lê todas as linhas da stdin do `pre-push` antes de decidir.
 pub fn plan_push(
     lines: &str,
     head: Option<&str>,

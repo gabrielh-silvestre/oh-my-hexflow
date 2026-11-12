@@ -128,7 +128,7 @@ fn hook_author() -> Author {
     }
 }
 
-/// Check com `run`, como o contrato da S16 o fixa.
+/// Check com `run`: é o campo que o torna mecânico.
 fn mechanical_check_data() -> Value {
     let mut data = check_data("before-pr", "Run the suite", true);
     data["concern"] = json!("test");

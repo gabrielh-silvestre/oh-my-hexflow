@@ -435,7 +435,7 @@ struct NoVerifyFlow {
     gate_pr: OmhlOutput,
 }
 
-/// O Act do teste 9: commit com `--no-verify`, push pelo hook, `before-merge` e `gate-pr`.
+/// O Act do cenário de ponta a ponta: commit com `--no-verify`, push pelo hook, `before-merge` e `gate-pr`.
 fn no_verify_flow(e: &E2e) -> NoVerifyFlow {
     e.stage(&e.r, "n", "n\n");
     let commit = e.git(&e.r, &["commit", "--no-verify", "-m", "n"]);

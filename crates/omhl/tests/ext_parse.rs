@@ -700,7 +700,7 @@ fn it_should_report_the_form_issue_of_an_event_before_event_unsupported() {
     );
 }
 
-// Campos mecânicos do check (S8)
+// Campos mecânicos do check
 
 const REPORT_LINT_TOML: &str = r#"concern = "style"
 variant = "lint"

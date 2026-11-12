@@ -46,7 +46,7 @@ const SPEC_STALE_HINT: &str = "the check file on disk is invalid or differs from
 const ORPHANED_HINT: &str = "the check file is gone, so the stored command no longer runs; restore the file, or run omhl check retire to drop the check";
 const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
 const PUSH_INPUT_HINT: &str = "the pre-push input needs four fields per line; run git push again";
-/// Variáveis que o git exporta para um hook e que apontariam o comando para o índice do hook (Q14).
+/// Variáveis que o git exporta para um hook e que apontariam o comando para o índice do hook.
 const HOOK_GIT_ENV: [&str; 5] = [
     "GIT_INDEX_FILE",
     "GIT_DIR",
@@ -64,7 +64,7 @@ const TOOLCHAIN_ENV: [&str; 5] = [
     "CARGO_BUILD_RUSTFLAGS",
 ];
 
-/// Construtor do erro sem veredito de um check (DP-16).
+/// Construtor do erro sem veredito de um check.
 type MissError = fn(Vec<CheckDetail>) -> AppError;
 
 /// O que vale para todos os checks de uma execução; `work_item` é `None` na `develop`.
@@ -115,7 +115,7 @@ struct Tally {
 }
 
 impl Engine<'_> {
-    /// O autor da attestation é sempre o `executor` (DP-19); o `check run` cuida das próprias tentativas.
+    /// O autor da attestation é sempre o `executor`; o `check run` cuida das próprias tentativas.
     pub(super) fn check_run(
         &mut self,
         target: &CheckTarget,
@@ -236,7 +236,7 @@ impl Engine<'_> {
         Ok(tally)
     }
 
-    /// `GitCommit` é sondado só antes do primeiro check que vai executar (L14); `GitTree`, antes de cada um.
+    /// `GitCommit` é sondado só antes do primeiro check que vai executar; `GitTree`, antes de cada um.
     fn snapshot_before(
         &self,
         scope: &Scope<'_>,
@@ -262,7 +262,7 @@ impl Engine<'_> {
         }
     }
 
-    /// Árvore do índice; arquivo não rastreado também recusa (Q4) e a sonda que falha para a fila (L8).
+    /// Árvore do índice; arquivo não rastreado também recusa, e a sonda que falha para a fila.
     fn index_tree(
         &self,
         scope: &Scope<'_>,
@@ -397,7 +397,7 @@ impl Engine<'_> {
         };
 
         let Some(work_item) = scope.work_item else {
-            // Na `develop` nada é gravado: a saída só existe no `context` (DP-29).
+            // Na `develop` nada é gravado: a saída só existe no `context`.
             let mut context = scope.ran_context("failed", &check.id, &spec.run, snapshot);
             context["output_tail"] = output_tail(&report);
             let message = "output in context.output_tail".to_owned();
@@ -516,7 +516,7 @@ impl Engine<'_> {
             Err(error) => return Err(error.into()),
         };
         let policy = self.retry_after_run.clone();
-        // O `get` do `base` fica dentro da tentativa: outro processo pode ter gravado entre elas (DP-18).
+        // O `get` do `base` fica dentro da tentativa: outro processo pode ter gravado entre elas.
         let attempt = with_retry(&policy, || {
             let item = AppendItem {
                 body: ItemBody::Node {
@@ -569,7 +569,7 @@ impl Scope<'_> {
         self.tree_digests.get(check.id.as_str()) != Some(&check.spec_digest)
     }
 
-    /// Campos do `context` (DP-31) comuns a todo detalhe de um check.
+    /// Campos do `context` comuns a todo detalhe de um check.
     fn context(&self, kind: &str, check: &SemanticId, argv: Option<&[String]>) -> Value {
         let mut context = json!({
             "kind": kind,
@@ -613,7 +613,7 @@ impl Scope<'_> {
     }
 }
 
-/// `pre-push`: lê a stdin inteira antes de decidir (DP-15).
+/// `pre-push`: lê a stdin inteira antes de decidir.
 fn check_push(stdin: &str, facts: &HeadFacts, event: &str) -> Result<PushPlan, AppError> {
     let checkout = current_branch(facts).ok();
 
@@ -749,7 +749,7 @@ fn run_error(
     }
 }
 
-/// Sonda que falha antes ou depois do comando para a fila (L8); só o `context.kind` a distingue.
+/// Sonda que falha antes ou depois do comando para a fila; só o `context.kind` a distingue.
 fn probe_stop(check: &PlannedCheck, mut context: Value, error: &ProbeError) -> Miss {
     context["os_error"] = json!(error.message);
     context["hint"] = json!(PROBE_FAILED_HINT);
@@ -761,7 +761,7 @@ fn probe_stop(check: &PlannedCheck, mut context: Value, error: &ProbeError) -> M
     }
 }
 
-/// Check que ficou na fila depois de um erro que para tudo (L13).
+/// Check que ficou na fila depois de um erro que para tudo.
 fn not_run(scope: &Scope<'_>, check: &PlannedCheck) -> CheckDetail {
     let argv = check.spec.as_ref().ok().map(|spec| spec.run.as_slice());
     let context = scope.context("not-run", &check.id, argv);
@@ -831,7 +831,7 @@ fn finish(
     Ok(output)
 }
 
-/// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context` (DP-37).
+/// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context`.
 fn byproduct_blob(report: &RunReport) -> Vec<u8> {
     byproduct::encode(&report.stdout, &report.stderr)
 }
@@ -875,7 +875,7 @@ fn with_run_fields(mut value: Value, report: &RunReport) -> Value {
     value
 }
 
-/// As últimas linhas de cada fluxo, convertidas com perda e cortadas (L6).
+/// As últimas linhas de cada fluxo, convertidas com perda e cortadas.
 fn output_tail(report: &RunReport) -> Value {
     json!({ "stdout": tail(&report.stdout), "stderr": tail(&report.stderr) })
 }

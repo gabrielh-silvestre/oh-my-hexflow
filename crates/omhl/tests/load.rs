@@ -516,7 +516,7 @@ fn it_should_report_a_malformed_after_target_without_aborting_the_load() {
     );
 }
 
-// Campos mecânicos do check (S8)
+// Campos mecânicos do check
 
 const REPORT_LINT_TOML: &str = r#"concern = "style"
 variant = "lint"

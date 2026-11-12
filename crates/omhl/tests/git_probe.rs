@@ -518,7 +518,7 @@ fn it_should_not_hang_on_output_larger_than_the_pipe_buffer() {
     assert!(started.elapsed() < Duration::from_secs(5));
 }
 
-// S9: árvore sob os hooks de commit
+// Árvore sob os hooks de commit
 
 #[test]
 fn it_should_report_the_staged_tree_under_a_commit_dash_a_hook() {
@@ -606,7 +606,7 @@ fn it_should_report_the_staged_tree_inside_a_linked_worktree_for_a_path_only_com
     assert_eq!(git_out(&run.root, &["rev-parse", "HEAD^{tree}"]), A2_TREE);
 }
 
-// S9: índice injetado
+// Índice injetado
 
 #[test]
 fn it_should_use_the_injected_index_file_for_the_tree_calls_only() {
@@ -655,7 +655,7 @@ fn it_should_refuse_a_git_index_file_that_does_not_exist() {
     assert_eq!(results, (true, true));
 }
 
-// S9: árvore do índice e do HEAD
+// Árvore do índice e do HEAD
 
 #[test]
 fn it_should_report_dirty_when_the_working_tree_differs_from_the_index() {
@@ -847,7 +847,7 @@ fn it_should_report_dirty_inside_a_path_only_commit_hook_while_another_new_file_
     assert_eq!(outcome, Ok(ProbeOutcome::Dirty));
 }
 
-// S9: fatos da branch
+// Fatos da branch
 
 #[test]
 fn it_should_report_the_current_branch() {
@@ -948,7 +948,7 @@ fn it_should_read_the_rebase_head_inside_a_linked_worktree() {
     );
 }
 
-// S9: a marca da develop
+// A marca da develop
 
 #[test]
 fn it_should_report_no_mark_when_the_file_does_not_exist() {
@@ -1036,7 +1036,7 @@ fn it_should_keep_the_mark_per_worktree() {
     assert_eq!(results, (Ok(true), Ok(false), Ok(()), true));
 }
 
-// S9: o commit em HeadFacts
+// O commit em HeadFacts
 
 #[test]
 fn it_should_report_the_head_commit_in_the_head_facts() {

@@ -9,7 +9,7 @@ use crate::mechanical::branch::{BranchKind, HeadFacts, classify, current_branch}
 use crate::probe::{DevelopMark, ProbeError};
 
 const WORK_ITEM_TYPE: &str = "work-item";
-/// Só o `pre-commit` da `develop` exige a marca (N3 (a)).
+/// Só o `pre-commit` da `develop` exige a marca.
 const MARK_EVENT: &str = "before-commit";
 const BRANCH_NAME_HINT: &str = "rename the branch to type/wi-<id>__<slug> with git branch -m";
 const HEAD_AMBIGUOUS_HINT: &str = "HEAD is detached and zero or several local branches contain it; switch to your branch with git switch";
@@ -78,7 +78,7 @@ pub(super) fn resolve_work_item(
     }
 }
 
-/// Só a `develop` consome a marca; sem marca, a branch nem é lida (DP-36).
+/// Só a `develop` consome a marca; sem marca, a branch nem é lida.
 pub(super) fn consume_develop_mark(engine: &Engine<'_>) -> Result<Value, AppError> {
     let mark = develop_mark(engine)?;
     if !mark.present().map_err(|error| probe_failed(&error))? {

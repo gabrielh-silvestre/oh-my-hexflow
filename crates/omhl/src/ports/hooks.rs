@@ -1,4 +1,4 @@
-//! Instalação dos hooks do git (`fs`, `chmod` e `git config`, nunca em `app/`): S15.
+//! Instalação dos hooks do git (`fs`, `chmod` e `git config`, nunca em `app/`).
 
 use std::ffi::OsStr;
 use std::fs;

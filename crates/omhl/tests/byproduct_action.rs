@@ -27,7 +27,7 @@ const CHECK: &str = "checks.lint";
 const W1: &str = "work-items.w1";
 const W2: &str = "work-items.w2";
 
-// SHA-256 dos blobs montados à mão (oráculo S14-B)
+// SHA-256 dos blobs montados à mão (oráculo independente do código)
 const B1000_SHA: &str = "b01dcaddfdccba222da3cd3f9174b32adf001a0d41ce28916a0aee38046552b8";
 const BLONG_SHA: &str = "ca8e77d1adc23806e3800feefb40538e3469570a9fe516b6e84a3259fb29e5fe";
 const BSMALL_SHA: &str = "a834c640cc27439d8a70b00733ebf8165a1a9d5aac5ccb6a48cb33dff45c48cd";

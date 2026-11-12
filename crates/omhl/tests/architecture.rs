@@ -955,7 +955,7 @@ fn it_should_not_search_the_marker_twice_in_the_hook() {
     assert_no_failures(&failures);
 }
 
-// ------------------------------------------------- travas dos gates mecânicos (S0)
+// ------------------------------------------------- travas dos gates mecânicos
 
 /// Referências aos módulos por `crate::` (solto ou agrupado), por caminho solto e por `super::`.
 fn forbidden_module_refs(source: &str, modules: &[&str]) -> Result<usize, String> {

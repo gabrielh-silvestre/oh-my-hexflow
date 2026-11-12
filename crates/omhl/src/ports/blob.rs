@@ -44,7 +44,7 @@ impl ByproductStore for BlobStore {
         {
             return Ok(hash);
         }
-        // Temporário de outra execução fica como arquivo sem uso: nunca é apagado (DP-38).
+        // Temporário de outra execução fica como arquivo sem uso: nunca é apagado.
         for attempt in 0..TEMP_ATTEMPTS {
             let temp = dir.join(format!(
                 "{}.tmp-{}-{attempt}",

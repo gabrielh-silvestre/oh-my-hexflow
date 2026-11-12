@@ -1057,7 +1057,7 @@ fn it_should_record_nothing_and_carry_the_spawn_context_for_the_check_that_could
     assert_eq!(list(&mut app, "attestation"), no_attestations());
     assert_eq!(error.code(), "check-not-run");
     let mut detail = details(&error)[0].clone();
-    // o `message` do detalhe não é conferido (L1); só a presença
+    // o `message` do detalhe não é conferido; só a presença
     let message = detail
         .as_object_mut()
         .and_then(|object| object.remove("message"));
@@ -1673,7 +1673,7 @@ fn marked_report(exit_code: i32) -> RunReport {
 
 const MARKED_BYPRODUCT: &[u8] = b"omhl-byproduct v1 stdout=13 stderr=0\nTAIL-MARK-51\n";
 
-/// O marcador não aparece em nenhum tipo listado nem nos bytes do banco (com o `App` aberto); o único blob é o byproduct DP-37 da saída, sem nada do context.
+/// O marcador não aparece em nenhum tipo listado nem nos bytes do banco (com o `App` aberto); o único blob é o byproduct da saída, sem nada do context.
 fn assert_marker_not_persisted(fx: &Fixture, app: &mut App<'_>) {
     for type_name in ["attestation", "check", "work-item", "premise"] {
         let listed = Value::Array(list(app, type_name)).to_string();

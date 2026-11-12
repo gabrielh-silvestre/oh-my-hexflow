@@ -1,4 +1,4 @@
-//! Blob store local por hash (S6): `<db>/blobs/<2 primeiros hex>/<hash>`, gravação atômica e leitura conferida.
+//! Blob store local por hash: `<db>/blobs/<2 primeiros hex>/<hash>`, gravação atômica e leitura conferida.
 
 use std::fs;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};

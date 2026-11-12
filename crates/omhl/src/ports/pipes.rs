@@ -1,4 +1,4 @@
-//! Leitoras dos canos do runner: interno da S5.
+//! Leitoras dos canos do runner: interno do runner.
 
 use std::io::{ErrorKind, Read};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};

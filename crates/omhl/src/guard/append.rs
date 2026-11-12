@@ -9,7 +9,7 @@ use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::is_mechanical;
 use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
-/// Namespace que o id de um node deve ter, por tipo (D4-1).
+/// Namespace que o id de um node deve ter, por tipo.
 fn namespace_of(type_name: &str) -> Option<&'static str> {
     match type_name {
         "check" => Some("checks"),
