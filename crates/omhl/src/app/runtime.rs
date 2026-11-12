@@ -14,7 +14,9 @@ use crate::ports::blob::BlobStore;
 use crate::ports::clock::SystemClock;
 use crate::ports::git::GitProbe;
 use crate::ports::ids::V7Ids;
-use crate::ports::process::{ProcessRunner, SweepReport, SweptProcess, sweep_strays};
+use crate::ports::process::{
+    ProcessRunner, SweepReport, SweptProcess, sweep_project_strays, sweep_strays,
+};
 use crate::project::Env;
 use crate::project::marker::find_marker;
 use crate::project::paths::{data_root, default_db_path, prepare_db_file};
@@ -108,7 +110,7 @@ impl Runtime {
 
     /// Antes do `check run`: nada do que acontece aqui muda a saída nem o código de saída.
     fn sweep_quietly(&self) {
-        if let Ok(report) = sweep_strays() {
+        if let Ok(report) = sweep_project_strays(&self.root) {
             self.append_sweep_log(&report);
         }
     }

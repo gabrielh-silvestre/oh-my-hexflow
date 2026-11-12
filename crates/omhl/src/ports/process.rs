@@ -3,24 +3,18 @@ use std::path::Path;
 use crate::runner::{CommandRunner, RunError, RunReport, RunSpec};
 
 pub struct ProcessRunner {
-    /// `RunMarker` deste processo, lida uma vez; `None` se o `/proc` não se leu.
-    marker: Option<String>,
     parent_pid: Option<u32>,
 }
 
 impl ProcessRunner {
     /// Sem amarração ao processo pai; para os testes.
     pub fn new() -> ProcessRunner {
-        ProcessRunner {
-            marker: platform::own_marker(),
-            parent_pid: None,
-        }
+        ProcessRunner { parent_pid: None }
     }
 
     /// `parent_pid` é o `parent_id()` que o `main` leu na primeira linha.
     pub fn bound_to_parent(parent_pid: u32) -> ProcessRunner {
         ProcessRunner {
-            marker: platform::own_marker(),
             parent_pid: Some(parent_pid),
         }
     }
@@ -34,7 +28,7 @@ impl Default for ProcessRunner {
 
 impl CommandRunner for ProcessRunner {
     fn run(&self, spec: &RunSpec) -> Result<RunReport, RunError> {
-        platform::run(self.marker.as_deref(), self.parent_pid, spec)
+        platform::run(self.parent_pid, spec)
     }
 }
 
@@ -52,12 +46,21 @@ pub struct SweepReport {
     pub scan_timed_out: bool,
 }
 
+/// Varre os processos de qualquer projeto (`omhl check sweep`).
 pub fn sweep_strays() -> Result<SweepReport, RunError> {
-    sweep_strays_in(Path::new("/proc"))
+    sweep_strays_in(Path::new("/proc"), None)
 }
 
-pub fn sweep_strays_in(proc_root: &Path) -> Result<SweepReport, RunError> {
-    platform::sweep_in(proc_root)
+/// Varre só os processos cuja marca leva a raiz de `project_root` (início do `check run`).
+pub fn sweep_project_strays(project_root: &Path) -> Result<SweepReport, RunError> {
+    sweep_strays_in(Path::new("/proc"), Some(project_root))
+}
+
+pub fn sweep_strays_in(
+    proc_root: &Path,
+    project_root: Option<&Path>,
+) -> Result<SweepReport, RunError> {
+    platform::sweep_in(proc_root, project_root)
 }
 
 #[cfg(target_os = "linux")]
@@ -79,7 +82,7 @@ mod platform {
 
     use super::{SweepReport, SweptProcess};
     use crate::mechanical::sweep::{
-        Candidate, RUN_MARKER_VAR, RunMarker, select_strays, start_from_stat,
+        Candidate, RUN_MARKER_VAR, RunMarker, root_hash, select_strays, start_from_stat,
     };
     use crate::ports::pipes::{self, PIPE_GRACE};
     use crate::runner::{RunError, RunErrorKind, RunReport, RunSpec};
@@ -112,12 +115,14 @@ mod platform {
         Pid::from_raw(child.id() as i32)
     }
 
-    pub fn own_marker() -> Option<String> {
+    /// A marca deste processo para um comando que roda em `root`; `None` se o `/proc` não se leu.
+    fn own_marker(root: &Path) -> Option<String> {
         let stat = fs::read_to_string("/proc/self/stat").ok()?;
         let marker = RunMarker {
             pid: std::process::id(),
             start: start_from_stat(&stat)?,
             pidns: own_pidns()?,
+            root: root_hash(root),
         };
         Some(marker.encode())
     }
@@ -132,12 +137,8 @@ mod platform {
             .ok()
     }
 
-    pub fn run(
-        marker: Option<&str>,
-        parent_pid: Option<u32>,
-        spec: &RunSpec,
-    ) -> Result<RunReport, RunError> {
-        let Some(marker) = marker else {
+    pub fn run(parent_pid: Option<u32>, spec: &RunSpec) -> Result<RunReport, RunError> {
+        let Some(marker) = own_marker(&spec.cwd) else {
             return Err(error(
                 RunErrorKind::Io,
                 "the run marker of this process could not be read from /proc".to_owned(),
@@ -305,7 +306,7 @@ mod platform {
         error(kind, format!("{program} did not start: {e}"))
     }
 
-    pub fn sweep_in(root: &Path) -> Result<SweepReport, RunError> {
+    pub fn sweep_in(root: &Path, project_root: Option<&Path>) -> Result<SweepReport, RunError> {
         let (sender, receiver) = mpsc::channel();
         let scan_root = root.to_path_buf();
         thread::spawn(move || {
@@ -344,6 +345,7 @@ mod platform {
             std::process::id(),
             own_marker.as_deref(),
             own_pidns,
+            project_root.map(root_hash).as_deref(),
             &candidates,
             &|pid| live_stat(root, pid).map(|stat| stat.start),
             &|pgrp| {
@@ -473,22 +475,14 @@ mod platform {
     use super::SweepReport;
     use crate::runner::{RunError, RunErrorKind, RunReport, RunSpec};
 
-    pub fn own_marker() -> Option<String> {
-        None
-    }
-
-    pub fn run(
-        _marker: Option<&str>,
-        _parent_pid: Option<u32>,
-        _spec: &RunSpec,
-    ) -> Result<RunReport, RunError> {
+    pub fn run(_parent_pid: Option<u32>, _spec: &RunSpec) -> Result<RunReport, RunError> {
         Err(RunError {
             kind: RunErrorKind::UnsupportedPlatform,
             message: "running commands is supported only on Linux".to_owned(),
         })
     }
 
-    pub fn sweep_in(_root: &Path) -> Result<SweepReport, RunError> {
+    pub fn sweep_in(_root: &Path, _project_root: Option<&Path>) -> Result<SweepReport, RunError> {
         Err(RunError {
             kind: RunErrorKind::UnsupportedPlatform,
             message: "sweeping processes is supported only on Linux".to_owned(),

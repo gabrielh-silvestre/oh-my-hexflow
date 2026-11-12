@@ -355,9 +355,9 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** Escolhe, entre os processos que carregam a marca `OMHL_RUN_ID`, os que fugiram de um `check run` cujo `omhl` já morreu.
 
-**Interface.** `RunMarker` (`encode`, `parse`), `RUN_MARKER_VAR`, `start_from_stat`, `Candidate`, `select_strays` (`mechanical/sweep.rs`).
+**Interface.** `RunMarker` (`encode`, `parse`), `RUN_MARKER_VAR`, `root_hash`, `start_from_stat`, `Candidate`, `select_strays` (`mechanical/sweep.rs`).
 
-**Escondido.** O formato exato da marca (qualquer outro texto nunca mata), a leitura do início do processo em `/proc/<pid>/stat` depois do último `)`, e o que se poupa: o próprio processo, a linhagem da mesma marca, a marca de outro namespace de pid e o grupo que um guardião vivo ainda limpa.
+**Escondido.** O formato exato da marca (qualquer outro texto nunca mata), a leitura do início do processo em `/proc/<pid>/stat` depois do último `)`, e o que se poupa: o próprio processo, a linhagem da mesma marca, a marca de outro namespace de pid, a marca de outra raiz de projeto (quando a varredura recebe a raiz) e o grupo que um guardião vivo ainda limpa.
 
 **Profundidade.** Funda e pura. A leitura de `/proc` e os sinais ficam em `ports/process` (3.22).
 
@@ -379,7 +379,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 ### 3.22 Adapters novos de `omhl::ports`
 
-- `ports/process`: `ProcessRunner::{new, bound_to_parent}` (`impl CommandRunner`), `sweep_strays`, `sweep_strays_in`, `SweepReport`, `SweptProcess`. Esconde o guardião (um `sh` líder de grupo próprio que mata o grupo do comando quando o `omhl` morre), a amarração ao pai com `set_pdeathsig`, a espera do líder com `waitid`, o `killpg` com carência de 2 segundos, a marca `OMHL_RUN_ID` no ambiente do comando e a leitura de `/proc`, com o prazo de 1 segundo. Só Linux: fora dele, `run` devolve `UnsupportedPlatform`. É o único arquivo que usa `nix::` (travado: `it_should_confine_nix_to_the_process_port`).
+- `ports/process`: `ProcessRunner::{new, bound_to_parent}` (`impl CommandRunner`), `sweep_strays`, `sweep_project_strays`, `sweep_strays_in`, `SweepReport`, `SweptProcess`. Esconde o guardião (um `sh` líder de grupo próprio que mata o grupo do comando quando o `omhl` morre), a amarração ao pai com `set_pdeathsig`, a espera do líder com `waitid`, o `killpg` com carência de 2 segundos, a marca `OMHL_RUN_ID` no ambiente do comando e a leitura de `/proc`, com o prazo de 1 segundo. Só Linux: fora dele, `run` devolve `UnsupportedPlatform`. É o único arquivo que usa `nix::` (travado: `it_should_confine_nix_to_the_process_port`).
 - `ports/pipes`: as leitoras de `stdout` e `stderr` do runner. São `thread::spawn` soltas, que mandam a saída em pedaços por um canal e descartam o que passa do teto `max_stream_bytes`; assim um descendente fugido que segura o cano não prende o runner. Travado: nada de `thread::scope` nesses arquivos (`it_should_not_scope_the_threads_of_the_pipe_readers`).
 - `ports/blob`: `BlobStore::new(<pasta do banco>)` (`impl ByproductStore`). Guarda `blobs/<2 primeiros hex>/<hash>` e confere o SHA-256 na leitura. O conteúdo, montado pelo `check run`, começa com a linha `omhl-byproduct v1 stdout=<n> stderr=<n>`. Grava em nome temporário único e renomeia.
 - `ports/hooks`: `HookInstaller`. É onde ficam `fs`, `chmod` e `git config` do `omhl hooks install`, nunca em `app/`.

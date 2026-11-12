@@ -262,9 +262,9 @@ Enquanto o repositório for privado, o projeto não usa a proteção de branch d
 
 ### A varredura de processos fugidos
 
-O runner põe a variável `OMHL_RUN_ID` (formato `v1:<pid>:<início>:<pidns>`) no ambiente de cada comando. Ela identifica o `omhl` dono. A varredura procura processos que carregam essa marca e cujo dono morreu, e os encerra com `TERM`, `CONT`, 2 segundos de carência e `KILL`. Ela poupa o próprio processo, quem tem a mesma marca que o varredor e o grupo que um guardião vivo ainda limpa.
+O runner põe a variável `OMHL_RUN_ID` (formato `v1:<pid>:<início>:<pidns>:<raiz>`) no ambiente de cada comando. Ela identifica o `omhl` dono e o projeto: `<raiz>` são os 16 primeiros hex do sha256 do caminho da raiz do projeto. A varredura procura processos que carregam essa marca e cujo dono morreu, e os encerra com `TERM`, `CONT`, 2 segundos de carência e `KILL`. Ela poupa o próprio processo, quem tem a mesma marca que o varredor e o grupo que um guardião vivo ainda limpa.
 
-Ela roda em silêncio no início de todo `omhl check run`, inclusive no `--pre-push`, e sob demanda:
+Ela roda em silêncio no início de todo `omhl check run`, inclusive no `--pre-push`, e sob demanda. A varredura do `check run` só encerra processos cuja marca leva a raiz do próprio projeto: uma marca de outra raiz, mesmo com o dono morto, fica intacta. A sob demanda (`omhl check sweep`) vale para qualquer raiz:
 
 ```bash
 omhl check sweep
@@ -279,7 +279,7 @@ Limites:
 - Não acha o processo mediado por daemon (`docker run`, `systemd-run`), que não herda o ambiente.
 - Um guardião vivo que não termina a limpeza mascara o grupo enquanto viver.
 - Duas worktrees rodando `check run` ao mesmo tempo poupam uma à outra: o dono vivo tem o mesmo início.
-- Um servidor que um check já terminado lançou fora do grupo (o `sccache` e o daemon do Gradle, por exemplo) carrega a marca de um dono morto. Os filhos dele, criados para outra execução viva, herdam essa marca. A varredura do próximo `check run`, em qualquer repositório, mata o servidor no meio do trabalho. O check vivo falha e grava um `failed` imutável, e um cliente de fora do `omhl` que usava o servidor falha sem explicação. Este repositório não usa `sccache`.
+- Um servidor que um check já terminado lançou fora do grupo (o `sccache` e o daemon do Gradle, por exemplo) carrega a marca de um dono morto. Os filhos dele, criados para outra execução viva, herdam essa marca. A varredura do próximo `check run` do mesmo projeto mata o servidor no meio do trabalho (um `check run` de outro projeto não o toca, mas o `omhl check sweep` sim). O check vivo falha e grava um `failed` imutável, e um cliente de fora do `omhl` que usava o servidor falha sem explicação. Este repositório não usa `sccache`. É um risco conhecido e aceito.
 
 ### Reajustar os `timeout_secs`
 

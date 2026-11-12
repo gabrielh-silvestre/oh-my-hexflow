@@ -10,7 +10,10 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use ::omhl::ports::process::{ProcessRunner, SweepReport, sweep_strays, sweep_strays_in};
+use ::omhl::mechanical::sweep::root_hash;
+use ::omhl::ports::process::{
+    ProcessRunner, SweepReport, sweep_project_strays, sweep_strays, sweep_strays_in,
+};
 use ::omhl::runner::{CommandRunner, RunError};
 use nix::errno::Errno;
 use nix::sys::signal::{Signal, kill};
@@ -93,7 +96,13 @@ fn it_should_put_the_run_marker_of_the_caller_in_the_command_environment() {
 
     assert_eq!(
         String::from_utf8_lossy(&report.stdout),
-        format!("v1:{}:{}:{}", std::process::id(), start, inode)
+        format!(
+            "v1:{}:{}:{}:{}",
+            std::process::id(),
+            start,
+            inode,
+            root_hash(dir.path())
+        )
     );
 }
 
@@ -154,6 +163,18 @@ fn it_should_sweep_a_detached_descendant_whose_runner_is_gone() {
 
     let called = Instant::now();
     let result = sweep_strays();
+
+    assert!(result.is_ok(), "the sweep fails");
+    assert_dead_since(&[n], called, DEATH);
+}
+
+#[test]
+fn it_should_sweep_the_stray_of_the_project_whose_root_is_given() {
+    let dir = TempDir::new().expect("work directory is created");
+    let n = stray_of_a_gone_runner(dir.path(), "detached");
+
+    let called = Instant::now();
+    let result = sweep_project_strays(dir.path());
 
     assert!(result.is_ok(), "the sweep fails");
     assert_dead_since(&[n], called, DEATH);
@@ -270,7 +291,7 @@ fn it_should_give_up_the_sweep_scan_after_its_budget_without_signaling_anything(
     assert!(made.success(), "the environ FIFO is created");
     let started = Instant::now();
 
-    let result = sweep_strays_in(root.path());
+    let result = sweep_strays_in(root.path(), None);
 
     let elapsed = started.elapsed();
     // abre o FIFO para escrita sem bloquear (0o4000 = O_NONBLOCK) e solta a leitura presa
