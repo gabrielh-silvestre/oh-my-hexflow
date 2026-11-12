@@ -440,6 +440,26 @@ fn it_should_create_the_database_at_the_db_flag_with_mode_0600() {
     assert_eq!(dir_mode & 0o777, 0o700);
 }
 
+#[test]
+fn it_should_refuse_a_db_inside_the_project_root_without_creating_files() {
+    let project = Project::new("acme");
+    let inside = project.dir().join("abs.db");
+    let cases = ["rel.db", inside.to_str().expect("the path is UTF-8")];
+
+    for db in cases {
+        let output = omhl(&["--db", db, "list"]).cwd(project.dir()).run();
+
+        assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+        assert_eq!(
+            json_line(&output.stderr)["error"]["code"],
+            json!("db-inside-project")
+        );
+    }
+    assert!(!project.dir().join("rel.db").exists());
+    assert!(!project.dir().join("abs.db").exists());
+    assert!(!project.dir().join("blobs").exists());
+}
+
 // load e project
 
 fn listed_ids(project: &Project, type_name: &str) -> Vec<String> {

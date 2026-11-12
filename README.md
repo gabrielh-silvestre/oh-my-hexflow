@@ -58,7 +58,9 @@ tenant = "meu-projeto"
 O nome do tenant tem até 63 caracteres: letras minúsculas, dígitos e hífen,
 começando por letra ou dígito. Todos os tenants do usuário dividem um único
 banco em `$XDG_DATA_HOME/omhl/omhl.db`, ou em `~/.local/share/omhl/omhl.db`
-quando a variável não está definida. A opção `--db` troca esse caminho.
+quando a variável não está definida. A opção `--db` troca esse caminho, mas o
+`omhl` recusa (`db-inside-project`) um banco dentro da raiz do projeto: a pasta
+`blobs/` ao lado dele sujaria a árvore que o `check run` atesta.
 
 Fora de um projeto marcado, o hook não imprime nada e não cria o banco.
 

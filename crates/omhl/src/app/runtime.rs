@@ -56,6 +56,12 @@ impl Runtime {
             Some(path) => path.to_path_buf(),
             None => default_db_path(env)?,
         };
+        if is_inside(&db_path, &located.root) {
+            return Err(AppError::plain(
+                "db-inside-project",
+                "the database folder is inside the project; its blobs/ folder would dirty the attested tree",
+            ));
+        }
         prepare_db_file(&db_path)?;
 
         Ok(Runtime {
@@ -138,6 +144,16 @@ impl Runtime {
             writeln!(log, "{line}")
         });
     }
+}
+
+/// Compara a pasta do banco com a raiz depois de resolver links simbólicos, quando a pasta já existe.
+// shortcut: pasta que ainda não existe é comparada só pelo texto (`..` não é resolvido); canonicalizar o ancestral existente se aparecer.
+fn is_inside(db_path: &Path, root: &Path) -> bool {
+    let absolute = std::path::absolute(db_path).unwrap_or_else(|_| db_path.to_path_buf());
+    let resolved = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let dir = absolute.parent().unwrap_or(&absolute);
+
+    resolved(dir).starts_with(resolved(root))
 }
 
 fn swept_json(swept: &[SweptProcess]) -> Value {
