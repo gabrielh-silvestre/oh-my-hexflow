@@ -247,7 +247,13 @@ fn execute(
 ) -> Result<Value, AppError> {
     let action = to_action(command, stdin, env)?;
 
-    run_action(start, db, env, &Caller::cli(), &action)
+    let caller = if env.claude_code {
+        Caller::cli_under_claude_code()
+    } else {
+        Caller::cli()
+    };
+
+    run_action(start, db, env, &caller, &action)
 }
 
 fn to_action(

@@ -28,6 +28,8 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::SnapshotTreeMismatch, "snapshot-tree-mismatch"),
         (RuleCode::CheckRunAuthor, "check-run-author"),
         (RuleCode::AttestationIncomplete, "attestation-incomplete"),
+        (RuleCode::ConfirmationRequired, "confirmation-required"),
+        (RuleCode::ConfirmationInvalid, "confirmation-invalid"),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected

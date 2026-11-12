@@ -990,6 +990,7 @@ fn it_should_report_no_marker_when_discovering_outside_a_project() {
         home: None,
         git_index_file: None,
         parent_pid: 1,
+        claude_code: false,
     };
 
     let error = match Runtime::discover(dir.path(), None, &env) {
@@ -1010,6 +1011,7 @@ fn it_should_open_the_database_from_the_environment_default() {
         home: None,
         git_index_file: None,
         parent_pid: 1,
+        claude_code: false,
     };
     let runtime = match Runtime::discover(project.dir(), None, &env) {
         Ok(runtime) => runtime,
@@ -1058,7 +1060,10 @@ fn it_should_read_every_page_of_nodes_for_the_render_action() {
         .iter()
         .enumerate()
         .map(|(index, id)| {
-            let data = json!({ "text": format!("rule {:02}", index + 1) });
+            let data = json!({
+                "text": format!("rule {:02}", index + 1),
+                "confirmed_by": { "by": "person:tester", "question": "Adopt it?", "answer": "Yes." },
+            });
 
             node_wire(id, "guideline", &data)
         })

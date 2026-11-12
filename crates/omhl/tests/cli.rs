@@ -235,6 +235,41 @@ fn it_should_append_from_stdin() {
     assert_eq!(json_line(&fetched.stdout)["node"]["data"], data);
 }
 
+/// `author` gravado por um `omhl append`, com ou sem `CLAUDECODE=1` no ambiente do processo.
+fn author_of_append(claude_code: bool) -> Value {
+    let project = Project::new("acme");
+    let request = json!({
+        "items": [{ "body": {
+            "kind": "node", "id": "decisions.x", "type": "decision",
+            "data": decision_data("Use WAL", None),
+        } }]
+    });
+    let mut append = in_project(&project, &["append"]).stdin(request.to_string());
+    if claude_code {
+        append = append.env("CLAUDECODE", "1");
+    }
+
+    let appended = append.run();
+    let fetched = in_project(&project, &["get", "decisions.x"]).run();
+
+    assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+    json_line(&fetched.stdout)["node"]["author"].clone()
+}
+
+#[test]
+fn it_should_record_the_claude_agent_when_append_runs_under_claude_code() {
+    let author = author_of_append(true);
+
+    assert_eq!(author, json!({ "agent": "claude", "client": "cli" }));
+}
+
+#[test]
+fn it_should_record_the_user_agent_when_append_runs_outside_claude_code() {
+    let author = author_of_append(false);
+
+    assert_eq!(author, json!({ "agent": "user", "client": "cli" }));
+}
+
 #[test]
 fn it_should_exit_one_on_invalid_json_input() {
     let project = Project::new("acme");

@@ -4,6 +4,7 @@ use hexlog::{
 };
 use serde_json::Value;
 
+use super::confirmation::check_confirmation;
 use crate::error::{OmhlError, RuleCode};
 use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::is_mechanical;
@@ -24,15 +25,15 @@ fn namespace_of(type_name: &str) -> Option<&'static str> {
     }
 }
 
-/// Único client que grava node `check` com `run`.
-const CHECK_AUTHOR: &str = "loader";
+/// Único client que grava node `check` com `run`; também fica isento da guarda da confirmação.
+const LOADER_CLIENT: &str = "loader";
 
 /// Um item `Node` do lote, com o índice para montar o ponteiro dos erros.
 pub(super) struct NodeItem<'i> {
     index: usize,
     pub(super) id: &'i SemanticId,
     pub(super) type_name: &'i str,
-    data: &'i Value,
+    pub(super) data: &'i Value,
     pub(super) base: Option<&'i RecordId>,
     pub(super) snapshot: Option<&'i Snapshot>,
 }
@@ -138,9 +139,11 @@ impl Guard<'_, '_> {
                 self.check_reactivation(node)
             }
             "premise" | "decision" | "gap" | "divergence" => {
-                self.find_work_item(node)?;
-                self.check_reactivation(node)
+                self.check_work_item(node)?;
+                self.check_reactivation(node)?;
+                self.check_human_confirmation(node)
             }
+            "guideline" => self.check_human_confirmation(node),
             "check" => {
                 self.check_reactivation(node)?;
                 self.check_run_author(node)
@@ -151,6 +154,28 @@ impl Guard<'_, '_> {
             }
             _ => Ok(()),
         }
+    }
+
+    /// Premissa, gap e divergência novos exigem work item aberto; a revisão de um node existente não.
+    fn check_work_item(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
+        let needs_open = node.base.is_none()
+            && self.author.client != LOADER_CLIENT
+            && matches!(node.type_name, "premise" | "gap" | "divergence");
+        if needs_open {
+            self.find_open_work_item(node)?;
+        } else {
+            self.find_work_item(node)?;
+        }
+
+        Ok(())
+    }
+
+    fn check_human_confirmation(&self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
+        if self.author.client == LOADER_CLIENT {
+            return Ok(());
+        }
+
+        check_confirmation(node)
     }
 
     /// Fechar só por `close_work_item`, e work item fechado é definitivo.
@@ -191,7 +216,7 @@ impl Guard<'_, '_> {
 
     /// Só o `loader` escreve, tira ou retira o `run` de um check.
     fn check_run_author(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
-        if self.author.client == CHECK_AUTHOR {
+        if self.author.client == LOADER_CLIENT {
             return Ok(());
         }
         if is_mechanical(node.data) {
@@ -205,7 +230,7 @@ impl Guard<'_, '_> {
     }
 
     fn check_retirement(&mut self, index: usize, id: &SemanticId) -> Result<(), OmhlError> {
-        if self.author.client != CHECK_AUTHOR && self.current_check_has_run(id)? {
+        if self.author.client != LOADER_CLIENT && self.current_check_has_run(id)? {
             return Err(OmhlError::rule(
                 RuleCode::CheckRunAuthor,
                 &format!("/items/{index}/base"),

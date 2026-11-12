@@ -79,6 +79,14 @@ impl Caller {
         }
     }
 
+    /// O Claude Code define `CLAUDECODE=1` nas chamadas de Bash; o falso positivo (humano) é o erro seguro.
+    pub fn cli_under_claude_code() -> Caller {
+        Caller {
+            client: "cli",
+            agent: "claude",
+        }
+    }
+
     pub fn mcp() -> Caller {
         Caller {
             client: "mcp",

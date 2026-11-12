@@ -9,6 +9,7 @@ pub struct Env<'e> {
     pub home: Option<&'e std::ffi::OsStr>,
     pub git_index_file: Option<&'e std::ffi::OsStr>,
     pub parent_pid: u32,
+    pub claude_code: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

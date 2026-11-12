@@ -1399,3 +1399,516 @@ fn it_should_refuse_a_spec_digest_in_an_attestation_of_a_text_check_authored_by_
 
     assert_eq!(result, Err(rule(RuleCode::CheckRunAuthor, CHECK_POINTER)));
 }
+
+// Guarda da confirmação humana (R1 a R7) e autoria
+
+const CONFIRMED_BY_POINTER: &str = "/items/0/body/data/confirmed_by";
+const CONFIRMED_BY_BY_POINTER: &str = "/items/0/body/data/confirmed_by/by";
+const AMENDMENT_POINTER: &str = "/items/0/body/data/amendment";
+
+fn confirmation(by: &str) -> Value {
+    json!({ "by": by, "question": "Is this right?", "answer": "Yes, it is right." })
+}
+
+fn with_field(mut data: Value, key: &str, value: Value) -> Value {
+    data[key] = value;
+
+    data
+}
+
+fn confirmed_premise_data() -> Value {
+    let data = with_field(
+        premise_data("users pay monthly", Some(PR_7)),
+        "kind",
+        json!("business"),
+    );
+
+    with_field(data, "status", json!("confirmed"))
+}
+
+fn guideline_data() -> Value {
+    json!({ "text": "keep pull requests small" })
+}
+
+fn stale_divergence_data() -> Value {
+    let data = with_field(divergence_data(PR_7), "resolution", json!("spec-stale"));
+    let data = with_field(data, "confirmed_by", confirmation("person:gabriel"));
+
+    with_field(data, "amendment", json!("emenda-01"))
+}
+
+fn without_field(mut data: Value, key: &str) -> Value {
+    data.as_object_mut().expect("data is an object").remove(key);
+
+    data
+}
+
+/// Grava um node pelo client `mcp`, o do agente.
+fn appended_by_mcp(
+    omhl: &mut Omhl<'_>,
+    id: &str,
+    type_name: &str,
+    data: Value,
+) -> Result<usize, OmhlError> {
+    appended(omhl, mcp_author(), vec![node_item(id, type_name, data)])
+}
+
+/// Harness cujo `PR_7`, uma vez gravado, pode ser fechado.
+fn closable_harness() -> OmhlHarness {
+    OmhlHarness::new(
+        FakeProbe::clean(snap('a'))
+            .with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree('c')))),
+    )
+}
+
+fn close_pull_request(omhl: &mut Omhl<'_>) {
+    close(omhl, PR_7, &snapshots(&snap('a'), &tree('c')));
+}
+
+// R1
+
+#[test]
+fn it_should_accept_a_confirmed_premise_with_a_confirmation() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(
+        confirmed_premise_data(),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_a_confirmed_premise_without_a_confirmation() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+
+    let result = appended_by_mcp(
+        &mut omhl,
+        "premises.p-1",
+        "premise",
+        confirmed_premise_data(),
+    );
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationRequired, CONFIRMED_BY_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_confirmed_premise_without_kind_and_without_a_confirmation() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(
+        premise_data("tests are fast", None),
+        "status",
+        json!("confirmed"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationRequired, CONFIRMED_BY_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_confirmed_premise_without_a_confirmation_from_the_cli() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let item = node_item("premises.p-1", "premise", confirmed_premise_data());
+
+    let result = appended(&mut omhl, cli_author(), vec![item]);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationRequired, CONFIRMED_BY_POINTER))
+    );
+}
+
+// R2
+
+#[test]
+fn it_should_refuse_a_confirmation_whose_author_is_not_a_person() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(
+        confirmed_premise_data(),
+        "confirmed_by",
+        confirmation("agent:claude"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationInvalid, CONFIRMED_BY_BY_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_guideline_confirmation_whose_author_is_not_a_person() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(guideline_data(), "confirmed_by", confirmation("gabriel"));
+
+    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationInvalid, CONFIRMED_BY_BY_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_confirmation_whose_author_has_only_the_person_prefix() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(guideline_data(), "confirmed_by", confirmation("person:"));
+
+    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationInvalid, CONFIRMED_BY_BY_POINTER))
+    );
+}
+
+// R3
+
+#[test]
+fn it_should_refuse_a_confirmation_on_an_assumed_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(
+        premise_data("users pay monthly", Some(PR_7)),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationInvalid, CONFIRMED_BY_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_confirmation_on_a_divergence_that_is_not_spec_stale() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(
+        divergence_data(PR_7),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "divergences.v-1", "divergence", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationInvalid, CONFIRMED_BY_POINTER))
+    );
+}
+
+// R4
+
+#[test]
+fn it_should_accept_a_guideline_with_a_confirmation() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(
+        guideline_data(),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_a_guideline_from_the_mcp_without_a_confirmation() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+
+    let result = appended_by_mcp(
+        &mut omhl,
+        "guidelines.small-prs",
+        "guideline",
+        guideline_data(),
+    );
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationRequired, CONFIRMED_BY_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_guideline_from_the_cli_without_a_confirmation() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let item = node_item("guidelines.small-prs", "guideline", guideline_data());
+
+    let result = appended(&mut omhl, cli_author(), vec![item]);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationRequired, CONFIRMED_BY_POINTER))
+    );
+}
+
+#[test]
+fn it_should_accept_a_guideline_without_a_confirmation_from_the_loader() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let item = node_item("guidelines.small-prs", "guideline", guideline_data());
+
+    let result = appended(&mut omhl, loader_author(), vec![item]);
+
+    assert_eq!(result, Ok(1));
+}
+
+// R5
+
+#[test]
+fn it_should_refuse_a_premise_with_a_kind_and_without_a_work_item() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(
+        premise_data("tests are fast", None),
+        "kind",
+        json!("technical"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::WorkItemNotFound, WORK_ITEM_POINTER))
+    );
+}
+
+// R6
+
+#[test]
+fn it_should_refuse_a_new_premise_for_a_closed_work_item() {
+    let harness = closable_harness();
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    close_pull_request(&mut omhl);
+
+    let result = appended_by_mcp(
+        &mut omhl,
+        "premises.p-1",
+        "premise",
+        premise_data("tests are fast", Some(PR_7)),
+    );
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::WorkItemClosed, WORK_ITEM_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_new_gap_for_a_closed_work_item() {
+    let harness = closable_harness();
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    close_pull_request(&mut omhl);
+
+    let result = appended_by_mcp(&mut omhl, "gaps.g-1", "gap", gap_data(Some(PR_7)));
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::WorkItemClosed, WORK_ITEM_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_new_divergence_for_a_closed_work_item() {
+    let harness = closable_harness();
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    close_pull_request(&mut omhl);
+
+    let result = appended_by_mcp(
+        &mut omhl,
+        "divergences.v-1",
+        "divergence",
+        divergence_data(PR_7),
+    );
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::WorkItemClosed, WORK_ITEM_POINTER))
+    );
+}
+
+#[test]
+fn it_should_accept_the_revision_of_an_existing_divergence_after_its_work_item_closed() {
+    let harness = closable_harness();
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let created = append_ok(
+        &mut omhl,
+        vec![node_item(
+            "divergences.v-1",
+            "divergence",
+            divergence_data(PR_7),
+        )],
+    );
+    close_pull_request(&mut omhl);
+    let revision = revision_item(
+        "divergences.v-1",
+        "divergence",
+        stale_divergence_data(),
+        &created.records[0].id,
+    );
+
+    let result = appended(&mut omhl, mcp_author(), vec![revision]);
+
+    assert_eq!(result, Ok(1));
+}
+
+// R7
+
+#[test]
+fn it_should_accept_a_spec_stale_divergence_with_a_confirmation_and_an_amendment() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+
+    let result = appended_by_mcp(
+        &mut omhl,
+        "divergences.v-1",
+        "divergence",
+        stale_divergence_data(),
+    );
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_a_spec_stale_divergence_without_a_confirmation() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = without_field(stale_divergence_data(), "confirmed_by");
+
+    let result = appended_by_mcp(&mut omhl, "divergences.v-1", "divergence", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationRequired, CONFIRMED_BY_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_spec_stale_divergence_without_an_amendment() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = without_field(stale_divergence_data(), "amendment");
+
+    let result = appended_by_mcp(&mut omhl, "divergences.v-1", "divergence", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationRequired, AMENDMENT_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_an_amendment_outside_the_two_digit_emenda_form() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let amended =
+        |amendment: &str| with_field(stale_divergence_data(), "amendment", json!(amendment));
+
+    let results = ["emenda-1", "emenda-001", "amendment-01"].map(|amendment| {
+        appended_by_mcp(
+            &mut omhl,
+            "divergences.v-1",
+            "divergence",
+            amended(amendment),
+        )
+    });
+
+    let refused = rule(RuleCode::ConfirmationInvalid, AMENDMENT_POINTER);
+    assert_eq!(
+        results,
+        [Err(refused.clone()), Err(refused.clone()), Err(refused)]
+    );
+}
+
+#[test]
+fn it_should_refuse_an_amendment_on_a_divergence_that_is_not_spec_stale() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(divergence_data(PR_7), "amendment", json!("emenda-01"));
+
+    let result = appended_by_mcp(&mut omhl, "divergences.v-1", "divergence", data);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationInvalid, AMENDMENT_POINTER))
+    );
+}
+
+// Premissa técnica autônoma (AC 6)
+
+#[test]
+fn it_should_accept_an_assumed_technical_premise_without_a_confirmation() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(
+        premise_data("the cache is warm", Some(PR_7)),
+        "kind",
+        json!("technical"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_identify_an_assumed_technical_premise_as_the_agents_by_its_author() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(
+        premise_data("the cache is warm", Some(PR_7)),
+        "kind",
+        json!("technical"),
+    );
+    appended_by_mcp(&mut omhl, "premises.p-1", "premise", data).expect("the premise is accepted");
+
+    let stored = omhl
+        .get(&acme(), &sid("premises.p-1"))
+        .expect("the premise is read")
+        .expect("the premise exists");
+
+    assert_eq!(stored.author, mcp_author());
+    assert_eq!(stored.data.get("confirmed_by"), None);
+}

@@ -1,5 +1,6 @@
 mod append;
 mod attestation;
+mod confirmation;
 mod filter;
 
 use hexlog::{SemanticId, Snapshot};
