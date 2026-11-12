@@ -17,7 +17,7 @@ O vocabulário (record, tenant, node, gate, extension, projection) está em
 ## Requisitos
 
 - Rust 1.97.0, fixado em `rust-toolchain.toml`.
-- `git` no `PATH`, porque `attest`, `gate-pr` e `close` leem o commit atual.
+- `git` 2.31 ou mais novo no `PATH`, porque `attest`, `gate-pr` e `close` leem o commit atual. O `omhl` usa `git rev-parse --path-format=absolute`, que nasceu no 2.31; num git mais velho, todo `check run` falha com `probe-failed`.
 - Claude Code, se você for usar o plugin.
 
 O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.

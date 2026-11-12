@@ -14,6 +14,8 @@ O `check run` roda em três eventos, todos do git:
 
 O `omhl check run` só roda no Linux. Em outro sistema ele responde `unsupported-platform`.
 
+O `omhl` exige git 2.31 ou mais novo (`git rev-parse --path-format=absolute`). Num git mais velho, o `check run` falha com `probe-failed` e o `hooks install` recusa antes de gravar o `core.hooksPath`.
+
 Códigos de saída: `0` quando nenhum check bloqueante reprovou, `1` para qualquer erro (uma linha JSON no stderr, stdout vazio) e `2` para erro de uso da linha de comando.
 
 **Evento sem checks.** Um `check run` cujo evento não tem nenhum check no banco sai com `0`, sem rodar nada. Para não passar por aprovação, a saída traz `checks_planned: 0` e `warnings: [{"code": "no-checks-for-event"}]`. O `recorded` continua significando o modo de gravação (work item), não que algo foi gravado.
