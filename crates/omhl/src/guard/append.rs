@@ -16,6 +16,8 @@ fn namespace_of(type_name: &str) -> Option<&'static str> {
         "guideline" => Some("guidelines"),
         "premise" => Some("premises"),
         "decision" => Some("decisions"),
+        "gap" => Some("gaps"),
+        "divergence" => Some("divergences"),
         "attestation" => Some("attestations"),
         "work-item" | "pull-request" => Some("work-items"),
         _ => None,
@@ -135,7 +137,7 @@ impl Guard<'_, '_> {
                 self.check_work_item_status(node)?;
                 self.check_reactivation(node)
             }
-            "premise" | "decision" => {
+            "premise" | "decision" | "gap" | "divergence" => {
                 self.find_work_item(node)?;
                 self.check_reactivation(node)
             }

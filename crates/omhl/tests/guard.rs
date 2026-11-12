@@ -691,6 +691,97 @@ fn it_should_refuse_a_premise_or_a_decision_linked_to_a_missing_work_item() {
     );
 }
 
+fn gap_data(work_item: Option<&str>) -> Value {
+    let mut data = json!({ "question": "Who deploys?", "context": "the spec does not say" });
+    if let Some(id) = work_item {
+        data["work_item"] = json!(id);
+    }
+
+    data
+}
+
+fn divergence_data(work_item: &str) -> Value {
+    json!({
+        "source_ref": "spec#ac-3",
+        "kind": "missing",
+        "text": "the spec asks for a report the code does not have",
+        "evidence": [{ "source": "docs", "summary": "the docs say so" }],
+        "resolution": "open",
+        "work_item": work_item,
+    })
+}
+
+#[test]
+fn it_should_refuse_a_gap_or_a_divergence_linked_to_a_missing_work_item() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let gap = node_item("gaps.g-1", "gap", gap_data(Some("work-items.pr-9")));
+    let divergence = node_item(
+        "divergences.v-1",
+        "divergence",
+        divergence_data("work-items.pr-9"),
+    );
+
+    let errors = [
+        refusal(&mut omhl, vec![gap]),
+        refusal(&mut omhl, vec![divergence]),
+    ];
+
+    assert_eq!(
+        errors,
+        [
+            rule(RuleCode::WorkItemNotFound, WORK_ITEM_POINTER),
+            rule(RuleCode::WorkItemNotFound, WORK_ITEM_POINTER)
+        ]
+    );
+}
+
+#[test]
+fn it_should_accept_a_gap_and_a_divergence_linked_to_an_open_work_item() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let gap = node_item("gaps.g-1", "gap", gap_data(Some(PR_7)));
+    let divergence = node_item("divergences.v-1", "divergence", divergence_data(PR_7));
+
+    let result = omhl.append(&request(vec![gap, divergence]));
+
+    assert_eq!(result.map(|outcome| outcome.records.len()), Ok(2));
+}
+
+#[test]
+fn it_should_accept_a_gap_without_a_work_item() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let gap = node_item("gaps.g-1", "gap", gap_data(None));
+
+    let result = omhl.append(&request(vec![gap]));
+
+    assert_eq!(result.map(|outcome| outcome.records.len()), Ok(1));
+}
+
+#[test]
+fn it_should_refuse_a_gap_or_a_divergence_id_outside_its_namespace() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let misplaced_gap = node_item("premises.g-1", "gap", gap_data(None));
+    let misplaced_divergence = node_item("gaps.v-1", "divergence", divergence_data(PR_7));
+
+    let errors = [
+        refusal(&mut omhl, vec![misplaced_gap]),
+        refusal(&mut omhl, vec![misplaced_divergence]),
+    ];
+
+    assert_eq!(
+        errors,
+        [
+            rule(RuleCode::IdNamespace, ITEM_ID_POINTER),
+            rule(RuleCode::IdNamespace, ITEM_ID_POINTER)
+        ]
+    );
+}
+
 #[test]
 fn it_should_accept_a_decision_linked_to_an_open_work_item() {
     let harness = OmhlHarness::new(FakeProbe::failing());

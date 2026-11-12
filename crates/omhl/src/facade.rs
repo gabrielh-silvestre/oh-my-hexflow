@@ -20,11 +20,13 @@ use crate::{graphs, guard};
 static NATIVE: NativeBase = NativeBase;
 
 /// Tipos de node e de relação que a projeção lê (os que `projection::build` consome).
-const PROJECTED_NODE_TYPES: [&str; 5] = [
+const PROJECTED_NODE_TYPES: [&str; 7] = [
     "work-item",
     "pull-request",
     "premise",
     "decision",
+    "gap",
+    "divergence",
     "attestation",
 ];
 const PROJECTED_RELATIONS: [&str; 3] = ["supports", "contradicts", "answers"];

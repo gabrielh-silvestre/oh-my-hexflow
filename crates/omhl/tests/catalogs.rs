@@ -13,8 +13,9 @@ use support::{EmptyNative, rty, sid, tname};
 const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 const OLD_CHECKS_CATALOG: &str = include_str!("fixtures/checks_catalog_free_events.json");
 const OLD_VOCABULARY: &str = "free";
+const OLD_DECISIONS_CATALOG: &str = include_str!("fixtures/decisions_catalog_v1.json");
 
-const NODE_TYPES: [&str; 7] = [
+const NODE_TYPES: [&str; 9] = [
     "premise",
     "guideline",
     "decision",
@@ -22,6 +23,8 @@ const NODE_TYPES: [&str; 7] = [
     "attestation",
     "work-item",
     "pull-request",
+    "gap",
+    "divergence",
 ];
 const RELATION_TYPES: [&str; 4] = ["after", "supports", "contradicts", "answers"];
 
@@ -88,7 +91,15 @@ fn mechanical_attestation() -> Value {
 }
 
 fn old_catalog() -> Catalog {
-    let file: Value = serde_json::from_str(OLD_CHECKS_CATALOG).expect("the old catalog is JSON");
+    catalog_from(OLD_CHECKS_CATALOG)
+}
+
+fn old_decisions_catalog() -> Catalog {
+    catalog_from(OLD_DECISIONS_CATALOG)
+}
+
+fn catalog_from(source: &str) -> Catalog {
+    let file: Value = serde_json::from_str(source).expect("the old catalog is JSON");
     let types: Vec<TypeDef> =
         serde_json::from_value(file["types"].clone()).expect("the old types decode");
     let relations: Vec<RelationTypeDef> =
@@ -168,7 +179,7 @@ fn names(listed: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn it_should_build_the_catalog_with_seven_node_types_and_four_relation_types() {
+fn it_should_build_the_catalog_with_nine_node_types_and_four_relation_types() {
     let built = graphs::catalog();
 
     let catalog = built.expect("the embedded catalogs build");
@@ -180,7 +191,7 @@ fn it_should_build_the_catalog_with_seven_node_types_and_four_relation_types() {
         .iter()
         .map(|name| catalog.relation_type_def(&rty(name)).is_some())
         .collect();
-    assert_eq!((node_types, relation_types), (vec![true; 7], vec![true; 4]));
+    assert_eq!((node_types, relation_types), (vec![true; 9], vec![true; 4]));
 }
 
 #[test]
@@ -214,9 +225,13 @@ fn it_should_declare_the_endpoints_of_each_relation_type() {
         declared,
         [
             (names(&["check"]), names(&["check"]), true),
-            (names(&sources), names(&["decision"]), false),
+            (names(&sources), names(&["decision", "premise"]), false),
             (names(&sources), names(&sources), false),
-            (names(&["decision"]), names(&["premise"]), false),
+            (
+                names(&["decision", "premise"]),
+                names(&["premise", "gap"]),
+                false
+            ),
         ]
     );
 }
@@ -744,4 +759,524 @@ fn it_should_reject_an_expect_rule_with_both_stdout_and_stderr_in_the_catalog() 
     let found = violations_of("check", &check);
 
     assert_eq!(found, vec![violation("/expect/0", "not")]);
+}
+
+// Catálogo aditivo de diretivas e premissas: `kind`, `confirmed_by`, `gap` e `divergence`.
+
+const CONFIRMED_TYPES: [&str; 2] = ["premise", "guideline"];
+
+fn confirmation() -> Value {
+    json!({
+        "by": "person:gabriel",
+        "question": "Is the repository shared?",
+        "answer": "Yes, always.",
+    })
+}
+
+fn text_of(length: usize) -> String {
+    "x".repeat(length)
+}
+
+/// `premise` ou `guideline` mínimo e válido, sem os campos novos.
+fn plain(type_name: &str) -> Value {
+    match type_name {
+        "premise" => json!({ "text": "users have a git repo", "status": "assumed" }),
+        _ => json!({ "text": "prefer small modules" }),
+    }
+}
+
+fn confirmed(type_name: &str, confirmation: Value) -> Value {
+    with(plain(type_name), "confirmed_by", confirmation)
+}
+
+fn gap() -> Value {
+    json!({ "question": "Who deploys?", "context": "the spec does not say" })
+}
+
+fn divergence() -> Value {
+    json!({
+        "source_ref": "spec#ac-3",
+        "kind": "missing",
+        "text": "the spec asks for a report the code does not have",
+        "evidence": evidence(),
+        "resolution": "open",
+        "work_item": "work-items.dir0",
+    })
+}
+
+fn evidence_of(count: usize) -> Value {
+    Value::Array(vec![
+        json!({ "source": "docs/spec.md", "summary": "the spec says so" });
+        count
+    ])
+}
+
+/// Aceitação do dado montado por `build` para cada tamanho de texto em `lengths`.
+fn accepted_by_length(
+    type_name: &str,
+    lengths: &[usize],
+    build: impl Fn(String) -> Value,
+) -> Vec<bool> {
+    lengths
+        .iter()
+        .map(|length| is_accepted(type_name, &build(text_of(*length))))
+        .collect()
+}
+
+/// Aceitação do dado montado por `build` para cada quantidade de itens em `counts`.
+fn accepted_by_count(
+    type_name: &str,
+    counts: &[usize],
+    build: impl Fn(Value) -> Value,
+) -> Vec<bool> {
+    counts
+        .iter()
+        .map(|count| is_accepted(type_name, &build(evidence_of(*count))))
+        .collect()
+}
+
+#[test]
+fn it_should_accept_a_premise_kind_of_technical_or_business_or_none() {
+    let technical = with(plain("premise"), "kind", json!("technical"));
+    let business = with(plain("premise"), "kind", json!("business"));
+
+    let accepted = (
+        is_accepted("premise", &technical),
+        is_accepted("premise", &business),
+        is_accepted("premise", &plain("premise")),
+    );
+
+    assert_eq!(accepted, (true, true, true));
+}
+
+#[test]
+fn it_should_reject_a_premise_kind_outside_technical_and_business() {
+    let premise = with(plain("premise"), "kind", json!("legal"));
+
+    let found = violations_of("premise", &premise);
+
+    assert_eq!(found, vec![violation("/kind", "enum")]);
+}
+
+#[test]
+fn it_should_reject_a_kind_on_a_guideline() {
+    let guideline = with(plain("guideline"), "kind", json!("technical"));
+
+    let found = violations_of("guideline", &guideline);
+
+    assert_eq!(found, vec![violation("/kind", "additional-properties")]);
+}
+
+#[test]
+fn it_should_accept_a_confirmation_on_a_premise_and_on_a_guideline() {
+    let accepted: Vec<bool> = CONFIRMED_TYPES
+        .iter()
+        .map(|name| is_accepted(name, &confirmed(name, confirmation())))
+        .collect();
+
+    assert_eq!(accepted, [true, true]);
+}
+
+#[test]
+fn it_should_reject_a_confirmation_missing_by_question_or_answer() {
+    let mut found = Vec::new();
+    let mut expected = Vec::new();
+    for name in CONFIRMED_TYPES {
+        for field in ["by", "question", "answer"] {
+            let incomplete = confirmed(name, without(confirmation(), field));
+            found.push(violations_of(name, &incomplete));
+            expected.push(vec![violation(
+                &format!("/confirmed_by/{field}"),
+                "required",
+            )]);
+        }
+    }
+
+    assert_eq!(found, expected);
+}
+
+#[test]
+fn it_should_reject_a_confirmation_with_an_extra_property() {
+    let found: Vec<Vec<DataViolation>> = CONFIRMED_TYPES
+        .iter()
+        .map(|name| {
+            let extra = with(confirmation(), "via", json!("chat"));
+            violations_of(name, &confirmed(name, extra))
+        })
+        .collect();
+
+    assert_eq!(
+        found,
+        vec![vec![violation("/confirmed_by/via", "additional-properties")]; 2]
+    );
+}
+
+#[test]
+fn it_should_reject_a_confirmation_that_is_not_an_object() {
+    let found: Vec<Vec<DataViolation>> = CONFIRMED_TYPES
+        .iter()
+        .map(|name| violations_of(name, &confirmed(name, json!("person:gabriel"))))
+        .collect();
+
+    assert_eq!(found, vec![vec![violation("/confirmed_by", "type")]; 2]);
+}
+
+#[test]
+fn it_should_limit_the_confirmation_by_to_1_to_100_characters() {
+    let accepted: Vec<Vec<bool>> = CONFIRMED_TYPES
+        .iter()
+        .map(|name| {
+            accepted_by_length(name, &[0, 1, 100, 101], |text| {
+                confirmed(name, with(confirmation(), "by", json!(text)))
+            })
+        })
+        .collect();
+
+    assert_eq!(accepted, vec![vec![false, true, true, false]; 2]);
+}
+
+#[test]
+fn it_should_limit_the_confirmation_question_to_1_to_2000_characters() {
+    let accepted: Vec<Vec<bool>> = CONFIRMED_TYPES
+        .iter()
+        .map(|name| {
+            accepted_by_length(name, &[0, 1, 2000, 2001], |text| {
+                confirmed(name, with(confirmation(), "question", json!(text)))
+            })
+        })
+        .collect();
+
+    assert_eq!(accepted, vec![vec![false, true, true, false]; 2]);
+}
+
+#[test]
+fn it_should_limit_the_confirmation_answer_to_1_to_2000_characters() {
+    let accepted: Vec<Vec<bool>> = CONFIRMED_TYPES
+        .iter()
+        .map(|name| {
+            accepted_by_length(name, &[0, 1, 2000, 2001], |text| {
+                confirmed(name, with(confirmation(), "answer", json!(text)))
+            })
+        })
+        .collect();
+
+    assert_eq!(accepted, vec![vec![false, true, true, false]; 2]);
+}
+
+#[test]
+fn it_should_accept_a_gap_with_and_without_a_work_item() {
+    let linked = with(gap(), "work_item", json!("work-items.dir0"));
+
+    let accepted = (is_accepted("gap", &gap()), is_accepted("gap", &linked));
+
+    assert_eq!(accepted, (true, true));
+}
+
+#[test]
+fn it_should_reject_a_gap_missing_question_or_context() {
+    let found = (
+        violations_of("gap", &without(gap(), "question")),
+        violations_of("gap", &without(gap(), "context")),
+    );
+
+    assert_eq!(
+        found,
+        (
+            vec![violation("/question", "required")],
+            vec![violation("/context", "required")]
+        )
+    );
+}
+
+#[test]
+fn it_should_reject_a_gap_with_an_extra_property() {
+    let gap = with(gap(), "kind", json!("technical"));
+
+    let found = violations_of("gap", &gap);
+
+    assert_eq!(found, vec![violation("/kind", "additional-properties")]);
+}
+
+#[test]
+fn it_should_limit_the_gap_question_to_1_to_2000_characters() {
+    let accepted = accepted_by_length("gap", &[0, 1, 2000, 2001], |text| {
+        with(gap(), "question", json!(text))
+    });
+
+    assert_eq!(accepted, [false, true, true, false]);
+}
+
+#[test]
+fn it_should_limit_the_gap_context_to_1_to_2000_characters() {
+    let accepted = accepted_by_length("gap", &[0, 1, 2000, 2001], |text| {
+        with(gap(), "context", json!(text))
+    });
+
+    assert_eq!(accepted, [false, true, true, false]);
+}
+
+#[test]
+fn it_should_limit_the_gap_work_item_to_1_to_200_characters() {
+    let accepted = accepted_by_length("gap", &[0, 1, 200, 201], |text| {
+        with(gap(), "work_item", json!(text))
+    });
+
+    assert_eq!(accepted, [false, true, true, false]);
+}
+
+#[test]
+fn it_should_accept_a_complete_divergence() {
+    let accepted = is_accepted("divergence", &divergence());
+
+    assert!(accepted);
+}
+
+#[test]
+fn it_should_accept_a_divergence_with_confirmation_and_amendment() {
+    let amended = with(
+        with(divergence(), "confirmed_by", confirmation()),
+        "amendment",
+        json!("emenda-01"),
+    );
+
+    let accepted = is_accepted("divergence", &amended);
+
+    assert!(accepted);
+}
+
+#[test]
+fn it_should_reject_a_divergence_missing_a_required_field() {
+    let required = [
+        "source_ref",
+        "kind",
+        "text",
+        "evidence",
+        "resolution",
+        "work_item",
+    ];
+
+    let found: Vec<Vec<DataViolation>> = required
+        .iter()
+        .map(|field| violations_of("divergence", &without(divergence(), field)))
+        .collect();
+
+    let expected: Vec<Vec<DataViolation>> = required
+        .iter()
+        .map(|field| vec![violation(&format!("/{field}"), "required")])
+        .collect();
+    assert_eq!(found, expected);
+}
+
+#[test]
+fn it_should_reject_a_divergence_with_an_extra_property() {
+    let divergence = with(divergence(), "severity", json!("high"));
+
+    let found = violations_of("divergence", &divergence);
+
+    assert_eq!(found, vec![violation("/severity", "additional-properties")]);
+}
+
+#[test]
+fn it_should_accept_each_divergence_kind() {
+    let accepted: Vec<bool> = ["missing", "partial", "contradicts", "unrequested"]
+        .iter()
+        .map(|kind| is_accepted("divergence", &with(divergence(), "kind", json!(kind))))
+        .collect();
+
+    assert_eq!(accepted, [true; 4]);
+}
+
+#[test]
+fn it_should_reject_a_divergence_kind_outside_the_four_kinds() {
+    let divergence = with(divergence(), "kind", json!("wrong"));
+
+    let found = violations_of("divergence", &divergence);
+
+    assert_eq!(found, vec![violation("/kind", "enum")]);
+}
+
+#[test]
+fn it_should_accept_each_divergence_resolution() {
+    let accepted: Vec<bool> = ["open", "spec-stale", "code-fixed", "accepted"]
+        .iter()
+        .map(|resolution| {
+            is_accepted(
+                "divergence",
+                &with(divergence(), "resolution", json!(resolution)),
+            )
+        })
+        .collect();
+
+    assert_eq!(accepted, [true; 4]);
+}
+
+#[test]
+fn it_should_reject_a_divergence_resolution_outside_the_four_resolutions() {
+    let divergence = with(divergence(), "resolution", json!("ignored"));
+
+    let found = violations_of("divergence", &divergence);
+
+    assert_eq!(found, vec![violation("/resolution", "enum")]);
+}
+
+#[test]
+fn it_should_limit_the_divergence_source_ref_to_1_to_200_characters() {
+    let accepted = accepted_by_length("divergence", &[0, 1, 200, 201], |text| {
+        with(divergence(), "source_ref", json!(text))
+    });
+
+    assert_eq!(accepted, [false, true, true, false]);
+}
+
+#[test]
+fn it_should_limit_the_divergence_text_to_1_to_2000_characters() {
+    let accepted = accepted_by_length("divergence", &[0, 1, 2000, 2001], |text| {
+        with(divergence(), "text", json!(text))
+    });
+
+    assert_eq!(accepted, [false, true, true, false]);
+}
+
+#[test]
+fn it_should_limit_the_divergence_work_item_to_1_to_200_characters() {
+    let accepted = accepted_by_length("divergence", &[0, 1, 200, 201], |text| {
+        with(divergence(), "work_item", json!(text))
+    });
+
+    assert_eq!(accepted, [false, true, true, false]);
+}
+
+#[test]
+fn it_should_limit_the_divergence_amendment_to_1_to_100_characters() {
+    let accepted = accepted_by_length("divergence", &[0, 1, 100, 101], |text| {
+        with(divergence(), "amendment", json!(text))
+    });
+
+    assert_eq!(accepted, [false, true, true, false]);
+}
+
+#[test]
+fn it_should_limit_the_divergence_evidence_to_1_to_20_items() {
+    let accepted = accepted_by_count("divergence", &[0, 1, 20, 21], |items| {
+        with(divergence(), "evidence", items)
+    });
+
+    assert_eq!(accepted, [false, true, true, false]);
+}
+
+#[test]
+fn it_should_reject_a_divergence_evidence_item_without_summary() {
+    let divergence = with(
+        divergence(),
+        "evidence",
+        json!([{ "source": "docs/spec.md" }]),
+    );
+
+    let found = violations_of("divergence", &divergence);
+
+    assert_eq!(found, vec![violation("/evidence/0/summary", "required")]);
+}
+
+#[test]
+fn it_should_reject_a_divergence_evidence_item_with_an_extra_property() {
+    let item = json!({ "source": "docs/spec.md", "summary": "says so", "line": 4 });
+    let divergence = with(divergence(), "evidence", json!([item]));
+
+    let found = violations_of("divergence", &divergence);
+
+    assert_eq!(
+        found,
+        vec![violation("/evidence/0/line", "additional-properties")]
+    );
+}
+
+#[test]
+fn it_should_reject_a_divergence_confirmation_missing_a_field() {
+    let incomplete = with(
+        divergence(),
+        "confirmed_by",
+        without(confirmation(), "answer"),
+    );
+
+    let found = violations_of("divergence", &incomplete);
+
+    assert_eq!(found, vec![violation("/confirmed_by/answer", "required")]);
+}
+
+#[test]
+fn it_should_still_verify_a_decisions_chain_written_with_the_previous_catalog() {
+    let raw = RawHarness::new();
+    let acme = acme();
+    {
+        let mut old = raw.hexlog(old_decisions_catalog(), &EmptyNative);
+        old.ensure_tenant(&acme).expect("the tenant is created");
+        for item in old_decisions_records() {
+            old.append(&request(vec![item]))
+                .expect("the old catalog accepts the record");
+        }
+    }
+
+    let mut reopened = raw.hexlog(catalog(), &EmptyNative);
+    let report = reopened
+        .verify_chain(&acme, None)
+        .expect("the chain verifies");
+
+    assert_eq!(
+        (report.ok, report.total_records, report.total_breaks),
+        (true, 2, 0)
+    );
+}
+
+#[test]
+fn it_should_still_accept_a_premise_and_a_guideline_without_the_new_fields() {
+    let premise = old_decisions_premise();
+    let guideline = old_decisions_guideline();
+
+    let accepted = (
+        is_accepted("premise", &premise),
+        is_accepted("guideline", &guideline),
+    );
+
+    assert_eq!(accepted, (true, true));
+}
+
+#[test]
+fn it_should_append_a_confirmed_premise_to_a_chain_written_with_the_previous_catalog() {
+    let raw = RawHarness::new();
+    let acme = acme();
+    {
+        let mut old = raw.hexlog(old_decisions_catalog(), &EmptyNative);
+        old.ensure_tenant(&acme).expect("the tenant is created");
+        old.append(&request(old_decisions_records()))
+            .expect("the old catalog accepts the records");
+    }
+    let mut reopened = raw.hexlog(catalog(), &EmptyNative);
+    let premise = with(
+        confirmed("premise", confirmation()),
+        "kind",
+        json!("business"),
+    );
+
+    let appended = reopened.append(&request(vec![node_item(
+        "premises.p-2",
+        "premise",
+        premise,
+    )]));
+
+    assert!(appended.is_ok(), "{appended:?}");
+}
+
+fn old_decisions_premise() -> Value {
+    json!({ "text": "users have a git repo", "status": "confirmed", "work_item": "work-items.w1" })
+}
+
+fn old_decisions_guideline() -> Value {
+    json!({ "text": "prefer small modules" })
+}
+
+fn old_decisions_records() -> Vec<hexlog::AppendItem> {
+    vec![
+        node_item("premises.p-1", "premise", old_decisions_premise()),
+        node_item("guidelines.g-1", "guideline", old_decisions_guideline()),
+    ]
 }
