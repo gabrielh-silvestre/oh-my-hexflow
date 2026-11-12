@@ -185,6 +185,12 @@ pasta. Rode-o uma vez em cada clone.
   é outra coisa: é o hook do Claude Code.
 - Se o clone já tem hooks próprios em `.git/hooks`, o comando recusa com
   `hooks-existing`. Com `--force` ele segue, e você perde esses hooks.
+- Os scripts gravam o caminho do binário que rodou a instalação, e o hook sai
+  com 1 se esse binário sumir. Rode `omhl hooks install` com um binário fora de
+  qualquer worktree e fora de `target/` (`cargo install` ou uma cópia em
+  `~/.local/bin`); o `plugin/bin/omhl` some com a worktree e a saída avisa
+  (`binary-in-worktree`). A pasta de hooks é uma só por usuário: reinstalar em
+  outro clone troca o binário de todos.
 
 ### Branches
 

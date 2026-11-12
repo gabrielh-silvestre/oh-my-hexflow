@@ -1,4 +1,4 @@
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use serde_json::{Value, json};
 
@@ -15,7 +15,7 @@ const SCRIPTS: [(&str, &str); 4] = [
 ];
 const UNWRITABLE_HINT: &str =
     "the hooks folder of the user cannot be written; check XDG_DATA_HOME and permissions";
-const BUILD_DIR_HINT: &str = "install a stable omhl binary (the plugin bin or cargo install) and run omhl hooks install again; every clone shares these hooks";
+const UNSTABLE_BINARY_HINT: &str = "install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks";
 
 impl Engine<'_> {
     pub(super) fn hooks_install(&self, force: bool) -> Result<Value, AppError> {
@@ -56,6 +56,7 @@ fn install(
             "the path of the omhl binary cannot be read",
         )
     })?;
+    let worktrees = git.worktree_roots().map_err(probe_failed)?;
     // shortcut: caminho que não é UTF-8 vira texto com perda e o hook diz "binary not found"; trocar por bytes se aparecer.
     let binary_text = binary.to_string_lossy();
     let scripts = SCRIPTS.map(|(name, command)| (name, script(&binary_text, command)));
@@ -72,11 +73,11 @@ fn install(
         "omhl": binary_text,
         "scripts": SCRIPTS.map(|(name, _)| name),
     });
-    if in_build_dir(&binary) {
+    if let Some(code) = unstable_binary_code(&binary, &worktrees) {
         installed["warnings"] = json!([{
-            "code": "binary-in-build-dir",
+            "code": code,
             "path": binary_text,
-            "hint": BUILD_DIR_HINT,
+            "hint": UNSTABLE_BINARY_HINT,
         }]);
     }
 
@@ -102,6 +103,18 @@ fn double_quoted(text: &str) -> String {
     }
 
     quoted
+}
+
+/// O hook falha fechado se o binário some; um binário dentro de uma worktree some com ela (`wt remove`).
+fn unstable_binary_code(binary: &Path, worktrees: &[PathBuf]) -> Option<&'static str> {
+    if in_build_dir(binary) {
+        return Some("binary-in-build-dir");
+    }
+
+    worktrees
+        .iter()
+        .any(|root| binary.starts_with(root))
+        .then_some("binary-in-worktree")
 }
 
 /// Um componente `target` seguido de `debug` ou `release`: o binário de um build do cargo.

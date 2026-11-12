@@ -19,7 +19,7 @@ const WI_W1: &str = "work-items.w1";
 const WI_W2: &str = "work-items.w2";
 const SCRIPTS: [&str; 4] = ["pre-commit", "pre-merge-commit", "pre-push", "post-commit"];
 const MARK_BYTES: &str = "omhl-develop-mark v1\n";
-const BUILD_DIR_HINT: &str = "install a stable omhl binary (the plugin bin or cargo install) and run omhl hooks install again; every clone shares these hooks";
+const BUILD_DIR_HINT: &str = "install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks";
 const UNWRITABLE_HINT: &str =
     "the hooks folder of the user cannot be written; check XDG_DATA_HOME and permissions";
 
@@ -337,19 +337,22 @@ impl HookRepo {
     }
 
     fn copy_bin(&self, rel: &str) -> PathBuf {
-        let dst = self.scratch().join(rel);
+        self.copy_bin_to(&self.scratch().join(rel))
+    }
+
+    fn copy_bin_to(&self, dst: &Path) -> PathBuf {
         fs::create_dir_all(dst.parent().expect("the copy has a parent folder"))
             .expect("the copy folder is created");
         // cópia por processo filho: `fs::copy` deixaria o arquivo aberto para escrita aqui (ETXTBSY)
         let status = Command::new("cp")
             .arg("-p")
             .arg(bin())
-            .arg(&dst)
+            .arg(dst)
             .status()
             .expect("cp runs");
         assert!(status.success(), "cp of the omhl binary failed");
 
-        fs::canonicalize(&dst).expect("the copy exists")
+        fs::canonicalize(dst).expect("the copy exists")
     }
 
     fn run_copy(&self, copy: &Path, args: &[&str]) -> Output {
@@ -1230,6 +1233,31 @@ fn it_should_warn_when_the_omhl_binary_lives_in_a_cargo_target_folder() {
             json!([{ "code": "binary-in-build-dir", "path": path_text(copy), "hint": BUILD_DIR_HINT }])
         );
         assert_scripts(&repo.h(), copy);
+    }
+}
+
+#[test]
+fn it_should_warn_when_the_omhl_binary_lives_inside_a_worktree_of_the_clone() {
+    let repo = HookRepo::new();
+    repo.seed();
+    let linked = repo.scratch().join("linked");
+    repo.git(&["worktree", "add", "-b", "other", path_text(&linked)]);
+    let cases = [
+        repo.d().join("plugin/bin/omhl"),
+        linked.join("plugin/bin/omhl"),
+    ];
+
+    for dst in cases {
+        let copy = repo.copy_bin_to(&dst);
+
+        let output = repo.run_copy(&copy, &["hooks", "install"]);
+
+        assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+        assert_eq!(
+            json_line(&output.stdout)["warnings"],
+            json!([{ "code": "binary-in-worktree", "path": path_text(&copy), "hint": BUILD_DIR_HINT }])
+        );
+        assert_scripts(&repo.h(), &copy);
     }
 }
 

@@ -18,6 +18,8 @@ pub trait HookInstaller {
     fn configured_hooks_path(&self) -> Result<Option<String>, String>;
     /// Alguma entrada de `dir` que não termina em `.sample`; pasta inexistente conta como vazia.
     fn has_foreign_hooks(&self, dir: &Path) -> bool;
+    /// Raiz de cada worktree do clone (`git worktree list --porcelain`), a principal inclusive.
+    fn worktree_roots(&self) -> Result<Vec<PathBuf>, String>;
     fn binary(&self) -> io::Result<PathBuf>;
     /// Cria `dir` e grava cada `(nome, conteúdo)` com modo `0755`, sobrescrevendo.
     fn write_scripts(&self, dir: &Path, scripts: &[(&str, String)]) -> io::Result<()>;
@@ -96,6 +98,16 @@ impl HookInstaller for GitHooks {
             // Pasta que não se lê pode guardar hooks: recusar é o lado seguro.
             Err(_) => true,
         }
+    }
+
+    fn worktree_roots(&self) -> Result<Vec<PathBuf>, String> {
+        let listing = self.git_line(&["worktree", "list", "--porcelain"].map(OsStr::new))?;
+
+        Ok(listing
+            .lines()
+            .filter_map(|line| line.strip_prefix("worktree "))
+            .map(PathBuf::from)
+            .collect())
     }
 
     fn binary(&self) -> io::Result<PathBuf> {
