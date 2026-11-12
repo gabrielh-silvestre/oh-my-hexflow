@@ -7,9 +7,11 @@ pub struct Observation<'a> {
     pub stderr: &'a str,
     pub timed_out: bool,
     pub tree_changed: bool,
+    pub truncated: bool,
 }
 
 /// A primeira regra que casa decide; nenhuma casa é `Failed`.
+/// Com a saída cortada, uma regra de padrão que chegaria a decidir não pode ser conferida: falha fechada.
 pub fn evaluate(spec: &CheckSpec, observed: &Observation<'_>) -> Outcome {
     if observed.timed_out || observed.tree_changed {
         return Outcome::Failed;
@@ -18,10 +20,16 @@ pub fn evaluate(spec: &CheckSpec, observed: &Observation<'_>) -> Outcome {
         return Outcome::Failed;
     };
 
-    spec.expect
-        .iter()
-        .find(|rule| rule.exit == code && pattern_matches(rule.pattern.as_ref(), observed))
-        .map_or(Outcome::Failed, |rule| rule.outcome)
+    for rule in spec.expect.iter().filter(|rule| rule.exit == code) {
+        if rule.pattern.is_some() && observed.truncated {
+            return Outcome::Failed;
+        }
+        if pattern_matches(rule.pattern.as_ref(), observed) {
+            return rule.outcome;
+        }
+    }
+
+    Outcome::Failed
 }
 
 /// O regex olha o fluxo inteiro, não linha a linha.

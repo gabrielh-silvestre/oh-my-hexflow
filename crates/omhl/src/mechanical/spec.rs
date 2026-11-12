@@ -54,6 +54,10 @@ const TIMEOUT_SECS_RANGE: RangeInclusive<u32> = 1..=7_200;
 const EXPECT_MAX_RULES: usize = 16;
 
 impl CheckSpec {
+    pub fn has_stream_pattern(&self) -> bool {
+        self.expect.iter().any(|rule| rule.pattern.is_some())
+    }
+
     /// `None` é check só de texto. Devolve o primeiro erro, na ordem da lacuna L8.
     pub fn from_data(data: &Value) -> Result<Option<CheckSpec>, SpecError> {
         let Some(run) = data.get("run") else {

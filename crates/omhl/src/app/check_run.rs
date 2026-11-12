@@ -28,6 +28,7 @@ use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
 const ATTESTATION: &str = "attestation";
 /// 4 MiB por fluxo.
 const MAX_STREAM_BYTES: u64 = 4_194_304;
+const CUT_OUTPUT_NOTE: &str = "output was cut at 4 MiB; the rule could not be checked; ";
 const TAIL_LINES: usize = 20;
 const TAIL_LINE_CHARS: usize = 500;
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
@@ -343,8 +344,15 @@ impl Engine<'_> {
                 stderr: &stderr,
                 timed_out: report.timed_out,
                 tree_changed: false,
+                truncated: report.truncated,
             },
         );
+        let cut_note =
+            if report.truncated && outcome == Outcome::Failed && spec.has_stream_pattern() {
+                CUT_OUTPUT_NOTE
+            } else {
+                ""
+            };
         let failed = |message: String, context: Option<Value>| {
             let prefix = if check.blocking {
                 ""
@@ -354,7 +362,7 @@ impl Engine<'_> {
             (outcome == Outcome::Failed).then(|| CheckDetail {
                 check: check.id.as_str().to_owned(),
                 code: "failed",
-                message: format!("{prefix}{message}"),
+                message: format!("{prefix}{cut_note}{message}"),
                 context,
             })
         };

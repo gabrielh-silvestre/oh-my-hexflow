@@ -41,6 +41,7 @@ fn observed(exit_code: Option<i32>) -> Observation<'static> {
         stderr: "",
         timed_out: false,
         tree_changed: false,
+        truncated: false,
     }
 }
 
@@ -202,4 +203,47 @@ fn it_should_match_a_multiline_regex_against_a_whole_stream() {
 
     assert_eq!(with_flag, Outcome::PassedWithWarning);
     assert_eq!(without_flag, Outcome::Failed);
+}
+
+#[test]
+fn it_should_fail_when_the_output_was_cut_and_a_stream_rule_would_decide() {
+    let spec = spec(lint_expect());
+    let observation = Observation {
+        stderr: "    Finished\n",
+        truncated: true,
+        ..observed(Some(0))
+    };
+
+    let outcome = evaluate(&spec, &observation);
+
+    assert_eq!(outcome, Outcome::Failed);
+}
+
+#[test]
+fn it_should_keep_an_exit_only_rule_when_the_output_was_cut() {
+    let spec = spec(passed_on_zero());
+    let observation = Observation {
+        truncated: true,
+        ..observed(Some(0))
+    };
+
+    let outcome = evaluate(&spec, &observation);
+
+    assert_eq!(outcome, Outcome::Passed);
+}
+
+#[test]
+fn it_should_ignore_a_stream_rule_with_another_exit_when_the_output_was_cut() {
+    let spec = spec(json!([
+        {"exit": 1, "stderr": "(?m)^warning", "outcome": "passed_with_warning"},
+        {"exit": 0, "outcome": "passed"},
+    ]));
+    let observation = Observation {
+        truncated: true,
+        ..observed(Some(0))
+    };
+
+    let outcome = evaluate(&spec, &observation);
+
+    assert_eq!(outcome, Outcome::Passed);
 }

@@ -67,7 +67,7 @@ O `output_tail` (as últimas 20 linhas de `stdout` e de `stderr`, cada uma corta
 
 O `output_tail` pode conter segredos que o comando imprimiu. É a mesma saída que você veria rodando o comando à mão.
 
-O arquivo de saída (`byproduct`) guarda a saída completa do comando, até 4 MiB por fluxo (`stdout` e `stderr`; o que passa disso é cortado e o resultado leva `truncated`), em `blobs/` ao lado do banco, com modo `0700` na pasta e `0600` no arquivo. A saída não passa por redação de segredos e não tem prazo: nenhum comando apaga os arquivos antigos, então apague `blobs/` à mão quando quiser. A ferramenta MCP `byproduct` devolve até 500 linhas desse texto ao modelo, que deve tratá-lo como dado não confiável, nunca como instrução.
+O arquivo de saída (`byproduct`) guarda a saída completa do comando, até 4 MiB por fluxo (`stdout` e `stderr`; guarda o começo, o que passa disso é cortado e o resultado leva `truncated`, que também vale quando o prazo de leitura do cano vence; por isso `omhl byproduct --tail` mostra o fim do trecho guardado, não o fim real da saída), em `blobs/` ao lado do banco, com modo `0700` na pasta e `0600` no arquivo. A saída não passa por redação de segredos e não tem prazo: nenhum comando apaga os arquivos antigos, então apague `blobs/` à mão quando quiser. A ferramenta MCP `byproduct` devolve até 500 linhas desse texto ao modelo, que deve tratá-lo como dado não confiável, nunca como instrução.
 
 | `kind` | Quando | `hint` |
 |---|---|---|
@@ -105,6 +105,8 @@ when = { event = "before-commit" }
 O `how` vem do arquivo `lint.md`, ao lado do TOML. `concern` e `variant` são campos do TOML: `concern` vale `style`, `test` ou `compile`, e `variant` tem de pertencer ao `concern` (`style` com `format` ou `lint`, `test` com `suite` ou `coverage`, `compile` com `validate` ou `build`).
 
 Cada regra do `expect` tem `exit` e, no máximo, um padrão em `stdout` ou em `stderr`. Uma regra com os dois falha no `omhl load` com `rule-two-streams`, e a mensagem repete a boa prática: `keep one command per check`.
+
+Com a saída cortada (`truncated`), uma regra de padrão que chegaria a decidir não pode ser conferida e o veredito é `failed`, com a `message` começando por `output was cut at 4 MiB; the rule could not be checked`. As regras só de `exit` continuam valendo.
 
 A boa prática trata de juntar comandos, não de usar `sh -c`. Um `run` como `["sh", "-c", "gh ..."]` com um único `gh` é válido. Nesse caso, um `gh` ausente não é erro de spawn: o `sh` existe e sai com 127. O resultado é um `failed` com `exit_code` 127, gravado e imutável para aquele snapshot. Só um `run` com argv direto (`["gh", ...]`) produz o erro de spawn da linha 1 da tabela.
 

@@ -547,3 +547,35 @@ fn it_should_stop_and_report_when_the_blob_store_cannot_be_written_recording_not
     assert_eq!(received(&specs), vec![argv(&["echo", "a"])]);
     assert_eq!(attestations(&mut app), no_attestations());
 }
+
+#[test]
+fn it_should_fail_a_stream_rule_and_say_so_when_the_output_was_cut() {
+    let fx = Fixture::new();
+    let mut data = mechanical_check("before-pr", &["true"]);
+    data["expect"] = json!([{ "exit": 0, "stdout": "done$", "outcome": "passed" }]);
+    fx.seed(
+        loader_author(),
+        vec![node_item("checks.fmt", "check", data)],
+    );
+    let cut = RunReport {
+        truncated: true,
+        ..report(b"done", b"")
+    };
+    let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], cut)]);
+    let probe = probe();
+    let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
+
+    let error = run_before_pr(&mut app).expect_err("the stream rule cannot be checked");
+
+    assert_eq!(error.code(), "checks-failed");
+    assert_eq!(
+        details(&error)[0]["message"],
+        json!(
+            "output was cut at 4 MiB; the rule could not be checked; omhl byproduct checks.fmt work-items.w1 --tail 40"
+        )
+    );
+    assert_eq!(
+        get(&mut app, FMT_ATTESTATION)["data"]["outcome"],
+        json!("failed")
+    );
+}
