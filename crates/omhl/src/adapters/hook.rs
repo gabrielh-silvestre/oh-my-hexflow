@@ -100,7 +100,7 @@ fn orphan_note(report: &Value) -> Option<String> {
 
     (!orphans.is_empty()).then(|| {
         format!(
-            "NOTE: {} check(s) lost their file and their loaded command no longer runs: {}; restore the file or run omhl check retire <id>",
+            "NOTE: {} check(s) have no file in this working tree: {}; if this branch or worktree predates the check, rebase it onto main (or restore the file); omhl check retire <id> is permanent for every clone and branch (the id never comes back), so run it only after the file removal is merged",
             orphans.len(),
             orphans.join(", ")
         )

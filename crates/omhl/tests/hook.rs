@@ -24,7 +24,7 @@ const LINT_TOML: &str =
     "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
 const INVALID_TOML: &str = "this is = [not valid";
 const PENDING_NOTE: &str = "NOTE: 1 extension change(s) not loaded into tenant acme; run omhl load";
-const ORPHAN_NOTE: &str = "NOTE: 1 check(s) lost their file and their loaded command no longer runs: checks.lint; restore the file or run omhl check retire <id>";
+const ORPHAN_NOTE: &str = "NOTE: 1 check(s) have no file in this working tree: checks.lint; if this branch or worktree predates the check, rebase it onto main (or restore the file); omhl check retire <id> is permanent for every clone and branch (the id never comes back), so run it only after the file removal is merged";
 
 // Apoio
 

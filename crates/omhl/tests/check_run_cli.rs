@@ -521,6 +521,13 @@ fn it_should_ignore_and_warn_an_orphaned_check_when_its_file_was_deleted() {
     assert_eq!(result["results"], json!([]));
     assert_eq!(result["warnings"][0]["code"], json!("check-orphaned"));
     assert_eq!(result["warnings"][0]["check"], json!("checks.gate"));
+    let hint = result["warnings"][0]["hint"]
+        .as_str()
+        .expect("the hint is text");
+    assert!(
+        hint.contains("rebase it onto main") && hint.contains("permanent"),
+        "hint: {hint}"
+    );
     assert!(!marker.exists(), "the orphaned command must not run");
     assert_eq!(attestations(&p), Vec::<Value>::new());
 }

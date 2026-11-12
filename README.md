@@ -112,7 +112,7 @@ JSON.
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
 | `check run --event <evento>` ou `check run --check <id>` | Roda os checks mecânicos de um evento (ou um só) e grava as attestations do work item da branch atual. `--pre-push` é do hook `pre-push` |
 | `check sweep` | Encerra os processos que fugiram de um `check run` anterior |
-| `check retire <check-id>` | Aposenta o check órfão, cujo arquivo `.omhl/checks/<slug>.toml` foi apagado da árvore, e some o aviso `check-orphaned` |
+| `check retire <check-id>` | Aposenta o check órfão, cujo arquivo `.omhl/checks/<slug>.toml` não existe na árvore, e some o aviso `check-orphaned`. É definitivo e vale para todos os clones e branches: o id não volta. Se a branch ou a worktree é anterior ao check, faça rebase sobre a `main` (ou restaure o arquivo) em vez de aposentar |
 | `byproduct <check> <work-item> [--tail <n>]` | Imprime as últimas linhas da saída guardada de um check |
 | `hooks install [--force]` | Instala os hooks do git deste clone |
 | `hooks post-commit` | Apaga a marca da `develop` depois de um commit (o hook `post-commit` o chama) |

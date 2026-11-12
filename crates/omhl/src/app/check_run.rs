@@ -43,7 +43,7 @@ const BLOB_FAILED_HINT: &str =
     "the output store is not writable; fix its permissions or free disk space";
 const PARENT_GONE_HINT: &str = "the process that started omhl exited before the checks ran; nothing ran; run the same command again";
 const SPEC_STALE_HINT: &str = "the check file on disk is invalid or differs from the stored definition; fix the file and run omhl load, then run the same command again";
-const ORPHANED_HINT: &str = "the check file is gone, so the stored command no longer runs; restore the file, or run omhl check retire to drop the check";
+const ORPHANED_HINT: &str = "the check file is missing in this working tree; if this branch or worktree predates the check, rebase it onto main (or restore the file); omhl check retire <check-id> is permanent for every clone and branch (the id never comes back), so run it only after the file removal is merged";
 const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
 const PUSH_INPUT_HINT: &str = "the pre-push input needs four fields per line; run git push again";
 /// Variáveis que o git exporta para um hook e que apontariam o comando para o índice do hook.
