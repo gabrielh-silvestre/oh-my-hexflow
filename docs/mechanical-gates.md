@@ -134,8 +134,8 @@ Erros que barram antes de rodar qualquer comando:
 | `branch-protected` | Commit ou `check run` na `main`; ou push com destino `main` (`kind` `push-to-main`) | Crie uma branch `tipo/wi-<id>__<slug>`. Para a `main`, abra um pull request |
 | `work-item-not-found`, `work-item-closed` | A branch segue o padrão, mas o work item não existe ou já foi fechado | Grave o work item ou use outra branch |
 | `develop-mark-missing` | `before-commit` na `develop` sem a marca | Crie a marca (abaixo) |
-| `worktree-differs-from-index` | `before-commit` com a working tree diferente do índice: alteração de arquivo rastreado que não está no stage (vale para um commit sem a opção `-a` e para `git commit <caminho>` com outro arquivo sujo), ou arquivo não rastreado e não ignorado | Faça o stage, ignore ou apague o arquivo |
-| `worktree-dirty` | `before-pr` ou `before-merge` com a árvore suja, inclusive arquivo não rastreado e não ignorado | Faça commit, ignore ou apague o arquivo |
+| `worktree-differs-from-index` | `before-commit` com a working tree diferente do índice: alteração de arquivo rastreado que não está no stage (vale para um commit sem a opção `-a` e para `git commit <caminho>` com outro arquivo sujo), ou arquivo não rastreado e não ignorado, ou qualquer arquivo marcado com `--skip-worktree` ou `--assume-unchanged` (o git não mostra a edição desses; o `sparse-checkout` usa `skip-worktree` e também recusa) | Faça o stage, ignore ou apague o arquivo; desfaça a marca com `git update-index --no-skip-worktree` ou `--no-assume-unchanged` |
+| `worktree-dirty` | `before-pr` ou `before-merge` com a árvore suja, inclusive arquivo não rastreado e não ignorado e arquivo marcado com `--skip-worktree` ou `--assume-unchanged` | Faça commit, ignore ou apague o arquivo; desfaça a marca no git |
 | `push-ref-not-checked-out`, `push-input-invalid` | Problemas do `pre-push`, explicados abaixo | Veja a regra `lsha == HEAD` |
 
 ### A marca da `develop`

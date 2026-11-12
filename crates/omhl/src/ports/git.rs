@@ -147,7 +147,21 @@ impl GitProbe {
         }
         let untracked =
             self.run_ok(self.tree_git(&["ls-files", "--others", "--exclude-standard", "-z"]))?;
-        Ok(!untracked.is_empty())
+        if !untracked.is_empty() {
+            return Ok(true);
+        }
+        self.hides_changes(self.tree_git(&["ls-files", "-v", "-z"]))
+    }
+
+    /// `status` e `diff` não veem `--skip-worktree` (tag `S`) nem `--assume-unchanged` (minúscula): o
+    /// comando rodaria sobre a working tree enquanto a attestation prende a árvore do índice.
+    /// O `skip-worktree` de um sparse-checkout também cai aqui; recusar é o lado seguro.
+    fn hides_changes(&self, list_files: Command) -> Result<bool, ProbeError> {
+        let listing = self.run_ok(list_files)?;
+        Ok(listing
+            .split(|byte| *byte == 0)
+            .filter_map(|entry| entry.first())
+            .any(|tag| *tag == b'S' || tag.is_ascii_lowercase()))
     }
 
     fn tree_snapshot(&self, command: Command) -> Result<ProbeOutcome, ProbeError> {
@@ -211,7 +225,14 @@ impl SnapshotProbe for GitProbe {
             "--untracked-files=normal",
             "--ignore-submodules=none",
         ]);
-        parse_status(&self.run_ok(status)?)
+        match parse_status(&self.run_ok(status)?)? {
+            ProbeOutcome::Reproducible(_)
+                if self.hides_changes(self.git(&["ls-files", "-v", "-z"]))? =>
+            {
+                Ok(ProbeOutcome::Dirty)
+            }
+            outcome => Ok(outcome),
+        }
     }
 
     fn probe_tree(&self, source: TreeSource) -> Result<ProbeOutcome, ProbeError> {

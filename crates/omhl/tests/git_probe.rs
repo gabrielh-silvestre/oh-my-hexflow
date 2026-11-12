@@ -1057,3 +1057,57 @@ fn it_should_report_the_head_commit_in_the_head_facts() {
         })
     );
 }
+
+/// Edita `a.txt` depois de o git ser mandado a ignorar o arquivo (`--skip-worktree` ou `--assume-unchanged`).
+fn base_with_hidden_edit(flag: &str) -> GitRepo {
+    let repo = base();
+    repo.git(&["update-index", flag, "a.txt"]);
+    repo.write("a.txt", "edited behind the index\n");
+    repo
+}
+
+#[test]
+fn it_should_report_dirty_for_an_edit_hidden_by_skip_worktree() {
+    let repo = base_with_hidden_edit("--skip-worktree");
+    let probe = GitProbe::new(repo.path());
+
+    let results = (
+        probe.probe(),
+        index(&probe),
+        head(&probe),
+        probe.tree_dirty(),
+    );
+
+    assert_eq!(
+        results,
+        (
+            Ok(ProbeOutcome::Dirty),
+            Ok(ProbeOutcome::Dirty),
+            Ok(ProbeOutcome::Dirty),
+            Ok(true)
+        )
+    );
+}
+
+#[test]
+fn it_should_report_dirty_for_an_edit_hidden_by_assume_unchanged() {
+    let repo = base_with_hidden_edit("--assume-unchanged");
+    let probe = GitProbe::new(repo.path());
+
+    let results = (
+        probe.probe(),
+        index(&probe),
+        head(&probe),
+        probe.tree_dirty(),
+    );
+
+    assert_eq!(
+        results,
+        (
+            Ok(ProbeOutcome::Dirty),
+            Ok(ProbeOutcome::Dirty),
+            Ok(ProbeOutcome::Dirty),
+            Ok(true)
+        )
+    );
+}
