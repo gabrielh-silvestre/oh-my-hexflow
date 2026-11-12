@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::runner::{CommandRunner, RunError, RunReport, RunSpec};
 
@@ -29,6 +29,10 @@ impl Default for ProcessRunner {
 impl CommandRunner for ProcessRunner {
     fn run(&self, spec: &RunSpec) -> Result<RunReport, RunError> {
         platform::run(self.parent_pid, spec)
+    }
+
+    fn resolve_program(&self, spec: &RunSpec) -> Option<PathBuf> {
+        platform::resolve_program(spec)
     }
 }
 
@@ -135,6 +139,34 @@ mod platform {
             .strip_suffix(']')?
             .parse()
             .ok()
+    }
+
+    /// O arquivo que o `run` executaria para `argv[0]`, com o `PATH` que o comando vê (o `env_set` vence o herdado).
+    pub fn resolve_program(spec: &RunSpec) -> Option<PathBuf> {
+        let program = spec.argv.first()?;
+        if program.contains('/') {
+            let joined = spec.cwd.join(program);
+            // `Path::join` mantém o `.` de `./tool`; sem ele o caminho gravado é o mesmo arquivo, mais curto
+            return is_executable_file(&joined).then(|| joined.components().collect());
+        }
+        let path_var = spec
+            .env_set
+            .iter()
+            .rev()
+            .find(|(key, _)| key == "PATH")
+            .map(|(_, value)| std::ffi::OsString::from(value))
+            .or_else(|| std::env::var_os("PATH"))?;
+
+        std::env::split_paths(&path_var)
+            .map(|dir| spec.cwd.join(dir).join(program))
+            .find(|candidate| is_executable_file(candidate))
+    }
+
+    fn is_executable_file(path: &Path) -> bool {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::metadata(path)
+            .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
     }
 
     pub fn run(parent_pid: Option<u32>, spec: &RunSpec) -> Result<RunReport, RunError> {
@@ -470,10 +502,14 @@ mod platform {
 
 #[cfg(not(target_os = "linux"))]
 mod platform {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use super::SweepReport;
     use crate::runner::{RunError, RunErrorKind, RunReport, RunSpec};
+
+    pub fn resolve_program(_spec: &RunSpec) -> Option<PathBuf> {
+        None
+    }
 
     pub fn run(_parent_pid: Option<u32>, _spec: &RunSpec) -> Result<RunReport, RunError> {
         Err(RunError {

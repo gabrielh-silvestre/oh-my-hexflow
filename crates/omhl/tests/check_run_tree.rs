@@ -654,11 +654,16 @@ fn it_should_not_leak_the_hook_git_index_into_the_command() {
     assert_eq!(
         removed,
         argv(&[
+            "CARGO_BUILD_RUSTFLAGS",
+            "CARGO_ENCODED_RUSTFLAGS",
             "GIT_COMMON_DIR",
             "GIT_DIR",
             "GIT_INDEX_FILE",
             "GIT_PREFIX",
-            "GIT_WORK_TREE"
+            "GIT_WORK_TREE",
+            "RUSTC_WORKSPACE_WRAPPER",
+            "RUSTC_WRAPPER",
+            "RUSTFLAGS"
         ])
     );
 }
@@ -681,7 +686,7 @@ fn it_should_keep_inheriting_the_rest_of_the_environment() {
     let _ = run_event(&mut app, "before-commit");
 
     let spec = specs.try_recv().expect("the runner received a spec");
-    assert_eq!(spec.env_remove.len(), 5);
+    assert_eq!(spec.env_remove.len(), 10);
     for kept in [
         "PATH",
         "HOME",

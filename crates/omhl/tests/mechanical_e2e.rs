@@ -11,6 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use support::assert_resolved_command;
 use support::child::{Cmd, Output as OmhlOutput, omhl};
 use support::git::{git_command_with_env, git_in, git_with_env, write_executable};
 use tempfile::TempDir;
@@ -505,7 +506,7 @@ fn it_should_leave_the_attestation_tied_to_the_tree_of_the_new_commit() {
     assert_eq!(passed.len(), 1);
     assert_eq!(failed[0]["snapshot"], snapshot("git-tree", &flow.t5));
     assert_eq!(passed[0]["data"]["exit_code"], json!(0));
-    assert_eq!(passed[0]["data"]["command"], json!(["true"]));
+    assert_resolved_command(&passed[0]["data"]["command"], "true", &[]);
     assert_eq!(passed[0]["snapshot"], snapshot("git-tree", &tree));
     assert_ne!(flow.t5, tree);
     let executor = json!({ "agent": "executor", "client": "executor" });
@@ -732,7 +733,7 @@ fn it_should_attest_before_merge_through_a_fake_gh() {
     assert_eq!(data["outcome"], json!("passed"));
     assert_eq!(data["ok"], json!(true));
     assert_eq!(data["exit_code"], json!(0));
-    assert_eq!(data["command"], json!(["sh", "-c", "gh pr checks"]));
+    assert_resolved_command(&data["command"], "sh", &["-c", "gh pr checks"]);
     assert!(
         is_lower_hex_64(&data["byproduct"]),
         "byproduct: {}",
@@ -766,7 +767,7 @@ fn it_should_record_a_failed_attestation_with_exit_code_127_when_gh_is_missing_b
     assert_eq!(data["outcome"], json!("failed"));
     assert_eq!(data["ok"], json!(false));
     assert_eq!(data["exit_code"], json!(127));
-    assert_eq!(data["command"], json!(["sh", "-c", "gh pr checks"]));
+    assert_resolved_command(&data["command"], "sh", &["-c", "gh pr checks"]);
     assert_eq!(data["timed_out"], json!(false));
 }
 

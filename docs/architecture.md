@@ -367,7 +367,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** Define como executar um comando e devolver o que aconteceu, sem dizer como.
 
-**Interface.** `trait CommandRunner` (`run(&RunSpec) -> Result<RunReport, RunError>`), `RunSpec`, `RunReport`, `RunError` e `RunErrorKind` (`NotFound`, `PermissionDenied`, `Spawn`, `Io`, `UnsupportedPlatform`, `ParentGone`) (`runner.rs`).
+**Interface.** `trait CommandRunner` (`run(&RunSpec) -> Result<RunReport, RunError>` e `resolve_program(&RunSpec) -> Option<PathBuf>`, que por padrão devolve `None`), `RunSpec`, `RunReport`, `RunError` e `RunErrorKind` (`NotFound`, `PermissionDenied`, `Spawn`, `Io`, `UnsupportedPlatform`, `ParentGone`) (`runner.rs`).
 
 **Profundidade.** É só o seam. Seam real: dois adapters, `ProcessRunner` (3.22) e `FakeRunner` (`crates/omhl/tests/support/runner.rs`). Travado: não importa `adapters`, `app` nem `facade`.
 

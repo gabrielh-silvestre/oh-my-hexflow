@@ -290,3 +290,18 @@ pub fn snap(fill: char) -> Snapshot {
 pub fn snap64(fill: char) -> Snapshot {
     Snapshot::new(SnapshotKind::GitCommit, &fill.to_string().repeat(64)).expect("valid snapshot")
 }
+
+/// O `command` de uma attestation de `check run` real: `argv[0]` vira o arquivo que rodou.
+pub fn assert_resolved_command(command: &Value, program: &str, args: &[&str]) {
+    let items = command.as_array().expect("command is a list");
+    let path = std::path::Path::new(items[0].as_str().expect("command[0] is text"));
+    assert!(path.is_absolute(), "command[0] is not resolved: {path:?}");
+    assert_eq!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some(program)
+    );
+    assert_eq!(
+        items[1..],
+        args.iter().map(|arg| json!(arg)).collect::<Vec<_>>()
+    );
+}

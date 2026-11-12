@@ -7,6 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use support::assert_resolved_command;
 use support::child::{Cmd, omhl};
 use support::ext::ExtTree;
 use support::git::git_in;
@@ -291,7 +292,13 @@ fn it_should_attest_a_before_pr_check_through_the_binary_in_a_real_repository() 
     assert_eq!(item["data"]["outcome"], json!("passed"));
     assert_eq!(item["data"]["ok"], json!(true));
     assert_eq!(item["data"]["exit_code"], json!(0));
-    assert_eq!(item["data"]["command"], json!(["true"]));
+    let command = item["data"]["command"]
+        .as_array()
+        .expect("command is a list");
+    assert_eq!(command.len(), 1, "command: {command:?}");
+    let program = Path::new(command[0].as_str().expect("command[0] is text"));
+    assert!(program.is_absolute(), "not resolved: {program:?}");
+    assert_eq!(program.file_name().and_then(|n| n.to_str()), Some("true"));
     assert_eq!(
         item["data"]["spec_digest"],
         json!("529de2e8426939e64c4e6dbc60c6d0fd954d899cee83e3c495194deae41564f3")
@@ -531,7 +538,7 @@ fn it_should_run_the_new_command_after_load() {
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     assert_eq!(error_of(&output.stderr)["code"], json!("checks-failed"));
     let data = &attestation(&p, "checks.gate")["data"];
-    assert_eq!(data["command"], json!(["sh", "-c", "exit 3"]));
+    assert_resolved_command(&data["command"], "sh", &["-c", "exit 3"]);
     assert_eq!(data["outcome"], json!("failed"));
     assert_eq!(data["exit_code"], json!(3));
 }

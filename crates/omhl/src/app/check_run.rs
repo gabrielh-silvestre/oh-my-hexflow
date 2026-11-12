@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::slice;
 use std::time::Duration;
 
@@ -52,6 +52,15 @@ const HOOK_GIT_ENV: [&str; 5] = [
     "GIT_PREFIX",
     "GIT_WORK_TREE",
     "GIT_COMMON_DIR",
+];
+
+/// Variáveis do toolchain Rust que mudam o veredito sem aparecer no comando (`--cap-lints allow` esconde aviso de `clippy -D warnings`); configuração própria vai explícita no `run` do check.
+const TOOLCHAIN_ENV: [&str; 5] = [
+    "RUSTFLAGS",
+    "RUSTC_WRAPPER",
+    "RUSTC_WORKSPACE_WRAPPER",
+    "CARGO_ENCODED_RUSTFLAGS",
+    "CARGO_BUILD_RUSTFLAGS",
 ];
 
 /// Construtor do erro sem veredito de um check (DP-16).
@@ -324,9 +333,14 @@ impl Engine<'_> {
             cwd: scope.cwd.to_path_buf(),
             timeout: Duration::from_secs(u64::from(spec.timeout_secs)),
             env_set: Vec::new(),
-            env_remove: HOOK_GIT_ENV.map(str::to_owned).to_vec(),
+            env_remove: HOOK_GIT_ENV
+                .iter()
+                .chain(&TOOLCHAIN_ENV)
+                .map(|name| (*name).to_owned())
+                .collect(),
             max_stream_bytes: MAX_STREAM_BYTES,
         };
+        let program = runner.resolve_program(&request);
         let report = match runner.run(&request) {
             Ok(report) => report,
             Err(error) => return Ok(Step::Miss(run_error(scope, check, spec, snapshot, &error))),
@@ -417,7 +431,9 @@ impl Engine<'_> {
             }
         };
         context["byproduct"] = json!(byproduct.as_str());
-        let data = run_attestation_data(check, spec, work_item, outcome, &report, &byproduct);
+        let data = run_attestation_data(
+            check, spec, program, work_item, outcome, &report, &byproduct,
+        );
         let recording = self.record(check, work_item, snapshot, &data)?;
         let miss = match recording {
             Recording::Recorded => {
@@ -812,9 +828,11 @@ fn byproduct_blob(report: &RunReport) -> Vec<u8> {
     byproduct::encode(&report.stdout, &report.stderr)
 }
 
+/// O `command` gravado leva o arquivo que rodou no lugar de `argv[0]`: o mesmo nome em `PATH` diferente muda o veredito.
 fn run_attestation_data(
     check: &PlannedCheck,
     spec: &CheckSpec,
+    program: Option<PathBuf>,
     work_item: &SemanticId,
     outcome: Outcome,
     report: &RunReport,
@@ -827,7 +845,11 @@ fn run_attestation_data(
         None,
         Some(byproduct.as_str()),
     );
-    data["command"] = json!(spec.run);
+    let mut command = spec.run.clone();
+    if let (Some(first), Some(program)) = (command.first_mut(), program) {
+        *first = program.to_string_lossy().into_owned();
+    }
+    data["command"] = json!(command);
     data["spec_digest"] = json!(check.spec_digest);
 
     with_run_fields(data, report)
