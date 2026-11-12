@@ -79,6 +79,10 @@ pub fn command_line(name: &str) -> &'static str {
 }
 
 /// Relança o binário de teste no papel dado, num grupo de processos próprio.
+///
+/// Passa por `env --default-signal=INT`: se o processo de teste herdou `SIGINT` ignorado
+/// (`cmd &`, `nohup`), o papel herdaria o mesmo e descartaria o `killpg(SIGINT)` dos testes.
+/// O `env` faz `exec`, então o pid do filho é o do papel. `pre_exec` exigiria `unsafe`.
 pub fn spawn_role(
     role: &str,
     dir: &Path,
@@ -86,8 +90,10 @@ pub fn spawn_role(
     extra: &[(&str, &str)],
     stderr: Stdio,
 ) -> Child {
-    let mut command = Command::new(std::env::current_exe().expect("the test binary path is known"));
+    let mut command = Command::new("env");
     command
+        .arg("--default-signal=INT")
+        .arg(std::env::current_exe().expect("the test binary path is known"))
         .args(["--exact", ROLE_TEST, "--nocapture"])
         .env("OMHL_TEST_ROLE", role)
         .env("OMHL_TEST_DIR", dir)
