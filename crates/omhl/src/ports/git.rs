@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 use hexlog::{Snapshot, SnapshotKind};
 
-use crate::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
+use crate::probe::{
+    DevelopMark, GitTopology, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
+};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -203,7 +205,7 @@ impl GitProbe {
             "HEAD",
             "refs/heads",
         ]))?;
-        let text = String::from_utf8(stdout).map_err(|_| error("unexpected git output"))?;
+        let text = utf8_output(stdout)?;
         Ok(text.lines().map(str::to_owned).collect())
     }
 
@@ -290,10 +292,56 @@ impl DevelopMark for GitProbe {
     }
 }
 
+impl GitTopology for GitProbe {
+    fn main_dir(&self) -> Result<PathBuf, ProbeError> {
+        let common_dir = self.line(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
+        Path::new(&common_dir)
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| error("unexpected git output"))
+    }
+
+    fn branch_exists(&self, name: &str) -> Result<bool, ProbeError> {
+        let output =
+            self.run(self.git(&["show-ref", "--verify", "-q", &format!("refs/heads/{name}")]))?;
+        match output.status.code() {
+            Some(0) => Ok(true),
+            // Ref inexistente sai 1; nome que o git não aceita sai 128.
+            Some(1 | 128) => Ok(false),
+            _ => Err(git_error(&output)),
+        }
+    }
+
+    fn worktree_branches(&self) -> Result<Vec<String>, ProbeError> {
+        let stdout = self.run_ok(self.git(&["worktree", "list", "--porcelain"]))?;
+        let text = utf8_output(stdout)?;
+        let mut branches: Vec<String> = text
+            .lines()
+            .filter_map(|line| line.strip_prefix("branch refs/heads/"))
+            .map(str::to_owned)
+            .collect();
+        branches.sort();
+        Ok(branches)
+    }
+
+    fn local_branches(&self) -> Result<Vec<String>, ProbeError> {
+        let stdout =
+            self.run_ok(self.git(&["for-each-ref", "--format=%(refname:short)", "refs/heads"]))?;
+        let text = utf8_output(stdout)?;
+        let mut branches: Vec<String> = text.lines().map(str::to_owned).collect();
+        branches.sort();
+        Ok(branches)
+    }
+}
+
 fn error(message: impl Into<String>) -> ProbeError {
     ProbeError {
         message: message.into(),
     }
+}
+
+fn utf8_output(stdout: Vec<u8>) -> Result<String, ProbeError> {
+    String::from_utf8(stdout).map_err(|_| error("unexpected git output"))
 }
 
 fn git_error(output: &GitOutput) -> ProbeError {
@@ -309,7 +357,7 @@ fn git_error(output: &GitOutput) -> ProbeError {
 
 /// Stdout de uma linha, sem o `\n` final.
 fn text_line(stdout: Vec<u8>) -> Result<String, ProbeError> {
-    let mut text = String::from_utf8(stdout).map_err(|_| error("unexpected git output"))?;
+    let mut text = utf8_output(stdout)?;
     if text.ends_with('\n') {
         text.pop();
     }

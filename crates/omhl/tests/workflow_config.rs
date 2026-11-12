@@ -1,0 +1,388 @@
+use std::collections::BTreeMap;
+use std::path::Path;
+
+use ::omhl::project::ProjectError;
+use ::omhl::workflow::config::{
+    PromotionConfig, RequireAtom, SpecsConfig, WorkflowConfig, parse_workflow,
+};
+
+const WORKFLOW_PATH: &str = "/project/.omhl/workflow.toml";
+const CANARY: &str = "CANARY-7f3a91";
+const ERROR_CODE: &str = "invalid-workflow-config";
+
+fn workflow_path() -> &'static Path {
+    Path::new(WORKFLOW_PATH)
+}
+
+fn lines(rows: &[&str]) -> String {
+    format!("{}\n", rows.join("\n"))
+}
+
+fn parse(text: &str) -> Result<WorkflowConfig, ProjectError> {
+    parse_workflow(workflow_path(), text.as_bytes())
+}
+
+fn accepted(text: &str) -> WorkflowConfig {
+    parse(text).expect("the workflow file is accepted")
+}
+
+fn refusal(text: &str) -> ProjectError {
+    parse(text).expect_err("the workflow file is refused")
+}
+
+fn assert_refused_at_line(error: &ProjectError, line: usize) {
+    assert_eq!(error.code, ERROR_CODE);
+    assert!(
+        error.message.contains(WORKFLOW_PATH),
+        "the message names the file path: {}",
+        error.message
+    );
+    assert!(
+        error.message.contains(&format!("line {line}, column ")),
+        "the message carries line {line} and a column: {}",
+        error.message
+    );
+}
+
+fn prefix_table(rows: &[(&str, &[RequireAtom])]) -> BTreeMap<String, Vec<RequireAtom>> {
+    rows.iter()
+        .map(|(prefix, atoms)| ((*prefix).to_owned(), atoms.to_vec()))
+        .collect()
+}
+
+// Padrões (decisão g): sem arquivo, valem os valores compilados
+
+#[test]
+fn it_should_default_the_specs_section_to_the_oh_my_hexflow_values() {
+    let config = WorkflowConfig::default();
+
+    assert_eq!(
+        config.specs,
+        SpecsConfig {
+            dir: ".omhl/specs".to_owned(),
+            max_lines: 300,
+            placeholders: ["TODO", "TBD", "FIXME", "???"].map(str::to_owned).to_vec(),
+            cite_business_premise: true,
+        }
+    );
+}
+
+#[test]
+fn it_should_default_the_promotion_threshold_to_three_work_items() {
+    let config = WorkflowConfig::default();
+
+    assert_eq!(config.promotion, PromotionConfig { min_work_items: 3 });
+}
+
+#[test]
+fn it_should_default_the_prefix_table_to_the_seven_documented_prefixes() {
+    use RequireAtom::{AgentPremise, BusinessPremise, Spec, TechnicalPremiseConfirmed};
+
+    let config = WorkflowConfig::default();
+
+    assert_eq!(
+        config.prefixes,
+        prefix_table(&[
+            ("feat", &[BusinessPremise, Spec]),
+            ("fix", &[BusinessPremise, Spec]),
+            ("refactor", &[TechnicalPremiseConfirmed]),
+            ("tests", &[TechnicalPremiseConfirmed]),
+            ("bugfix", &[AgentPremise]),
+            ("chore", &[]),
+            ("docs", &[]),
+        ])
+    );
+}
+
+#[test]
+fn it_should_read_a_file_with_only_the_version_as_the_defaults() {
+    let config = accepted("version = 1\n");
+
+    assert_eq!(config, WorkflowConfig::default());
+}
+
+#[test]
+fn it_should_read_the_four_require_atoms_by_their_kebab_case_names() {
+    let text = lines(&[
+        "version = 1",
+        "[prefix.feat]",
+        "require = [\"business-premise\", \"technical-premise-confirmed\", \"agent-premise\", \"spec\"]",
+    ]);
+
+    let config = accepted(&text);
+
+    assert_eq!(
+        config.prefixes["feat"],
+        vec![
+            RequireAtom::BusinessPremise,
+            RequireAtom::TechnicalPremiseConfirmed,
+            RequireAtom::AgentPremise,
+            RequireAtom::Spec,
+        ]
+    );
+}
+
+// Arquivo parcial: sobrescreve só o que traz
+
+#[test]
+fn it_should_override_only_the_keys_the_file_carries() {
+    let text = lines(&["version = 1", "[specs]", "max_lines = 150"]);
+
+    let config = accepted(&text);
+
+    let mut expected = WorkflowConfig::default();
+    expected.specs.max_lines = 150;
+    assert_eq!(config, expected);
+}
+
+#[test]
+fn it_should_replace_the_placeholder_list_instead_of_extending_it() {
+    let text = lines(&["version = 1", "[specs]", "placeholders = [\"WIP\"]"]);
+
+    let config = accepted(&text);
+
+    assert_eq!(config.specs.placeholders, vec!["WIP".to_owned()]);
+}
+
+#[test]
+fn it_should_read_a_custom_specs_dir() {
+    let text = lines(&["version = 1", "[specs]", "dir = \"docs/specs\""]);
+
+    let config = accepted(&text);
+
+    assert_eq!(config.specs.dir, "docs/specs");
+}
+
+#[test]
+fn it_should_read_a_custom_promotion_threshold() {
+    let text = lines(&["version = 1", "[promotion]", "min_work_items = 5"]);
+
+    let config = accepted(&text);
+
+    assert_eq!(config.promotion, PromotionConfig { min_work_items: 5 });
+}
+
+#[test]
+fn it_should_replace_the_requirements_of_a_listed_prefix_and_keep_the_others() {
+    let text = lines(&["version = 1", "[prefix.feat]", "require = [\"spec\"]"]);
+
+    let config = accepted(&text);
+
+    let mut expected = WorkflowConfig::default();
+    expected
+        .prefixes
+        .insert("feat".to_owned(), vec![RequireAtom::Spec]);
+    assert_eq!(config, expected);
+}
+
+#[test]
+fn it_should_add_a_prefix_the_defaults_do_not_have() {
+    let text = lines(&["version = 1", "[prefix.perf]", "require = []"]);
+
+    let config = accepted(&text);
+
+    let mut expected = WorkflowConfig::default();
+    expected.prefixes.insert("perf".to_owned(), Vec::new());
+    assert_eq!(config, expected);
+}
+
+#[test]
+fn it_should_allow_a_prefix_to_require_nothing() {
+    let text = lines(&["version = 1", "[prefix.feat]", "require = []"]);
+
+    let config = accepted(&text);
+
+    assert_eq!(config.prefixes["feat"], Vec::<RequireAtom>::new());
+}
+
+// AC 14: o valor vem do texto, não do binário
+
+#[test]
+fn it_should_read_a_different_max_lines_when_the_text_changes() {
+    let with = |value: u32| lines(&["version = 1", "[specs]", &format!("max_lines = {value}")]);
+
+    let read = (
+        accepted(&with(300)).specs.max_lines,
+        accepted(&with(120)).specs.max_lines,
+    );
+
+    assert_eq!(read, (300, 120));
+}
+
+// Recusas: código estável, caminho e posição (linha e coluna)
+
+#[test]
+fn it_should_refuse_an_unknown_top_level_key_with_its_position() {
+    let text = lines(&["version = 1", "colour = true"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 2);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_key_inside_specs_with_its_position() {
+    let text = lines(&["version = 1", "[specs]", "colour = true"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_key_inside_promotion_with_its_position() {
+    let text = lines(&["version = 1", "[promotion]", "colour = true"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_key_inside_a_prefix_table_with_its_position() {
+    let text = lines(&["version = 1", "[prefix.feat]", "colour = true"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_top_level_table_with_its_position() {
+    let text = lines(&["version = 1", "[bogus]", "x = 1"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 2);
+}
+
+#[test]
+fn it_should_refuse_max_lines_zero_with_its_position() {
+    let text = lines(&["version = 1", "[specs]", "max_lines = 0"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_a_negative_max_lines_with_its_position() {
+    let text = lines(&["version = 1", "[specs]", "max_lines = -5"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_an_absolute_specs_dir_with_its_position() {
+    let text = lines(&["version = 1", "[specs]", "dir = \"/etc/specs\""]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_a_specs_dir_that_leaves_the_main_directory_with_its_position() {
+    let text = lines(&["version = 1", "[specs]", "dir = \"../outside\""]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_a_specs_dir_with_a_parent_component_in_the_middle_with_its_position() {
+    let text = lines(&["version = 1", "[specs]", "dir = \"docs/../specs\""]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_require_atom_with_its_position() {
+    let text = lines(&[
+        "version = 1",
+        "[prefix.feat]",
+        "require = [\"spec\", \"no-such-atom\"]",
+    ]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_a_value_of_the_wrong_type_with_its_position() {
+    let text = lines(&["version = 1", "[specs]", "max_lines = \"many\""]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_a_version_other_than_one_with_its_position() {
+    let error = refusal("version = 2\n");
+
+    assert_refused_at_line(&error, 1);
+}
+
+#[test]
+fn it_should_refuse_a_file_without_a_version() {
+    let text = lines(&["[specs]", "max_lines = 150"]);
+
+    let error = refusal(&text);
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_report_the_position_of_a_toml_syntax_error() {
+    let text = lines(&["version = 1", "[specs]", "max_lines = = 3"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_bytes_that_are_not_utf8() {
+    let error = parse_workflow(workflow_path(), b"version = 1\n\xff\xfe")
+        .expect_err("the bytes are refused");
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_not_echo_the_file_content_in_any_refusal() {
+    let refused = [
+        lines(&["version = 1", &format!("colour = \"{CANARY}\"")]),
+        lines(&[
+            "version = 1",
+            "[prefix.feat]",
+            &format!("require = [\"{CANARY}\"]"),
+        ]),
+        lines(&[
+            "version = 1",
+            "[specs]",
+            &format!("max_lines = \"{CANARY}\""),
+        ]),
+        lines(&["version = 1", "[specs]", &format!("dir = {CANARY}")]),
+        lines(&["version = 1", "[specs]", &format!("dir = \"/{CANARY}\"")]),
+        lines(&["version = 1", "[specs]", &format!("dir = \"../{CANARY}\"")]),
+    ];
+
+    let messages: Vec<String> = refused.iter().map(|text| refusal(text).message).collect();
+
+    let leaked: Vec<&String> = messages
+        .iter()
+        .filter(|message| message.contains(CANARY))
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "messages repeat the file content: {leaked:?}"
+    );
+}

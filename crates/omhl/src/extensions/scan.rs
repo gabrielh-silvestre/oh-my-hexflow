@@ -3,7 +3,9 @@ use std::path::Path;
 
 use super::files::{list_sorted_capped, read_regular_utf8};
 use super::model::{ExtensionIssue, ExtensionKind, RawExtension};
-use crate::project::layout::{DIR_ENTRIES_MAX, EXT_FILE_MAX_BYTES, OMHL_DIR, PROJECTION_DIR};
+use crate::project::layout::{
+    DIR_ENTRIES_MAX, EXT_FILE_MAX_BYTES, OMHL_DIR, PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE,
+};
 
 const KINDS: [ExtensionKind; 2] = [ExtensionKind::Check, ExtensionKind::Guideline];
 const SLUG_MAX_LEN: usize = 63;
@@ -16,6 +18,11 @@ pub struct ScanOutput {
 }
 
 pub fn scan(root: &Path) -> ScanOutput {
+    scan_with(root, &[])
+}
+
+/// `extra_ignored` são nomes diretos de `.omhl/` ignorados além dos fixos, como o `specs.dir` configurado.
+pub fn scan_with(root: &Path, extra_ignored: &[&str]) -> ScanOutput {
     let mut output = ScanOutput::default();
     let omhl = root.join(OMHL_DIR);
     match fs::symlink_metadata(&omhl) {
@@ -29,7 +36,7 @@ pub fn scan(root: &Path) -> ScanOutput {
     match names_in(&omhl, OMHL_DIR) {
         Ok(names) => {
             for name in &names {
-                scan_root_entry(root, name, &mut output);
+                scan_root_entry(root, name, extra_ignored, &mut output);
             }
         }
         Err(error) => output.errors.push(error),
@@ -78,10 +85,12 @@ fn names_in(dir: &Path, rel: &str) -> Result<Vec<String>, ExtensionIssue> {
         .collect())
 }
 
-fn scan_root_entry(root: &Path, name: &str, output: &mut ScanOutput) {
+fn scan_root_entry(root: &Path, name: &str, extra_ignored: &[&str], output: &mut ScanOutput) {
     if let Some(kind) = KINDS.into_iter().find(|kind| kind.dir() == name) {
         scan_dir(root, kind, output);
-    } else if name != PROJECTION_DIR {
+    } else if ![PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE].contains(&name)
+        && !extra_ignored.contains(&name)
+    {
         output
             .warnings
             .push(issue(format!("{OMHL_DIR}/{name}"), "unknown-entry"));

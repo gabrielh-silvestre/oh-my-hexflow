@@ -23,7 +23,7 @@ const FORBIDDEN_PACKAGES: &[&str] = &[
     "serde_yaml",
 ];
 const FORBIDDEN_PACKAGE_PREFIX: &str = "gix";
-const PURE_LAYER_DIRS: &[&str] = &["extensions", "projection", "mechanical"];
+const PURE_LAYER_DIRS: &[&str] = &["extensions", "projection", "mechanical", "workflow"];
 const PURE_LAYER_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const PURE_LAYER_FORBIDDEN_PATHS: &[&str] = &["adapters::", "app::", "facade::"];
 const TEMPFILE_ALLOWED_FILE: &str = "projection/write.rs";
@@ -42,6 +42,7 @@ const EXPECTED_DEPENDENCIES: &[&str] = &[
 const ATOMIC_PATHS: &[&str] = &["sync::atomic", "atomic::"];
 const MECHANICAL_FORBIDDEN_MODULES: &[&str] =
     &["adapters", "app", "facade", "ports", "runner", "byproduct"];
+const WORKFLOW_FORBIDDEN_MODULES: &[&str] = &["ports", "runner", "byproduct"];
 const SERVICE_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super::"];
 const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
@@ -973,6 +974,10 @@ fn mechanical_refs(source: &str) -> Result<usize, String> {
     forbidden_module_refs(source, MECHANICAL_FORBIDDEN_MODULES)
 }
 
+fn workflow_refs(source: &str) -> Result<usize, String> {
+    forbidden_module_refs(source, WORKFLOW_FORBIDDEN_MODULES)
+}
+
 fn service_refs(source: &str) -> Result<usize, String> {
     forbidden_module_refs(source, SERVICE_FORBIDDEN_MODULES)
 }
@@ -1130,6 +1135,32 @@ fn it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner
     );
 
     failures.extend(scan_dir(&src_dir().join("mechanical"), mechanical_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_the_workflow_module_free_of_ports_runner_and_byproduct() {
+    let mut failures = prove_both_sides(
+        workflow_refs,
+        &[
+            "use crate::ports::git::GitProbe;",
+            "use crate::runner::RunSpec;",
+            "use crate::byproduct::ByproductHash;",
+            "use crate::{project::Env, ports::git::GitProbe};",
+            "use super::ports::Anything;",
+            "let probe = ports::git::GitProbe::new(dir);",
+        ],
+        &[
+            "use crate::project::layout::OMHL_DIR;",
+            "use super::config::WorkflowConfig;",
+            "// use crate::ports::git::GitProbe;",
+            "const P: &str = \"crate::runner::RunSpec\";",
+            "use crate::reports::Thing;",
+        ],
+    );
+
+    failures.extend(scan_dir(&src_dir().join("workflow"), workflow_refs));
 
     assert_no_failures(&failures);
 }
