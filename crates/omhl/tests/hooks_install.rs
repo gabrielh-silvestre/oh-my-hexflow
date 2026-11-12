@@ -1237,28 +1237,34 @@ fn it_should_warn_when_the_omhl_binary_lives_in_a_cargo_target_folder() {
 }
 
 #[test]
-fn it_should_warn_when_the_omhl_binary_lives_inside_a_worktree_of_the_clone() {
+fn it_should_warn_when_the_omhl_binary_lives_inside_a_linked_worktree() {
     let repo = HookRepo::new();
     repo.seed();
     let linked = repo.scratch().join("linked");
     repo.git(&["worktree", "add", "-b", "other", path_text(&linked)]);
-    let cases = [
-        repo.d().join("plugin/bin/omhl"),
-        linked.join("plugin/bin/omhl"),
-    ];
+    let copy = repo.copy_bin_to(&linked.join("plugin/bin/omhl"));
 
-    for dst in cases {
-        let copy = repo.copy_bin_to(&dst);
+    let output = repo.run_copy(&copy, &["hooks", "install"]);
 
-        let output = repo.run_copy(&copy, &["hooks", "install"]);
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(
+        json_line(&output.stdout)["warnings"],
+        json!([{ "code": "binary-in-worktree", "path": path_text(&copy), "hint": BUILD_DIR_HINT }])
+    );
+    assert_scripts(&repo.h(), &copy);
+}
 
-        assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
-        assert_eq!(
-            json_line(&output.stdout)["warnings"],
-            json!([{ "code": "binary-in-worktree", "path": path_text(&copy), "hint": BUILD_DIR_HINT }])
-        );
-        assert_scripts(&repo.h(), &copy);
-    }
+#[test]
+fn it_should_not_warn_when_the_omhl_binary_lives_in_the_main_worktree() {
+    let repo = HookRepo::new();
+    repo.seed();
+    let copy = repo.copy_bin_to(&repo.d().join("plugin/bin/omhl"));
+
+    let output = repo.run_copy(&copy, &["hooks", "install"]);
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(json_line(&output.stdout)["warnings"], json!(null));
+    assert_scripts(&repo.h(), &copy);
 }
 
 #[test]

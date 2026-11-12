@@ -50,7 +50,7 @@ fn install(
     let binary = git
         .binary()
         .map_err(|_| AppError::binary_path_unreadable())?;
-    let worktrees = git.worktree_roots().map_err(probe_failed)?;
+    let worktrees = git.linked_worktree_roots().map_err(probe_failed)?;
     // shortcut: caminho que não é UTF-8 vira texto com perda e o hook diz "binary not found"; trocar por bytes se aparecer.
     let binary_text = binary.to_string_lossy();
     let scripts = SCRIPTS.map(|(name, command)| (name, script(&binary_text, command)));
@@ -99,7 +99,7 @@ fn double_quoted(text: &str) -> String {
     quoted
 }
 
-/// O hook falha fechado se o binário some; um binário dentro de uma worktree some com ela (`wt remove`).
+/// O hook falha fechado se o binário some; um binário dentro de uma worktree ligada some com ela (`wt remove`); a principal não é removida.
 fn unstable_binary_code(binary: &Path, worktrees: &[PathBuf]) -> Option<&'static str> {
     if in_build_dir(binary) {
         return Some("binary-in-build-dir");

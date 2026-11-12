@@ -18,8 +18,8 @@ pub trait HookInstaller {
     fn configured_hooks_path(&self) -> Result<Option<String>, String>;
     /// Alguma entrada de `dir` que não termina em `.sample`; pasta inexistente conta como vazia.
     fn has_foreign_hooks(&self, dir: &Path) -> bool;
-    /// Raiz de cada worktree do clone (`git worktree list --porcelain`), a principal inclusive.
-    fn worktree_roots(&self) -> Result<Vec<PathBuf>, String>;
+    /// Raiz de cada worktree ligada do clone (`git worktree list --porcelain` sem a primeira entrada, a principal).
+    fn linked_worktree_roots(&self) -> Result<Vec<PathBuf>, String>;
     fn binary(&self) -> io::Result<PathBuf>;
     /// Cria `dir` e grava cada `(nome, conteúdo)` com modo `0755`, sobrescrevendo.
     fn write_scripts(&self, dir: &Path, scripts: &[(&str, String)]) -> io::Result<()>;
@@ -100,12 +100,13 @@ impl HookInstaller for GitHooks {
         }
     }
 
-    fn worktree_roots(&self) -> Result<Vec<PathBuf>, String> {
+    fn linked_worktree_roots(&self) -> Result<Vec<PathBuf>, String> {
         let listing = self.git_line(&["worktree", "list", "--porcelain"].map(OsStr::new))?;
 
         Ok(listing
             .lines()
             .filter_map(|line| line.strip_prefix("worktree "))
+            .skip(1)
             .map(PathBuf::from)
             .collect())
     }

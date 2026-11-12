@@ -22,6 +22,6 @@ Os scripts ficam em `$XDG_DATA_HOME/omhl/hooks/` (ou `~/.local/share/omhl/hooks/
 ## Consequências
 
 - Uma atualização do `omhl` vale para todos os repos do usuário, e a pasta anda junto com o banco.
-- Os scripts levam o caminho absoluto do binário, e todo clone compartilha os mesmos scripts. Por isso a instalação avisa (`binary-in-worktree`, `binary-in-build-dir`) quando o binário está dentro de uma worktree ou de `target/`: um `wt remove` apagaria o binário, e o hook de todos os clones sairia com 1.
+- Os scripts levam o caminho absoluto do binário, e todo clone compartilha os mesmos scripts. Por isso a instalação avisa (`binary-in-worktree`, `binary-in-build-dir`) quando o binário está dentro de uma worktree ligada ou de `target/` (a worktree principal não avisa): um `wt remove` apagaria o binário, e o hook de todos os clones sairia com 1.
 - Cada clone roda `omhl hooks install` uma vez. Um clone sem a instalação não tem hook, e o `gate-pr` cobra depois (ver `docs/mechanical-gates.md`).
 - Instalar num repo reescreve os scripts dos outros. A instalação recusa um `core.hooksPath` que aponta para outra pasta (`hooks-path-conflict`) e hooks existentes em `.git/hooks` (`hooks-existing`), salvo `--force`.
