@@ -268,6 +268,21 @@ fn it_should_answer_byproduct_missing_when_the_blob_is_gone() {
 }
 
 #[test]
+fn it_should_answer_byproduct_corrupt_when_the_blob_bytes_do_not_match_its_hash() {
+    let fixture = Fixture::new();
+    let blob = put_bsmall(&fixture);
+    fixture.attest('a', W1, "failed", &blob);
+    fs::write(fixture.blob_file(&blob), b"").expect("the blob file is truncated");
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1]);
+
+    assert_eq!(
+        failure(&output)["error"]["code"],
+        json!("byproduct-corrupt")
+    );
+}
+
+#[test]
 fn it_should_keep_the_attestation_valid_when_the_blob_is_gone() {
     let fixture = Fixture::new();
     let blob = put_bsmall(&fixture);

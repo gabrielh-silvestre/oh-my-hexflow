@@ -284,6 +284,14 @@ impl AppError {
         )
     }
 
+    pub(crate) fn byproduct_corrupt(path: &str) -> AppError {
+        AppError::at_pointer(
+            "byproduct-corrupt",
+            path,
+            "the stored output could not be read back intact",
+        )
+    }
+
     pub(crate) fn hooks_existing(path: &str) -> AppError {
         AppError::at_pointer(
             "hooks-existing",

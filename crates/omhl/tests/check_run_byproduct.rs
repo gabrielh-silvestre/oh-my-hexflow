@@ -417,6 +417,27 @@ fn it_should_keep_the_byproduct_hash_stable_for_identical_output() {
 }
 
 #[test]
+fn it_should_rewrite_a_truncated_blob_when_the_check_runs_again() {
+    let fx = fixture_with_fmt();
+    let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(b"ok\n", b""))]);
+    let probe = probe();
+    let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
+    run_before_pr(&mut app).expect("the first run succeeds");
+    let path = fx
+        .raw
+        .dir
+        .path()
+        .join("blobs")
+        .join(&B1_HASH[..2])
+        .join(B1_HASH);
+    std::fs::write(&path, b"").expect("the blob is truncated");
+
+    run_before_pr(&mut app).expect("the second run succeeds");
+
+    assert_eq!(fx.stored_blob(B1_HASH), Some(B1_BLOB.to_vec()));
+}
+
+#[test]
 fn it_should_not_store_the_environment_in_the_byproduct_or_in_the_attestation() {
     let fx = fixture_with_fmt();
     let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(b"ok\n", b""))]);

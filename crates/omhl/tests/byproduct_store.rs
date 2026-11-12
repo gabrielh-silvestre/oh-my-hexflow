@@ -169,6 +169,18 @@ fn it_should_refuse_a_blob_whose_bytes_do_not_match_its_hash() {
 }
 
 #[test]
+fn it_should_rewrite_an_existing_blob_whose_bytes_do_not_match_its_hash() {
+    let (dir, store) = store();
+    store.put(b"abc").unwrap();
+    fs::write(blob_path(dir.path(), ABC_SHA256), b"").unwrap();
+
+    let stored = store.put(b"abc").unwrap();
+
+    assert_eq!(stored.as_str(), ABC_SHA256);
+    assert_eq!(store.get(&stored), Ok(Some(b"abc".to_vec())));
+}
+
+#[test]
 fn it_should_store_a_blob_when_a_stale_temporary_file_of_an_earlier_run_exists() {
     let (dir, store) = store();
     let prefix_dir = dir.path().join("blobs/ba");

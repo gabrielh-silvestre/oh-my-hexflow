@@ -37,8 +37,10 @@ impl Engine<'_> {
         let store = self.byproducts.ok_or_else(|| {
             AppError::plain("byproducts-unavailable", "no byproduct store is configured")
         })?;
-        // shortcut: blob corrompido ou ilegível vira byproduct-missing; a forma final é da S18 (lacuna L5)
-        let blob = store.get(&hash).ok().flatten().ok_or_else(missing)?;
+        let blob = store
+            .get(&hash)
+            .map_err(|_| AppError::byproduct_corrupt("/work_item"))?
+            .ok_or_else(missing)?;
         let lines = tail_lines(&blob, tail).ok_or_else(missing)?;
 
         Ok(json!({

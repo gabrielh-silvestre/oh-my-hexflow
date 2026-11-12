@@ -38,7 +38,10 @@ impl ByproductStore for BlobStore {
             .create(&dir)
             .map_err(|error| io_error(&error))?;
         let target = dir.join(hash.as_str());
-        if target.exists() {
+        // Blob existente com bytes diferentes (truncado ou corrompido) é regravado: o `rename` o substitui.
+        if fs::read(&target)
+            .is_ok_and(|existing| sha256_hash(&existing).is_ok_and(|actual| actual == hash))
+        {
             return Ok(hash);
         }
         // Temporário de outra execução fica como arquivo sem uso: nunca é apagado (DP-38).
@@ -59,6 +62,7 @@ impl ByproductStore for BlobStore {
                 Err(error) => return Err(io_error(&error)),
             };
             file.write_all(bytes).map_err(|error| io_error(&error))?;
+            file.sync_all().map_err(|error| io_error(&error))?;
             fs::rename(&temp, &target).map_err(|error| io_error(&error))?;
             return Ok(hash);
         }
