@@ -2,7 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use super::engine::Engine;
+use super::engine::{Engine, require_project_root};
 use super::error::AppError;
 use crate::ports::hooks::{GitHooks, HookInstaller};
 
@@ -19,10 +19,7 @@ const UNSTABLE_BINARY_HINT: &str = "install an omhl binary outside any worktree 
 
 impl Engine<'_> {
     pub(super) fn hooks_install(&self, force: bool) -> Result<Value, AppError> {
-        let root = self
-            .project_root
-            .as_deref()
-            .ok_or_else(|| AppError::plain("no-project-root", "no project root is available"))?;
+        let root = require_project_root(self.project_root.as_deref())?;
 
         install(&GitHooks::new(root), self.hooks_dir.as_deref(), force)
     }

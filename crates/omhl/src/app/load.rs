@@ -6,7 +6,7 @@ use hexlog::{
 use serde_json::{Value, json};
 
 use super::action::Caller;
-use super::engine::Engine;
+use super::engine::{Engine, require_project_root};
 use super::error::AppError;
 use super::read::all_nodes;
 use crate::extensions::collect::collect;
@@ -30,9 +30,7 @@ impl Engine<'_> {
             project_root,
             ..
         } = self;
-        let root = project_root
-            .as_deref()
-            .ok_or_else(|| AppError::plain("no-project-root", "no project root is available"))?;
+        let root = require_project_root(project_root.as_deref())?;
         let collected = collect(root);
         if !collected.errors.is_empty() {
             return Err(AppError::extensions_invalid(

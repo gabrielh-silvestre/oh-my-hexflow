@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use hexlog::{HexlogError, ListFilter, PageRequest, SemanticId, Snapshot, TenantId, TypeName};
 use serde_json::{Value, json};
@@ -173,10 +173,7 @@ impl Engine<'_> {
 
     /// Regenera `.omhl/projection` a partir do estado vigente; não grava nenhum record.
     fn project(&mut self) -> Result<Value, AppError> {
-        let root = self
-            .project_root
-            .as_deref()
-            .ok_or_else(|| AppError::plain("no-project-root", "no project root is available"))?;
+        let root = require_project_root(self.project_root.as_deref())?;
         let state = self.omhl.read_projection_state(&self.tenant)?;
         let files = build(&state).map_err(|error| AppError::projection_failed(&error))?;
         let report = write(root, &files).map_err(|error| AppError::projection_failed(&error))?;
@@ -201,4 +198,8 @@ impl Engine<'_> {
             head_tree: reproducible(self.probe.probe_tree(TreeSource::Head))?,
         })
     }
+}
+
+pub(super) fn require_project_root(root: Option<&Path>) -> Result<&Path, AppError> {
+    root.ok_or_else(|| AppError::plain("no-project-root", "no project root is available"))
 }

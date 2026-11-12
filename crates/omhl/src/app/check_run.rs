@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use super::action::{Caller, CheckTarget};
 use super::attest::{attestation_data, derived_id};
-use super::engine::Engine;
+use super::engine::{Engine, require_project_root};
 use super::error::{AppError, CheckDetail};
 use super::retry::with_retry;
 use super::work_item::{WorkItemRoute, head_branch, resolve_work_item};
@@ -119,10 +119,7 @@ impl Engine<'_> {
         target: &CheckTarget,
         pre_push: Option<&str>,
     ) -> Result<Value, AppError> {
-        let root = self
-            .project_root
-            .clone()
-            .ok_or_else(|| AppError::plain("no-project-root", "no project root is available"))?;
+        let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
         let runner = self.runner.ok_or_else(|| {
             AppError::plain("runner-unavailable", "no command runner is configured")
         })?;
