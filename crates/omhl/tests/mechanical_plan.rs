@@ -1,7 +1,7 @@
 mod support;
 
 use ::omhl::mechanical::plan::{
-    CheckNode, CheckResult, PlannedCheck, RunSummary, exit_blocked, plan_run, summarize,
+    CheckNode, CheckResult, PlannedCheck, RunSummary, plan_run, summarize,
 };
 use ::omhl::mechanical::spec::Outcome;
 use hexlog::{SemanticId, SnapshotKind};
@@ -174,9 +174,9 @@ fn it_should_block_the_exit_when_a_blocking_check_failed() {
         result("checks.c", Outcome::Failed, false),
     ];
 
-    let blocked = exit_blocked(&summarize(&results));
+    let blocked = summarize(&results).blocked;
 
-    assert!(blocked);
+    assert_eq!(blocked, vec![id("checks.b")]);
 }
 
 #[test]
@@ -186,22 +186,22 @@ fn it_should_not_block_the_exit_when_only_a_non_blocking_check_failed() {
         result("checks.b", Outcome::Failed, false),
     ];
 
-    let blocked = exit_blocked(&summarize(&results));
+    let blocked = summarize(&results).blocked;
 
-    assert!(!blocked);
+    assert!(blocked.is_empty());
 }
 
 #[test]
 fn it_should_not_block_the_exit_when_a_check_passed_with_warning() {
     let results = [result("checks.a", Outcome::PassedWithWarning, true)];
 
-    let blocked = exit_blocked(&summarize(&results));
+    let blocked = summarize(&results).blocked;
 
-    assert!(!blocked);
+    assert!(blocked.is_empty());
 }
 
 #[test]
-fn it_should_list_every_check_that_did_not_pass_in_the_summary() {
+fn it_should_list_only_the_blocking_checks_that_failed_in_the_summary() {
     let results = [
         result("checks.a", Outcome::Passed, true),
         result("checks.b", Outcome::Failed, false),
@@ -215,7 +215,6 @@ fn it_should_list_every_check_that_did_not_pass_in_the_summary() {
         summary,
         RunSummary {
             blocked: vec![id("checks.d")],
-            not_passed: vec![id("checks.b"), id("checks.d")],
         }
     );
 }
@@ -224,12 +223,5 @@ fn it_should_list_every_check_that_did_not_pass_in_the_summary() {
 fn it_should_not_block_when_no_check_ran() {
     let summary = summarize(&[]);
 
-    assert_eq!(
-        summary,
-        RunSummary {
-            blocked: vec![],
-            not_passed: vec![],
-        }
-    );
-    assert!(!exit_blocked(&summary));
+    assert_eq!(summary, RunSummary { blocked: vec![] });
 }

@@ -20,7 +20,7 @@ use crate::extensions::collect::collect;
 use crate::extensions::model::ExtensionKind;
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
 use crate::mechanical::evaluate::{Observation, evaluate};
-use crate::mechanical::plan::{CheckResult, PlannedCheck, exit_blocked, plan_run, summarize};
+use crate::mechanical::plan::{CheckResult, PlannedCheck, plan_run, summarize};
 use crate::mechanical::spec::{CheckSpec, Outcome, spec_digest};
 use crate::probe::{ProbeError, ProbeOutcome, TreeSource};
 use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
@@ -799,7 +799,7 @@ fn finish(scope: &Scope<'_>, tally: Tally, checks_planned: usize) -> Result<Valu
         return Err(error(tally.details));
     }
     let summary = summarize(&tally.results);
-    if exit_blocked(&summary) {
+    if !summary.blocked.is_empty() {
         return Err(AppError::checks_failed(tally.details));
     }
 

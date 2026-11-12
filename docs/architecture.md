@@ -166,7 +166,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `omhl::render` | 297 | `render` | funda |
 | `omhl::ports` | 1.219 | `SystemClock`, `V7Ids`, `GitProbe` | adapters |
 | `omhl::project` | 285 | `find_marker`, `default_db_path`, `prepare_db_file`, `Env` | rasa |
-| `omhl::mechanical` | 632 | `CheckSpec::from_data`, `snapshot_for`, `evaluate`, `plan_run`, `summarize`, `exit_blocked`, `RUNNABLE_EVENTS` | funda e pura |
+| `omhl::mechanical` | 632 | `CheckSpec::from_data`, `snapshot_for`, `evaluate`, `plan_run`, `summarize`, `RUNNABLE_EVENTS` | funda e pura |
 | `omhl::mechanical::branch` | 142 | `current_branch`, `classify`, `plan_push`, `HeadFacts` | funda e pura |
 | `omhl::mechanical::sweep` | 88 | `RunMarker`, `start_from_stat`, `select_strays` | funda e pura |
 | `omhl::runner` | 43 | `trait CommandRunner`, `RunSpec`, `RunReport`, `RunError` | dado e seam |
@@ -335,7 +335,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** É a política pura de um check mecânico: decodifica o `data` de um check com `run`, avalia a saída do comando contra as regras de `expect`, ordena e planeja a fila de um evento.
 
-**Interface.** `CheckSpec::from_data(&Value) -> Result<Option<CheckSpec>, SpecError>` (`None` é um check só de texto), `snapshot_for(&Value) -> SnapshotKind`, `RUNNABLE_EVENTS` (`mechanical/spec.rs`); `evaluate(&CheckSpec, &Observation) -> Outcome` (`evaluate.rs`); `order` (`order.rs`); `plan_run`, `CheckNode`, `PlannedCheck`, `summarize`, `exit_blocked` (`plan.rs`).
+**Interface.** `CheckSpec::from_data(&Value) -> Result<Option<CheckSpec>, SpecError>` (`None` é um check só de texto), `snapshot_for(&Value) -> SnapshotKind`, `RUNNABLE_EVENTS` (`mechanical/spec.rs`); `evaluate(&CheckSpec, &Observation) -> Outcome` (`evaluate.rs`); `order` (`order.rs`); `plan_run`, `CheckNode`, `PlannedCheck`, `summarize` (`plan.rs`).
 
 **Escondido.** O regex de cada regra, os limites de tamanho do `run`, do `expect` e do `timeout_secs`, a ordem em que o `SpecError` é escolhido (ele nunca ecoa o conteúdo), a ordenação por `after` com desempate alfabético. `snapshot_for` é o único decodificador do snapshot que um check cobra: `git-tree` só para `before-commit` com `run`, `git-commit` no resto.
 

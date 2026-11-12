@@ -57,23 +57,14 @@ pub struct CheckResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunSummary {
     pub blocked: Vec<SemanticId>,
-    pub not_passed: Vec<SemanticId>,
 }
 
 pub fn summarize(results: &[CheckResult]) -> RunSummary {
-    let failed = results
-        .iter()
-        .filter(|result| result.outcome == Outcome::Failed);
     RunSummary {
-        blocked: failed
-            .clone()
-            .filter(|result| result.blocking)
+        blocked: results
+            .iter()
+            .filter(|result| result.outcome == Outcome::Failed && result.blocking)
             .map(|result| result.id.clone())
             .collect(),
-        not_passed: failed.map(|result| result.id.clone()).collect(),
     }
-}
-
-pub fn exit_blocked(summary: &RunSummary) -> bool {
-    !summary.blocked.is_empty()
 }
