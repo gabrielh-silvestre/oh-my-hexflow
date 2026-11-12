@@ -119,6 +119,11 @@ mod platform {
         Pid::from_raw(child.id() as i32)
     }
 
+    /// Barra final e link simbólico dão o mesmo hash que o caminho real; sem caminho real (raiz sumida), vale o caminho dado.
+    fn project_root_hash(root: &Path) -> String {
+        root_hash(&fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf()))
+    }
+
     /// A marca deste processo para um comando que roda em `root`; `None` se o `/proc` não se leu.
     fn own_marker(root: &Path) -> Option<String> {
         let stat = fs::read_to_string("/proc/self/stat").ok()?;
@@ -126,7 +131,7 @@ mod platform {
             pid: std::process::id(),
             start: start_from_stat(&stat)?,
             pidns: own_pidns()?,
-            root: root_hash(root),
+            root: project_root_hash(root),
         };
         Some(marker.encode())
     }
@@ -377,7 +382,7 @@ mod platform {
             std::process::id(),
             own_marker.as_deref(),
             own_pidns,
-            project_root.map(root_hash).as_deref(),
+            project_root.map(project_root_hash).as_deref(),
             &candidates,
             &|pid| live_stat(root, pid).map(|stat| stat.start),
             &|pgrp| {

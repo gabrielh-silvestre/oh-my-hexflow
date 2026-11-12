@@ -269,7 +269,7 @@ Enquanto o repositório for privado, o projeto não usa a proteção de branch d
 
 ### A varredura de processos fugidos
 
-O runner põe a variável `OMHL_RUN_ID` (formato `v1:<pid>:<início>:<pidns>:<raiz>`) no ambiente de cada comando. Ela identifica o `omhl` dono e o projeto: `<raiz>` são os 16 primeiros hex do sha256 do caminho da raiz do projeto. A varredura procura processos que carregam essa marca e cujo dono morreu, e os encerra com `TERM`, `CONT`, 2 segundos de carência e `KILL`. Ela poupa o próprio processo, quem tem a mesma marca que o varredor e o grupo que um guardião vivo ainda limpa.
+O runner põe a variável `OMHL_RUN_ID` (formato `v1:<pid>:<início>:<pidns>:<raiz>`) no ambiente de cada comando. Ela identifica o `omhl` dono e o projeto: `<raiz>` são os 16 primeiros hex do sha256 do caminho canônico da raiz do projeto (barra final e link simbólico dão a mesma marca). A varredura procura processos que carregam essa marca e cujo dono morreu, e os encerra com `TERM`, `CONT`, 2 segundos de carência e `KILL`. Ela poupa o próprio processo, quem tem a mesma marca que o varredor e o grupo que um guardião vivo ainda limpa.
 
 Ela roda em silêncio no início de todo `omhl check run`, inclusive no `--pre-push`, e sob demanda. A varredura do `check run` só encerra processos cuja marca leva a raiz do próprio projeto: uma marca de outra raiz, mesmo com o dono morto, fica intacta. A sob demanda (`omhl check sweep`) vale para qualquer raiz:
 

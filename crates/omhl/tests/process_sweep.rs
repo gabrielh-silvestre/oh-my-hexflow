@@ -3,7 +3,7 @@
 mod proc_roles;
 
 use std::fs::{self, OpenOptions};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{OpenOptionsExt, symlink};
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::mpsc;
@@ -105,6 +105,49 @@ fn it_should_put_the_run_marker_of_the_caller_in_the_command_environment() {
             root_hash(dir.path())
         )
     );
+}
+
+fn marker_root_of(cwd: &Path) -> String {
+    let run_spec = spec(
+        &["sh", "-c", "printf %s \"$OMHL_RUN_ID\""],
+        cwd,
+        TWENTY_SECS,
+    );
+    let report = run_ok(&ProcessRunner::new(), &run_spec);
+    let marker = String::from_utf8(report.stdout).expect("the marker is UTF-8");
+
+    marker.rsplit(':').next().unwrap_or_default().to_owned()
+}
+
+#[test]
+fn it_should_hash_the_same_root_through_a_symlink_or_a_trailing_slash() {
+    let project = TempDir::new().expect("project directory is created");
+    let links = TempDir::new().expect("links directory is created");
+    let link = links.path().join("project-link");
+    symlink(project.path(), &link).expect("the symlink is created");
+    let trailing = project.path().join("");
+    let canonical = fs::canonicalize(project.path()).expect("the project is canonical");
+
+    let through_link = marker_root_of(&link);
+    let through_slash = marker_root_of(&trailing);
+
+    assert_eq!(through_link, root_hash(&canonical));
+    assert_eq!(through_slash, root_hash(&canonical));
+}
+
+#[test]
+fn it_should_sweep_the_stray_when_the_given_root_is_a_symlink_to_the_project() {
+    let dir = TempDir::new().expect("work directory is created");
+    let links = TempDir::new().expect("links directory is created");
+    let link = links.path().join("project-link");
+    symlink(dir.path(), &link).expect("the symlink is created");
+    let n = stray_of_a_gone_runner(dir.path(), "detached");
+
+    let called = Instant::now();
+    let result = sweep_project_strays(&link);
+
+    assert!(result.is_ok(), "the sweep fails");
+    assert_dead_since(&[n], called, DEATH);
 }
 
 #[test]
