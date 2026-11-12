@@ -49,7 +49,7 @@ impl Runtime {
         let located = find_marker(start)?.ok_or_else(|| {
             AppError::plain(
                 "no-marker",
-                "no .omhl.toml found in the project directory or any parent",
+                "no .omhl.toml found in the project directory or any parent; a branch older than the marker needs a rebase onto main",
             )
         })?;
         let db_path = match db {

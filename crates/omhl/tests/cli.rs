@@ -170,6 +170,13 @@ fn it_should_exit_one_with_a_json_error_when_there_is_no_marker() {
         json_line(&output.stderr)["error"]["code"],
         json!("no-marker")
     );
+    assert!(
+        json_line(&output.stderr)["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("rebase")),
+        "the message points to a rebase: {}",
+        output.stderr
+    );
 }
 
 #[test]
