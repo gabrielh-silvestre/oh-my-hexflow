@@ -29,8 +29,6 @@ const ATTESTATION: &str = "attestation";
 /// 4 MiB por fluxo.
 const MAX_STREAM_BYTES: u64 = 4_194_304;
 const TAIL_LINES: usize = 20;
-/// Único evento em que um TOML divergente do banco só avisa.
-const WARN_ONLY_EVENT: &str = "before-commit";
 const TAIL_LINE_CHARS: usize = 500;
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
 const BUSY_HINT: &str = "the database stayed locked for about 74 seconds; the verdict above was computed but not recorded; run the same command again when the other process ends";
@@ -102,7 +100,6 @@ struct Tally {
     details: Vec<CheckDetail>,
     error: Option<MissError>,
     snapshot: Option<Snapshot>,
-    warnings: Vec<Value>,
 }
 
 impl Engine<'_> {
@@ -186,15 +183,11 @@ impl Engine<'_> {
     ) -> Result<Tally, AppError> {
         let mut tally = Tally::default();
         for (index, check) in planned.iter().enumerate() {
-            let drifted = scope.drifted(check);
-            if drifted && scope.event != WARN_ONLY_EVENT {
+            if scope.drifted(check) {
                 let miss = spec_stale_miss(scope, check);
                 tally.error.get_or_insert(miss.error);
                 tally.details.push(miss.detail);
                 continue;
-            }
-            if drifted {
-                tally.warnings.push(spec_stale_warning(check));
             }
             let step = match ready_spec(scope, check) {
                 Err(miss) => Step::Miss(miss),
@@ -658,15 +651,6 @@ fn spec_stale_miss(scope: &Scope<'_>, check: &PlannedCheck) -> Miss {
     }
 }
 
-fn spec_stale_warning(check: &PlannedCheck) -> Value {
-    json!({
-        "check": check.id,
-        "code": "spec-stale",
-        "message": "the check file differs from the stored definition; the stored command ran",
-        "hint": SPEC_STALE_HINT,
-    })
-}
-
 /// Spec inválido não executa e segue para o próximo check.
 fn ready_spec<'p>(scope: &Scope<'_>, check: &'p PlannedCheck) -> Result<&'p CheckSpec, Miss> {
     let error = match &check.spec {
@@ -798,19 +782,14 @@ fn finish(scope: &Scope<'_>, tally: Tally) -> Result<Value, AppError> {
         return Err(AppError::checks_failed(tally.details));
     }
 
-    let mut output = json!({
+    Ok(json!({
         "event": scope.event,
         "work_item": scope.work_item,
         "snapshot": tally.snapshot,
         "recorded": scope.work_item.is_some(),
         "results": tally.outputs,
         "blocked": summary.blocked,
-    });
-    if !tally.warnings.is_empty() {
-        output["warnings"] = json!(tally.warnings);
-    }
-
-    Ok(output)
+    }))
 }
 
 /// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context` (DP-37).

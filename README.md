@@ -240,9 +240,8 @@ continua indistinguível do usuário.
 
 Cada attestation do `omhl check run` leva o `spec_digest` (sha256 de `run`,
 `timeout_secs` e `expect`), e o `gate-pr` só aceita a que bate com a definição
-vigente do check. Se o TOML do disco diverge do banco, o `check run` de
-`before-pr` e `before-merge` recusa com `spec-stale` (rode `omhl load`); o de
-`before-commit` só avisa. Detalhes em
+vigente do check. Se o TOML do disco diverge do banco, o `check run` recusa
+com `spec-stale` em qualquer evento (rode `omhl load`). Detalhes em
 [docs/mechanical-gates.md](docs/mechanical-gates.md).
 
 ## Desenvolvimento

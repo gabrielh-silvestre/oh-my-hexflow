@@ -499,7 +499,7 @@ fn it_should_refuse_a_before_pr_run_when_the_committed_file_differs_from_the_sto
 }
 
 #[test]
-fn it_should_warn_and_run_the_database_command_on_before_commit_when_the_file_differs() {
+fn it_should_refuse_a_before_commit_run_when_the_file_differs_from_the_stored_definition() {
     let v1 = GATE_V1.replace("before-pr", "before-commit");
     let v2 = GATE_V2.replace("before-pr", "before-commit");
     let p = cli_repo(&[("gate", &v1)]);
@@ -508,15 +508,12 @@ fn it_should_warn_and_run_the_database_command_on_before_commit_when_the_file_di
 
     let output = omhl_in(&p, &["check", "run", "--event", "before-commit"]).run();
 
-    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
-    let line = normalized(&output.stdout);
-    assert_eq!(line["results"][0]["outcome"], json!("passed"));
-    assert_eq!(line["warnings"][0]["code"], json!("spec-stale"));
-    assert_eq!(line["warnings"][0]["check"], json!("checks.gate"));
-    assert_eq!(
-        attestation(&p, "checks.gate")["data"]["command"],
-        json!(["sh", "-c", "exit 0"])
-    );
+    assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+    assert_eq!(output.stdout, "");
+    let error = error_of(&output.stderr);
+    assert_eq!(error["code"], json!("check-not-run"));
+    assert_eq!(error["details"][0]["code"], json!("spec-stale"));
+    assert_eq!(attestations(&p), Vec::<Value>::new());
 }
 
 #[test]
