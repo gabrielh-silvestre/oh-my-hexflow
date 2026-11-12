@@ -2,7 +2,7 @@ mod support;
 
 use hexlog::SnapshotKind;
 use omhl::mechanical::spec::{
-    CheckSpec, Outcome, SpecError, StreamPattern, snapshot_for, spec_digest,
+    CheckSpec, Outcome, SpecError, StreamPattern, is_mechanical, snapshot_for, spec_digest,
 };
 use serde_json::{Value, json};
 use support::omhl::check_data;
@@ -339,4 +339,22 @@ fn it_should_change_the_spec_digest_when_expect_changes() {
     let other = run_data("before-pr", json!([{"exit": 0, "outcome": "failed"}]));
 
     assert_ne!(spec_digest(&other), spec_digest(&base));
+}
+
+#[test]
+fn it_should_treat_a_check_as_mechanical_when_run_is_present_whatever_its_value() {
+    let values = [json!(["cargo", "test"]), json!([]), Value::Null];
+
+    for run in values {
+        let data = json!({ "run": run });
+
+        assert!(is_mechanical(&data), "run: {run}");
+    }
+}
+
+#[test]
+fn it_should_treat_a_check_without_run_as_text_only() {
+    let data = json!({ "when": { "event": "before-pr" } });
+
+    assert!(!is_mechanical(&data));
 }

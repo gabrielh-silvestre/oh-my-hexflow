@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::error::{OmhlError, RuleCode};
 use crate::graphs::WORK_ITEM_TYPES;
+use crate::mechanical::is_mechanical;
 use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
 /// Namespace que o id de um node deve ter, por tipo (D4-1).
@@ -111,11 +112,6 @@ pub(super) fn status_of(data: &Value) -> Option<&str> {
     data.get("status").and_then(Value::as_str)
 }
 
-/// `run` é o que faz de um check um check mecânico.
-pub(super) fn has_run(data: &Value) -> bool {
-    data.get("run").is_some()
-}
-
 fn check_namespace(node: &NodeItem<'_>) -> Result<(), OmhlError> {
     let inside = namespace_of(node.type_name).is_none_or(|namespace| {
         node.id
@@ -196,7 +192,7 @@ impl Guard<'_, '_> {
         if self.author.client == CHECK_AUTHOR {
             return Ok(());
         }
-        if node.has_field("run") {
+        if is_mechanical(node.data) {
             return Err(node.error(RuleCode::CheckRunAuthor, "body/data/run"));
         }
         if node.base.is_some() && self.current_check_has_run(node.id)? {
@@ -220,7 +216,8 @@ impl Guard<'_, '_> {
     fn current_check_has_run(&mut self, id: &SemanticId) -> Result<bool, OmhlError> {
         let current = self.hexlog.get(self.tenant, id)?;
 
-        Ok(current.is_some_and(|view| view.type_name.as_str() == "check" && has_run(&view.data)))
+        Ok(current
+            .is_some_and(|view| view.type_name.as_str() == "check" && is_mechanical(&view.data)))
     }
 
     /// Revision de um node retirado seria reativação, que o `hexlog` ainda não suporta.

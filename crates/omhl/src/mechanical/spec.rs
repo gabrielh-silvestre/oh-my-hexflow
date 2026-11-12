@@ -60,9 +60,10 @@ impl CheckSpec {
 
     /// `None` é check só de texto. Devolve o primeiro erro, na ordem da lacuna L8.
     pub fn from_data(data: &Value) -> Result<Option<CheckSpec>, SpecError> {
-        let Some(run) = data.get("run") else {
+        if !is_mechanical(data) {
             return Ok(None);
-        };
+        }
+        let run = &data["run"];
         check_event(data)?;
         check_size(data, "", CHECK_DATA_MAX_UNITS, "data-too-large")?;
         check_size(run, "/run", RUN_MAX_UNITS, "run-too-large")?;
@@ -248,12 +249,18 @@ fn compile(pattern: &str, rule_path: &str, stream: &str) -> Result<Regex, SpecEr
         })
 }
 
+/// Único critério de "check mecânico": a chave `run` presente, qualquer que seja o valor.
+/// Guarda, gate e `from_data` o usam para que a abertura de um deles não divirja dos outros.
+pub fn is_mechanical(data: &Value) -> bool {
+    data.get("run").is_some()
+}
+
 /// Único decodificador do tipo de snapshot de um check (DP-6). Não passa pelo
 /// `from_data`: um spec inválido também tem kind (AF-MINOR 22).
 pub fn snapshot_for(data: &Value) -> hexlog::SnapshotKind {
     let before_commit =
         data.pointer("/when/event").and_then(Value::as_str) == Some("before-commit");
-    if before_commit && data.get("run").is_some() {
+    if before_commit && is_mechanical(data) {
         hexlog::SnapshotKind::GitTree
     } else {
         hexlog::SnapshotKind::GitCommit

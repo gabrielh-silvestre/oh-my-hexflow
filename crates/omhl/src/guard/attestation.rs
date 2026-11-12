@@ -1,9 +1,10 @@
 use hexlog::{NativeNodes, SemanticId};
 use serde_json::Value;
 
-use super::append::{Guard, NodeItem, has_run, status_of};
+use super::append::{Guard, NodeItem, status_of};
 use super::attestation_id;
 use crate::error::{OmhlError, RuleCode};
+use crate::mechanical::is_mechanical;
 use crate::native::NativeBase;
 use crate::probe::{ProbeError, ProbeOutcome};
 use hexlog::{Snapshot, SnapshotKind};
@@ -61,7 +62,7 @@ impl Guard<'_, '_> {
         let (type_name, mechanical) = match NativeBase.lookup(&id) {
             Some(native) => (Some(native.type_name), false),
             None => match self.hexlog.get(self.tenant, &id)? {
-                Some(view) => (Some(view.type_name), has_run(&view.data)),
+                Some(view) => (Some(view.type_name), is_mechanical(&view.data)),
                 None => (None, false),
             },
         };

@@ -92,6 +92,7 @@ flowchart LR
   guard --> gate
   guard --> graphs
   guard --> native
+  guard --> mechanical
   guard --> probe
   prgate --> gate
   prgate --> native
@@ -135,7 +136,7 @@ Notas de leitura:
 - `projection -> extensions` existe só por um helper de filesystem (`extensions::files`); é um dos pontos da seção 5.
 - `projection`, `extensions` e `render` também tomam tipos de dado do `hexlog` (`NodeView`, `SemanticId`); omitido do diagrama.
 - `mechanical`, `runner` e `byproduct` são os gates mecânicos (seções 3.17 a 3.22). `ports -> runner` e `ports -> byproduct` (pontilhadas) são a implementação das ports `CommandRunner` e `ByproductStore` por `ports/process` e `ports/blob`. `mechanical -> hxfacade` (pontilhada) cobre os tipos `SemanticId`, `SnapshotKind` e `Name` e a função `chain::canonical`.
-- `extensions -> mechanical` existe porque `extensions/parse.rs` usa `RUNNABLE_EVENTS` e `CheckSpec::from_data`. `pr_gate -> mechanical` existe porque o gate usa `RUNNABLE_EVENTS` (como `REQUIRED_EVENTS`) e `snapshot_for`. `facade -> mechanical` existe porque `facade.rs` monta `CheckNode`. As travas atuais já permitem as três: só proíbem `adapters`, `app` e `facade` nas camadas puras (seção 4).
+- `extensions -> mechanical` existe porque `extensions/parse.rs` usa `RUNNABLE_EVENTS` e `CheckSpec::from_data`. `pr_gate -> mechanical` existe porque o gate usa `RUNNABLE_EVENTS` (como `REQUIRED_EVENTS`), `snapshot_for` e `is_mechanical`. `guard -> mechanical` existe só por `is_mechanical`, o único critério de "check mecânico". `facade -> mechanical` existe porque `facade.rs` monta `CheckNode`. As travas atuais já permitem as quatro: só proíbem `adapters`, `app` e `facade` nas camadas puras (seção 4).
 - `probe -> mechanical` existe porque `probe.rs` reexporta `HeadFacts`, que mora em `mechanical::branch`. `mechanical` não importa `probe`, `ports`, `runner` nem `byproduct`.
 - O SQLite só é tocado por `store sqlite`: o `omhl` não declara `sqlx` nem `rusqlite` (travado, seção 4).
 

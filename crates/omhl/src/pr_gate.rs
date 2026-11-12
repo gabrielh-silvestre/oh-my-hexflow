@@ -7,7 +7,7 @@ use hexlog::{
 use serde_json::json;
 
 use crate::gate::{GateQuestion, GateReport, Question};
-use crate::mechanical::{RUNNABLE_EVENTS, snapshot_for, spec_digest};
+use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
 use crate::native::NativeCheck;
 
 pub const GATE_NAME: &str = "pull-request";
@@ -65,7 +65,7 @@ fn is_required_project_check(node: &NodeView) -> bool {
 /// Um check mecânico (com `run`) do projeto, obrigatório no mesmo evento, dispensa o nativo daquele evento.
 fn is_replaced_by_mechanical_check(native: &NativeCheck, projects: &[&NodeView]) -> bool {
     projects.iter().any(|node| {
-        node.data.get("run").is_some() && node.data["when"]["event"].as_str() == Some(native.event)
+        is_mechanical(&node.data) && node.data["when"]["event"].as_str() == Some(native.event)
     })
 }
 
@@ -73,7 +73,7 @@ fn is_replaced_by_mechanical_check(native: &NativeCheck, projects: &[&NodeView])
 pub fn spec_digests(tenant_checks: &[NodeView]) -> Vec<(SemanticId, String)> {
     tenant_checks
         .iter()
-        .filter(|node| !node.shadowed && node.data.get("run").is_some())
+        .filter(|node| !node.shadowed && is_mechanical(&node.data))
         .map(|node| (node.id.clone(), spec_digest(&node.data)))
         .collect()
 }
