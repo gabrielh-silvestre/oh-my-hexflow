@@ -77,8 +77,8 @@ impl AppError {
         json!({ "error": { "code": self.code, "message": self.message, "details": details } })
     }
 
-    /// Erro sem detalhes: entrada, projeto e ferramenta desconhecida.
-    pub(crate) fn plain(code: &str, message: &str) -> AppError {
+    /// Erro sem detalhes. Privado: todo código estável tem construtor nomeado; só o código dinâmico de `ProjectError` passa por aqui direto.
+    fn plain(code: &str, message: &str) -> AppError {
         AppError {
             code: code.to_owned(),
             message: message.to_owned(),
@@ -101,6 +101,101 @@ impl AppError {
 
     pub(crate) fn invalid_arguments(pointer: &str, message: &str) -> AppError {
         AppError::at_pointer("invalid-arguments", pointer, message)
+    }
+
+    pub(crate) fn input_too_large(limit: usize) -> AppError {
+        AppError::plain(
+            "input-too-large",
+            &format!("input is larger than {limit} bytes"),
+        )
+    }
+
+    pub(crate) fn input_not_utf8() -> AppError {
+        AppError::plain("input-not-utf8", "input is not valid UTF-8")
+    }
+
+    pub(crate) fn input_too_deep() -> AppError {
+        AppError::plain("input-too-deep", "input is nested too deeply")
+    }
+
+    pub(crate) fn input_invalid_json(line: usize, column: usize) -> AppError {
+        AppError::plain(
+            "input-invalid-json",
+            &format!("input is not valid JSON at line {line} column {column}"),
+        )
+    }
+
+    pub(crate) fn input_unreadable() -> AppError {
+        AppError::plain("input-unreadable", "input could not be read")
+    }
+
+    pub(crate) fn invalid_hook_input() -> AppError {
+        AppError::plain(
+            "invalid-hook-input",
+            "hook input must be a JSON object with an absolute string cwd",
+        )
+    }
+
+    pub(crate) fn invalid_project_dir() -> AppError {
+        AppError::plain(
+            "invalid-project-dir",
+            "the project directory cannot be resolved",
+        )
+    }
+
+    pub(crate) fn no_marker() -> AppError {
+        AppError::plain(
+            "no-marker",
+            "no .omhl.toml found in the project directory or any parent; a branch older than the marker needs a rebase onto main",
+        )
+    }
+
+    pub(crate) fn db_inside_project() -> AppError {
+        AppError::plain(
+            "db-inside-project",
+            "the database folder is inside the project; its blobs/ folder would dirty the attested tree",
+        )
+    }
+
+    pub(crate) fn no_project_root() -> AppError {
+        AppError::plain("no-project-root", "no project root is available")
+    }
+
+    pub(crate) fn render_failed() -> AppError {
+        AppError::plain("render-failed", "the render result has no text")
+    }
+
+    pub(crate) fn unknown_tool() -> AppError {
+        AppError::plain("unknown-tool", "unknown tool")
+    }
+
+    pub(crate) fn runner_unavailable() -> AppError {
+        AppError::plain("runner-unavailable", "no command runner is configured")
+    }
+
+    pub(crate) fn byproducts_unavailable() -> AppError {
+        AppError::plain("byproducts-unavailable", "no byproduct store is configured")
+    }
+
+    pub(crate) fn develop_mark_unavailable() -> AppError {
+        AppError::plain(
+            "develop-mark-unavailable",
+            "the develop mark is not configured",
+        )
+    }
+
+    pub(crate) fn binary_path_unreadable() -> AppError {
+        AppError::plain(
+            "unsupported-platform",
+            "the path of the omhl binary cannot be read",
+        )
+    }
+
+    pub(crate) fn process_table_unreadable() -> AppError {
+        AppError::plain(
+            "unsupported-platform",
+            "the process table cannot be read on this platform",
+        )
     }
 
     /// Mostra até `ISSUES_MAX` problemas; `omitted` conta os que a coleta já descartou.

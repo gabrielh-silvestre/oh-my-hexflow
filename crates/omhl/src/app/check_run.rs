@@ -121,9 +121,7 @@ impl Engine<'_> {
         pre_push: Option<&str>,
     ) -> Result<Value, AppError> {
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
-        let runner = self.runner.ok_or_else(|| {
-            AppError::plain("runner-unavailable", "no command runner is configured")
-        })?;
+        let runner = self.runner.ok_or_else(AppError::runner_unavailable)?;
         let (event, planned) = self.plan_target(target)?;
         let facts = self
             .probe
@@ -400,9 +398,9 @@ impl Engine<'_> {
             let message = "output in context.output_tail".to_owned();
             return Ok(verdict(failed(message, Some(context))));
         };
-        let store = self.byproducts.ok_or_else(|| {
-            AppError::plain("byproducts-unavailable", "no byproduct store is configured")
-        })?;
+        let store = self
+            .byproducts
+            .ok_or_else(AppError::byproducts_unavailable)?;
         let mut context = scope.ran_context("guard-refused", &check.id, &spec.run, snapshot);
         context["expected"] = json!(outcome_name(outcome));
         // O blob vai para o store antes do `append`: a attestation nunca aponta para um blob ausente.

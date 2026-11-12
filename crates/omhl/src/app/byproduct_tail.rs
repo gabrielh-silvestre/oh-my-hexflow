@@ -34,9 +34,9 @@ impl Engine<'_> {
             .as_str()
             .and_then(|text| ByproductHash::parse(text).ok())
             .ok_or_else(missing)?;
-        let store = self.byproducts.ok_or_else(|| {
-            AppError::plain("byproducts-unavailable", "no byproduct store is configured")
-        })?;
+        let store = self
+            .byproducts
+            .ok_or_else(AppError::byproducts_unavailable)?;
         let blob = store
             .get(&hash)
             .map_err(|_| AppError::byproduct_corrupt("/work_item"))?

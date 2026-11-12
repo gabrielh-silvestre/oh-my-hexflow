@@ -201,5 +201,5 @@ impl Engine<'_> {
 }
 
 pub(super) fn require_project_root(root: Option<&Path>) -> Result<&Path, AppError> {
-    root.ok_or_else(|| AppError::plain("no-project-root", "no project root is available"))
+    root.ok_or_else(AppError::no_project_root)
 }

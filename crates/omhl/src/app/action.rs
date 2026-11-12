@@ -137,7 +137,7 @@ pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError>
         "verify" => only(&args, &[]).map(|()| Action::Verify),
         "byproduct" => byproduct(&mut args),
         "project" => only(&args, &[]).map(|()| Action::Project),
-        _ => Err(AppError::plain("unknown-tool", "unknown tool")),
+        _ => Err(AppError::unknown_tool()),
     }
 }
 

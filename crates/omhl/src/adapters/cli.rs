@@ -233,12 +233,7 @@ fn start_dir(project_dir: Option<&Path>) -> Result<PathBuf, AppError> {
         None => std::env::current_dir(),
     };
 
-    resolved.map_err(|_| {
-        AppError::plain(
-            "invalid-project-dir",
-            "the project directory cannot be resolved",
-        )
-    })
+    resolved.map_err(|_| AppError::invalid_project_dir())
 }
 
 fn execute(
@@ -335,7 +330,7 @@ fn read_pre_push_input(stdin: &mut impl Read) -> Result<String, AppError> {
     stdin
         .take(INPUT_MAX_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| AppError::plain("input-unreadable", "input could not be read"))?;
+        .map_err(|_| AppError::input_unreadable())?;
     if bytes.len() > INPUT_MAX_BYTES {
         return Err(push_input_refused("input-too-large"));
     }

@@ -48,10 +48,7 @@ fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<St
     let caller = Caller::hook();
     let mut rendered = app.dispatch(&caller, &Action::Render)?;
     let Value::String(mut text) = rendered["text"].take() else {
-        return Err(AppError::plain(
-            "render-failed",
-            "the render result has no text",
-        ));
+        return Err(AppError::render_failed());
     };
     // A dry run never writes: the hook only tells what `omhl load` would do.
     let checked = app.dispatch(&caller, &Action::Load { dry_run: true });
@@ -110,9 +107,6 @@ fn issue_counts(error: &AppError) -> String {
 fn read_cwd(stdin: &mut impl Read) -> Result<String, AppError> {
     match read_json_input(stdin)?.get_mut("cwd").map(Value::take) {
         Some(Value::String(cwd)) if Path::new(&cwd).is_absolute() => Ok(cwd),
-        _ => Err(AppError::plain(
-            "invalid-hook-input",
-            "hook input must be a JSON object with an absolute string cwd",
-        )),
+        _ => Err(AppError::invalid_hook_input()),
     }
 }

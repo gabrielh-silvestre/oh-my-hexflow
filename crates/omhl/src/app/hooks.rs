@@ -47,12 +47,9 @@ fn install(
     let unwritable =
         || AppError::hooks_dir_unwritable("").with_context(json!({ "hint": UNWRITABLE_HINT }));
     let hooks_dir = hooks_dir.ok_or_else(unwritable)?;
-    let binary = git.binary().map_err(|_| {
-        AppError::plain(
-            "unsupported-platform",
-            "the path of the omhl binary cannot be read",
-        )
-    })?;
+    let binary = git
+        .binary()
+        .map_err(|_| AppError::binary_path_unreadable())?;
     let worktrees = git.worktree_roots().map_err(probe_failed)?;
     // shortcut: caminho que não é UTF-8 vira texto com perda e o hook diz "binary not found"; trocar por bytes se aparecer.
     let binary_text = binary.to_string_lossy();

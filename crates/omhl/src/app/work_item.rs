@@ -138,12 +138,7 @@ fn mark_present(engine: &Engine<'_>) -> Result<bool, AppError> {
 
 /// O `App` da CLI sempre liga a marca; sem ela é erro de montagem, nunca de uso.
 fn develop_mark<'d>(engine: &Engine<'d>) -> Result<&'d dyn DevelopMark, AppError> {
-    engine.mark.ok_or_else(|| {
-        AppError::plain(
-            "develop-mark-unavailable",
-            "the develop mark is not configured",
-        )
-    })
+    engine.mark.ok_or_else(AppError::develop_mark_unavailable)
 }
 
 fn probe_failed(error: &ProbeError) -> AppError {

@@ -40,27 +40,14 @@ pub struct Runtime {
 impl Runtime {
     /// O banco só é preparado depois que o marcador é achado.
     pub fn discover(start: &Path, db: Option<&Path>, env: &Env<'_>) -> Result<Runtime, AppError> {
-        let cwd = std::env::current_dir().map_err(|_| {
-            AppError::plain(
-                "invalid-project-dir",
-                "the project directory cannot be resolved",
-            )
-        })?;
-        let located = find_marker(start)?.ok_or_else(|| {
-            AppError::plain(
-                "no-marker",
-                "no .omhl.toml found in the project directory or any parent; a branch older than the marker needs a rebase onto main",
-            )
-        })?;
+        let cwd = std::env::current_dir().map_err(|_| AppError::invalid_project_dir())?;
+        let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
         let db_path = match db {
             Some(path) => path.to_path_buf(),
             None => default_db_path(env)?,
         };
         if is_inside(&db_path, &located.root) {
-            return Err(AppError::plain(
-                "db-inside-project",
-                "the database folder is inside the project; its blobs/ folder would dirty the attested tree",
-            ));
+            return Err(AppError::db_inside_project());
         }
         prepare_db_file(&db_path)?;
 
@@ -99,12 +86,7 @@ impl Runtime {
     }
 
     fn check_sweep(&self) -> Result<Value, AppError> {
-        let report = sweep_strays().map_err(|_| {
-            AppError::plain(
-                "unsupported-platform",
-                "the process table cannot be read on this platform",
-            )
-        })?;
+        let report = sweep_strays().map_err(|_| AppError::process_table_unreadable())?;
         self.append_sweep_log(&report);
 
         Ok(json!({
