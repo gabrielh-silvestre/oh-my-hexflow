@@ -6,6 +6,7 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use serde_json::Value;
 use tempfile::TempDir;
 
 const OMHL_DIR: &str = ".omhl";
@@ -102,5 +103,47 @@ impl ExtTree {
 impl Default for ExtTree {
     fn default() -> ExtTree {
         ExtTree::new()
+    }
+}
+
+/// Grava `.omhl/checks/<slug>.toml` com o que o `spec_digest` do banco cobre, para o `check run` achar o arquivo que confirma o check semeado direto no banco.
+/// Numa raiz que é repositório git a pasta `.omhl/` vai para o `info/exclude`, para o arquivo não sujar a árvore.
+pub fn write_check_file(root: &Path, id: &str, data: &Value) {
+    let Some(slug) = id.strip_prefix("checks.") else {
+        return;
+    };
+    if data.get("run").is_none() {
+        return;
+    }
+    let mut text: String = ["blocking", "how", "run", "timeout_secs", "expect"]
+        .iter()
+        .map(|key| format!("{key} = {}\n", toml_value(&data[*key])))
+        .collect();
+    text.push_str(&format!(
+        "when = {{ event = {} }}\n",
+        toml_value(&data["when"]["event"])
+    ));
+    ExtTree::at(root).check(slug, &text);
+    let exclude = root.join(".git/info/exclude");
+    if exclude.parent().is_some_and(Path::is_dir) {
+        fs::write(&exclude, format!("{OMHL_DIR}/\n")).expect("the exclude file is written");
+    }
+}
+
+/// Texto, número e booleano de JSON já são TOML válido; tabela e lista mudam só a pontuação.
+fn toml_value(value: &Value) -> String {
+    match value {
+        Value::Object(map) => {
+            let pairs: Vec<String> = map
+                .iter()
+                .map(|(key, item)| format!("{key} = {}", toml_value(item)))
+                .collect();
+            format!("{{ {} }}", pairs.join(", "))
+        }
+        Value::Array(items) => {
+            let rendered: Vec<String> = items.iter().map(toml_value).collect();
+            format!("[{}]", rendered.join(", "))
+        }
+        other => other.to_string(),
     }
 }

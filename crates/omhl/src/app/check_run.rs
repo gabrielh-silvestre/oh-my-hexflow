@@ -42,7 +42,7 @@ const TREE_CHANGED_HINT: &str = "the command changed the working tree; keep chec
 const BLOB_FAILED_HINT: &str =
     "the output store is not writable; fix its permissions or free disk space";
 const PARENT_GONE_HINT: &str = "the process that started omhl exited before the checks ran; nothing ran; run the same command again";
-const SPEC_STALE_HINT: &str = "the check file on disk differs from the stored definition; run omhl load, then run the same command again";
+const SPEC_STALE_HINT: &str = "the check file on disk is missing, invalid or differs from the stored definition; fix the file and run omhl load, then run the same command again";
 const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
 const PUSH_INPUT_HINT: &str = "the pre-push input needs four fields per line; run git push again";
 /// Variáveis que o git exporta para um hook e que apontariam o comando para o índice do hook (Q14).
@@ -190,14 +190,9 @@ impl Engine<'_> {
     ) -> Result<Tally, AppError> {
         let mut tally = Tally::default();
         for (index, check) in planned.iter().enumerate() {
-            if scope.drifted(check) {
-                let miss = spec_stale_miss(scope, check);
-                tally.error.get_or_insert(miss.error);
-                tally.details.push(miss.detail);
-                continue;
-            }
             let step = match ready_spec(scope, check) {
                 Err(miss) => Step::Miss(miss),
+                Ok(_) if scope.stale(check) => Step::Miss(spec_stale_miss(scope, check)),
                 Ok(spec) => {
                     match self.snapshot_before(scope, check, spec, tally.snapshot.as_ref())? {
                         Err(miss) => Step::Miss(miss),
@@ -563,11 +558,9 @@ impl Engine<'_> {
 }
 
 impl Scope<'_> {
-    /// O TOML da working tree declara o check com outra definição que a do banco.
-    fn drifted(&self, check: &PlannedCheck) -> bool {
-        self.tree_digests
-            .get(check.id.as_str())
-            .is_some_and(|digest| *digest != check.spec_digest)
+    /// O TOML da working tree não declara o check (apagado ou inválido) ou o declara com outra definição que a do banco.
+    fn stale(&self, check: &PlannedCheck) -> bool {
+        self.tree_digests.get(check.id.as_str()) != Some(&check.spec_digest)
     }
 
     /// Campos do `context` (DP-31) comuns a todo detalhe de um check.
@@ -645,7 +638,7 @@ fn check_push(stdin: &str, facts: &HeadFacts, event: &str) -> Result<PushPlan, A
     })
 }
 
-/// Digest da definição de cada check que o TOML da working tree declara; arquivo com erro de leitura fica de fora (o `load` o recusa).
+/// Digest da definição de cada check que o TOML da working tree declara; arquivo inválido fica de fora, e o banco é a fonte da verdade só enquanto o arquivo o confirma.
 fn tree_digests(root: &Path) -> HashMap<String, String> {
     collect(root)
         .extensions
@@ -655,7 +648,7 @@ fn tree_digests(root: &Path) -> HashMap<String, String> {
         .collect()
 }
 
-/// A recusa de um check cujo TOML da working tree diverge do banco: nada roda.
+/// A recusa de um check cujo TOML da working tree falta, é inválido ou diverge do banco: nada roda.
 fn spec_stale_miss(scope: &Scope<'_>, check: &PlannedCheck) -> Miss {
     let mut context = scope.context("spec-stale", &check.id, None);
     context["hint"] = json!(SPEC_STALE_HINT);
@@ -665,7 +658,7 @@ fn spec_stale_miss(scope: &Scope<'_>, check: &PlannedCheck) -> Miss {
         detail: check_detail(
             check,
             "spec-stale",
-            "the check file differs from the stored definition",
+            "the check file is missing, invalid or differs from the stored definition",
             context,
         ),
         stops: false,

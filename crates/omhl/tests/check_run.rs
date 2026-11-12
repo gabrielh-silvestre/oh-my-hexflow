@@ -26,6 +26,7 @@ use support::busy::{
     AppendingRunner, AttemptClock, GatedRunner, lock_at_gate, with_write_lock,
     with_write_lock_until_attempt,
 };
+use support::ext::write_check_file;
 use support::gate::relation_item;
 use support::omhl::{acme, check_data, node_item, with_snapshot, work_item_data};
 use support::raw::RawHarness;
@@ -106,6 +107,7 @@ impl Fixture {
     }
 
     fn seed_check(&self, id: &str, data: Value) {
+        write_check_file(self.root.path(), id, &data);
         self.seed(loader_author(), vec![node_item(id, "check", data)]);
     }
 

@@ -19,6 +19,7 @@ use omhl::runner::{CommandRunner, RunError, RunReport, RunSpec};
 use serde_json::{Value, json};
 use support::busy::with_write_lock;
 use support::child::{Output as Child, omhl};
+use support::ext::write_check_file;
 use support::git::{GitRepo, git_command_with_env, git_with_env, write_executable};
 use support::omhl::{acme, check_data, work_item_data};
 use support::pr_gate::CI_GREEN;
@@ -151,13 +152,14 @@ fn node_wire(id: &str, type_name: &str, data: &Value) -> Value {
 }
 
 /// Grava `work-items.w1` aberto pela CLI e cada check pelo loader.
-fn seed(app: &mut App<'_>, checks: &[(&str, Value)]) {
+fn seed(app: &mut App<'_>, root: &Path, checks: &[(&str, Value)]) {
     let work_item = Action::Append {
         request: node_wire(W1, "work-item", &work_item_data("t")),
     };
     app.dispatch(&Caller::cli(), &work_item)
         .unwrap_or_else(|error| panic!("the work item is accepted: {error}"));
     for (id, data) in checks {
+        write_check_file(root, id, data);
         let check = Action::Append {
             request: node_wire(id, "check", data),
         };
@@ -338,6 +340,7 @@ fn it_should_attest_a_before_commit_check_with_the_staged_tree() {
     let mut app = fx.app(&probe, root.path(), &runner);
     seed(
         &mut app,
+        root.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["true"], true),
@@ -379,6 +382,7 @@ fn it_should_refuse_to_run_before_commit_when_the_working_tree_differs_from_the_
     let mut app = fx.app(&probe, root.path(), &runner);
     seed(
         &mut app,
+        root.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["true"], true),
@@ -401,6 +405,7 @@ fn it_should_name_the_refusal_worktree_differs_from_index() {
     let mut app = fx.app(&probe, root.path(), &runner);
     seed(
         &mut app,
+        root.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["true"], true),
@@ -434,6 +439,7 @@ fn it_should_refuse_to_run_before_commit_when_an_untracked_file_exists() {
     let mut app = fx.app(&probe, repo.path(), &runner);
     seed(
         &mut app,
+        repo.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["true"], true),
@@ -458,6 +464,7 @@ fn it_should_refuse_before_pr_when_an_untracked_file_exists() {
     let mut app = fx.app(&probe, repo.path(), &runner);
     seed(
         &mut app,
+        repo.path(),
         &[(
             "checks.lint",
             mechanical_check("before-pr", &["true"], true),
@@ -481,6 +488,7 @@ fn it_should_stop_and_report_when_the_guard_refuses_the_snapshot_after_the_run()
     let mut app = fx.app(&probe, repo.path(), &runner);
     seed(
         &mut app,
+        repo.path(),
         &[
             (
                 "checks.a-stage",
@@ -522,6 +530,7 @@ fn it_should_stop_and_report_when_the_command_changes_a_tracked_file_recording_n
     let mut app = fx.app(&probe, root.path(), &runner);
     seed(
         &mut app,
+        root.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["true"], true),
@@ -560,6 +569,7 @@ fn it_should_not_count_an_ignored_file_as_a_change() {
     let mut app = fx.app(&probe, repo.path(), &runner);
     seed(
         &mut app,
+        repo.path(),
         &[(
             "checks.fmt",
             mechanical_check(
@@ -586,6 +596,7 @@ fn it_should_leave_the_files_as_the_command_left_them() {
     let mut app = fx.app(&probe, repo.path(), &runner);
     seed(
         &mut app,
+        repo.path(),
         &[(
             "checks.fmt",
             mechanical_check(
@@ -617,6 +628,7 @@ fn it_should_attest_the_head_tree_when_run_outside_a_hook_on_a_clean_tree() {
     let mut app = fx.app(&probe, repo.path(), &runner);
     seed(
         &mut app,
+        repo.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["true"], true),
@@ -638,6 +650,7 @@ fn it_should_not_leak_the_hook_git_index_into_the_command() {
     let mut app = fx.app(&probe, root.path(), &runner);
     seed(
         &mut app,
+        root.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["true"], true),
@@ -677,6 +690,7 @@ fn it_should_keep_inheriting_the_rest_of_the_environment() {
     let mut app = fx.app(&probe, root.path(), &runner);
     seed(
         &mut app,
+        root.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["true"], true),
@@ -721,6 +735,7 @@ fn it_should_stop_and_report_when_the_probe_fails() {
     let mut app = fx.app(&probe, root.path(), &runner);
     seed(
         &mut app,
+        root.path(),
         &[
             (
                 "checks.a-fmt",
@@ -798,6 +813,7 @@ fn it_should_stop_and_report_when_a_before_pr_command_creates_an_untracked_file(
     let mut app = fx.app(&probe, repo.path(), &runner);
     seed(
         &mut app,
+        repo.path(),
         &[
             (
                 "checks.a-touch",
@@ -832,6 +848,7 @@ fn it_should_not_run_the_remaining_checks_after_the_tree_changed() {
     let mut app = fx.app(&probe, root.path(), &runner);
     seed(
         &mut app,
+        root.path(),
         &[
             (
                 "checks.a-fmt",
@@ -869,6 +886,7 @@ fn it_should_pass_the_pull_request_gate_when_the_executor_attested_the_before_co
     let mut app = fx.app(&probe, root.path(), &runner);
     seed(
         &mut app,
+        root.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["true"], true),
@@ -1025,6 +1043,7 @@ fn it_should_stop_and_report_when_a_before_commit_command_creates_an_untracked_f
     let mut app = fx.app(&probe, repo.path(), &runner);
     seed(
         &mut app,
+        repo.path(),
         &[(
             "checks.fmt",
             mechanical_check("before-commit", &["sh", "-c", "echo u > u.txt"], true),

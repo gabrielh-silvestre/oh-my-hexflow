@@ -506,6 +506,44 @@ fn it_should_refuse_a_before_pr_run_when_the_committed_file_differs_from_the_sto
 }
 
 #[test]
+fn it_should_refuse_with_spec_stale_when_the_check_file_was_deleted() {
+    let p = cli_repo(&[("gate", GATE_V1)]);
+    fs::remove_file(p.dir().join(".omhl/checks/gate.toml")).expect("the check file is deleted");
+    git(&p, &["add", "-A"]);
+    git(&p, &["commit", "-q", "-m", "drop gate"]);
+
+    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+
+    assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+    let error = error_of(&output.stderr);
+    assert_eq!(error["code"], json!("check-not-run"));
+    assert_eq!(error["details"][0]["code"], json!("spec-stale"));
+    assert!(
+        error["details"][0]["context"]["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("omhl load")),
+        "error: {error}"
+    );
+    assert_eq!(attestations(&p), Vec::<Value>::new());
+}
+
+#[test]
+fn it_should_refuse_with_spec_stale_when_the_check_file_no_longer_parses() {
+    let p = cli_repo(&[("gate", GATE_V1)]);
+    ExtTree::at(p.dir()).check("gate", "run = [");
+    git(&p, &["add", "-A"]);
+    git(&p, &["commit", "-q", "-m", "break gate"]);
+
+    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+
+    assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+    let error = error_of(&output.stderr);
+    assert_eq!(error["code"], json!("check-not-run"));
+    assert_eq!(error["details"][0]["code"], json!("spec-stale"));
+    assert_eq!(attestations(&p), Vec::<Value>::new());
+}
+
+#[test]
 fn it_should_refuse_a_before_commit_run_when_the_file_differs_from_the_stored_definition() {
     let v1 = GATE_V1.replace("before-pr", "before-commit");
     let v2 = GATE_V2.replace("before-pr", "before-commit");

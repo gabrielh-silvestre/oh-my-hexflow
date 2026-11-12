@@ -17,6 +17,7 @@ use omhl::ports::blob::BlobStore;
 use omhl::runner::{CommandRunner, RunError, RunReport, RunSpec};
 use serde_json::{Value, json};
 use support::busy::with_write_lock;
+use support::ext::write_check_file;
 use support::omhl::{acme, check_data, node_item, with_snapshot, work_item_data};
 use support::raw::RawHarness;
 use support::runner::FakeRunner;
@@ -80,10 +81,12 @@ impl Fixture {
     }
 
     fn seed_check(&self, id: &str, run: &[&str]) {
-        self.seed(
-            loader_author(),
-            vec![node_item(id, "check", mechanical_check("before-pr", run))],
-        );
+        self.seed_check_data(id, mechanical_check("before-pr", run));
+    }
+
+    fn seed_check_data(&self, id: &str, data: Value) {
+        write_check_file(self.raw.dir.path(), id, &data);
+        self.seed(loader_author(), vec![node_item(id, "check", data)]);
     }
 
     fn app<'a>(
@@ -553,10 +556,7 @@ fn it_should_fail_a_stream_rule_and_say_so_when_the_output_was_cut() {
     let fx = Fixture::new();
     let mut data = mechanical_check("before-pr", &["true"]);
     data["expect"] = json!([{ "exit": 0, "stdout": "done$", "outcome": "passed" }]);
-    fx.seed(
-        loader_author(),
-        vec![node_item("checks.fmt", "check", data)],
-    );
+    fx.seed_check_data("checks.fmt", data);
     let cut = RunReport {
         truncated: true,
         ..report(b"done", b"")
