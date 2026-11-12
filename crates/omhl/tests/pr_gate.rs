@@ -9,6 +9,7 @@ use omhl::app::RUNNABLE_EVENTS;
 use omhl::error::{OmhlError, RuleCode};
 use omhl::facade::Omhl;
 use omhl::gate::{GateQuestion, Question};
+use omhl::mechanical::spec_digest;
 use omhl::pr_gate::{
     GATE_NAME, GateSnapshots, NATIVE_SNAPSHOT, REQUIRED_EVENTS, pr_gate_questions, required_checks,
 };
@@ -109,14 +110,12 @@ fn seed_per_check_flow(omhl: &mut Omhl<'_>) {
     append_as(
         omhl,
         loader_author(),
-        vec![node_item("checks.fmt", "check", fmt.data)],
+        vec![node_item("checks.fmt", "check", fmt.data.clone())],
     );
     let id = attestation_id_for(&tree('c'), "checks.fmt", PR_7);
-    let attestation = node_item(
-        &id,
-        "attestation",
-        executor_attestation_data("checks.fmt", PR_7, "passed", EMPTY_SHA),
-    );
+    let mut data = executor_attestation_data("checks.fmt", PR_7, "passed", EMPTY_SHA);
+    data["spec_digest"] = json!(spec_digest(&fmt.data));
+    let attestation = node_item(&id, "attestation", data);
     append_as(
         omhl,
         executor_author(),
@@ -136,7 +135,7 @@ fn it_should_build_the_pr_gate_as_one_occurred_per_required_check_then_one_no_op
         no_open_contradiction_question(),
     ];
 
-    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head());
+    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head(), &[]);
 
     assert_eq!(questions, expected);
 }
@@ -696,7 +695,7 @@ fn it_should_ask_for_the_before_commit_attestation_on_the_head_tree() {
     let fmt = mechanical_project_check("checks.fmt", "before-commit", true, false);
     let required = required_checks(&default_natives(), &[fmt]);
 
-    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head());
+    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head(), &[]);
 
     assert_eq!(
         required,
@@ -717,7 +716,7 @@ fn it_should_ask_for_the_before_pr_attestation_on_the_head_commit() {
     let lint = mechanical_project_check("checks.lint", "before-pr", true, false);
     let required = required_checks(&default_natives(), &[lint]);
 
-    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head());
+    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head(), &[]);
 
     assert_eq!(
         required,
@@ -735,7 +734,7 @@ fn it_should_ask_for_the_before_merge_attestation_on_the_head_commit() {
     let ci = mechanical_project_check("checks.ci", "before-merge", true, false);
     let required = required_checks(&default_natives(), &[ci]);
 
-    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head());
+    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head(), &[]);
 
     assert_eq!(
         required,
@@ -791,6 +790,7 @@ fn it_should_close_a_work_item_with_the_per_check_snapshots() {
         expected_outcomes(&[
             (CI_GREEN, true),
             ("checks.fmt", true),
+            ("spec-digest-match:checks.fmt", true),
             (NO_OPEN_CONTRADICTION, true),
         ])
     );

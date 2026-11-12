@@ -26,7 +26,8 @@ impl Guard<'_, '_> {
             check.as_ref().map(|found| &found.id),
             work_item.as_ref(),
         )?;
-        if check.is_some_and(|found| found.mechanical) {
+        // `spec_digest` é o selo do `check run`: quem o declara também é o `executor`
+        if check.is_some_and(|found| found.mechanical) || node.has_field("spec_digest") {
             self.check_mechanical_authorship(node)?;
         }
         match node.base {
@@ -123,7 +124,7 @@ impl Guard<'_, '_> {
 
 /// Um `failed` sem `exit_code` é o timeout ou a morte por sinal.
 fn first_missing_field(node: &NodeItem<'_>) -> Option<&'static str> {
-    ["byproduct", "command"]
+    ["byproduct", "command", "spec_digest"]
         .into_iter()
         .find(|key| !node.has_field(key))
         .or_else(|| {

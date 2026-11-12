@@ -2,7 +2,7 @@ use hexlog::SemanticId;
 use serde_json::Value;
 
 use super::order::order;
-use super::spec::{CheckSpec, Outcome, SpecError, snapshot_for};
+use super::spec::{CheckSpec, Outcome, SpecError, snapshot_for, spec_digest};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CheckNode {
@@ -18,6 +18,7 @@ pub struct PlannedCheck {
     pub spec: Result<CheckSpec, SpecError>,
     pub blocking: bool,
     pub snapshot: hexlog::SnapshotKind,
+    pub spec_digest: String,
 }
 
 pub fn plan_run(
@@ -36,6 +37,7 @@ pub fn plan_run(
                 spec,
                 blocking: node.data["blocking"] == true,
                 snapshot: snapshot_for(&node.data),
+                spec_digest: spec_digest(&node.data),
             })
         })
         .collect();

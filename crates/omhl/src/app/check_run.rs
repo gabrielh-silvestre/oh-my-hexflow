@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::slice;
 use std::time::Duration;
@@ -15,10 +16,12 @@ use super::retry::with_retry;
 use super::work_item::{WorkItemRoute, head_branch, resolve_work_item};
 use crate::byproduct::ByproductHash;
 use crate::error::{OmhlError, RuleCode};
+use crate::extensions::collect::collect;
+use crate::extensions::model::ExtensionKind;
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
 use crate::mechanical::evaluate::{Observation, evaluate};
 use crate::mechanical::plan::{CheckResult, PlannedCheck, exit_blocked, plan_run, summarize};
-use crate::mechanical::spec::{CheckSpec, Outcome};
+use crate::mechanical::spec::{CheckSpec, Outcome, spec_digest};
 use crate::probe::{ProbeError, ProbeOutcome, TreeSource};
 use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
 
@@ -26,6 +29,8 @@ const ATTESTATION: &str = "attestation";
 /// 4 MiB por fluxo.
 const MAX_STREAM_BYTES: u64 = 4_194_304;
 const TAIL_LINES: usize = 20;
+/// Único evento em que um TOML divergente do banco só avisa.
+const WARN_ONLY_EVENT: &str = "before-commit";
 const TAIL_LINE_CHARS: usize = 500;
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
 const BUSY_HINT: &str = "the database stayed locked for about 74 seconds; the verdict above was computed but not recorded; run the same command again when the other process ends";
@@ -38,6 +43,7 @@ const TREE_CHANGED_HINT: &str = "the command changed the working tree; keep chec
 const BLOB_FAILED_HINT: &str =
     "the output store is not writable; fix its permissions or free disk space";
 const PARENT_GONE_HINT: &str = "the process that started omhl exited before the checks ran; nothing ran; run the same command again";
+const SPEC_STALE_HINT: &str = "the check file on disk differs from the stored definition; run omhl load, then run the same command again";
 const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
 const PUSH_INPUT_HINT: &str = "the pre-push input needs four fields per line; run git push again";
 /// Variáveis que o git exporta para um hook e que apontariam o comando para o índice do hook (Q14).
@@ -58,6 +64,8 @@ struct Scope<'a> {
     work_item: Option<&'a SemanticId>,
     branch: &'a str,
     cwd: &'a Path,
+    /// Digest da definição de cada check lida do TOML da working tree (id -> digest).
+    tree_digests: HashMap<String, String>,
 }
 
 /// Check sem veredito gravado; `stops` para a fila (tabela 2.3).
@@ -94,6 +102,7 @@ struct Tally {
     details: Vec<CheckDetail>,
     error: Option<MissError>,
     snapshot: Option<Snapshot>,
+    warnings: Vec<Value>,
 }
 
 impl Engine<'_> {
@@ -130,6 +139,7 @@ impl Engine<'_> {
             },
             branch: &branch,
             cwd: &root,
+            tree_digests: tree_digests(&root),
         };
         let tally = self.run_planned(runner, &scope, &planned)?;
 
@@ -176,6 +186,16 @@ impl Engine<'_> {
     ) -> Result<Tally, AppError> {
         let mut tally = Tally::default();
         for (index, check) in planned.iter().enumerate() {
+            let drifted = scope.drifted(check);
+            if drifted && scope.event != WARN_ONLY_EVENT {
+                let miss = spec_stale_miss(scope, check);
+                tally.error.get_or_insert(miss.error);
+                tally.details.push(miss.detail);
+                continue;
+            }
+            if drifted {
+                tally.warnings.push(spec_stale_warning(check));
+            }
             let step = match ready_spec(scope, check) {
                 Err(miss) => Step::Miss(miss),
                 Ok(spec) => {
@@ -529,6 +549,13 @@ impl Engine<'_> {
 }
 
 impl Scope<'_> {
+    /// O TOML da working tree declara o check com outra definição que a do banco.
+    fn drifted(&self, check: &PlannedCheck) -> bool {
+        self.tree_digests
+            .get(check.id.as_str())
+            .is_some_and(|digest| *digest != check.spec_digest)
+    }
+
     /// Campos do `context` (DP-31) comuns a todo detalhe de um check.
     fn context(&self, kind: &str, check: &SemanticId, argv: Option<&[String]>) -> Value {
         let mut context = json!({
@@ -601,6 +628,42 @@ fn check_push(stdin: &str, facts: &HeadFacts, event: &str) -> Result<PushPlan, A
             "event": event,
             "hint": PUSH_INPUT_HINT,
         })),
+    })
+}
+
+/// Digest da definição de cada check que o TOML da working tree declara; arquivo com erro de leitura fica de fora (o `load` o recusa).
+fn tree_digests(root: &Path) -> HashMap<String, String> {
+    collect(root)
+        .extensions
+        .into_iter()
+        .filter(|extension| extension.kind == ExtensionKind::Check)
+        .map(|extension| (extension.id, spec_digest(&extension.data)))
+        .collect()
+}
+
+/// A recusa de um check cujo TOML da working tree diverge do banco: nada roda.
+fn spec_stale_miss(scope: &Scope<'_>, check: &PlannedCheck) -> Miss {
+    let mut context = scope.context("spec-stale", &check.id, None);
+    context["hint"] = json!(SPEC_STALE_HINT);
+
+    Miss {
+        error: AppError::check_not_run,
+        detail: check_detail(
+            check,
+            "spec-stale",
+            "the check file differs from the stored definition",
+            context,
+        ),
+        stops: false,
+    }
+}
+
+fn spec_stale_warning(check: &PlannedCheck) -> Value {
+    json!({
+        "check": check.id,
+        "code": "spec-stale",
+        "message": "the check file differs from the stored definition; the stored command ran",
+        "hint": SPEC_STALE_HINT,
     })
 }
 
@@ -735,14 +798,19 @@ fn finish(scope: &Scope<'_>, tally: Tally) -> Result<Value, AppError> {
         return Err(AppError::checks_failed(tally.details));
     }
 
-    Ok(json!({
+    let mut output = json!({
         "event": scope.event,
         "work_item": scope.work_item,
         "snapshot": tally.snapshot,
         "recorded": scope.work_item.is_some(),
         "results": tally.outputs,
         "blocked": summary.blocked,
-    }))
+    });
+    if !tally.warnings.is_empty() {
+        output["warnings"] = json!(tally.warnings);
+    }
+
+    Ok(output)
 }
 
 /// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context` (DP-37).
@@ -775,6 +843,7 @@ fn run_attestation_data(
         Some(byproduct.as_str()),
     );
     data["command"] = json!(spec.run);
+    data["spec_digest"] = json!(check.spec_digest);
 
     with_run_fields(data, report)
 }

@@ -156,7 +156,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `omhl::facade` (`Omhl`) | 271 | 13 operações | média |
 | `omhl::gate` | 352 | `evaluate`, `read_consistent`, `GateSource` | funda |
 | `omhl::guard` | 520 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id` | funda |
-| `omhl::pr_gate` | 185 | `required_checks`, `pr_gate_questions` | média |
+| `omhl::pr_gate` | 185 | `required_checks`, `pr_gate_questions`, `spec_digests` | média |
 | `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |
 | `omhl::app` | 3.311 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
@@ -253,7 +253,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** Define o gate do pull request: quais checks são obrigatórios e que perguntas fazer.
 
-**Interface.** `required_checks`, `pr_gate_questions`, `GATE_NAME`, `REQUIRED_EVENTS`, e `project_checks_filter`, `closing_request` (`pub(crate)`) em `pr_gate.rs`.
+**Interface.** `required_checks`, `pr_gate_questions`, `spec_digests`, `GATE_NAME`, `REQUIRED_EVENTS`, e `project_checks_filter`, `closing_request` (`pub(crate)`) em `pr_gate.rs`.
 
 **Profundidade.** Média: política em forma de função. Interface e interior têm tamanho parecido (154 linhas, 4 funções); é aceitável porque é a tabela de política do plugin e muda por motivo próprio.
 
@@ -391,9 +391,9 @@ Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/`
 - **`SnapshotProbe` e `DevelopMark`** (`probe.rs`). A trait tinha um método, `probe`. Agora tem `probe`, `probe_tree(TreeSource)` (a árvore do índice ou do `HEAD`; `Dirty` também com arquivo não rastreado e não ignorado), `tree_dirty()` e `head_facts()`. A marca da `develop` ganhou a trait própria `DevelopMark` (`present`, `consume`), porque a sonda de leitura não escreve. `GitProbe` e `FakeProbe` implementam as duas. `HeadFacts` mora em `mechanical::branch` e `probe.rs` o reexporta.
 - **`GitProbe::with_index_file(index_file, base)`.** Faz a sonda ler o índice temporário que o git passa ao hook em `GIT_INDEX_FILE`. Um caminho relativo vale contra `base`. Um índice que não existe é erro, nunca árvore vazia.
 - **`Env`** (`project/mod.rs`). Ganha `git_index_file: Option<&OsStr>` e `parent_pid: u32`. O `main.rs` lê `parent_id()` na primeira linha, antes do clap e do banco (travado: `it_should_read_the_parent_pid_before_anything_else_in_main`).
-- **`guard`.** Três regras novas de atestado. `snapshot-tree-mismatch`: uma attestation `git-tree` confere contra a árvore do índice. `check-run-author`: só o autor `loader` grava, revisa ou retira um check com `run`, e só o autor `executor` grava a attestation de um check com `run`. `attestation-incomplete`: a attestation de um check com `run` precisa de `byproduct`, de `command` e, para `passed` e `passed_with_warning`, de `exit_code`.
+- **`guard`.** Três regras novas de atestado. `snapshot-tree-mismatch`: uma attestation `git-tree` confere contra a árvore do índice. `check-run-author`: só o autor `loader` grava, revisa ou retira um check com `run`, e só o autor `executor` grava a attestation de um check com `run`. `attestation-incomplete`: a attestation de um check com `run` precisa de `byproduct`, de `command`, de `spec_digest` e, para `passed` e `passed_with_warning`, de `exit_code`.
 - **`app`.** Novos arquivos `check_run`, `work_item`, `byproduct_tail` e `hooks`; novas ações `CheckRun`, `CheckSweep`, `ConsumeDevelopMark`, `Byproduct` e `HooksInstall`; novo `Caller::executor`. A ação `CheckRun` roda fora do `with_retry` do `dispatch`. O `Runtime` monta o `ProcessRunner`, o `BlobStore` e a sonda, e varre os processos fugidos antes de despachar um `check run`.
-- **`pr_gate`.** Cobra o snapshot que `snapshot_for` indica para cada check e dispensa o check nativo de um evento quando um check mecânico bloqueante cobre o mesmo evento.
+- **`pr_gate`.** Cobra o snapshot que `snapshot_for` indica para cada check e dispensa o check nativo de um evento quando um check mecânico bloqueante cobre o mesmo evento. Para cada check com `run`, pergunta também `spec-digest-match:<check>` (`spec_digests`, `pr_gate_questions`): só vale a attestation com o `spec_digest` da definição vigente, calculado por `mechanical::spec::spec_digest`.
 
 ## 4. Regras de dependência e o teste que trava cada uma
 

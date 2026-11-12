@@ -1,7 +1,9 @@
 mod support;
 
 use hexlog::SnapshotKind;
-use omhl::mechanical::spec::{CheckSpec, Outcome, SpecError, StreamPattern, snapshot_for};
+use omhl::mechanical::spec::{
+    CheckSpec, Outcome, SpecError, StreamPattern, snapshot_for, spec_digest,
+};
 use serde_json::{Value, json};
 use support::omhl::check_data;
 
@@ -300,4 +302,41 @@ fn it_should_reject_a_rule_with_both_a_stdout_and_a_stderr_regex() {
     let result = CheckSpec::from_data(&data);
 
     assert_eq!(result.unwrap_err(), error("/expect/0", "rule-two-streams"));
+}
+
+#[test]
+fn it_should_keep_the_spec_digest_when_only_unrelated_fields_change() {
+    let base = run_data("before-pr", passed_on_zero());
+    let mut other = base.clone();
+    other["blocking"] = json!(false);
+    other["concern"] = json!("style");
+    other["how"] = json!("Another text.");
+
+    assert_eq!(spec_digest(&other), spec_digest(&base));
+}
+
+#[test]
+fn it_should_change_the_spec_digest_when_run_changes() {
+    let base = run_data("before-pr", passed_on_zero());
+    let mut other = base.clone();
+    other["run"] = json!(["true"]);
+
+    assert_ne!(spec_digest(&other), spec_digest(&base));
+}
+
+#[test]
+fn it_should_change_the_spec_digest_when_timeout_secs_changes() {
+    let base = run_data("before-pr", passed_on_zero());
+    let mut other = base.clone();
+    other["timeout_secs"] = json!(121);
+
+    assert_ne!(spec_digest(&other), spec_digest(&base));
+}
+
+#[test]
+fn it_should_change_the_spec_digest_when_expect_changes() {
+    let base = run_data("before-pr", passed_on_zero());
+    let other = run_data("before-pr", json!([{"exit": 0, "outcome": "failed"}]));
+
+    assert_ne!(spec_digest(&other), spec_digest(&base));
 }

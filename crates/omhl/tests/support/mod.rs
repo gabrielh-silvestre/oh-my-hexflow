@@ -272,6 +272,7 @@ pub fn executor_attestation_data(
         "outcome": outcome,
         "ok": outcome != "failed",
         "command": ["true"],
+        "spec_digest": "d".repeat(64),
         "exit_code": if outcome == "failed" { 1 } else { 0 },
         "duration_ms": 1,
         "timed_out": false,

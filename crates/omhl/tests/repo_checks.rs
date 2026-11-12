@@ -18,7 +18,7 @@ const REPO_CHECKS: [&str; 5] = [
     "checks.lint",
     "checks.test-suite",
 ];
-const FAILURE_TABLE_CODES: [&str; 16] = [
+const FAILURE_TABLE_CODES: [&str; 17] = [
     "check-not-run",
     "attestation-refused",
     "attestation-not-recorded",
@@ -30,13 +30,14 @@ const FAILURE_TABLE_CODES: [&str; 16] = [
     "command-changed-worktree",
     "not-run",
     "spec-invalid",
+    "spec-stale",
     "snapshot-tree-mismatch",
     "snapshot-dirty",
     "snapshot-not-head",
     "work-item-closed",
     "probe-failed",
 ];
-const FAILURE_TABLE_KINDS: [&str; 10] = [
+const FAILURE_TABLE_KINDS: [&str; 11] = [
     "spawn-not-found",
     "spawn-permission-denied",
     "spawn-failed",
@@ -47,6 +48,7 @@ const FAILURE_TABLE_KINDS: [&str; 10] = [
     "tree-changed",
     "push-to-main",
     "parent-gone",
+    "spec-stale",
 ];
 const MARK_LINE: &str =
     r#"printf 'omhl-develop-mark v1\n' > "$(git rev-parse --absolute-git-dir)/omhl-develop-mark""#;

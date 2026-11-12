@@ -1265,3 +1265,46 @@ fn it_should_refuse_to_retire_a_mechanical_check_by_the_mcp() {
 
     assert_eq!(result, Err(rule(RuleCode::CheckRunAuthor, BASE_POINTER)));
 }
+
+#[test]
+fn it_should_refuse_an_attestation_of_a_mechanical_check_without_spec_digest() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request_and_check(&mut omhl, SUITE, "before-pr");
+    let data = without(
+        executor_attestation_data(SUITE, PR_7, "passed", BYPRODUCT),
+        "spec_digest",
+    );
+
+    let result = appended(
+        &mut omhl,
+        executor_author(),
+        vec![mechanical_attestation(data)],
+    );
+
+    assert_eq!(
+        result,
+        Err(rule(
+            RuleCode::AttestationIncomplete,
+            "/items/0/body/data/spec_digest"
+        ))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_spec_digest_in_an_attestation_of_a_text_check_authored_by_the_cli() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let text_check = node_item(
+        SUITE,
+        "check",
+        check_data("before-pr", "Review it by hand", true),
+    );
+    append_as(&mut omhl, loader_author(), vec![text_check]).expect("the check is accepted");
+    let data = executor_attestation_data(SUITE, PR_7, "passed", BYPRODUCT);
+
+    let result = appended(&mut omhl, cli_author(), vec![mechanical_attestation(data)]);
+
+    assert_eq!(result, Err(rule(RuleCode::CheckRunAuthor, CHECK_POINTER)));
+}

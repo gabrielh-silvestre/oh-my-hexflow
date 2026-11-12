@@ -43,6 +43,7 @@ Depois de uma falha, o `omhl` segue com os checks restantes do evento ou para tu
 | 9 | Spec gravado inválido: o `data` do check no banco tem `run`, mas o `omhl` não consegue decodificá-lo | Não executa esse check. Segue para os demais. No fim, sai com erro | `check-not-run`, detalhe `spec-invalid` (com o `path` e o `code` do problema, sem eco do conteúdo); `kind` `spec-invalid` | Nada | Corrija o TOML do check e rode `omhl load` |
 | 10 | Plataforma sem suporte: o sistema não é Linux | Para tudo. Nada executa | `unsupported-platform`; os restantes `not-run` | Nada | Rode o `check run` no Linux ou no WSL |
 | 11 | Interrupção por sinal: Ctrl+C, `SIGTERM`, `SIGHUP` ou `kill` ao `omhl` ou só ao `git` | O `omhl` morre pela ação padrão do sistema. Nenhum erro sai. Veja a seção 4 | Sem código de erro. Se o `git` morreu antes de o `omhl` amarrar-se a ele, o erro é `check-not-run`, detalhe `not-run`, `kind` `parent-gone`, e nada rodou | Nada para o check interrompido nem para os que não rodaram. As attestations já gravadas ficam | Rode o mesmo comando de novo. Se sobrar processo de um check, rode `omhl check sweep` |
+| 12 | Definição velha: o TOML do check na working tree diverge da definição gravada no banco (`run`, `timeout_secs` ou `expect`), porque alguém editou o arquivo e não rodou `omhl load` | `before-pr` e `before-merge`: não executa esse check, segue para os demais e, no fim, sai com erro. `before-commit`: só avisa e roda o comando gravado no banco | `check-not-run`, detalhe `spec-stale`; `kind` `spec-stale`. Em `before-commit` não há erro: a saída traz `warnings` com `code` `spec-stale` | Nada | Rode `omhl load` e repita o `omhl check run` |
 
 **Erro final.** Um problema sem veredito (`check-not-run`, `attestation-refused`, `attestation-not-recorded`) tem precedência sobre `checks-failed`. Entre eles vale o primeiro na ordem de execução. Os detalhes listam todos os checks afetados e os que falharam.
 
@@ -317,3 +318,12 @@ cargo test --workspace --locked --no-run
 Cada comando aquece um check com prazo: `compile-validate`, `lint`, `compile-build` e a compilação do `test-suite`. O `cargo test --no-run` sozinho não aquece os três primeiros.
 
 Se um teste falhar por flaky e o `proptest` gravar uma semente nova em `crates/hexlog/tests/chain_properties.proptest-regressions` (arquivo rastreado), o `test-suite` termina em `check-not-run` com `command-changed-tree`. Restaure o arquivo e repita, como descreve o [README](../README.md).
+
+## 10. Modelo de ameaça do veredito
+
+O gate prende o veredito à árvore e à definição do check que o produziu. Cada attestation do `check run` leva o `spec_digest`, um sha256 de `run`, `timeout_secs` e `expect` do check vigente no banco. Outros campos (`blocking`, `how`, `concern`) não mudam o digest.
+
+- **Definição velha.** A attestation foi gravada sob uma definição que o banco já trocou. O gate pergunta, para cada check com `run`, `spec-digest-match:<check>`: existe uma attestation `ok` neste snapshot com o `spec_digest` da definição vigente? Se não, o gate reprova.
+- **`omhl attest` à mão.** Não grava `spec_digest`, e a guarda recusa um `spec_digest` de quem não é o `executor`. Uma attestation à mão num check sem `run` no banco não satisfaz o gate depois que um `omhl load` devolve o `run`.
+- **TOML editado e não carregado (`spec-stale`).** O `check run` compara o digest do TOML da working tree com o do banco, sem gravar nada. Em `before-pr` e `before-merge`, a divergência recusa o check (linha 12 da tabela). Em `before-commit`, só avisa e roda o comando do banco, porque o hook de commit não deve travar por uma edição em andamento.
+- **Limite aceito.** Quem edita o TOML, roda `omhl load`, roda o `check run` e restaura o arquivo com `git checkout` obtém uma attestation válida para a definição que ficou no banco. O `omhl` não prova quem chamou a CLI: é um freio, não uma parede (README, "Autoria"). O `spec_digest` fecha o caso sem má-fé e a attestation à mão, não o bypass deliberado pelo `omhl load`.

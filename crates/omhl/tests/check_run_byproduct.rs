@@ -443,6 +443,7 @@ fn it_should_not_store_the_environment_in_the_byproduct_or_in_the_attestation() 
             "exit_code",
             "ok",
             "outcome",
+            "spec_digest",
             "timed_out",
             "truncated",
             "work_item"

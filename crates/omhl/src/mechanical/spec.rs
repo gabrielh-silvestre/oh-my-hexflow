@@ -1,8 +1,8 @@
 use std::ops::RangeInclusive;
 
-use hexlog::chain::canonical;
+use hexlog::chain::{canonical, sha256hex};
 use regex::{Regex, RegexBuilder};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 /// Só `Failed` não é `ok`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -254,4 +254,18 @@ pub fn snapshot_for(data: &Value) -> hexlog::SnapshotKind {
     } else {
         hexlog::SnapshotKind::GitCommit
     }
+}
+
+/// Impressão estável da definição mecânica de um check: só `run`, `timeout_secs` e `expect`.
+/// Fonte única do `check run` (grava e compara) e do gate (confere).
+pub fn spec_digest(data: &Value) -> String {
+    let definition = json!({
+        "run": data.get("run"),
+        "timeout_secs": data.get("timeout_secs"),
+        "expect": data.get("expect"),
+    });
+    // o `data` do banco já passou pela régua do hexlog, então `canonical` não falha aqui
+    sha256hex(&canonical(&definition).unwrap_or_default())
+        .as_str()
+        .to_owned()
 }

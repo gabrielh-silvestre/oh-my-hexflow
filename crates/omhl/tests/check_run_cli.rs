@@ -66,6 +66,13 @@ expect = [{ exit = 0, outcome = "passed" }]
 event = "before-pr"
 "#;
 
+const TEXT_ONLY: &str = r#"blocking = true
+how = "Check it by hand."
+
+[when]
+event = "before-pr"
+"#;
+
 // Apoio
 
 /// TOML de check `before-pr`, bloqueante, com o `expect` do `GREEN`.
@@ -285,6 +292,10 @@ fn it_should_attest_a_before_pr_check_through_the_binary_in_a_real_repository() 
     assert_eq!(item["data"]["ok"], json!(true));
     assert_eq!(item["data"]["exit_code"], json!(0));
     assert_eq!(item["data"]["command"], json!(["true"]));
+    assert_eq!(
+        item["data"]["spec_digest"],
+        json!("529de2e8426939e64c4e6dbc60c6d0fd954d899cee83e3c495194deae41564f3")
+    );
     assert_eq!(item["data"]["check"], json!("checks.green"));
     assert_eq!(item["data"]["work_item"], json!("work-items.w1"));
     assert_eq!(
@@ -466,7 +477,7 @@ fn it_should_exit_two_when_both_event_and_check_are_given() {
 }
 
 #[test]
-fn it_should_run_the_database_command_not_the_edited_file() {
+fn it_should_refuse_a_before_pr_run_when_the_committed_file_differs_from_the_stored_definition() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     ExtTree::at(p.dir()).check("gate", GATE_V2);
     git(&p, &["add", "-A"]);
@@ -474,10 +485,34 @@ fn it_should_run_the_database_command_not_the_edited_file() {
 
     let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
 
+    assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+    let error = error_of(&output.stderr);
+    assert_eq!(error["code"], json!("check-not-run"));
+    assert_eq!(error["details"][0]["code"], json!("spec-stale"));
+    assert!(
+        error["details"][0]["context"]["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("omhl load")),
+        "error: {error}"
+    );
+    assert_eq!(attestations(&p), Vec::<Value>::new());
+}
+
+#[test]
+fn it_should_warn_and_run_the_database_command_on_before_commit_when_the_file_differs() {
+    let v1 = GATE_V1.replace("before-pr", "before-commit");
+    let v2 = GATE_V2.replace("before-pr", "before-commit");
+    let p = cli_repo(&[("gate", &v1)]);
+    ExtTree::at(p.dir()).check("gate", &v2);
+    git(&p, &["add", "-A"]);
+
+    let output = omhl_in(&p, &["check", "run", "--event", "before-commit"]).run();
+
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
-    let result = &normalized(&output.stdout)["results"][0];
-    assert_eq!(result["outcome"], json!("passed"));
-    assert_eq!(result["exit_code"], json!(0));
+    let line = normalized(&output.stdout);
+    assert_eq!(line["results"][0]["outcome"], json!("passed"));
+    assert_eq!(line["warnings"][0]["code"], json!("spec-stale"));
+    assert_eq!(line["warnings"][0]["check"], json!("checks.gate"));
     assert_eq!(
         attestation(&p, "checks.gate")["data"]["command"],
         json!(["sh", "-c", "exit 0"])
@@ -761,4 +796,71 @@ fn it_should_refuse_a_pre_push_input_larger_than_the_input_limit() {
     );
     assert!(!ran.exists(), "the check command did not run");
     assert_eq!(attestations(&p), Vec::<Value>::new());
+}
+
+/// A pergunta do `gate-pr` com o `label` dado.
+fn gate_question(p: &Project, label: &str) -> Value {
+    let gate = omhl_in(p, &["gate-pr", "work-items.w1"]).run();
+    json_line(&gate.stdout)["questions"]
+        .as_array()
+        .expect("the gate has questions")
+        .iter()
+        .find(|question| question["label"] == label)
+        .unwrap_or_else(|| panic!("the gate asks {label}: {}", gate.stdout))
+        .clone()
+}
+
+/// Troca o TOML do `gate` no banco por `toml` e volta a árvore para o `HEAD`, sem mudar o commit.
+fn load_then_restore_tree(p: &Project, toml: &str) {
+    ExtTree::at(p.dir()).check("gate", toml);
+    let loaded = omhl_in(p, &["load"]).run();
+    assert_eq!(loaded.code, Some(0), "load stderr: {}", loaded.stderr);
+    git(p, &["checkout", "--", ".omhl/checks"]);
+}
+
+#[test]
+fn it_should_accept_in_the_gate_an_attestation_sealed_with_the_current_definition() {
+    let p = cli_repo(&[("gate", GATE_V1)]);
+    let run = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
+
+    let question = gate_question(&p, "spec-digest-match:checks.gate");
+
+    assert_eq!(question["passed"], json!(true));
+}
+
+#[test]
+fn it_should_refuse_in_the_gate_an_attestation_sealed_with_an_old_definition() {
+    let p = cli_repo(&[("gate", GATE_V1)]);
+    let run = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
+    load_then_restore_tree(&p, GATE_V2);
+    assert_eq!(gate_question(&p, "checks.gate")["passed"], json!(true));
+
+    let question = gate_question(&p, "spec-digest-match:checks.gate");
+
+    assert_eq!(question["passed"], json!(false));
+}
+
+#[test]
+fn it_should_refuse_in_the_gate_a_hand_made_attestation_after_a_load_gives_the_run_back() {
+    let p = cli_repo(&[("gate", TEXT_ONLY)]);
+    let attested = omhl_in(
+        &p,
+        &[
+            "attest",
+            "checks.gate",
+            "work-items.w1",
+            "--outcome",
+            "passed",
+        ],
+    )
+    .run();
+    assert_eq!(attested.code, Some(0), "attest stderr: {}", attested.stderr);
+    load_then_restore_tree(&p, GATE_V1);
+    assert_eq!(gate_question(&p, "checks.gate")["passed"], json!(true));
+
+    let sealed = gate_question(&p, "spec-digest-match:checks.gate");
+
+    assert_eq!(sealed["passed"], json!(false));
 }

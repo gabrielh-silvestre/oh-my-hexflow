@@ -901,6 +901,7 @@ fn it_should_pass_the_pull_request_gate_when_the_executor_attested_the_before_co
         vec![
             json!("checks.ci-green-before-merge"),
             json!("checks.fmt"),
+            json!("spec-digest-match:checks.fmt"),
             json!("no-open-contradiction")
         ]
     );

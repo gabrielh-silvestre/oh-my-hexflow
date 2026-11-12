@@ -238,6 +238,13 @@ Só o `omhl check run` grava a attestation desse check, e só o `omhl load` grav
 o check. É um freio, não uma parede: o agente que chama a CLI pelo Bash
 continua indistinguível do usuário.
 
+Cada attestation do `omhl check run` leva o `spec_digest` (sha256 de `run`,
+`timeout_secs` e `expect`), e o `gate-pr` só aceita a que bate com a definição
+vigente do check. Se o TOML do disco diverge do banco, o `check run` de
+`before-pr` e `before-merge` recusa com `spec-stale` (rode `omhl load`); o de
+`before-commit` só avisa. Detalhes em
+[docs/mechanical-gates.md](docs/mechanical-gates.md).
+
 ## Desenvolvimento
 
 Rode as três checagens antes de abrir um pull request:

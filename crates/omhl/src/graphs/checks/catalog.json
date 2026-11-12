@@ -76,6 +76,7 @@
           "timed_out": {"type": "boolean"},
           "truncated": {"type": "boolean"},
           "command": {"type": "array", "items": {"type": "string"}},
+          "spec_digest": {"type": "string", "minLength": 64, "maxLength": 64},
           "byproduct": {"type": "string", "format": "attachment"}
         },
         "oneOf": [
