@@ -260,3 +260,27 @@ fn it_should_provide_the_develop_mark_command_with_the_marker_line() {
     assert!(command.contains("omhl-develop-mark v1"));
     assert!(page.contains("](../plugin/commands/omhl-develop-mark.md)"));
 }
+
+#[test]
+fn it_should_name_diretiva_as_the_pt_br_name_of_guideline_in_the_glossary() {
+    let glossary = read_repo_file("GLOSSARY.md").to_lowercase();
+
+    let entry = glossary
+        .split("\n**")
+        .find(|block| block.starts_with("guideline**:"))
+        .expect("the glossary has a Guideline entry");
+    let avoid_lines: Vec<&str> = entry
+        .lines()
+        .filter(|line| line.starts_with("_avoid_:"))
+        .collect();
+
+    assert!(entry.contains("diretiva"), "Guideline entry lacks diretiva");
+    assert!(
+        !avoid_lines.is_empty(),
+        "Guideline entry has no _Avoid_ line"
+    );
+    assert!(
+        avoid_lines.iter().all(|line| !line.contains("directive")),
+        "Guideline _Avoid_ still lists directive: {avoid_lines:?}"
+    );
+}

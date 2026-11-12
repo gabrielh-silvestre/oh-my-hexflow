@@ -81,16 +81,28 @@ Uma área do modelo, com seus próprios tipos de node e relation types (por exem
 _Avoid_: domain, module
 
 **Premise**:
-Um node do graph de decisões que afirma algo tomado como verdadeiro para poder decidir.
+Um node do graph de decisões que afirma algo tomado como verdadeiro para poder decidir. Em pt-BR, premissa. Quando pertence a um work item (a frente de trabalho), vale enquanto ele estiver aberto. Tem um `kind` opcional: `technical` (a afirmação tomada como verdadeira para decidir) ou `business` (a expectativa da frente de trabalho).
 _Avoid_: assumption, fact
 
 **Guideline**:
-Um node do graph de decisões que orienta como agir em um contexto, de forma atemporal, sem ser uma escolha pontual.
-_Avoid_: directive, rule, policy
+Um node do graph de decisões que orienta como agir em um contexto, de forma atemporal, sem ser uma escolha pontual. Em pt-BR, diretiva: é o mesmo node, não um conceito novo.
+_Avoid_: rule, policy
 
 **Decision**:
 Um node do graph de decisões que registra uma escolha tomada, com a evidência que a sustenta embutida nela.
 _Avoid_: ADR, resolution
+
+**Gap**:
+Um node do graph de decisões que registra uma dúvida aberta de um work item (a pergunta e o seu contexto). Fecha quando uma premise a responde.
+_Avoid_: question, doubt
+
+**Divergence**:
+Um node do graph de decisões que registra a diferença entre a spec e o que foi feito, com uma `resolution` que diz como ela foi tratada (`open`, `spec-stale`, `code-fixed` ou `accepted`).
+_Avoid_: deviation
+
+**Confirmação**:
+A aprovação humana de uma premise, de uma guideline ou da emenda de uma divergence, dada dentro da sessão e registrada em `confirmed_by`, com a pergunta e a resposta literais como evidência. É autodeclarada: o `Author` do record continua sendo quem o digitou, não quem confirmou.
+_Avoid_: approval
 
 **Catalog**:
 O conjunto das definições dos graphs, isto é, os tipos de node e os relation types de cada um, definido como dado e não no código.
