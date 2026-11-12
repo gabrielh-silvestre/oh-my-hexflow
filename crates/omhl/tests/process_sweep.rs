@@ -5,7 +5,7 @@ mod proc_roles;
 use std::fs::{self, OpenOptions};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -17,7 +17,8 @@ use ::omhl::ports::process::{
 use ::omhl::runner::{CommandRunner, RunError};
 use nix::errno::Errno;
 use nix::sys::signal::{Signal, kill};
-use nix::unistd::Pid;
+use nix::sys::stat::Mode;
+use nix::unistd::{Pid, mkfifo};
 use proc_roles::{
     GUARDIAN_PREFIX, assert_dead_since, guardian_of, is_dead, kind_name, pid_file, proc_state,
     run_ok, spawn_role, spec, stat_field, wait_child_exit, wait_file, wait_until,
@@ -284,11 +285,7 @@ fn it_should_give_up_the_sweep_scan_after_its_budget_without_signaling_anything(
     )
     .expect("the stat file is written");
     let environ = process.join("environ");
-    let made = Command::new("/usr/bin/mkfifo")
-        .arg(&environ)
-        .status()
-        .expect("mkfifo starts");
-    assert!(made.success(), "the environ FIFO is created");
+    mkfifo(&environ, Mode::from_bits_truncate(0o600)).expect("the environ FIFO is created");
     let started = Instant::now();
 
     let result = sweep_strays_in(root.path(), None);

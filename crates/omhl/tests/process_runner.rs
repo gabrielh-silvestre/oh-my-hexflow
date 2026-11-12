@@ -131,7 +131,7 @@ fn it_should_kill_the_whole_process_group_on_timeout() {
             "sleep 61 & echo $! > neto.pid.tmp; mv neto.pid.tmp neto.pid; sleep 61",
         ],
         dir.path(),
-        Duration::from_secs(1),
+        Duration::from_secs(3),
     );
     let started = Instant::now();
 
@@ -526,7 +526,7 @@ fn it_should_send_sigterm_before_sigkill_on_timeout_so_the_command_can_clean_up(
         &spec(
             &["sh", "-c", command_line("coop")],
             dir.path(),
-            Duration::from_secs(1),
+            Duration::from_secs(3),
         ),
     );
 
@@ -548,7 +548,7 @@ fn it_should_kill_a_command_that_ignores_sigterm_after_the_grace_period() {
         &spec(
             &["sh", "-c", command_line("ignore-term")],
             dir.path(),
-            Duration::from_secs(1),
+            Duration::from_secs(3),
         ),
     );
 
@@ -760,7 +760,7 @@ fn it_should_kill_a_command_that_left_its_process_group_on_timeout() {
         let result = ProcessRunner::new().run(&spec(
             &["sh", "-c", "trap '' TERM; exec setsid sleep 61"],
             &cwd,
-            Duration::from_secs(1),
+            Duration::from_secs(3),
         ));
         let _ = report_tx.send(result);
     });
