@@ -214,7 +214,7 @@ fn type_name(name: &str) -> TypeName {
     TypeName::parse(name).expect("the gate type names are valid constants")
 }
 
-fn pair(name: &str, value: Scalar) -> (FieldName, Scalar) {
+pub(crate) fn pair(name: &str, value: Scalar) -> (FieldName, Scalar) {
     let field = FieldName::parse(name).expect("the gate field names are valid constants");
 
     (field, value)

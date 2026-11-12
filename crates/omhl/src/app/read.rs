@@ -1,4 +1,4 @@
-use hexlog::{ListFilter, NodeView, PageRequest, TenantId, TypeName};
+use hexlog::{FieldName, ListFilter, NodeView, PageRequest, Scalar, TenantId, TypeName};
 
 use super::error::AppError;
 use crate::facade::Omhl;
@@ -11,11 +11,21 @@ pub(super) fn all_nodes(
     tenant: &TenantId,
     type_name: &str,
 ) -> Result<Vec<NodeView>, AppError> {
+    nodes_matching(omhl, tenant, type_name, Vec::new())
+}
+
+/// Os nodes vigentes do tipo cujos campos casam com `where_eq`, filtrados no banco, página a página.
+pub(super) fn nodes_matching(
+    omhl: &mut Omhl<'_>,
+    tenant: &TenantId,
+    type_name: &str,
+    where_eq: Vec<(FieldName, Scalar)>,
+) -> Result<Vec<NodeView>, AppError> {
     let filter = ListFilter {
         type_name: Some(TypeName::parse(type_name)?),
         id_prefix: None,
         snapshot: None,
-        where_eq: Vec::new(),
+        where_eq,
     };
     let mut nodes = Vec::new();
     let mut after_seq = None;

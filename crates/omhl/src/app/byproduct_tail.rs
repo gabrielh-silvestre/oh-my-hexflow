@@ -1,11 +1,12 @@
-use hexlog::{NodeView, SemanticId};
+use hexlog::{NodeView, Scalar, SemanticId};
 use serde_json::{Value, json};
 
 use super::engine::{Engine, parse_at};
 use super::error::AppError;
-use super::read::all_nodes;
+use super::read::nodes_matching;
 use crate::byproduct::{self, ByproductHash};
 use crate::error::{OmhlError, RuleCode};
+use crate::pr_gate::pair;
 
 const TAIL_MAX: usize = 500;
 const LINE_MAX_CHARS: usize = 2_000;
@@ -57,10 +58,16 @@ impl Engine<'_> {
         check: &str,
         work_item: &str,
     ) -> Result<Option<NodeView>, AppError> {
-        Ok(all_nodes(&mut self.omhl, &self.tenant, "attestation")?
-            .into_iter()
-            .filter(|node| node.data["check"] == check && node.data["work_item"] == work_item)
-            .max_by_key(|node| node.seq))
+        let where_eq = vec![
+            pair("check", Scalar::Str(check.to_owned())),
+            pair("work_item", Scalar::Str(work_item.to_owned())),
+        ];
+
+        Ok(
+            nodes_matching(&mut self.omhl, &self.tenant, "attestation", where_eq)?
+                .into_iter()
+                .max_by_key(|node| node.seq),
+        )
     }
 }
 
