@@ -4,12 +4,11 @@ use serde_json::{Value, json};
 use super::engine::{Engine, parse_at};
 use super::error::AppError;
 use super::read::all_nodes;
-use crate::byproduct::ByproductHash;
+use crate::byproduct::{self, ByproductHash};
 use crate::error::{OmhlError, RuleCode};
 
 const TAIL_MAX: usize = 500;
 const LINE_MAX_CHARS: usize = 2_000;
-const HEADER_PREFIX: &str = "omhl-byproduct v1 stdout=";
 
 impl Engine<'_> {
     /// Somente leitura: as últimas linhas da saída guardada da attestation mais recente.
@@ -65,19 +64,8 @@ impl Engine<'_> {
     }
 }
 
-/// Cabeçalho `omhl-byproduct v1 stdout=<o> stderr=<e>\n`, depois `o` bytes de stdout e `e` de stderr.
 fn tail_lines(blob: &[u8], tail: u32) -> Option<Vec<String>> {
-    let newline = blob.iter().position(|byte| *byte == b'\n')?;
-    let header = std::str::from_utf8(&blob[..newline]).ok()?;
-    let (stdout_size, stderr_size) = header
-        .strip_prefix(HEADER_PREFIX)?
-        .split_once(" stderr=")
-        .and_then(|(out, err)| Some((out.parse::<usize>().ok()?, err.parse::<usize>().ok()?)))?;
-    let body = &blob[newline + 1..];
-    if body.len() != stdout_size.checked_add(stderr_size)? {
-        return None;
-    }
-    let (stdout, stderr) = body.split_at(stdout_size);
+    let (stdout, stderr) = byproduct::decode(blob)?;
     let lines: Vec<String> = [stdout, stderr]
         .into_iter()
         .flat_map(|stream| {

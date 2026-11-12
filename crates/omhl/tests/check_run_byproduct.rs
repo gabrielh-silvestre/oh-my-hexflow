@@ -417,6 +417,26 @@ fn it_should_keep_the_byproduct_hash_stable_for_identical_output() {
 }
 
 #[test]
+fn it_should_serve_through_byproduct_the_blob_that_check_run_wrote() {
+    let fx = fixture_with_fmt();
+    let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(b"a\nb\n", b"warn\n"))]);
+    let probe = probe();
+    let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
+    run_before_pr(&mut app).expect("the run succeeds");
+    let action = Action::Byproduct {
+        check: "checks.fmt".to_owned(),
+        work_item: W1.to_owned(),
+        tail: 10,
+    };
+
+    let response = app
+        .dispatch(&Caller::cli(), &action)
+        .unwrap_or_else(|error| panic!("byproduct is accepted: {error}"));
+
+    assert_eq!(response["lines"], json!(["a", "b", "warn"]));
+}
+
+#[test]
 fn it_should_rewrite_a_truncated_blob_when_the_check_runs_again() {
     let fx = fixture_with_fmt();
     let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(b"ok\n", b""))]);

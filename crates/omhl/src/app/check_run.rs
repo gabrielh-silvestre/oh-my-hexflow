@@ -14,7 +14,7 @@ use super::engine::Engine;
 use super::error::{AppError, CheckDetail};
 use super::retry::with_retry;
 use super::work_item::{WorkItemRoute, head_branch, resolve_work_item};
-use crate::byproduct::ByproductHash;
+use crate::byproduct::{self, ByproductHash};
 use crate::error::{OmhlError, RuleCode};
 use crate::extensions::collect::collect;
 use crate::extensions::model::ExtensionKind;
@@ -801,16 +801,7 @@ fn finish(scope: &Scope<'_>, tally: Tally, checks_planned: usize) -> Result<Valu
 
 /// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context` (DP-37).
 fn byproduct_blob(report: &RunReport) -> Vec<u8> {
-    let mut blob = format!(
-        "omhl-byproduct v1 stdout={} stderr={}\n",
-        report.stdout.len(),
-        report.stderr.len()
-    )
-    .into_bytes();
-    blob.extend_from_slice(&report.stdout);
-    blob.extend_from_slice(&report.stderr);
-
-    blob
+    byproduct::encode(&report.stdout, &report.stderr)
 }
 
 fn run_attestation_data(
