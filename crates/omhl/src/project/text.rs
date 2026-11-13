@@ -3,7 +3,11 @@ use std::borrow::Cow;
 /// Linha e coluna (base 1, em caracteres) do erro de TOML. O texto do erro repete trechos do
 /// arquivo, por isso só a posição sai.
 pub(crate) fn toml_error_position(text: &str, error: &toml::de::Error) -> (usize, usize) {
-    let offset = error.span().map_or(0, |span| span.start);
+    position_at(text, error.span().map_or(0, |span| span.start))
+}
+
+/// Linha e coluna (base 1, em caracteres) de um deslocamento em bytes.
+pub(crate) fn position_at(text: &str, offset: usize) -> (usize, usize) {
     let before = text.get(..offset).unwrap_or(text);
     let line = before.matches('\n').count() + 1;
     let column = before

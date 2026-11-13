@@ -15,10 +15,12 @@ const TRUNCATION_MARKER: &str = "<!-- omhl: truncated -->\n";
 const INLINE_STRING_MAX_CHARS: usize = 80;
 const FILE_MAX_BYTES: usize = PROJECTION_FILE_MAX_BYTES as usize;
 /// Node types listed inside a work item file, in section order.
-const SECTIONS: [(&str, &str); 3] = [
+const SECTIONS: [(&str, &str); 5] = [
     ("premise", "Premises"),
     ("decision", "Decisions"),
     ("attestation", "Attestations"),
+    ("gap", "Gaps"),
+    ("divergence", "Divergences"),
 ];
 
 /// One file per current work item or pull request, sorted by name; the bytes depend only on the

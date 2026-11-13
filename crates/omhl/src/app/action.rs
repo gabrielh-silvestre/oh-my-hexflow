@@ -12,6 +12,7 @@ pub enum Action {
         id_prefix: Option<String>,
         limit: Option<u32>,
         after_seq: Option<u64>,
+        where_eq: Vec<(String, String)>,
     },
     Get {
         id: String,
@@ -28,6 +29,10 @@ pub enum Action {
     Render,
     GatePr {
         work_item: String,
+    },
+    /// Tratada pelo `Runtime`, não pelo `Engine`: o veredito costuma sair sem abrir o banco.
+    GateWorktree {
+        branch: String,
     },
     Close {
         work_item: String,
@@ -57,6 +62,23 @@ pub enum Action {
     HooksInstall {
         force: bool,
     },
+    SpecInit {
+        work_item: String,
+        slug: String,
+    },
+    SpecValidate {
+        work_item: String,
+    },
+    ReportAnswers {
+        work_item: Option<String>,
+    },
+    /// Sem `min`, vale `promotion.min_work_items` do `workflow.toml`.
+    ReportRecurrences {
+        min: Option<u32>,
+    },
+    ReportRetro {
+        work_item: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +98,16 @@ impl Caller {
         Caller {
             client: "cli",
             agent: "user",
+        }
+    }
+
+    /// O Claude Code define `CLAUDECODE=1` nos subprocessos que lança (Bash, hooks, tmux, MCP stdio) e as extensões
+    /// de IDE o definem nos terminais integrados; o falso positivo (humano) é o erro seguro, e o falso negativo
+    /// (variável removida) é o Follow-up da trava técnica.
+    pub fn cli_under_claude_code() -> Caller {
+        Caller {
+            client: "cli",
+            agent: "claude",
         }
     }
 
@@ -137,29 +169,56 @@ pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError>
         "attest" => attest(&mut args),
         "render" => only(&args, &[]).map(|()| Action::Render),
         "gate_pr" => work_item(&mut args).map(|work_item| Action::GatePr { work_item }),
+        "gate_worktree" => only(&args, &["branch"])
+            .and_then(|()| required_text(&mut args, "branch"))
+            .map(|branch| Action::GateWorktree { branch }),
         "close" => work_item(&mut args).map(|work_item| Action::Close { work_item }),
         "verify" => only(&args, &[]).map(|()| Action::Verify),
         "byproduct" => byproduct(&mut args),
         "project" => only(&args, &[]).map(|()| Action::Project),
+        "report_answers" => only(&args, &["work_item"]).and_then(|()| {
+            Ok(Action::ReportAnswers {
+                work_item: optional_text(&mut args, "work_item")?,
+            })
+        }),
+        "report_recurrences" => only(&args, &["min"]).and_then(|()| {
+            Ok(Action::ReportRecurrences {
+                min: optional_u32(&args, "min")?,
+            })
+        }),
+        "report_retro" => work_item(&mut args).map(|work_item| Action::ReportRetro { work_item }),
         _ => Err(AppError::unknown_tool()),
     }
 }
 
 fn list(args: &mut Map<String, Value>) -> Result<Action, AppError> {
-    only(args, &["type", "id_prefix", "limit", "after_seq"])?;
-    let limit = optional_uint(args, "limit")?;
+    only(args, &["type", "id_prefix", "limit", "after_seq", "where"])?;
+    let limit = optional_u32(args, "limit")?;
 
     Ok(Action::List {
         type_name: optional_text(args, "type")?,
         id_prefix: optional_text(args, "id_prefix")?,
-        limit: limit
-            .map(|value| {
-                u32::try_from(value)
-                    .map_err(|_| AppError::invalid_arguments("/limit", "unknown value"))
-            })
-            .transpose()?,
+        limit,
         after_seq: optional_uint(args, "after_seq")?,
+        where_eq: where_pairs(args)?,
     })
+}
+
+fn where_pairs(args: &mut Map<String, Value>) -> Result<Vec<(String, String)>, AppError> {
+    match args.remove("where") {
+        None => Ok(Vec::new()),
+        Some(Value::Object(fields)) => fields
+            .into_iter()
+            .map(|(field, value)| match value {
+                Value::String(text) => Ok((field, text)),
+                _ => Err(AppError::invalid_arguments(
+                    &format!("/where/{field}"),
+                    "wrong type",
+                )),
+            })
+            .collect(),
+        Some(_) => Err(AppError::invalid_arguments("/where", "wrong type")),
+    }
 }
 
 fn attest(args: &mut Map<String, Value>) -> Result<Action, AppError> {
@@ -175,11 +234,7 @@ fn attest(args: &mut Map<String, Value>) -> Result<Action, AppError> {
 
 fn byproduct(args: &mut Map<String, Value>) -> Result<Action, AppError> {
     only(args, &["check", "work_item", "tail"])?;
-    let tail = match optional_uint(args, "tail")? {
-        None => DEFAULT_TAIL,
-        Some(value) => u32::try_from(value)
-            .map_err(|_| AppError::invalid_arguments("/tail", "unknown value"))?,
-    };
+    let tail = optional_u32(args, "tail")?.unwrap_or(DEFAULT_TAIL);
 
     Ok(Action::Byproduct {
         check: required_text(args, "check")?,
@@ -231,4 +286,13 @@ fn optional_uint(args: &Map<String, Value>, key: &str) -> Result<Option<u64>, Ap
         Some(number) => Ok(Some(number)),
         None => Err(AppError::invalid_arguments(&pointer(key), "wrong type")),
     }
+}
+
+fn optional_u32(args: &Map<String, Value>, key: &str) -> Result<Option<u32>, AppError> {
+    optional_uint(args, key)?
+        .map(|value| {
+            u32::try_from(value)
+                .map_err(|_| AppError::invalid_arguments(&pointer(key), "unknown value"))
+        })
+        .transpose()
 }

@@ -62,6 +62,8 @@ pub enum RuleCode {
     SnapshotTreeMismatch,
     CheckRunAuthor,
     AttestationIncomplete,
+    ConfirmationRequired,
+    ConfirmationInvalid,
 }
 
 impl RuleCode {
@@ -86,6 +88,8 @@ impl RuleCode {
             RuleCode::SnapshotTreeMismatch => "snapshot-tree-mismatch",
             RuleCode::CheckRunAuthor => "check-run-author",
             RuleCode::AttestationIncomplete => "attestation-incomplete",
+            RuleCode::ConfirmationRequired => "confirmation-required",
+            RuleCode::ConfirmationInvalid => "confirmation-invalid",
         }
     }
 }

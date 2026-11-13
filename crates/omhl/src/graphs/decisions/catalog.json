@@ -9,7 +9,18 @@
         "properties": {
           "text": {"type": "string", "minLength": 1, "maxLength": 2000},
           "status": {"enum": ["assumed", "confirmed"]},
-          "work_item": {"type": "string", "minLength": 1, "maxLength": 200}
+          "work_item": {"type": "string", "minLength": 1, "maxLength": 200},
+          "kind": {"enum": ["technical", "business"]},
+          "confirmed_by": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["by", "question", "answer"],
+            "properties": {
+              "by": {"type": "string", "minLength": 1, "maxLength": 100},
+              "question": {"type": "string", "minLength": 1, "maxLength": 2000},
+              "answer": {"type": "string", "minLength": 1, "maxLength": 2000}
+            }
+          }
         }
       }
     },
@@ -20,7 +31,17 @@
         "additionalProperties": false,
         "required": ["text"],
         "properties": {
-          "text": {"type": "string", "minLength": 1, "maxLength": 2000}
+          "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "confirmed_by": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["by", "question", "answer"],
+            "properties": {
+              "by": {"type": "string", "minLength": 1, "maxLength": 100},
+              "question": {"type": "string", "minLength": 1, "maxLength": 2000},
+              "answer": {"type": "string", "minLength": 1, "maxLength": 2000}
+            }
+          }
         }
       }
     },
@@ -49,11 +70,64 @@
           "work_item": {"type": "string", "minLength": 1, "maxLength": 200}
         }
       }
+    },
+    {
+      "name": "gap",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question", "context"],
+        "properties": {
+          "question": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "context": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "work_item": {"type": "string", "minLength": 1, "maxLength": 200}
+        }
+      }
+    },
+    {
+      "name": "divergence",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_ref", "kind", "text", "evidence", "resolution", "work_item"],
+        "properties": {
+          "source_ref": {"type": "string", "minLength": 1, "maxLength": 200},
+          "kind": {"enum": ["missing", "partial", "contradicts", "unrequested"]},
+          "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source", "summary"],
+              "properties": {
+                "source": {"type": "string", "minLength": 1, "maxLength": 200},
+                "summary": {"type": "string", "minLength": 1, "maxLength": 2000}
+              }
+            }
+          },
+          "resolution": {"enum": ["open", "spec-stale", "code-fixed", "accepted"]},
+          "work_item": {"type": "string", "minLength": 1, "maxLength": 200},
+          "confirmed_by": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["by", "question", "answer"],
+            "properties": {
+              "by": {"type": "string", "minLength": 1, "maxLength": 100},
+              "question": {"type": "string", "minLength": 1, "maxLength": 2000},
+              "answer": {"type": "string", "minLength": 1, "maxLength": 2000}
+            }
+          },
+          "amendment": {"type": "string", "minLength": 1, "maxLength": 100}
+        }
+      }
     }
   ],
   "relations": [
-    {"name": "supports", "from": ["premise", "guideline", "decision"], "to": ["decision"]},
+    {"name": "supports", "from": ["premise", "guideline", "decision"], "to": ["decision", "premise"]},
     {"name": "contradicts", "from": ["premise", "guideline", "decision"], "to": ["premise", "guideline", "decision"]},
-    {"name": "answers", "from": ["decision"], "to": ["premise"]}
+    {"name": "answers", "from": ["decision", "premise"], "to": ["premise", "gap"]}
   ]
 }

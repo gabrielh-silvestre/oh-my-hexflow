@@ -599,3 +599,223 @@ fn it_should_refuse_more_than_1000_work_items() {
 
     assert_eq!(error.code, "too-many-work-items");
 }
+
+// Lacunas e divergências por work item
+
+const GAP_AND_DIVERGENCE_GOLDEN: &str = r#"<!-- omhl: generated file, do not edit -->
+# Login
+
+- id: w1
+- type: work-item
+- status: open
+
+## Gaps
+
+### g1
+
+- context: "the spec is silent"
+- question: "Which session length?"
+
+## Divergences
+
+### v1
+
+- evidence:
+```json
+[
+  {
+    "source": "docs",
+    "summary": "the doc says so"
+  }
+]
+```
+- kind: "partial"
+- resolution: "open"
+- source_ref: "CMP-001"
+- text: "done differently"
+"#;
+
+fn gap(id: &str, owner: &str) -> NodeView {
+    node_view(
+        id,
+        "gap",
+        json!({
+            "question": "Which session length?",
+            "context": "the spec is silent",
+            "work_item": owner,
+        }),
+    )
+}
+
+fn divergence(id: &str, owner: &str) -> NodeView {
+    node_view(
+        id,
+        "divergence",
+        json!({
+            "source_ref": "CMP-001",
+            "kind": "partial",
+            "text": "done differently",
+            "evidence": [{ "source": "docs", "summary": "the doc says so" }],
+            "resolution": "open",
+            "work_item": owner,
+        }),
+    )
+}
+
+fn section_titles(text: &str) -> Vec<&str> {
+    text.lines()
+        .filter_map(|line| line.strip_prefix("## "))
+        .collect()
+}
+
+#[test]
+fn it_should_match_the_golden_with_a_gap_and_a_divergence() {
+    let nodes = vec![
+        work_item("w1", "Login"),
+        gap("g1", "w1"),
+        divergence("v1", "w1"),
+    ];
+
+    let files = built(nodes, Vec::new());
+
+    assert_eq!(content(&files, "w1.md"), GAP_AND_DIVERGENCE_GOLDEN);
+}
+
+#[test]
+fn it_should_list_the_gaps_of_each_work_item_in_its_own_file() {
+    let nodes = vec![
+        work_item("a", "First"),
+        work_item("b", "Second"),
+        gap("g1", "a"),
+        gap("g2", "b"),
+    ];
+
+    let files = built(nodes, Vec::new());
+
+    assert_eq!(node_headers(content(&files, "a.md")), ["### g1"]);
+    assert_eq!(node_headers(content(&files, "b.md")), ["### g2"]);
+}
+
+#[test]
+fn it_should_list_the_divergences_of_each_work_item_in_its_own_file() {
+    let nodes = vec![
+        work_item("a", "First"),
+        work_item("b", "Second"),
+        divergence("v1", "a"),
+        divergence("v2", "b"),
+    ];
+
+    let files = built(nodes, Vec::new());
+
+    assert_eq!(node_headers(content(&files, "a.md")), ["### v1"]);
+    assert_eq!(node_headers(content(&files, "b.md")), ["### v2"]);
+}
+
+#[test]
+fn it_should_put_the_gaps_and_divergences_sections_after_the_attestations() {
+    let nodes = vec![
+        work_item("a", "First"),
+        divergence("v1", "a"),
+        gap("g1", "a"),
+        attestation("a1", "a"),
+        decision("d1", "Choose", "a"),
+        premise("p1", "One", "a"),
+    ];
+
+    let files = built(nodes, Vec::new());
+
+    assert_eq!(
+        section_titles(content(&files, "a.md")),
+        [
+            "Premises",
+            "Decisions",
+            "Attestations",
+            "Gaps",
+            "Divergences"
+        ]
+    );
+}
+
+#[test]
+fn it_should_omit_the_gaps_and_divergences_sections_when_the_work_item_has_none() {
+    let nodes = vec![work_item("a", "First"), premise("p1", "One", "a")];
+
+    let files = built(nodes, Vec::new());
+
+    assert_eq!(section_titles(content(&files, "a.md")), ["Premises"]);
+}
+
+#[test]
+fn it_should_sort_gaps_and_divergences_by_id_within_their_sections() {
+    let nodes = vec![
+        work_item("a", "First"),
+        gap("g2", "a"),
+        gap("g1", "a"),
+        divergence("v2", "a"),
+        divergence("v1", "a"),
+    ];
+
+    let files = built(nodes, Vec::new());
+
+    assert_eq!(
+        node_headers(content(&files, "a.md")),
+        ["### g1", "### g2", "### v1", "### v2"]
+    );
+}
+
+#[test]
+fn it_should_exclude_a_shadowed_gap() {
+    let nodes = vec![
+        work_item("a", "First"),
+        gap("g1", "a").shadowed(),
+        gap("g2", "a"),
+    ];
+
+    let files = built(nodes, Vec::new());
+
+    assert_eq!(node_headers(content(&files, "a.md")), ["### g2"]);
+}
+
+#[test]
+fn it_should_list_a_gap_without_work_item_in_no_file() {
+    let loose = node_view(
+        "g1",
+        "gap",
+        json!({ "question": "Which session length?", "context": "the spec is silent" }),
+    );
+    let nodes = vec![work_item("a", "First"), loose];
+
+    let files = built(nodes, Vec::new());
+
+    assert!(!files.iter().any(|file| file.content.contains("g1")));
+}
+
+// Expiração: o contexto filtra por work item aberto, a projeção mantém tudo
+
+#[test]
+fn it_should_keep_the_premises_of_a_closed_work_item_in_its_file() {
+    let closed = node_view(
+        "a",
+        "work-item",
+        json!({ "title": "First", "status": "closed" }),
+    );
+    let nodes = vec![closed, premise("p1", "One", "a")];
+
+    let files = built(nodes, Vec::new());
+
+    assert_eq!(node_headers(content(&files, "a.md")), ["### p1"]);
+}
+
+#[test]
+fn it_should_list_a_premise_without_work_item_in_no_file() {
+    let loose = node_view(
+        "p9",
+        "premise",
+        json!({ "text": "Loose", "status": "assumed" }),
+    );
+    let nodes = vec![work_item("a", "First"), loose];
+
+    let files = built(nodes, Vec::new());
+
+    assert!(!files.iter().any(|file| file.content.contains("p9")));
+}

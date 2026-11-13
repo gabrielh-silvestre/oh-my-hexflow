@@ -4,6 +4,26 @@ use serde_json::Value;
 /// Tipos que contam como work item: o base e os filhos que o especializam.
 pub const WORK_ITEM_TYPES: [&str; 2] = ["work-item", "pull-request"];
 
+pub const PREMISE_NAMESPACE: &str = "premises";
+pub const GUIDELINE_NAMESPACE: &str = "guidelines";
+pub const GAP_NAMESPACE: &str = "gaps";
+pub const DIVERGENCE_NAMESPACE: &str = "divergences";
+
+/// Namespace que o id de um node deve ter, por tipo.
+pub fn namespace_of(type_name: &str) -> Option<&'static str> {
+    match type_name {
+        "check" => Some("checks"),
+        "guideline" => Some(GUIDELINE_NAMESPACE),
+        "premise" => Some(PREMISE_NAMESPACE),
+        "decision" => Some("decisions"),
+        "gap" => Some(GAP_NAMESPACE),
+        "divergence" => Some(DIVERGENCE_NAMESPACE),
+        "attestation" => Some("attestations"),
+        "work-item" | "pull-request" => Some("work-items"),
+        _ => None,
+    }
+}
+
 const SOURCES: [&str; 3] = [
     include_str!("decisions/catalog.json"),
     include_str!("checks/catalog.json"),

@@ -193,6 +193,7 @@ fn attestations(app: &mut App<'_>) -> Value {
         id_prefix: None,
         limit: None,
         after_seq: None,
+        where_eq: Vec::new(),
     };
 
     app.dispatch(&Caller::cli(), &action)

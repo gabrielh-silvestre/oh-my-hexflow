@@ -1,4 +1,4 @@
-use hexlog::{NativeNodes, RelationQuery, RelationTypeName, SemanticId, TenantId};
+use hexlog::{NativeNodes, NodeView, RelationQuery, RelationTypeName, SemanticId, TenantId};
 use serde_json::{Value, json};
 
 use super::error::AppError;
@@ -15,7 +15,10 @@ pub(super) fn render_context(omhl: &mut Omhl<'_>, tenant: &TenantId) -> Result<V
     let checks = all_nodes(omhl, tenant, "check")?;
     let guidelines = all_nodes(omhl, tenant, "guideline")?;
     let decisions = all_nodes(omhl, tenant, "decision")?;
-    let premises = all_nodes(omhl, tenant, "premise")?;
+    let premises = open_premises(
+        all_nodes(omhl, tenant, "premise")?,
+        &all_nodes(omhl, tenant, "work-item")?,
+    );
     let after = after_pairs(omhl, tenant)?;
     let input = RenderInput {
         tenant: tenant.as_str(),
@@ -30,6 +33,21 @@ pub(super) fn render_context(omhl: &mut Omhl<'_>, tenant: &TenantId) -> Result<V
     let rendered = render(&input, CONTEXT_BUDGET);
 
     Ok(json!({ "text": rendered.text, "omitted": rendered.omitted }))
+}
+
+/// A premissa vale enquanto o work item está aberto; sem `work_item` ela não pertence a nenhum e não expira.
+fn open_premises(premises: Vec<NodeView>, work_items: &[NodeView]) -> Vec<NodeView> {
+    premises
+        .into_iter()
+        .filter(|premise| {
+            let Some(owner) = premise.data["work_item"].as_str() else {
+                return true;
+            };
+            !work_items
+                .iter()
+                .any(|item| item.id.as_str() == owner && item.data["status"] == "closed")
+        })
+        .collect()
 }
 
 /// As relações `after` vigentes, mais a do par nativo se o motor não a devolveu.

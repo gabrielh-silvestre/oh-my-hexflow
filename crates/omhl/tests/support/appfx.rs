@@ -84,6 +84,7 @@ impl AppFixture {
                 id_prefix: None,
                 limit: None,
                 after_seq,
+                where_eq: Vec::new(),
             };
             let page = self
                 .run(&Caller::cli(), &action)

@@ -30,11 +30,15 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    cargo build --release
    ```
 
-2. Copie o binário para a pasta do plugin, onde o git o ignora:
+2. Instale esse binário no `PATH`, fora de qualquer worktree. É o único `omhl`:
+   o plugin (hooks e servidor MCP) e o hook `pre-switch` do `wt`
+   (`.config/wt.toml`) chamam o `omhl` do `PATH`, sem cópia por worktree.
 
    ```bash
-   cp target/release/omhl plugin/bin/omhl
+   cp target/release/omhl ~/.local/bin/omhl
    ```
+
+   Depois de puxar mudanças, recompile e copie de novo.
 
 3. Abra o Claude Code com o plugin:
 
@@ -42,8 +46,8 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    claude --plugin-dir plugin/
    ```
 
-O plugin liga o hook `SessionStart` (`plugin/hooks/hooks.json`) e o servidor
-MCP `omhl` (`plugin/.mcp.json`).
+O plugin liga os hooks `SessionStart` e `PreToolUse` (`hook spec-lock`, em
+`plugin/hooks/hooks.json`) e o servidor MCP `omhl` (`plugin/.mcp.json`).
 
 ## Marcar um projeto
 
@@ -98,18 +102,25 @@ JSON.
 
 | Comando | O que faz |
 |---|---|
-| `list` | Lista os nodes vigentes, com filtros `--type`, `--id-prefix`, `--limit` e `--after-seq` |
+| `list` | Lista os nodes vigentes, com filtros `--type`, `--id-prefix`, `--limit`, `--after-seq` e `--where <campo>=<valor>` (repetível, igualdade de campo) |
 | `get <id>` | Imprime um node, ou `null` quando ele não existe |
 | `append` | Grava os records de um pedido JSON lido do stdin |
 | `attest <check> <work-item> --outcome <outcome>` | Registra o resultado de um check no commit atual |
 | `render` | Imprime o contexto da sessão |
 | `gate-pr <work-item>` | Avalia o gate de pull request |
-| `close <work-item>` | Fecha um work item e grava o resultado do gate |
+| `gate-worktree --branch <nome>` | Decide se a worktree da branch pode ser criada. Fica em silêncio fora de um projeto com marcador |
+| `close <work-item>` | Fecha um work item e grava o resultado do gate. Devolve também o campo `retro` |
 | `verify` | Verifica a cadeia de hash |
 | `load [--dry-run]` | Carrega as extensions de `.omhl/` no tenant |
 | `project` | Gera a projeção em Markdown em `.omhl/projection/` |
 | `mcp` | Serve as ferramentas MCP por stdio |
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
+| `hook spec-lock` | Roda o hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de uma spec congelada |
+| `spec init <work-item> <slug>` | Cria a pasta da spec de um work item aberto, com a primeira parte, no diretório principal |
+| `spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
+| `report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta |
+| `report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção a guideline |
+| `report retro <work-item>` | A retro de um work item, aberto ou fechado: divergências, emendas e gaps sem resposta |
 | `check run --event <evento>` ou `check run --check <id>` | Roda os checks mecânicos de um evento (ou um só) e grava as attestations do work item da branch atual. `--pre-push` é do hook `pre-push` |
 | `check sweep` | Encerra os processos que fugiram de um `check run` anterior |
 | `check retire <check-id>` | Aposenta o check órfão, cujo arquivo `.omhl/checks/<slug>.toml` não existe na árvore, e some o aviso `check-orphaned`. É definitivo e vale para todos os clones e branches: o id não volta. Se a branch ou a worktree é anterior ao check, faça rebase sobre a `main` (ou restaure o arquivo) em vez de aposentar |
@@ -120,9 +131,11 @@ JSON.
 `attest` e `close` exigem a árvore git limpa. Um erro sai no stderr como JSON,
 com o código de saída 1.
 
-O servidor MCP expõe dez ferramentas com a mesma saída da CLI: `list`, `get`,
-`append`, `attest`, `render`, `gate_pr`, `close`, `verify`, `byproduct` e
-`project`. O `load`, o `check run`, o `check sweep`, o `check retire` e os comandos `hooks`
+O servidor MCP expõe catorze ferramentas com a mesma saída da CLI: `list`, `get`,
+`append`, `attest`, `render`, `gate_pr`, `gate_worktree`, `close`, `verify`,
+`byproduct`, `project`, `report_answers`, `report_recurrences` e
+`report_retro`. O `load`, o `check run`, o `check sweep`, o `check retire`, o
+`spec init`, o `spec validate`, o `hook spec-lock` e os comandos `hooks`
 existem só na CLI.
 
 ## Extensions e projeção
@@ -138,6 +151,14 @@ mesmos bytes.
 
 O formato dos arquivos e as regras estão em
 [docs/extensions-and-projection.md](docs/extensions-and-projection.md).
+
+## Fluxo por diretivas e premissas
+
+O humano define diretivas e premissas; o agente escreve a spec a partir delas.
+O ciclo vai da premissa confirmada ao gate de criação da worktree, à spec
+congelada, à emenda e à retro do `close`. Os comandos, o `workflow.toml`, os
+códigos de erro e os limites estão em
+[docs/directives-flow.md](docs/directives-flow.md).
 
 ## Checks mecânicos
 
@@ -192,7 +213,7 @@ pasta. Rode-o uma vez em cada clone.
   com 1 se esse binário sumir. Rode `omhl hooks install` com um binário fora de
   qualquer worktree e fora de `target/` (`cargo install` ou uma cópia em
   `~/.local/bin`); um binário dentro de uma worktree ligada some com ela e a
-  saída avisa (`binary-in-worktree`); o `plugin/bin/omhl` do clone principal não
+  saída avisa (`binary-in-worktree`); um binário na worktree principal do clone não
   avisa, porque o `wt remove` não remove a worktree principal. A pasta de hooks é uma só por usuário: reinstalar em
   outro clone troca o binário de todos.
 

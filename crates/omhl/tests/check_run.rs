@@ -356,6 +356,7 @@ fn list(app: &mut App<'_>, type_name: &str) -> Vec<Value> {
             id_prefix: None,
             limit: None,
             after_seq,
+            where_eq: Vec::new(),
         };
         let page = app
             .dispatch(&Caller::cli(), &action)

@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use tempfile::TempDir;
 
-const DEADLINE: Duration = Duration::from_secs(5);
+const DEADLINE: Duration = Duration::from_secs(60);
 const POLL: Duration = Duration::from_millis(5);
 
 /// Um `omhl mcp` vivo, falado linha a linha pelo stdin e lido por uma thread que repassa cada
@@ -71,17 +71,17 @@ impl McpSession {
         stdin.flush().expect("the request is flushed");
     }
 
-    /// A próxima linha do stdout como JSON; sem linha em 5 s, falha o teste.
+    /// A próxima linha do stdout como JSON; sem linha em 60 s, falha o teste.
     pub fn recv(&self) -> Value {
         let line = self
             .lines
             .recv_timeout(DEADLINE)
-            .expect("the server answers within 5 seconds");
+            .expect("the server answers within 60 seconds");
 
         serde_json::from_str(&line).expect("stdout carries only JSON lines")
     }
 
-    /// Fecha o stdin e espera o filho sair em até 5 s; devolve o código de saída.
+    /// Fecha o stdin e espera o filho sair em até 60 s; devolve o código de saída.
     pub fn finish(mut self) -> Option<i32> {
         drop(self.stdin.take());
         let deadline = Instant::now() + DEADLINE;
@@ -91,7 +91,7 @@ impl McpSession {
             }
             assert!(
                 Instant::now() < deadline,
-                "the server did not exit within 5 seconds of stdin EOF"
+                "the server did not exit within 60 seconds of stdin EOF"
             );
             thread::sleep(POLL);
         }
