@@ -82,7 +82,7 @@ A confirmação é a aprovação do humano dentro da sessão. O registro leva o 
 
 ```json
 "confirmed_by": {
-  "by": "person:gabriel",
+  "by": "person:alice",
   "question": "<pergunta literal feita ao humano>",
   "answer": "<resposta literal do humano>"
 }
@@ -193,9 +193,9 @@ O gate roda pelo `wt`, pelo hook de projeto versionado em `.config/wt.toml`:
 omhl-gate = "case {{ branch }} in develop|main) exit 0;; esac; omhl gate-worktree --branch {{ branch }}"
 ```
 
-- O template é POSIX (o `wt` roda o hook sob `sh`). O `{{ branch }}` vai **sem aspas**: o `wt` já escapa a variável, e as aspas anulam o escape. Com aspas simples, o nome `a$(id)` executa `id`. Sem aspas, nenhum dos 12 nomes perigosos do spike executou nada.
+- O template é POSIX: no `wt` 0.70.0 o hook rodou sob `sh` (observado no spike; a doc do `wt` diz só que ele roda comandos de shell). O `{{ branch }}` vai **sem aspas**: o `wt` já escapa a variável, e as aspas anulam o escape. Com aspas simples, o nome `a$(id)` executa `id`. Sem aspas, nenhum dos 12 nomes perigosos do spike executou nada.
 - O `pre-switch` roda antes de a branch e a worktree existirem num `wt switch -c`. Uma saída não zero aborta, e não sobra branch nem diretório.
-- Num `wt switch -c`, o `{{ branch }}` é o destino. `^`, `-` e `@` chegam resolvidos. `pr:N` chega literal, porque o hook roda antes de o `wt` buscar o PR, e o gate o recusa com `prefix-not-allowed`.
+- Num `wt switch -c`, o `{{ branch }}` é o destino. `^`, `-` e `@` chegam resolvidos. `pr:N` chega literal (observado no `wt` 0.70.0, sem apoio na doc), porque o hook roda antes de o `wt` buscar o PR, e o gate o recusa com `prefix-not-allowed`.
 - O `case` garante `wt switch develop` e `wt switch main` mesmo sem o `omhl` no `PATH`. Para qualquer outro nome, sem o `omhl` o `sh` sai com `127` e o `wt` aborta.
 - O `omhl` do hook é o do `PATH`. Instale-o fora de qualquer worktree (veja `binary-in-worktree` na seção 5 de [mechanical-gates.md](mechanical-gates.md)), senão um `wt remove` o apaga.
 - O gate só funciona com o `omhl` no `PATH` do `wt`. Sem ele, todo `wt switch` para uma branch que não seja `develop` nem `main` sai com `127` e o `wt` aborta, inclusive `wt switch -c`. Confira com `command -v omhl` antes de rodar `wt config approvals add`.
@@ -289,7 +289,7 @@ As violações de uma parte reprovam sempre. As de uma emenda reprovam só quand
 | `sections-invalid` | As seções não são exatamente as esperadas, na ordem: faltam, sobram ou estão trocadas. Parte: as cinco acima. Emenda: `Divergência`, `Correções` e `Motivo` |
 | `section-empty` | O corpo da seção só tem linhas em branco |
 | `item-id-invalid` | Um item de `Comportamentos` não começa com `CMP-###`, um de `Critérios de aceitação` não começa com `CA-###`, ou um de `Correções` não começa com `EMD-###`. O número tem 3 dígitos |
-| `item-id-duplicate` | O mesmo `CMP-###` ou `CA-###` aparece em mais de um lugar das partes, ou o mesmo `EMD-###` em mais de um lugar das emendas |
+| `item-id-duplicate` | O mesmo `CMP-###` ou `CA-###` aparece em mais de um lugar das partes, ou o mesmo `EMD-###` em mais de um lugar das emendas, inclusive numa emenda abandonada |
 | `file-too-long` | O arquivo passa de `specs.max_lines` linhas. A linha reportada é a primeira acima do teto |
 | `placeholder-found` | Uma linha contém algum texto de `specs.placeholders` |
 | `pending-marker-invalid` | Existe um `[PENDENTE` que não tem a forma `[PENDENTE: gaps.<nome>]` |
@@ -455,12 +455,12 @@ Spec aprovada nunca é editada. Para corrigir um erro da spec depois da aprovaç
    A biblioteca de visualização falha acima de 10000 linhas.
    ```
 
-4. Rode `omhl spec validate <work-item>`. A emenda é congelada assim que existe: um rascunho inválido não se edita. Abandone-o e crie a `emenda-(NN+1).md`.
+4. Rode `omhl spec validate <work-item>`. A emenda é congelada assim que existe: um rascunho inválido não se edita. Abandone-o e crie a `emenda-(NN+1).md`. O rascunho abandonado continua na pasta e os `EMD-###` dele continuam contados: continue a numeração na emenda seguinte (`EMD-002` depois de `EMD-001`), senão ela cai em `item-id-duplicate`.
 5. Mostre a emenda ao humano e peça a aprovação, copiando a pergunta e a resposta literais.
 6. Grave uma nova revisão da mesma divergência (append-only, com `base`) com `resolution` `spec-stale`, `amendment` (`emenda-NN`, sem `.md`) e `confirmed_by`:
 
    ```json
-   {"items":[{"base":"<record_id da revisão atual>","body":{"kind":"node","id":"divergences.row-limit","type":"divergence","data":{"source_ref":"CMP-002","kind":"contradicts","text":"...","evidence":[{"source":"src/export.ts","summary":"MAX_ROWS is 10000."}],"resolution":"spec-stale","work_item":"work-items.w1","amendment":"emenda-01","confirmed_by":{"by":"person:gabriel","question":"...","answer":"..."}}}}]}
+   {"items":[{"base":"<record_id da revisão atual>","body":{"kind":"node","id":"divergences.row-limit","type":"divergence","data":{"source_ref":"CMP-002","kind":"contradicts","text":"...","evidence":[{"source":"src/export.ts","summary":"MAX_ROWS is 10000."}],"resolution":"spec-stale","work_item":"work-items.w1","amendment":"emenda-01","confirmed_by":{"by":"person:alice","question":"...","answer":"..."}}}}]}
    ```
 
    O `record_id` da revisão atual vem de `omhl get <id>` (campo `node.record_id`).
@@ -521,8 +521,10 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 ### Limites
 
-- O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. A emenda aprovada é conferida de novo no `spec validate`.
-- O `confirmed_by` é autodeclarado. Nada impede um agente de forjar uma confirmação com cara de humano pela CLI fora do Claude Code ou escrevendo o JSON à mão. Por isso o agente grava só pelo MCP.
+- O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
+- O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
+- Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`. O comando não tem a guarda `{% if branch %}`.
+- O `confirmed_by` é autodeclarado por qualquer canal. A tool `append` do MCP e a CLI aceitam a mesma confirmação inventada, e o record forjado sai igual ao legítimo. O MCP protege só o rótulo de autoria (`agent: "claude"`), que a CLI perde com `env -u CLAUDECODE`. A trava técnica contra forja não existe nesta entrega (seção 3).
 - A spec vive no diretório principal, fora do git. Ela não vai com um clone e some com o diretório.
 - A busca de pastas de spec lê até 10 000 entradas.
 - O `spec-invalid` e o `amendment-invalid` mostram até 20 detalhes por erro.

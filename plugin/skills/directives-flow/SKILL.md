@@ -9,8 +9,8 @@ O humano define diretivas (`guideline`) e premissas (`premise`). Você escolhe o
 
 ## Regras que valem o tempo todo
 
-- **Grave pelas tools MCP, nunca pela CLI.** Use a tool `append` do servidor `omhl`. Nunca rode `omhl append` no Bash: a CLI não prova quem escreveu, e a tool grava `agent: "claude"`. Isso vale para work item, premissa, gap, divergência e relation.
-- **Só o humano confirma.** Uma diretiva ou uma premissa de negócio sugerida por você fica pendente e não vincula. Para confirmar, pergunte ao humano dentro da sessão e grave o campo `confirmed_by` com `by` no formato `person:<nome>`, em que `<nome>` identifica o humano que confirmou na sessão (por exemplo, `person:gabriel`). Se não souber o nome, pergunte ao humano; não invente. Grave também a pergunta e a resposta literais, copiadas exatamente como foram ditas. Nunca resuma, traduza nem corrija o texto. Nunca invente uma confirmação.
+- **Grave pelas tools MCP, nunca pela CLI.** Use a tool `append` do servidor `omhl`. Nunca rode `omhl append` no Bash: a tool grava `agent: "claude"`, e a CLI pode perder esse rótulo. Nenhum canal prova a confirmação: o `confirmed_by` vale pelo que você grava, então grave-o só com a resposta real do humano. Isso vale para work item, premissa, gap, divergência e relation.
+- **Só o humano confirma.** Uma diretiva ou uma premissa de negócio sugerida por você fica pendente e não vincula. Para confirmar, pergunte ao humano dentro da sessão e grave o campo `confirmed_by` com `by` no formato `person:<nome>`, em que `<nome>` identifica o humano que confirmou na sessão. Se não souber o nome, pergunte ao humano; não invente. Grave também a pergunta e a resposta literais, copiadas exatamente como foram ditas. Nunca resuma, traduza nem corrija o texto. Nunca invente uma confirmação.
 - **Premissa técnica pode ser autônoma.** Registre-a com `status` `assumed`, sem `confirmed_by`. O humano a confirma depois, se quiser.
 - **Reaproveite o texto de uma premissa.** Antes de registrar uma premissa, rode `omhl report recurrences --min 2` (ou a tool `report_recurrences`) e, se uma premissa anterior significa a mesma coisa, copie o texto exato dela. Assim a promoção na 3ª ocorrência agrupa as duas.
 
@@ -42,7 +42,7 @@ A spec congelada nunca é editada. Não existe comando nem marca para descongela
 2. Pergunte ao humano se a spec estava errada. Se não estava, não há emenda.
 3. Se estava, crie `emenda-NN.md` na pasta da spec do work item, com `Write` de um arquivo novo. O hook libera só o próximo número. A emenda tem as seções `Divergência` (o id `divergences.<nome>`), `Correções` (itens `- EMD-001 CMP-003: <novo valor>`) e `Motivo`.
 4. Valide com `omhl spec validate` (`omhl spec validate work-items.<id>`).
-5. Se a emenda saiu inválida, abandone-a e crie a seguinte (`emenda-(NN+1).md`): ela também fica congelada assim que existe.
+5. Se a emenda saiu inválida, abandone-a e crie a seguinte (`emenda-(NN+1).md`): ela também fica congelada assim que existe. Os `EMD-###` da emenda abandonada continuam contados, então continue a numeração (`EMD-002` depois de `EMD-001`).
 6. Mostre a emenda ao humano e peça a aprovação, copiando a pergunta e a resposta literais.
 7. Grave uma nova revisão da mesma `divergence` (com `base`) com `resolution` `spec-stale`, `amendment` (`emenda-NN`, sem `.md`) e `confirmed_by`. O `append` recusa a revisão se faltar um dos dois campos ou se a emenda não valida.
 
