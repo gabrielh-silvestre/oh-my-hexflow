@@ -52,6 +52,7 @@ pub struct Violation {
 enum Code {
     SectionsInvalid,
     SectionEmpty,
+    SectionWithoutItems,
     ItemIdInvalid,
     ItemIdDuplicate,
     FileTooLong,
@@ -78,6 +79,7 @@ impl Code {
         match self {
             Code::SectionsInvalid => "sections-invalid",
             Code::SectionEmpty => "section-empty",
+            Code::SectionWithoutItems => "section-without-items",
             Code::ItemIdInvalid => "item-id-invalid",
             Code::ItemIdDuplicate => "item-id-duplicate",
             Code::FileTooLong => "file-too-long",
@@ -111,6 +113,12 @@ struct Section<'a> {
     /// Linha do título, a partir de 1; o corpo vai da linha seguinte até o próximo título.
     line: usize,
     body: Vec<&'a str>,
+}
+
+impl Section<'_> {
+    fn is_blank(&self) -> bool {
+        self.body.iter().all(|line| line.trim().is_empty())
+    }
 }
 
 struct Item<'a> {
@@ -223,7 +231,20 @@ fn check_part<'a>(
     defined: &mut HashSet<&'a str>,
 ) -> Vec<Found> {
     let mut found = check_shared(doc, &PART_SECTIONS, config);
-    for item in doc.items() {
+    let items = doc.items();
+    for title in [BEHAVIORS, CRITERIA] {
+        let Some(section) = doc.section(title) else {
+            continue;
+        };
+        // Seção em branco já é `section-empty`; não duplica a violação na mesma linha.
+        if !section.is_blank() && items.iter().all(|item| item.section != title) {
+            found.push(Found {
+                line: section.line,
+                code: Code::SectionWithoutItems,
+            });
+        }
+    }
+    for item in items {
         let prefix = match item.section {
             BEHAVIORS => "CMP-",
             CRITERIA => "CA-",
@@ -387,7 +408,7 @@ fn check_shared(doc: &Doc, expected: &[&str], config: &SpecsConfig) -> Vec<Found
         found.push(violation);
     }
     for section in &doc.sections {
-        if section.body.iter().all(|line| line.trim().is_empty()) {
+        if section.is_blank() {
             found.push(Found {
                 line: section.line,
                 code: Code::SectionEmpty,
@@ -484,8 +505,8 @@ fn defined_emds<'a>(docs: &[Doc<'a>]) -> HashMap<&'a str, u32> {
     defined
 }
 
-/// Nome de gap: `[a-z0-9][a-z0-9-]*`.
-fn gap_name_len(text: &str) -> usize {
+/// Segmento de id semântico: `[a-z0-9][a-z0-9-]*`.
+fn name_len(text: &str) -> usize {
     let len = text
         .bytes()
         .take_while(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-'))
@@ -494,12 +515,29 @@ fn gap_name_len(text: &str) -> usize {
     if text.starts_with('-') { 0 } else { len }
 }
 
+/// Id semântico `nome(.nome)*`; um `.` sem segmento válido depois é pontuação da frase e fica fora.
+fn semantic_id_len(text: &str) -> usize {
+    let mut len = name_len(text);
+    if len == 0 {
+        return 0;
+    }
+    while let Some(rest) = text[len..].strip_prefix('.') {
+        let segment = name_len(rest);
+        if segment == 0 {
+            break;
+        }
+        len += 1 + segment;
+    }
+
+    len
+}
+
 fn has_malformed_pending_marker(line: &str) -> bool {
     line.match_indices(PENDING_MARKER).any(|(start, _)| {
         let valid = line[start..]
             .strip_prefix(PENDING_PREFIX)
             .is_some_and(|rest| {
-                let len = gap_name_len(rest);
+                let len = semantic_id_len(rest);
 
                 len > 0 && rest[len..].starts_with(']')
             });
@@ -510,7 +548,7 @@ fn has_malformed_pending_marker(line: &str) -> bool {
 
 fn count_divergence_refs(line: &str) -> usize {
     line.match_indices(DIVERGENCE_REF_PREFIX)
-        .filter(|(start, _)| gap_name_len(&line[start + DIVERGENCE_REF_PREFIX.len()..]) > 0)
+        .filter(|(start, _)| semantic_id_len(&line[start + DIVERGENCE_REF_PREFIX.len()..]) > 0)
         .count()
 }
 
@@ -695,7 +733,7 @@ fn check_pending_gaps(doc: &Doc, facts: &impl SpecFacts) -> Vec<Found> {
 fn pending_gaps(line: &str) -> impl Iterator<Item = &str> {
     line.match_indices(PENDING_PREFIX).filter_map(|(start, _)| {
         let name_start = start + PENDING_PREFIX.len();
-        let len = gap_name_len(&line[name_start..]);
+        let len = semantic_id_len(&line[name_start..]);
         let id_start = name_start - GAP_PREFIX.len();
 
         (len > 0 && line[name_start + len..].starts_with(']'))
@@ -720,7 +758,7 @@ fn prefixed_ids<'a>(section: &Section<'a>, prefix: &str) -> Vec<(usize, &'a str)
     let mut ids = Vec::new();
     for (offset, line) in section.body.iter().copied().enumerate() {
         for (start, _) in line.match_indices(prefix) {
-            let len = gap_name_len(&line[start + prefix.len()..]);
+            let len = semantic_id_len(&line[start + prefix.len()..]);
             if len > 0 {
                 ids.push((
                     section.line + 1 + offset,

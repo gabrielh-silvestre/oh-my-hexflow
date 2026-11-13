@@ -57,7 +57,7 @@ const DEVELOP_MARK_COMMAND: &str = "plugin/commands/omhl-develop-mark.md";
 const DIRECTIVES_FLOW_PAGE: &str = "docs/directives-flow.md";
 const DIRECTIVES_FLOW_SKILL: &str = "plugin/skills/directives-flow/SKILL.md";
 /// Códigos novos da entrega `work-items.dir0`, levantados de `git diff develop..HEAD -- crates/omhl/src`.
-const DIRECTIVES_FLOW_CODES: [&str; 38] = [
+const DIRECTIVES_FLOW_CODES: [&str; 39] = [
     // S3: `RuleCode` em `crates/omhl/src/error.rs`
     "confirmation-required",
     "confirmation-invalid",
@@ -75,6 +75,7 @@ const DIRECTIVES_FLOW_CODES: [&str; 38] = [
     // S6b: `Code` em `crates/omhl/src/workflow/spec.rs`
     "sections-invalid",
     "section-empty",
+    "section-without-items",
     "item-id-invalid",
     "item-id-duplicate",
     "file-too-long",

@@ -5,7 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use ::omhl::workflow::config::{SpecsConfig, WorkflowConfig};
-use ::omhl::workflow::spec::{SpecFile, validate_spec};
+use ::omhl::workflow::spec::{SpecFile, amendment_divergence_mismatch, validate_spec};
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
 use support::git::git_in;
@@ -224,6 +224,63 @@ fn it_should_reject_an_empty_section_at_its_heading() {
     assert_eq!(violations, vec!["parte-01.md:1 section-empty"]);
 }
 
+#[test]
+fn it_should_reject_a_behaviors_section_with_only_prose_at_its_heading() {
+    let lines = with_line(
+        valid_part(),
+        PART_CMP_LINE,
+        "O sistema autentica o usuário.",
+    );
+
+    let violations = validate_part(lines);
+
+    assert_eq!(violations, vec!["parte-01.md:9 section-without-items"]);
+}
+
+#[test]
+fn it_should_reject_a_criteria_section_with_only_prose_at_its_heading() {
+    let lines = with_line(valid_part(), PART_CA_LINE, "Login válido devolve sessão.");
+
+    let violations = validate_part(lines);
+
+    assert_eq!(violations, vec!["parte-01.md:13 section-without-items"]);
+}
+
+#[test]
+fn it_should_judge_the_items_of_each_part_on_its_own() {
+    let prose_only_behaviors = with_line(
+        with_line(valid_part(), PART_CMP_LINE, "O sistema encerra a sessão."),
+        PART_CA_LINE,
+        "- CA-002: logout invalida a sessão.",
+    );
+
+    let violations = validate(
+        &[
+            ("parte-01.md", valid_part()),
+            ("parte-02.md", prose_only_behaviors),
+        ],
+        &[],
+        &default_config(),
+    );
+
+    assert_eq!(violations, vec!["parte-02.md:9 section-without-items"]);
+}
+
+#[test]
+fn it_should_report_an_empty_items_section_only_as_empty() {
+    for (item_line, heading_line) in [(PART_CMP_LINE, 9), (PART_CA_LINE, 13)] {
+        let lines = with_line(valid_part(), item_line, "");
+
+        let violations = validate_part(lines);
+
+        assert_eq!(
+            violations,
+            vec![format!("parte-01.md:{heading_line} section-empty")],
+            "heading at line {heading_line}"
+        );
+    }
+}
+
 // Partes: ids dos itens
 
 #[test]
@@ -382,6 +439,39 @@ fn it_should_reject_each_malformed_pending_marker_at_its_line() {
     }
 }
 
+#[test]
+fn it_should_accept_a_pending_marker_with_a_multi_segment_gap_id() {
+    let lines = with_line(
+        valid_part(),
+        PART_OBJECTIVE_LINE,
+        "Depende de [PENDENTE: gaps.login.timeout].",
+    );
+
+    let violations = validate_part(lines);
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_reject_a_pending_marker_whose_gap_id_has_a_dangling_or_invalid_segment() {
+    let malformed = [
+        "[PENDENTE: gaps.a.]",
+        "[PENDENTE: gaps.a.B]",
+        "[PENDENTE: gaps.a.-b]",
+    ];
+    for marker in malformed {
+        let line = format!("Depende de {marker}.");
+
+        let violations = validate_part(with_line(valid_part(), PART_OBJECTIVE_LINE, &line));
+
+        assert_eq!(
+            violations,
+            vec!["parte-01.md:3 pending-marker-invalid"],
+            "marker {marker}"
+        );
+    }
+}
+
 // Ordem das violações
 
 #[test]
@@ -514,6 +604,37 @@ fn it_should_reject_an_amendment_that_cites_two_divergence_ids() {
     let violations = validate_amendment(lines);
 
     assert_eq!(violations, vec!["emenda-01.md:1 divergence-ref-invalid"]);
+}
+
+#[test]
+fn it_should_accept_an_amendment_that_cites_the_whole_multi_segment_divergence_id() {
+    let lines = with_line(valid_amendment(), 3, "divergences.login.cmp-001");
+    let text = text(&lines);
+    let file = SpecFile {
+        name: "emenda-01.md",
+        text: &text,
+    };
+
+    let mismatch = amendment_divergence_mismatch(&file, "divergences.login.cmp-001");
+
+    assert_eq!(mismatch, None);
+}
+
+#[test]
+fn it_should_flag_an_amendment_that_cites_a_longer_id_than_the_reviewed_divergence() {
+    let lines = with_line(valid_amendment(), 3, "divergences.login.cmp-001");
+    let text = text(&lines);
+    let file = SpecFile {
+        name: "emenda-01.md",
+        text: &text,
+    };
+
+    let mismatch = amendment_divergence_mismatch(&file, "divergences.login");
+
+    assert_eq!(
+        mismatch.map(|violation| format!("{} {}", violation.path, violation.code)),
+        Some("emenda-01.md:3 amendment-divergence-mismatch".to_owned())
+    );
 }
 
 // Emendas: itens de correção
@@ -1211,6 +1332,92 @@ fn it_should_refuse_with_spec_store_unusable_when_the_work_item_has_two_spec_fol
     let output = fixture.validate_from_linked();
 
     assert_spec_store_unusable(&output);
+}
+
+// Ids de vários segmentos
+
+#[test]
+fn it_should_refuse_a_citation_of_an_unconfirmed_premise_whose_id_extends_a_confirmed_one() {
+    let fixture = Fixture::new();
+    let assumed = json!({
+        "text": "t", "kind": "business", "status": "assumed", "work_item": WORK_ITEM,
+    });
+    fixture.append(vec![
+        node("premises.row-limit", "premise", business_premise_data()),
+        node("premises.row-limit.fallback", "premise", assumed),
+    ]);
+    let lines = with_line(
+        valid_part(),
+        PART_SECOND_CITATION_LINE,
+        "- premises.row-limit.fallback",
+    );
+    fixture.write("parte-01.md", &lines);
+
+    let output = fixture.validate_from_linked();
+
+    assert_eq!(output.code, Some(1));
+    assert_eq!(
+        error_details(&output),
+        vec!["parte-01.md:8 cited-id-unconfirmed"]
+    );
+}
+
+#[test]
+fn it_should_accept_a_citation_of_a_confirmed_premise_with_a_multi_segment_id() {
+    let fixture = Fixture::new();
+    fixture.append(vec![node(
+        "premises.a.b",
+        "premise",
+        business_premise_data(),
+    )]);
+    fixture.write("parte-01.md", &with_line(valid_part(), 7, "- premises.a.b"));
+
+    let output = fixture.validate_from_linked();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(json_line(&output.stdout)["ok"], json!(true));
+}
+
+#[test]
+fn it_should_pass_the_whole_multi_segment_gap_id_of_a_pending_marker_to_the_graph() {
+    let fixture = Fixture::new();
+    let gap = json!({ "question": "q", "context": "c", "work_item": WORK_ITEM });
+    fixture.append(vec![node("gaps.login.timeout", "gap", gap)]);
+    let lines = with_line(
+        valid_part(),
+        PART_OBJECTIVE_LINE,
+        "Depende de [PENDENTE: gaps.login.timeout].",
+    );
+    fixture.write("parte-01.md", &lines);
+
+    let output = fixture.validate_from_linked();
+
+    assert_eq!(output.code, Some(1));
+    assert_eq!(
+        error_details(&output),
+        vec!["parte-01.md:3 pending-gap-unresolved"]
+    );
+}
+
+#[test]
+fn it_should_cut_a_cited_id_before_a_dot_that_does_not_continue_the_name() {
+    let fixture = Fixture::new();
+    fixture.append(vec![node("premises.a", "premise", business_premise_data())]);
+    for citation in ["- premises.a.", "- premises.a.B", "- premises.a.-b"] {
+        fixture.write(
+            "parte-01.md",
+            &with_line(valid_part(), PART_SECOND_CITATION_LINE, citation),
+        );
+
+        let output = fixture.validate_from_linked();
+
+        assert_eq!(
+            output.code,
+            Some(0),
+            "citation {citation}: {}",
+            output.stderr
+        );
+    }
 }
 
 // Emendas na saída: nenhuma está aprovada nestes testes, então todas saem `pending`

@@ -241,9 +241,9 @@ O comando cria a pasta no diretório principal, com o `parte-01.md` já com as c
 Cada parte tem estas cinco seções `##`, nesta ordem:
 
 1. `Objetivo`
-2. `Diretivas e premissas aplicáveis`: os ids citados (`premises.<nome>` e `guidelines.<nome>`)
-3. `Comportamentos`: itens `- CMP-###: ...`, um comportamento por item
-4. `Critérios de aceitação`: itens `- CA-###: ...`, mensuráveis
+2. `Diretivas e premissas aplicáveis`: os ids citados (`premises.<nome>` e `guidelines.<nome>`). O `<nome>` pode ter vários segmentos separados por `.`, como `premises.row-limit.fallback`; vale também para `gaps.<nome>` e `divergences.<nome>`
+3. `Comportamentos`: itens `- CMP-###: ...`, um comportamento por item; ao menos um item
+4. `Critérios de aceitação`: itens `- CA-###: ...`, mensuráveis; ao menos um item
 5. `Fora de escopo`
 
 Cada parte tem no máximo `specs.max_lines` linhas (300 por padrão) e no máximo 64 KiB. Passou disso, divida o trabalho em mais partes completas, todas no mesmo work item. Uma dúvida aberta entra no texto como `[PENDENTE: gaps.<nome>]`.
@@ -295,6 +295,7 @@ As violações de uma parte reprovam sempre. As de uma emenda reprovam só quand
 |---|---|
 | `sections-invalid` | As seções não são exatamente as esperadas, na ordem: faltam, sobram ou estão trocadas. Parte: as cinco acima. Emenda: `Divergência`, `Correções` e `Motivo` |
 | `section-empty` | O corpo da seção só tem linhas em branco |
+| `section-without-items` | A seção `Comportamentos` ou `Critérios de aceitação` de uma parte tem texto, mas nenhum item `- `. A regra vale para cada parte, sem somar as outras. A seção em branco é `section-empty`, não esta |
 | `item-id-invalid` | Um item de `Comportamentos` não começa com `CMP-###`, um de `Critérios de aceitação` não começa com `CA-###`, ou um de `Correções` não começa com `EMD-###`. O número tem 3 dígitos |
 | `item-id-duplicate` | O mesmo `CMP-###` ou `CA-###` aparece em mais de um lugar das partes, ou o mesmo `EMD-###` em mais de um lugar das emendas, inclusive numa emenda abandonada |
 | `file-too-long` | O arquivo passa de `specs.max_lines` linhas. A linha reportada é a primeira acima do teto |
