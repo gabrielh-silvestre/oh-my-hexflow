@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use hexlog::SemanticId;
 use serde_json::{Value, json};
@@ -7,11 +7,14 @@ use super::engine::{Engine, parse_at, require_project_root};
 use super::error::AppError;
 use super::work_item::work_item_refusal;
 use crate::error::{OmhlError, RuleCode};
+use crate::mechanical::branch::work_item_id;
 use crate::ports::git::GitProbe;
 use crate::ports::specs::{SpecDocument, SpecStore, SpecStoreError};
 use crate::ports::workflow::read_workflow;
-use crate::probe::GitTopology;
+use crate::probe::{GitTopology, ProbeError};
+use crate::project::marker::find_marker;
 use crate::workflow::config::WorkflowConfig;
+use crate::workflow::lock::{Facts, Tool, Verdict, decide, parse_spec_path};
 use crate::workflow::spec::{
     AmendmentState, SpecFile, Violation, amendment_state, validate_graph, validate_spec,
 };
@@ -115,6 +118,68 @@ impl Engine<'_> {
             "amendments": amendments_report(&folder.amendments, &violations, &approved),
         }))
     }
+}
+
+/// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. A ordem importa: o
+/// git só é consultado quando o caminho já é de uma spec.
+pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
+    let Some(tool) = input["tool_name"].as_str().and_then(Tool::parse) else {
+        return Ok(Verdict::Allow);
+    };
+    let cwd = absolute_path(&input["cwd"])?;
+    let file_path = absolute_path(&input["tool_input"]["file_path"])?;
+    let Some(located) = find_marker(&cwd)? else {
+        return Ok(Verdict::Allow);
+    };
+    let config = read_workflow(&located.root)?;
+    let Some(spec) = parse_spec_path(&config.specs.dir, &file_path) else {
+        return Ok(Verdict::Allow);
+    };
+
+    let git_failed = |error: ProbeError| AppError::probe_failed(&error.message);
+    let probe = GitProbe::new(&located.root);
+    let main_dir = probe.main_dir().map_err(git_failed)?;
+    let work_item = format!("{WORK_ITEM_ID_PREFIX}{}", spec.work_item);
+    let frozen = probe
+        .local_branches()
+        .map_err(git_failed)?
+        .iter()
+        .any(|branch| work_item_id(branch).is_some_and(|id| id.as_str() == work_item));
+    let checkout = GitProbe::new(nearest_existing_dir(&file_path))
+        .checkout_dir()
+        .map_err(git_failed)?;
+    let specs_dir = main_dir.join(&config.specs.dir);
+    let store = SpecStore::new(specs_dir.clone());
+    let folder_files = store
+        .folder_files(&spec.folder)
+        .map_err(spec_store_refusal)?;
+    let file_exists = store
+        .file_exists(&spec.folder, &spec.file)
+        .map_err(spec_store_refusal)?;
+    let facts = Facts {
+        frozen,
+        linked_worktree: checkout != main_dir,
+        file_exists,
+        folder_files: &folder_files,
+        main_folder: &specs_dir.join(&spec.folder),
+    };
+
+    Ok(decide(tool, &spec, &facts))
+}
+
+fn absolute_path(value: &Value) -> Result<PathBuf, AppError> {
+    match value.as_str().map(Path::new) {
+        Some(path) if path.is_absolute() => Ok(path.to_path_buf()),
+        _ => Err(AppError::invalid_hook_input()),
+    }
+}
+
+/// O alvo de um `Write` pode ainda não existir, nem a pasta dele.
+fn nearest_existing_dir(path: &Path) -> &Path {
+    path.ancestors()
+        .skip(1)
+        .find(|dir| dir.is_dir())
+        .unwrap_or(Path::new("/"))
 }
 
 fn open_store(root: &Path) -> Result<(WorkflowConfig, SpecStore), AppError> {

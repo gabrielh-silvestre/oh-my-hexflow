@@ -1,4 +1,5 @@
 use crate::error::{OmhlError, RuleCode};
+use crate::workflow::spec::is_digits;
 
 use super::append::NodeItem;
 
@@ -73,5 +74,5 @@ fn forbid_field(node: &NodeItem<'_>, key: &str, pointer: &str) -> Result<(), Omh
 /// `emenda-NN`, sempre com dois dígitos.
 fn is_amendment_id(id: &str) -> bool {
     id.strip_prefix(AMENDMENT_PREFIX)
-        .is_some_and(|number| number.len() == 2 && number.bytes().all(|byte| byte.is_ascii_digit()))
+        .is_some_and(|number| is_digits(number, 2))
 }

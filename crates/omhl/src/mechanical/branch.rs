@@ -79,7 +79,7 @@ pub fn branch_prefix(branch: &str) -> Option<&str> {
 }
 
 /// `<tipo>/wi-<id>__<slug>`: o `<id>` vai até o primeiro `__` e precisa ser nome de um segmento.
-fn work_item_id(branch: &str) -> Option<SemanticId> {
+pub fn work_item_id(branch: &str) -> Option<SemanticId> {
     let (kind, rest) = branch.split_once('/')?;
     let (id, slug) = rest.strip_prefix("wi-")?.split_once("__")?;
     if kind.is_empty() || slug.is_empty() {

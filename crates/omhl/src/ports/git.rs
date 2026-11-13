@@ -209,6 +209,12 @@ impl GitProbe {
         Ok(text.lines().map(str::to_owned).collect())
     }
 
+    /// Raiz do checkout (diretório principal ou worktree ligada) que contém o diretório da sonda.
+    pub fn checkout_dir(&self) -> Result<PathBuf, ProbeError> {
+        self.line(&["rev-parse", "--path-format=absolute", "--show-toplevel"])
+            .map(PathBuf::from)
+    }
+
     fn mark_path(&self) -> Result<PathBuf, ProbeError> {
         let git_dir = self.line(&["rev-parse", "--path-format=absolute", "--absolute-git-dir"])?;
         Ok(Path::new(&git_dir).join(MARK_FILE))

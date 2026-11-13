@@ -432,3 +432,196 @@ fn it_should_keep_the_warning_line_within_480_characters() {
 
     assert!(warning_line(&context).chars().count() <= 480);
 }
+
+// spec-lock: o que independe de repositório git
+
+fn pre_tool_use(cwd: &Path, tool_input: &Value) -> String {
+    json!({
+        "session_id": "s1",
+        "hook_event_name": "PreToolUse",
+        "cwd": cwd,
+        "tool_name": "Write",
+        "tool_input": tool_input,
+    })
+    .to_string()
+}
+
+/// Roda `omhl hook spec-lock` de uma pasta que não é a do projeto, para que o `cwd` só possa vir do stdin.
+fn run_spec_lock(xdg: &Path, stdin: &str) -> Child {
+    let elsewhere = TempDir::new().expect("other directory is created");
+
+    omhl(&["hook", "spec-lock"])
+        .cwd(elsewhere.path())
+        .xdg(xdg)
+        .stdin(stdin)
+        .run()
+}
+
+fn assert_released_with_code(output: &Child, code: &str) {
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert_eq!(output.stderr.matches('\n').count(), 1, "one error line");
+    assert_eq!(json_line(&output.stderr)["error"]["code"], json!(code));
+}
+
+#[test]
+fn it_should_print_nothing_and_create_nothing_for_spec_lock_without_a_marker() {
+    let bare = TempDir::new().expect("bare directory is created");
+    let xdg = TempDir::new().expect("data directory is created");
+    let spec = bare.path().join(".omhl/specs/wi-w1__login/parte-01.md");
+
+    let output = run_spec_lock(
+        xdg.path(),
+        &pre_tool_use(bare.path(), &json!({ "file_path": spec, "content": "x" })),
+    );
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert!(output.stderr.is_empty(), "stderr stays empty");
+    assert_eq!(data_files(xdg.path()), 0, "no database file is created");
+}
+
+#[test]
+fn it_should_release_spec_lock_with_an_error_line_on_invalid_stdin() {
+    let project = Project::new("acme");
+
+    let output = run_spec_lock(project.xdg(), "{");
+
+    assert_released_with_code(&output, "input-invalid-json");
+}
+
+#[test]
+fn it_should_release_spec_lock_with_an_error_line_on_a_relative_cwd() {
+    let project = Project::new("acme");
+    let stdin = pre_tool_use(
+        Path::new("relative/project"),
+        &json!({ "file_path": "/x/.omhl/specs/wi-w1__login/parte-01.md", "content": "x" }),
+    );
+
+    let output = run_spec_lock(project.xdg(), &stdin);
+
+    assert_released_with_code(&output, "invalid-hook-input");
+}
+
+#[test]
+fn it_should_release_spec_lock_with_an_error_line_when_file_path_is_missing() {
+    let project = Project::new("acme");
+    let stdin = pre_tool_use(project.dir(), &json!({ "content": "x" }));
+
+    let output = run_spec_lock(project.xdg(), &stdin);
+
+    assert_released_with_code(&output, "invalid-hook-input");
+}
+
+#[test]
+fn it_should_release_spec_lock_with_an_error_line_when_file_path_is_relative() {
+    let project = Project::new("acme");
+    let stdin = pre_tool_use(
+        project.dir(),
+        &json!({ "file_path": ".omhl/specs/wi-w1__login/parte-01.md", "content": "x" }),
+    );
+
+    let output = run_spec_lock(project.xdg(), &stdin);
+
+    assert_released_with_code(&output, "invalid-hook-input");
+}
+
+#[test]
+fn it_should_stay_silent_for_spec_lock_on_a_tool_without_a_file_path() {
+    let project = Project::new("acme");
+    let stdin = json!({
+        "session_id": "s1",
+        "hook_event_name": "PreToolUse",
+        "cwd": project.dir(),
+        "tool_name": "Bash",
+        "tool_input": { "command": "ls" },
+    });
+
+    let output = run_spec_lock(project.xdg(), &stdin.to_string());
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert!(output.stderr.is_empty(), "stderr stays empty");
+}
+
+#[test]
+fn it_should_tolerate_extra_stdin_fields_in_spec_lock() {
+    let project = Project::new("acme");
+    let stdin = json!({
+        "session_id": "s1",
+        "transcript_path": "/t.jsonl",
+        "permission_mode": "default",
+        "hook_event_name": "PreToolUse",
+        "cwd": project.dir(),
+        "tool_name": "Write",
+        "tool_use_id": "u1",
+        "tool_input": {
+            "file_path": project.dir().join("src/main.rs"),
+            "content": "x",
+            "extra": { "a": 1 },
+        },
+        "future": true,
+    });
+
+    let output = run_spec_lock(project.xdg(), &stdin.to_string());
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert!(output.stderr.is_empty(), "stderr stays empty");
+}
+
+// Sem comando de descongelar
+
+const UNFREEZE_WORDS: [&str; 4] = ["unfreeze", "unlock", "thaw", "defrost"];
+
+fn help_of(args: &[&str]) -> String {
+    let output = omhl(args).run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+
+    output.stdout.to_lowercase()
+}
+
+#[test]
+fn it_should_list_session_start_and_spec_lock_as_the_hook_events() {
+    let help = help_of(&["hook", "--help"]);
+
+    assert!(help.contains("session-start"), "help: {help}");
+    assert!(help.contains("spec-lock"), "help: {help}");
+}
+
+#[test]
+fn it_should_offer_no_way_to_unfreeze_a_spec_in_any_help_page() {
+    let pages = [
+        help_of(&["--help"]),
+        help_of(&["hook", "--help"]),
+        help_of(&["spec", "--help"]),
+    ];
+
+    for word in UNFREEZE_WORDS {
+        for page in &pages {
+            assert!(!page.contains(word), "a help page mentions {word}");
+        }
+    }
+}
+
+#[test]
+fn it_should_refuse_an_unfreeze_subcommand_with_a_usage_error() {
+    let codes: Vec<Option<i32>> = [
+        &["hook", "unfreeze"][..],
+        &["spec", "unfreeze", "work-items.w1"],
+        &["unfreeze", "work-items.w1"],
+    ]
+    .iter()
+    .map(|args| omhl(args).run().code)
+    .collect();
+
+    assert_eq!(codes, vec![Some(2); 3]);
+}
+
+#[test]
+fn it_should_refuse_any_argument_to_spec_lock() {
+    let output = omhl(&["hook", "spec-lock", "--unfreeze"]).run();
+
+    assert_eq!(output.code, Some(2));
+}

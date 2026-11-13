@@ -10,6 +10,7 @@ use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
 use crate::app::runtime::Runtime;
+use crate::app::{Verdict, spec_lock as check_spec_lock};
 use crate::project::Env;
 
 /// Without a marker the hook stays silent; any failure leaves stdout empty so no partial context is injected.
@@ -36,6 +37,28 @@ pub fn session_start(
             ExitCode::from(1)
         }
     }
+}
+
+/// Nunca sai com 2: a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
+pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
+    match read_json_input(stdin).and_then(|input| check_spec_lock(&input)) {
+        Ok(Verdict::Allow) => {}
+        Ok(Verdict::Deny { reason, .. }) => {
+            let output = json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason,
+                }
+            });
+            let _ = writeln!(out, "{output}");
+        }
+        Err(error) => {
+            let _ = writeln!(err, "{}", error.to_json());
+        }
+    }
+
+    ExitCode::SUCCESS
 }
 
 fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<String>, AppError> {

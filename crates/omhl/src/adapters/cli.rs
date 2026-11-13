@@ -189,6 +189,8 @@ pub enum ReportCommand {
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,
+    /// Deny edits to the spec of a work item that already has a branch; reads the PreToolUse event on stdin.
+    SpecLock,
 }
 
 pub fn run(
@@ -216,6 +218,9 @@ pub fn run(
         Command::Hook {
             event: HookEvent::SessionStart,
         } => hook::session_start(stdin, out, err, env),
+        Command::Hook {
+            event: HookEvent::SpecLock,
+        } => hook::spec_lock(stdin, out, err),
         Command::Mcp => match start_dir(project_dir.as_deref()) {
             Ok(dir) => mcp::serve(BufReader::new(stdin), out, &dir, db, env),
             Err(error) => report(Err(error), out, err),

@@ -76,6 +76,22 @@ impl SpecStore {
         Ok(Some(spec))
     }
 
+    /// Nomes dos arquivos da pasta `folder`; pasta ausente lista vazio.
+    pub fn folder_files(&self, folder: &str) -> Result<Vec<String>, SpecStoreError> {
+        list_names(&self.dir.join(folder))
+    }
+
+    /// Não segue link simbólico: um link pendente também ocupa o nome.
+    pub fn file_exists(&self, folder: &str, file: &str) -> Result<bool, SpecStoreError> {
+        match fs::symlink_metadata(self.dir.join(folder).join(file)) {
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+            Err(_) => Err(SpecStoreError::Unusable(
+                "the spec file cannot be inspected",
+            )),
+        }
+    }
+
     fn find_folder(&self, work_item: &str) -> Result<Option<PathBuf>, SpecStoreError> {
         let prefix = folder_prefix(work_item);
 

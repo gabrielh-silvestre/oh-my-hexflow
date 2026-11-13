@@ -434,15 +434,21 @@ fn item_id<'a>(item: &Item<'a>, prefix: &str) -> Option<&'a str> {
 fn is_id(token: &str, prefix: &str) -> bool {
     token
         .strip_prefix(prefix)
-        .is_some_and(|digits| digits.len() == 3 && digits.bytes().all(|byte| byte.is_ascii_digit()))
+        .is_some_and(|digits| is_digits(digits, 3))
+}
+
+/// `text` tem exatamente `len` dígitos ASCII.
+pub(crate) fn is_digits(text: &str, len: usize) -> bool {
+    text.len() == len && text.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// `emenda-NN.md` com exatamente dois dígitos.
-fn amendment_number(name: &str) -> Option<u32> {
+pub(crate) fn amendment_number(name: &str) -> Option<u32> {
     let digits = name
         .strip_prefix(AMENDMENT_FILE_PREFIX)?
         .strip_suffix(FILE_SUFFIX)?;
-    if digits.len() != 2 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+
+    if !is_digits(digits, 2) {
         return None;
     }
 
