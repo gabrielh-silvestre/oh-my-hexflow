@@ -1,6 +1,7 @@
 mod support;
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -996,6 +997,41 @@ fn it_should_deny_a_new_part_in_a_new_folder_of_a_frozen_work_item() {
 }
 
 #[test]
+fn it_should_deny_a_file_outside_the_spec_family_in_a_new_folder_of_a_frozen_work_item() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.decoy_file("notas.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FOLDER_UNKNOWN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_allow_a_new_file_outside_the_spec_family_in_an_existing_folder_of_a_frozen_work_item()
+{
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("notas.md"));
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_allow_a_file_outside_the_spec_family_in_a_new_folder_when_the_work_item_has_no_branch()
+{
+    let repo = Repo::new();
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.decoy_file("notas.md"));
+
+    assert_allowed(&output);
+}
+
+#[test]
 fn it_should_allow_a_new_folder_when_the_work_item_has_no_branch() {
     let repo = Repo::new();
     repo.seed(DEFAULT_SPECS, "parte-01.md");
@@ -1007,39 +1043,57 @@ fn it_should_allow_a_new_folder_when_the_work_item_has_no_branch() {
 
 // Fora de `specs.dir`: nada é aberto
 
-/// Projeto sem git, `--db` sob um arquivo comum (não pode nascer) e `PATH` vazio (nenhum `git`
-/// pode ser executado): o que o hook abrir aparece como erro no stderr.
-fn run_with_nothing_openable(project: &Project, file_path: &Path) -> Child {
+/// Projeto sem git, `--db` sob um arquivo comum (não pode nascer) e um `git` falso no `PATH` que
+/// grava um sentinela e falha: o banco aberto aparece como erro no stderr, e o git consultado,
+/// como sentinela. Devolve a saída e se o `git` falso foi executado.
+fn run_with_nothing_openable(project: &Project, file_path: &Path) -> (Child, bool) {
     let scratch = TempDir::new().expect("scratch directory is created");
     let blocker = scratch.path().join("blocker");
     fs::write(&blocker, "not a directory").expect("blocker file is written");
     let db = blocker.join("omhl.db");
-    let empty_path = scratch.path().join("empty-path");
-    fs::create_dir(&empty_path).expect("empty PATH directory is created");
+    let fake_bin = scratch.path().join("fake-bin");
+    fs::create_dir(&fake_bin).expect("fake git directory is created");
+    let sentinel = scratch.path().join("git-was-called");
+    let fake_git = fake_bin.join("git");
+    fs::write(
+        &fake_git,
+        format!("#!/bin/sh\n: > '{}'\nexit 1\n", sentinel.display()),
+    )
+    .expect("fake git is written");
+    fs::set_permissions(&fake_git, fs::Permissions::from_mode(0o755))
+        .expect("fake git is made executable");
     let elsewhere = TempDir::new().expect("other directory is created");
 
-    omhl(&["--db", &db.to_string_lossy(), "hook", "spec-lock"])
+    let output = omhl(&["--db", &db.to_string_lossy(), "hook", "spec-lock"])
         .cwd(elsewhere.path())
         .xdg(project.xdg())
-        .env("PATH", &empty_path)
+        .env("PATH", &fake_bin)
         .stdin(payload(project.dir(), "Write", file_path))
-        .run()
+        .run();
+
+    (output, sentinel.exists())
 }
 
 #[test]
 fn it_should_open_nothing_for_a_path_outside_the_specs_dir() {
     let project = Project::new("acme");
 
-    let output = run_with_nothing_openable(&project, &project.dir().join("src/main.rs"));
+    let (output, git_called) =
+        run_with_nothing_openable(&project, &project.dir().join("src/main.rs"));
 
     assert_allowed(&output);
+    assert!(
+        !git_called,
+        "git was consulted for a path outside any spec folder"
+    );
 }
 
 #[test]
-fn it_should_open_nothing_for_a_work_item_folder_outside_the_specs_dir() {
+fn it_should_open_no_database_for_a_work_item_folder_outside_the_specs_dir() {
     let project = Project::new("acme");
 
-    let output = run_with_nothing_openable(
+    // Sem o git não há como saber o `specs.dir`: a pasta de work item faz o hook consultar o git, mas nada além.
+    let (output, _git_called) = run_with_nothing_openable(
         &project,
         &project.dir().join("docs").join(FOLDER).join("parte-01.md"),
     );
@@ -1051,13 +1105,18 @@ fn it_should_open_nothing_for_a_work_item_folder_outside_the_specs_dir() {
 fn it_should_open_nothing_for_a_path_under_the_specs_dir_without_a_work_item_segment() {
     let project = Project::new("acme");
 
-    let output = run_with_nothing_openable(&project, &project.dir().join(".omhl/specs/notes.md"));
+    let (output, git_called) =
+        run_with_nothing_openable(&project, &project.dir().join(".omhl/specs/notes.md"));
 
     assert_allowed(&output);
+    assert!(
+        !git_called,
+        "git was consulted for a path without a work item folder"
+    );
 }
 
 #[test]
-fn it_should_release_with_an_error_line_when_a_spec_path_needs_git_that_cannot_run() {
+fn it_should_release_with_an_error_line_when_a_spec_path_needs_git_that_fails() {
     let project = Project::new("acme");
     let spec = project
         .dir()
@@ -1065,9 +1124,10 @@ fn it_should_release_with_an_error_line_when_a_spec_path_needs_git_that_cannot_r
         .join(FOLDER)
         .join("parte-01.md");
 
-    let output = run_with_nothing_openable(&project, &spec);
+    let (output, git_called) = run_with_nothing_openable(&project, &spec);
 
     assert_released_with_error(&output);
+    assert!(git_called, "git was not consulted for a spec path");
 }
 
 // `specs.dir` customizado

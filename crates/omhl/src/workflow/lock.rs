@@ -54,6 +54,16 @@ pub struct Facts<'a> {
     pub main_folder: &'a Path,
 }
 
+/// Pré-filtro barato, só texto: algum componente do caminho tem a forma da pasta de work item. A pasta tem forma fixa mesmo com `specs.dir` customizado, então sem ela o caminho nunca é de spec.
+pub fn has_spec_folder_component(file_path: &Path) -> bool {
+    file_path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|name| work_item_of_folder(name).is_some())
+    })
+}
+
 /// Só texto: `.` e `..` são resolvidos sem tocar o disco, para `specs/../specs/wi-x__y/...` não escapar.
 pub fn parse_spec_path(specs_dir: &str, file_path: &Path) -> Option<SpecPath> {
     let names = normalized_names(file_path)?;
@@ -91,7 +101,7 @@ pub fn next_amendment(folder_files: &[String]) -> String {
     format!("{AMENDMENT_PREFIX}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
-/// Ordem: worktree ligada; sem branch libera; congelada nega arquivo de spec em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
+/// Ordem: worktree ligada; sem branch libera; congelada nega qualquer arquivo em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {
@@ -105,7 +115,7 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if !facts.frozen {
         return Verdict::Allow;
     }
-    if is_spec_family(spec) && !facts.folder_exists {
+    if !facts.folder_exists {
         return Verdict::Deny {
             code: FOLDER_UNKNOWN,
             reason: format!(

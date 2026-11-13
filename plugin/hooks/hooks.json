@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "omhl hook spec-lock || true",
+            "command": "omhl hook spec-lock || exit 1",
             "timeout": 10
           }
         ]

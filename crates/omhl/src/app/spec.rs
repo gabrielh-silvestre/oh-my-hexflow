@@ -16,7 +16,9 @@ use crate::ports::workflow::{read_policy, read_workflow};
 use crate::probe::{GitTopology, ProbeError};
 use crate::project::marker::{Located, find_marker};
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
-use crate::workflow::lock::{Facts, Tool, Verdict, decide, parse_spec_path};
+use crate::workflow::lock::{
+    Facts, Tool, Verdict, decide, has_spec_folder_component, parse_spec_path,
+};
 use crate::workflow::names::WORK_ITEM_ID_PREFIX;
 use crate::workflow::spec::{
     AmendmentState, SPEC_STALE, SpecFile, Violation, amendment_divergence_mismatch,
@@ -283,13 +285,16 @@ fn folder_violations(
 }
 
 /// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. A ordem importa: o
-/// git só é consultado quando o caminho já é de uma spec.
+/// git só é consultado quando algum componente do caminho tem a forma da pasta de work item.
 pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
     let Some(tool) = input["tool_name"].as_str().and_then(Tool::parse) else {
         return Ok(Verdict::Allow);
     };
     let cwd = absolute_path(&input["cwd"])?;
     let file_path = absolute_path(&input["tool_input"]["file_path"])?;
+    if !has_spec_folder_component(&file_path) {
+        return Ok(Verdict::Allow);
+    }
     let Some(located) = find_project(&file_path, &cwd)? else {
         return Ok(Verdict::Allow);
     };

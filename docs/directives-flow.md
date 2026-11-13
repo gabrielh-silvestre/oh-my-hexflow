@@ -334,7 +334,7 @@ O hook lê o evento no stdin e decide por regras fechadas:
 1. O caminho precisa estar sob `<specs.dir>/wi-<id>__<slug>/`. Senão ele sai com `0` sem abrir banco nem git. O caminho é normalizado no texto (`.` e `..`) antes do filtro.
 2. Está congelada a spec cujo work item tem uma branch local (`tipo/wi-<id>__<slug>`). O hook só olha o disco e o git, nunca o banco.
 3. Numa spec congelada, o hook nega `Edit` e `MultiEdit` em qualquer arquivo da pasta, `Write` sobre um arquivo que já existe e `Write` de uma `parte-NN.md` nova.
-4. Numa spec congelada, `parte-*.md` e `emenda-*.md` só se escrevem numa pasta que já existe. Pasta nova do work item (por exemplo, um slug digitado errado) é negada com `spec-folder-unknown`.
+4. Numa spec congelada, nenhum arquivo se escreve numa pasta que não existe. Pasta nova do work item (por exemplo, um slug digitado errado) é negada com `spec-folder-unknown`.
 5. A única exceção é a criação de emenda: `Write` de um arquivo que ainda não existe, chamado `emenda-NN.md`, em que `NN` é o próximo número da pasta (o maior existente mais um, ou `01`). Um arquivo novo que não é `parte-*` nem `emenda-*` (por exemplo `notas.md`) também passa.
 6. Escrever uma spec dentro de uma worktree ligada é barrado, com ou sem branch do work item.
 
@@ -348,9 +348,9 @@ A negação sai no stdout, com código de saída `0`:
 |---|---|---|
 | `spec-frozen` | A edição é de uma spec congelada. A mensagem diz o caminho da emenda que se pode criar | Registre uma `divergence` e crie a emenda (seção 9) |
 | `spec-in-linked-worktree` | O caminho está numa worktree ligada. As specs vivem só no diretório principal | Escreva no caminho do diretório principal que a mensagem informa |
-| `spec-folder-unknown` | O work item tem branch e a pasta do caminho não existe. Vale para `parte-*.md` e `emenda-*.md` | Escreva a emenda na pasta de spec que o work item já tem |
+| `spec-folder-unknown` | O work item tem branch e a pasta do caminho não existe. Vale para qualquer arquivo | Escreva a emenda na pasta de spec que o work item já tem |
 
-O subcomando `hook spec-lock` nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto pelo caminho do arquivo e, se ele estiver fora de qualquer projeto, pelo `cwd` da sessão. Um `omhl` velho, sem o subcomando, é outro caso: o clap sai com `2`, e o envoltório `|| true` do `hooks.json` o converte em `0` (seção 10). Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
+O subcomando `hook spec-lock` nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto pelo caminho do arquivo e, se ele estiver fora de qualquer projeto, pelo `cwd` da sessão. Um `omhl` velho, sem o subcomando, é outro caso: o clap sai com `2`, e o envoltório `|| exit 1` do `hooks.json` o converte em `1` (seção 10). Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
 
 ## 8. Gap, divergência e retro
 
@@ -515,7 +515,7 @@ O gate do `wt` e o hook `spec-lock` estão ativos. A ativação seguiu esta orde
 3. Só então versione o `.config/wt.toml` e a entrada `PreToolUse` (`matcher` `Edit|Write|MultiEdit`) em `plugin/hooks/hooks.json`.
 4. O dono roda `wt config approvals add` e confere com `wt config approvals list` (seção 5), antes de qualquer `wt switch` do agente.
 
-Depois de puxar mudanças, recompile e reinstale o `omhl` do `PATH` antes de usar o plugin. Um `omhl` velho, sem o subcomando `hook spec-lock`, sairia com `2` (erro de uso do clap), e em `PreToolUse` isso bloquearia todo `Edit` e `Write`. O hook roda como `omhl hook spec-lock || true`, que converte essa saída em `0`: a escrita passa e o congelamento fica sem efeito até a reinstalação (limite abaixo). A negação legítima vai por JSON com saída `0` e não depende do código de saída.
+Depois de puxar mudanças, recompile e reinstale o `omhl` do `PATH` antes de usar o plugin. Um `omhl` velho, sem o subcomando `hook spec-lock`, sairia com `2` (erro de uso do clap), e em `PreToolUse` isso bloquearia todo `Edit` e `Write`. O hook roda como `omhl hook spec-lock || exit 1`, que converte essa saída em `1` (erro não bloqueante, pois só a saída `2` bloqueia): a escrita passa, o Claude Code mostra o aviso de erro do hook, e o congelamento fica sem efeito até a reinstalação (limite abaixo). O mesmo vale para o binário ausente (saída `127`). A negação legítima vai por JSON com saída `0` e não depende do código de saída.
 
 ### Bypasses do gate
 
@@ -532,8 +532,8 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 ### Limites
 
-- O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo nem do `cwd`, o binário `omhl` não existe no `PATH`, o `omhl` do `PATH` é velho e não tem o subcomando `hook spec-lock` (o envoltório `|| true` converte a saída `2` do clap em `0`), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
-- O hook de congelamento vale para `Edit, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
+- O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo nem do `cwd`, o binário `omhl` não existe no `PATH`, o `omhl` do `PATH` é velho e não tem o subcomando `hook spec-lock` (o envoltório `|| exit 1` converte a saída `2` do clap em `1`, e o aviso de erro do hook fica visível no Claude Code), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
+- O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
 - O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
 - Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`. O comando não tem a guarda `{% if branch %}`.
 - O `confirmed_by` é autodeclarado por qualquer canal. A tool `append` do MCP e a CLI aceitam a mesma confirmação inventada, e o record forjado sai igual ao legítimo. O MCP protege só o rótulo de autoria (`agent: "claude"`), que a CLI perde com `env -u CLAUDECODE`. A trava técnica contra forja não existe nesta entrega (seção 3).

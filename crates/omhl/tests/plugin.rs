@@ -41,7 +41,7 @@ fn it_should_wire_the_session_start_hook_in_exec_form_and_the_spec_lock_hook_in_
                     "matcher": "Edit|Write|MultiEdit",
                     "hooks": [{
                         "type": "command",
-                        "command": "omhl hook spec-lock || true",
+                        "command": "omhl hook spec-lock || exit 1",
                         "timeout": 10,
                     }],
                 }],
