@@ -9,6 +9,7 @@ mod load;
 mod read;
 mod report;
 mod spec;
+mod spec_facts;
 mod wire;
 mod work_item;
 

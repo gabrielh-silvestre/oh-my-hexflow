@@ -4,10 +4,11 @@
 use std::collections::{HashMap, HashSet};
 
 use super::config::SpecsConfig;
+use super::gap::GapState;
 
 const PART_SECTIONS: [&str; 5] = [
     "Objetivo",
-    "Diretivas e premissas aplicáveis",
+    DIRECTIVES,
     "Comportamentos",
     "Critérios de aceitação",
     "Fora de escopo",
@@ -20,10 +21,15 @@ const CORRECTIONS: &str = "Correções";
 const HEADING_PREFIX: &str = "## ";
 const ITEM_PREFIX: &str = "- ";
 const PENDING_MARKER: &str = "[PENDENTE";
+const GAP_PREFIX: &str = "gaps.";
 const PENDING_PREFIX: &str = "[PENDENTE: gaps.";
 const DIVERGENCE_REF_PREFIX: &str = "divergences.";
 const AMENDMENT_FILE_PREFIX: &str = "emenda-";
 const FILE_SUFFIX: &str = ".md";
+const DIRECTIVES: &str = "Diretivas e premissas aplicáveis";
+const CITED_PREFIXES: [&str; 2] = ["premises.", "guidelines."];
+const BUSINESS_KIND: &str = "business";
+const CLOSED_RESOLUTIONS: [&str; 2] = ["code-fixed", "accepted"];
 
 #[derive(Debug, Clone, Copy)]
 pub struct SpecFile<'a> {
@@ -55,6 +61,14 @@ enum Code {
     AmendmentDefinesItem,
     AmendmentNameInvalid,
     AmendmentNumberDuplicate,
+    CitedIdUnknown,
+    CitedIdUnconfirmed,
+    BusinessPremiseMissing,
+    PendingGapUnresolved,
+    AmendmentDivergenceUnknown,
+    AmendmentDivergenceForeign,
+    AmendmentDivergenceClosed,
+    AmendmentCorrectionMissing,
 }
 
 impl Code {
@@ -73,6 +87,14 @@ impl Code {
             Code::AmendmentDefinesItem => "amendment-defines-item",
             Code::AmendmentNameInvalid => "amendment-name-invalid",
             Code::AmendmentNumberDuplicate => "amendment-number-duplicate",
+            Code::CitedIdUnknown => "cited-id-unknown",
+            Code::CitedIdUnconfirmed => "cited-id-unconfirmed",
+            Code::BusinessPremiseMissing => "business-premise-missing",
+            Code::PendingGapUnresolved => "pending-gap-unresolved",
+            Code::AmendmentDivergenceUnknown => "amendment-divergence-unknown",
+            Code::AmendmentDivergenceForeign => "amendment-divergence-foreign",
+            Code::AmendmentDivergenceClosed => "amendment-divergence-closed",
+            Code::AmendmentCorrectionMissing => "amendment-correction-missing",
         }
     }
 }
@@ -295,16 +317,7 @@ fn check_correction<'a>(
             code: Code::ItemIdDuplicate,
         });
     }
-    let target = item.text[token.len()..]
-        .split_once(':')
-        .filter(|(_, value)| !value.trim().is_empty())
-        .map(|(target, _)| target.trim())
-        .filter(|target| {
-            ["CMP-", "CA-", "EMD-"]
-                .iter()
-                .any(|prefix| is_id(target, prefix))
-        });
-    let Some(target) = target else {
+    let Some(target) = correction_target(item, token) else {
         found.push(Found {
             line: item.line,
             code: Code::CorrectionInvalid,
@@ -324,6 +337,19 @@ fn check_correction<'a>(
             code: Code::CorrectionTargetUnknown,
         });
     }
+}
+
+/// O item corrigido por `- EMD-### <alvo>: <novo valor>`; o valor não pode ser vazio.
+fn correction_target<'a>(item: &Item<'a>, emd: &str) -> Option<&'a str> {
+    item.text[emd.len()..]
+        .split_once(':')
+        .filter(|(_, value)| !value.trim().is_empty())
+        .map(|(target, _)| target.trim())
+        .filter(|target| {
+            ["CMP-", "CA-", "EMD-"]
+                .iter()
+                .any(|prefix| is_id(target, prefix))
+        })
 }
 
 /// Seção fora de ordem ou a mais na linha dela; seção faltando no fim, na linha 1.
@@ -472,4 +498,216 @@ fn count_divergence_refs(line: &str) -> usize {
     line.match_indices(DIVERGENCE_REF_PREFIX)
         .filter(|(start, _)| gap_name_len(&line[start + DIVERGENCE_REF_PREFIX.len()..]) > 0)
         .count()
+}
+
+/// Fatos do grafo de que as regras de `validate_graph` precisam; o app os monta do banco.
+pub trait SpecFacts {
+    fn exists(&self, id: &str) -> bool;
+    /// Premissa: `confirmed` com `confirmed_by`. Diretiva: `confirmed_by`, de extension ou nativa.
+    fn confirmed(&self, id: &str) -> bool;
+    /// `business` ou `technical` (premissa).
+    fn kind(&self, id: &str) -> Option<String>;
+    fn work_item(&self, id: &str) -> Option<String>;
+    /// Gap inexistente vale `Open`.
+    fn gap_state(&self, gap: &str) -> GapState;
+    fn divergence(&self, id: &str) -> Option<DivergenceFact>;
+    /// Há `divergence` do work item em `spec-stale` com `amendment` igual a `amendment` (sem `.md`).
+    fn amendment_approved(&self, work_item: &str, amendment: &str) -> bool;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DivergenceFact {
+    pub work_item: String,
+    pub resolution: String,
+    pub source_ref: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AmendmentState {
+    Approved,
+    Pending,
+}
+
+pub fn amendment_state(
+    work_item: &str,
+    amendment_file: &str,
+    facts: &impl SpecFacts,
+) -> AmendmentState {
+    let name = amendment_file
+        .strip_suffix(FILE_SUFFIX)
+        .unwrap_or(amendment_file);
+
+    if facts.amendment_approved(work_item, name) {
+        AmendmentState::Approved
+    } else {
+        AmendmentState::Pending
+    }
+}
+
+/// Só as regras que dependem do grafo; as estruturais ficam em `validate_spec`. A ordem é a de
+/// `validate_spec`: arquivos como recebidos (partes, depois emendas) e, em cada um, a linha crescente.
+pub fn validate_graph(
+    work_item: &str,
+    parts: &[SpecFile<'_>],
+    amendments: &[SpecFile<'_>],
+    config: &SpecsConfig,
+    facts: &impl SpecFacts,
+) -> Vec<Violation> {
+    let part_docs: Vec<Doc> = parts.iter().map(Doc::new).collect();
+    let mut part_found: Vec<Vec<Found>> = part_docs
+        .iter()
+        .map(|doc| check_part_graph(doc, facts))
+        .collect();
+    let cites_business = part_docs
+        .iter()
+        .any(|doc| cites_business_premise(doc, work_item, facts));
+    if config.cite_business_premise
+        && !cites_business
+        && let (Some(doc), Some(found)) = (part_docs.first(), part_found.first_mut())
+    {
+        found.push(Found {
+            line: doc.section(DIRECTIVES).map_or(1, |section| section.line),
+            code: Code::BusinessPremiseMissing,
+        });
+    }
+
+    let mut violations = Vec::new();
+    for (doc, found) in part_docs.into_iter().zip(part_found) {
+        violations.extend(doc.into_violations(found));
+    }
+    for file in amendments {
+        let doc = Doc::new(file);
+        let found = check_amendment_graph(&doc, work_item, facts);
+        violations.extend(doc.into_violations(found));
+    }
+
+    violations
+}
+
+fn check_part_graph(doc: &Doc, facts: &impl SpecFacts) -> Vec<Found> {
+    let mut found = check_pending_gaps(doc, facts);
+    for (line, id) in cited_ids(doc) {
+        let code = if !facts.exists(id) {
+            Code::CitedIdUnknown
+        } else if !facts.confirmed(id) {
+            Code::CitedIdUnconfirmed
+        } else {
+            continue;
+        };
+        found.push(Found { line, code });
+    }
+
+    found
+}
+
+fn check_amendment_graph(doc: &Doc, work_item: &str, facts: &impl SpecFacts) -> Vec<Found> {
+    let mut found = check_pending_gaps(doc, facts);
+    let Some(section) = doc.section(DIVERGENCE) else {
+        return found;
+    };
+    let refs = prefixed_ids(section, DIVERGENCE_REF_PREFIX);
+    // Zero ou várias referências já são `divergence-ref-invalid`, da validação estrutural.
+    if let [(line, id)] = refs[..]
+        && let Some(code) = divergence_violation(doc, id, work_item, facts)
+    {
+        found.push(Found { line, code });
+    }
+
+    found
+}
+
+fn divergence_violation(
+    doc: &Doc,
+    id: &str,
+    work_item: &str,
+    facts: &impl SpecFacts,
+) -> Option<Code> {
+    let Some(divergence) = facts.divergence(id) else {
+        return Some(Code::AmendmentDivergenceUnknown);
+    };
+    if divergence.work_item != work_item {
+        return Some(Code::AmendmentDivergenceForeign);
+    }
+    if CLOSED_RESOLUTIONS.contains(&divergence.resolution.as_str()) {
+        return Some(Code::AmendmentDivergenceClosed);
+    }
+    let source = divergence.source_ref.as_str();
+    let is_spec_item = is_id(source, "CMP-") || is_id(source, "CA-");
+
+    (is_spec_item && !corrects(doc, source)).then_some(Code::AmendmentCorrectionMissing)
+}
+
+/// Algum `EMD` da seção Correções da emenda corrige o item.
+fn corrects(doc: &Doc, item_ref: &str) -> bool {
+    doc.items()
+        .iter()
+        .filter(|item| item.section == CORRECTIONS)
+        .filter_map(|item| item_id(item, "EMD-").map(|emd| correction_target(item, emd)))
+        .any(|target| target == Some(item_ref))
+}
+
+/// Um `[PENDENTE: gaps.x]` válido por linha; o malformado é da validação estrutural.
+fn check_pending_gaps(doc: &Doc, facts: &impl SpecFacts) -> Vec<Found> {
+    doc.lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| {
+            pending_gaps(line)
+                .any(|gap| matches!(facts.gap_state(gap), GapState::Open | GapState::NeedsHuman))
+        })
+        .map(|(index, _)| Found {
+            line: index + 1,
+            code: Code::PendingGapUnresolved,
+        })
+        .collect()
+}
+
+/// Os ids `gaps.<nome>` dos marcadores bem formados da linha.
+fn pending_gaps(line: &str) -> impl Iterator<Item = &str> {
+    line.match_indices(PENDING_PREFIX).filter_map(|(start, _)| {
+        let name_start = start + PENDING_PREFIX.len();
+        let len = gap_name_len(&line[name_start..]);
+        let id_start = name_start - GAP_PREFIX.len();
+
+        (len > 0 && line[name_start + len..].starts_with(']'))
+            .then(|| &line[id_start..name_start + len])
+    })
+}
+
+/// `(linha, id)` de cada `premises.x` e `guidelines.x` da seção de diretivas e premissas.
+fn cited_ids<'a>(doc: &Doc<'a>) -> Vec<(usize, &'a str)> {
+    let Some(section) = doc.section(DIRECTIVES) else {
+        return Vec::new();
+    };
+
+    CITED_PREFIXES
+        .iter()
+        .flat_map(|prefix| prefixed_ids(section, prefix))
+        .collect()
+}
+
+/// `(linha, id)` de cada `<prefixo><nome>` no corpo da seção.
+fn prefixed_ids<'a>(section: &Section<'a>, prefix: &str) -> Vec<(usize, &'a str)> {
+    let mut ids = Vec::new();
+    for (offset, line) in section.body.iter().copied().enumerate() {
+        for (start, _) in line.match_indices(prefix) {
+            let len = gap_name_len(&line[start + prefix.len()..]);
+            if len > 0 {
+                ids.push((
+                    section.line + 1 + offset,
+                    &line[start..start + prefix.len() + len],
+                ));
+            }
+        }
+    }
+
+    ids
+}
+
+fn cites_business_premise(doc: &Doc, work_item: &str, facts: &impl SpecFacts) -> bool {
+    cited_ids(doc).into_iter().any(|(_, id)| {
+        facts.confirmed(id)
+            && facts.kind(id).as_deref() == Some(BUSINESS_KIND)
+            && facts.work_item(id).as_deref() == Some(work_item)
+    })
 }

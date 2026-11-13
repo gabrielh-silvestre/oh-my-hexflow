@@ -20,6 +20,8 @@ const CUSTOM_SPECS: &str = "docs/team-specs";
 const PART_DIR: &str = "wi-w1__login";
 const WORKFLOW_PATH: &str = ".omhl/workflow.toml";
 const CANARY: &str = "CANARY-7f3a91";
+const CITED_PREMISE: &str = "premises.login-rule";
+const CITED_DIVERGENCE: &str = "divergences.login-cmp-001";
 
 // Camada pura: `omhl::workflow::spec::validate_spec`
 
@@ -782,20 +784,25 @@ impl Fixture {
             _scratch: scratch,
             linked,
         };
-        let request = json!({
-            "items": [{ "body": {
-                "kind": "node", "id": WORK_ITEM, "type": "work-item",
-                "data": work_item_data("t"),
-            } }]
-        });
-        let appended = omhl(&["append"])
-            .cwd(fixture.project.dir())
-            .xdg(fixture.project.xdg())
-            .stdin(request.to_string())
-            .run();
-        assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+        fixture.append(vec![node(WORK_ITEM, "work-item", work_item_data("t"))]);
+        fixture.append(vec![
+            node(CITED_PREMISE, "premise", business_premise_data()),
+            node(CITED_DIVERGENCE, "divergence", open_divergence_data()),
+        ]);
 
         fixture
+    }
+
+    fn append(&self, items: Vec<Value>) {
+        let mut request = json!({});
+        request["items"] = Value::Array(items);
+        let appended = omhl(&["append"])
+            .cwd(self.project.dir())
+            .xdg(self.project.xdg())
+            .stdin(request.to_string())
+            .run();
+
+        assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
     }
 
     fn run_in(&self, cwd: &Path, args: &[&str]) -> Child {
@@ -820,6 +827,33 @@ impl Fixture {
     fn write(&self, name: &str, lines: &[&str]) {
         self.write_in(DEFAULT_SPECS, name, lines);
     }
+}
+
+fn node(id: &str, type_name: &str, data: Value) -> Value {
+    let mut item = json!({ "body": { "kind": "node", "id": id, "type": type_name } });
+    item["body"]["data"] = data;
+
+    item
+}
+
+/// A premissa que `valid_part` cita, confirmada e do próprio work item.
+fn business_premise_data() -> Value {
+    json!({
+        "text": "t", "kind": "business", "status": "confirmed", "work_item": WORK_ITEM,
+        "confirmed_by": { "by": "person:ana", "question": "q", "answer": "a" },
+    })
+}
+
+/// A divergência que `valid_amendment` cita.
+fn open_divergence_data() -> Value {
+    json!({
+        "source_ref": "CMP-001",
+        "kind": "partial",
+        "text": "o código registra o acesso e a spec não diz",
+        "evidence": [{ "source": "docs", "summary": "o doc diz isso" }],
+        "resolution": "open",
+        "work_item": WORK_ITEM,
+    })
 }
 
 fn json_line(text: &str) -> Value {
@@ -926,6 +960,7 @@ fn it_should_refuse_the_skeleton_created_by_spec_init_with_one_detail_per_empty_
         vec![
             "parte-01.md:1 section-empty",
             "parte-01.md:3 section-empty",
+            "parte-01.md:3 business-premise-missing",
             "parte-01.md:5 section-empty",
             "parte-01.md:7 section-empty",
             "parte-01.md:9 section-empty",
@@ -1007,7 +1042,7 @@ fn it_should_refuse_a_work_item_without_a_spec_folder() {
     assert_eq!(error_code(&output), json!("spec-not-found"));
 }
 
-// Emendas na saída: nenhuma está aprovada na S6b, então só aparecem
+// Emendas na saída: nenhuma está aprovada nestes testes, então todas saem `pending`
 
 #[test]
 fn it_should_list_a_valid_amendment_with_no_violations() {
@@ -1020,7 +1055,7 @@ fn it_should_list_a_valid_amendment_with_no_violations() {
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(
         json_line(&output.stdout)["amendments"],
-        json!([{ "name": "emenda-01.md", "violations": [] }])
+        json!([{ "name": "emenda-01.md", "state": "pending", "violations": [] }])
     );
 }
 
@@ -1047,6 +1082,7 @@ fn it_should_list_an_invalid_amendment_without_failing_ok() {
             "parts": ["parte-01.md"],
             "amendments": [{
                 "name": "emenda-01.md",
+                "state": "pending",
                 "violations": [{ "path": "emenda-01.md:11", "code": "placeholder-found" }],
             }],
         })
@@ -1065,6 +1101,7 @@ fn it_should_list_an_amendment_with_a_malformed_file_name_as_invalid() {
         json_line(&output.stdout)["amendments"],
         json!([{
             "name": "emenda-1.md",
+            "state": "pending",
             "violations": [{ "path": "emenda-1.md:1", "code": "amendment-name-invalid" }],
         }])
     );

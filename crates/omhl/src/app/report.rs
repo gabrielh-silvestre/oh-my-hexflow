@@ -22,6 +22,17 @@ impl Engine<'_> {
             }
         };
         let gaps = nodes_matching(&mut self.omhl, &self.tenant, "gap", where_eq)?;
+        let (premises, facts) = self.load_gap_facts()?;
+        let entries: Vec<Value> = gaps
+            .iter()
+            .map(|gap| gap_entry(&facts, &premises, gap))
+            .collect();
+
+        Ok(json!({ "gaps": entries }))
+    }
+
+    /// As premissas vigentes e os fatos de gap do tenant (premissas, diretivas e relations).
+    pub(super) fn load_gap_facts(&mut self) -> Result<(Vec<NodeView>, GapFacts), AppError> {
         let premises = all_nodes(&mut self.omhl, &self.tenant, "premise")?;
         let guidelines = all_nodes(&mut self.omhl, &self.tenant, "guideline")?;
         let mut relations = Vec::new();
@@ -34,14 +45,9 @@ impl Engine<'_> {
             };
             relations.extend(self.omhl.relations(&self.tenant, &query)?);
         }
-
         let facts = gap_facts(&premises, &guidelines, &relations);
-        let entries: Vec<Value> = gaps
-            .iter()
-            .map(|gap| gap_entry(&facts, &premises, gap))
-            .collect();
 
-        Ok(json!({ "gaps": entries }))
+        Ok((premises, facts))
     }
 }
 

@@ -12,7 +12,9 @@ use crate::ports::specs::{SpecDocument, SpecStore, SpecStoreError};
 use crate::ports::workflow::read_workflow;
 use crate::probe::GitTopology;
 use crate::workflow::config::WorkflowConfig;
-use crate::workflow::spec::{SpecFile, Violation, validate_spec};
+use crate::workflow::spec::{
+    AmendmentState, SpecFile, Violation, amendment_state, validate_graph, validate_spec,
+};
 
 const WORK_ITEM_ID_PREFIX: &str = "work-items.";
 const SLUG_MAX: usize = 64;
@@ -48,8 +50,9 @@ impl Engine<'_> {
         }))
     }
 
-    /// Só a estrutura: o grafo não é consultado e o work item não precisa existir nem estar aberto.
-    pub(super) fn spec_validate(&self, work_item: &str) -> Result<Value, AppError> {
+    /// Estrutura e grafo: as violações das partes e das emendas aprovadas reprovam; as de emenda
+    /// pendente só são listadas.
+    pub(super) fn spec_validate(&mut self, work_item: &str) -> Result<Value, AppError> {
         let id = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
         let name = id
@@ -62,28 +65,54 @@ impl Engine<'_> {
             .map_err(spec_store_refusal)?
             .filter(|folder| !folder.parts.is_empty())
             .ok_or_else(|| AppError::spec_not_found("/work_item"))?;
-        let violations = validate_spec(
-            &spec_files(&folder.parts),
-            &spec_files(&folder.amendments),
+        let facts = self.load_spec_facts()?;
+        let parts = spec_files(&folder.parts);
+        let amendments = spec_files(&folder.amendments);
+        let mut violations = validate_spec(&parts, &amendments, &config.specs);
+        violations.extend(validate_graph(
+            id.as_str(),
+            &parts,
+            &amendments,
             &config.specs,
-        );
-        let (parts, amendments): (Vec<Violation>, Vec<Violation>) =
-            violations.into_iter().partition(|violation| {
-                folder
-                    .parts
-                    .iter()
-                    .any(|part| part.name == file_of(violation))
-            });
-        if !parts.is_empty() {
-            return Err(AppError::spec_invalid(&parts));
-        }
+            &facts,
+        ));
+        let files: Vec<&str> = folder
+            .parts
+            .iter()
+            .chain(&folder.amendments)
+            .map(|document| document.name.as_str())
+            .collect();
+        violations.sort_by_key(|violation| {
+            (
+                files.iter().position(|name| *name == file_of(violation)),
+                line_of(violation),
+            )
+        });
 
-        let amendments = amendments_report(&folder.amendments, &amendments);
+        let approved: Vec<&str> = folder
+            .amendments
+            .iter()
+            .filter(|document| {
+                amendment_state(id.as_str(), &document.name, &facts) == AmendmentState::Approved
+            })
+            .map(|document| document.name.as_str())
+            .collect();
+        let blocking: Vec<Violation> = violations
+            .iter()
+            .filter(|violation| {
+                let file = file_of(violation);
+                folder.parts.iter().any(|part| part.name == file) || approved.contains(&file)
+            })
+            .cloned()
+            .collect();
+        if !blocking.is_empty() {
+            return Err(AppError::spec_invalid(&blocking));
+        }
 
         Ok(json!({
             "ok": true,
             "parts": folder.parts.iter().map(|part| part.name.as_str()).collect::<Vec<_>>(),
-            "amendments": amendments,
+            "amendments": amendments_report(&folder.amendments, &violations, &approved),
         }))
     }
 }
@@ -115,18 +144,30 @@ fn file_of(violation: &Violation) -> &str {
         .map_or(&violation.path, |(file, _)| file)
 }
 
-/// Nenhuma emenda está aprovada nesta fatia: as violações delas são listadas e não derrubam o `ok`.
-fn amendments_report(documents: &[SpecDocument], violations: &[Violation]) -> Vec<Value> {
+fn line_of(violation: &Violation) -> Option<usize> {
+    violation.path.rsplit_once(':')?.1.parse().ok()
+}
+
+fn amendments_report(
+    documents: &[SpecDocument],
+    violations: &[Violation],
+    approved: &[&str],
+) -> Vec<Value> {
     documents
         .iter()
         .map(|document| {
+            let state = if approved.contains(&document.name.as_str()) {
+                "approved"
+            } else {
+                "pending"
+            };
             let violations: Vec<Value> = violations
                 .iter()
                 .filter(|violation| file_of(violation) == document.name)
                 .map(|violation| json!({ "path": violation.path, "code": violation.code }))
                 .collect();
 
-            json!({ "name": document.name, "violations": violations })
+            json!({ "name": document.name, "state": state, "violations": violations })
         })
         .collect()
 }
