@@ -6,10 +6,13 @@ use serde::Deserialize;
 use toml::Spanned;
 
 use crate::project::ProjectError;
-use crate::project::layout::{CHECKS_DIR, GUIDELINES_DIR, OMHL_DIR, PROJECTION_DIR, WORKFLOW_FILE};
+use crate::project::layout::{
+    CHECKS_DIR, GUIDELINES_DIR, OMHL_DIR, PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE,
+};
 use crate::project::text::{position_at, toml_error_position};
 
 const SUPPORTED_VERSION: u32 = 1;
+pub const INVALID_WORKFLOW_CONFIG: &str = "invalid-workflow-config";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkflowConfig {
@@ -68,7 +71,7 @@ impl Default for WorkflowConfig {
 
         WorkflowConfig {
             specs: SpecsConfig {
-                dir: ".omhl/specs".to_owned(),
+                dir: format!("{OMHL_DIR}/{SPECS_DIR}"),
                 max_lines: 300,
                 placeholders: ["TODO", "TBD", "FIXME", "???"].map(str::to_owned).to_vec(),
                 cite_business_premise: true,
@@ -114,7 +117,7 @@ struct RawPrefix {
 
 fn invalid(path: &Path, reason: impl std::fmt::Display) -> ProjectError {
     ProjectError {
-        code: "invalid-workflow-config",
+        code: INVALID_WORKFLOW_CONFIG,
         message: format!("{}: {reason}", path.display()),
     }
 }

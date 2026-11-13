@@ -6,24 +6,9 @@ use serde_json::Value;
 
 use super::confirmation::check_confirmation;
 use crate::error::{OmhlError, RuleCode};
-use crate::graphs::WORK_ITEM_TYPES;
+use crate::graphs::{WORK_ITEM_TYPES, namespace_of};
 use crate::mechanical::is_mechanical;
 use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
-
-/// Namespace que o id de um node deve ter, por tipo.
-fn namespace_of(type_name: &str) -> Option<&'static str> {
-    match type_name {
-        "check" => Some("checks"),
-        "guideline" => Some("guidelines"),
-        "premise" => Some("premises"),
-        "decision" => Some("decisions"),
-        "gap" => Some("gaps"),
-        "divergence" => Some("divergences"),
-        "attestation" => Some("attestations"),
-        "work-item" | "pull-request" => Some("work-items"),
-        _ => None,
-    }
-}
 
 /// Único client que grava node `check` com `run`; também fica isento da guarda da confirmação.
 const LOADER_CLIENT: &str = "loader";

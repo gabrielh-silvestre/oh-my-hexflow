@@ -1,14 +1,8 @@
 use std::path::{Component, Path, PathBuf};
 
-use hexlog::Name;
-
+use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, PART_PREFIX, work_item_of_folder};
 use super::spec::amendment_number;
 
-const FOLDER_PREFIX: &str = "wi-";
-const FOLDER_SEPARATOR: &str = "__";
-const PART_PREFIX: &str = "parte-";
-const AMENDMENT_PREFIX: &str = "emenda-";
-const FILE_SUFFIX: &str = ".md";
 const FROZEN: &str = "spec-frozen";
 const IN_LINKED_WORKTREE: &str = "spec-in-linked-worktree";
 const FOLDER_UNKNOWN: &str = "spec-folder-unknown";
@@ -161,14 +155,4 @@ fn normalized_names(path: &Path) -> Option<Vec<&str>> {
     }
 
     Some(names)
-}
-
-/// `wi-<id>__<slug>`: o `<id>` vai até o primeiro `__` e precisa ser nome válido; o slug não é vazio.
-fn work_item_of_folder(folder: &str) -> Option<&str> {
-    let (id, slug) = folder
-        .strip_prefix(FOLDER_PREFIX)?
-        .split_once(FOLDER_SEPARATOR)?;
-    Name::parse(id).ok()?;
-
-    (!slug.is_empty()).then_some(id)
 }

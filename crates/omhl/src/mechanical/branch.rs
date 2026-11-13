@@ -1,4 +1,6 @@
-use hexlog::{Name, SemanticId};
+use hexlog::SemanticId;
+
+use crate::workflow::names::{WORK_ITEM_ID_PREFIX, work_item_of_folder};
 
 /// Fatos crus do HEAD, montados pela sonda; `head` é `None` em repositório sem commit.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,12 +83,12 @@ pub fn branch_prefix(branch: &str) -> Option<&str> {
 /// `<tipo>/wi-<id>__<slug>`: o `<id>` vai até o primeiro `__` e precisa ser nome de um segmento.
 pub fn work_item_id(branch: &str) -> Option<SemanticId> {
     let (kind, rest) = branch.split_once('/')?;
-    let (id, slug) = rest.strip_prefix("wi-")?.split_once("__")?;
-    if kind.is_empty() || slug.is_empty() {
+    if kind.is_empty() {
         return None;
     }
-    Name::parse(id).ok()?;
-    SemanticId::parse(&format!("work-items.{id}")).ok()
+    let id = work_item_of_folder(rest)?;
+
+    SemanticId::parse(&format!("{WORK_ITEM_ID_PREFIX}{id}")).ok()
 }
 
 /// Lê todas as linhas da stdin do `pre-push` antes de decidir.

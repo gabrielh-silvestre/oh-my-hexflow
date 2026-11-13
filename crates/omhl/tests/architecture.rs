@@ -46,6 +46,8 @@ const WORKFLOW_FORBIDDEN_MODULES: &[&str] = &["ports", "runner", "byproduct"];
 const PORTS_FORBIDDEN_MODULES: &[&str] = &["extensions"];
 const SERVICE_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super::"];
+const SPEC_GRAMMAR_LITERALS: &[&str] = &["wi-", "parte-", "emenda-"];
+const SPEC_GRAMMAR_MODULE: &str = "workflow/names.rs";
 const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
 
 fn src_dir() -> PathBuf {
@@ -325,6 +327,19 @@ fn literal_refs(source: &str, banned: &[&str]) -> Result<usize, String> {
         .literals
         .iter()
         .filter(|text| banned.contains(&text.as_str()))
+        .count())
+}
+
+/// Número de literais de string que começam por um dos prefixos da gramática da spec.
+fn spec_grammar_refs(source: &str) -> Result<usize, String> {
+    Ok(lex(source)?
+        .literals
+        .iter()
+        .filter(|text| {
+            SPEC_GRAMMAR_LITERALS
+                .iter()
+                .any(|prefix| text.starts_with(prefix))
+        })
         .count())
 }
 
@@ -1369,6 +1384,33 @@ fn it_should_read_the_parent_pid_before_anything_else_in_main() {
         &[src_dir().join("main.rs")],
         parent_pid_not_first,
     ));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_the_spec_grammar_literals_inside_the_names_module() {
+    let mut failures = prove_both_sides(
+        spec_grammar_refs,
+        &[
+            "const PREFIX: &str = \"wi-\";",
+            "let name = format!(\"wi-{id}__\");",
+            "let file = \"parte-01.md\";",
+            "let file = \"emenda-02.md\";",
+        ],
+        &[
+            "use crate::workflow::names::FOLDER_PREFIX;",
+            "// const PREFIX: &str = \"wi-\";",
+            "let text = \"a wi- in the middle\";",
+            "let text = \"parte\";",
+        ],
+    );
+    let outside_names: Vec<PathBuf> = rust_files(&src_dir())
+        .into_iter()
+        .filter(|path| !path.ends_with(SPEC_GRAMMAR_MODULE))
+        .collect();
+
+    failures.extend(scan_paths(&outside_names, spec_grammar_refs));
 
     assert_no_failures(&failures);
 }

@@ -5,6 +5,8 @@ use std::collections::{HashMap, HashSet};
 
 use super::config::SpecsConfig;
 use super::gap::GapState;
+use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX};
+use crate::graphs::{DIVERGENCE_NAMESPACE, GAP_NAMESPACE, GUIDELINE_NAMESPACE, PREMISE_NAMESPACE};
 
 /// Resolução da divergência que a emenda aprovada leva (`resolution`).
 pub const SPEC_STALE: &str = "spec-stale";
@@ -23,13 +25,9 @@ const CORRECTIONS: &str = "Correções";
 const HEADING_PREFIX: &str = "## ";
 const ITEM_PREFIX: &str = "- ";
 const PENDING_MARKER: &str = "[PENDENTE";
-const GAP_PREFIX: &str = "gaps.";
-const PENDING_PREFIX: &str = "[PENDENTE: gaps.";
-const DIVERGENCE_REF_PREFIX: &str = "divergences.";
-const AMENDMENT_FILE_PREFIX: &str = "emenda-";
-const FILE_SUFFIX: &str = ".md";
+const PENDING_OPEN: &str = "[PENDENTE: ";
 const DIRECTIVES: &str = "Diretivas e premissas aplicáveis";
-const CITED_PREFIXES: [&str; 2] = ["premises.", "guidelines."];
+const CITED_NAMESPACES: [&str; 2] = [PREMISE_NAMESPACE, GUIDELINE_NAMESPACE];
 const BUSINESS_KIND: &str = "business";
 const CLOSED_RESOLUTIONS: [&str; 2] = ["code-fixed", "accepted"];
 
@@ -467,14 +465,14 @@ pub(crate) fn is_digits(text: &str, len: usize) -> bool {
 
 /// `emenda-NN`, sempre com dois dígitos.
 pub(crate) fn is_amendment_id(id: &str) -> bool {
-    id.strip_prefix(AMENDMENT_FILE_PREFIX)
+    id.strip_prefix(AMENDMENT_PREFIX)
         .is_some_and(|number| is_digits(number, 2))
 }
 
 /// `emenda-NN.md` com exatamente dois dígitos.
 pub(crate) fn amendment_number(name: &str) -> Option<u32> {
     let digits = name
-        .strip_prefix(AMENDMENT_FILE_PREFIX)?
+        .strip_prefix(AMENDMENT_PREFIX)?
         .strip_suffix(FILE_SUFFIX)?;
 
     if !is_digits(digits, 2) {
@@ -532,10 +530,26 @@ fn semantic_id_len(text: &str) -> usize {
     len
 }
 
+/// `<namespace>.`: o início de todo id citado daquele namespace.
+fn id_prefix(namespace: &str) -> String {
+    format!("{namespace}.")
+}
+
+fn divergence_ref_prefix() -> String {
+    id_prefix(DIVERGENCE_NAMESPACE)
+}
+
+/// `[PENDENTE: gaps.`: o que antecede o nome do gap num marcador de pendência.
+fn pending_prefix() -> String {
+    format!("{PENDING_OPEN}{}", id_prefix(GAP_NAMESPACE))
+}
+
 fn has_malformed_pending_marker(line: &str) -> bool {
+    let pending_prefix = pending_prefix();
+
     line.match_indices(PENDING_MARKER).any(|(start, _)| {
         let valid = line[start..]
-            .strip_prefix(PENDING_PREFIX)
+            .strip_prefix(pending_prefix.as_str())
             .is_some_and(|rest| {
                 let len = semantic_id_len(rest);
 
@@ -547,8 +561,10 @@ fn has_malformed_pending_marker(line: &str) -> bool {
 }
 
 fn count_divergence_refs(line: &str) -> usize {
-    line.match_indices(DIVERGENCE_REF_PREFIX)
-        .filter(|(start, _)| semantic_id_len(&line[start + DIVERGENCE_REF_PREFIX.len()..]) > 0)
+    let prefix = divergence_ref_prefix();
+
+    line.match_indices(prefix.as_str())
+        .filter(|(start, _)| semantic_id_len(&line[start + prefix.len()..]) > 0)
         .count()
 }
 
@@ -640,7 +656,7 @@ pub fn validate_graph(
 /// quando a citação já é `divergence-ref-invalid` da validação estrutural.
 pub fn amendment_divergence_mismatch(file: &SpecFile<'_>, expected: &str) -> Option<Violation> {
     let doc = Doc::new(file);
-    let refs = prefixed_ids(doc.section(DIVERGENCE)?, DIVERGENCE_REF_PREFIX);
+    let refs = prefixed_ids(doc.section(DIVERGENCE)?, &divergence_ref_prefix());
 
     match refs[..] {
         [(line, id)] if id != expected => Some(Violation {
@@ -672,7 +688,7 @@ fn check_amendment_graph(doc: &Doc, work_item: &str, facts: &impl SpecFacts) -> 
     let Some(section) = doc.section(DIVERGENCE) else {
         return found;
     };
-    let refs = prefixed_ids(section, DIVERGENCE_REF_PREFIX);
+    let refs = prefixed_ids(section, &divergence_ref_prefix());
     // Zero ou várias referências já são `divergence-ref-invalid`, da validação estrutural.
     if let [(line, id)] = refs[..]
         && let Some(code) = divergence_violation(doc, id, work_item, facts)
@@ -720,6 +736,7 @@ fn check_pending_gaps(doc: &Doc, facts: &impl SpecFacts) -> Vec<Found> {
         .enumerate()
         .filter(|(_, line)| {
             pending_gaps(line)
+                .into_iter()
                 .any(|gap| matches!(facts.gap_state(gap), GapState::Open | GapState::NeedsHuman))
         })
         .map(|(index, _)| Found {
@@ -730,15 +747,20 @@ fn check_pending_gaps(doc: &Doc, facts: &impl SpecFacts) -> Vec<Found> {
 }
 
 /// Os ids `gaps.<nome>` dos marcadores bem formados da linha.
-fn pending_gaps(line: &str) -> impl Iterator<Item = &str> {
-    line.match_indices(PENDING_PREFIX).filter_map(|(start, _)| {
-        let name_start = start + PENDING_PREFIX.len();
-        let len = semantic_id_len(&line[name_start..]);
-        let id_start = name_start - GAP_PREFIX.len();
+fn pending_gaps(line: &str) -> Vec<&str> {
+    let pending_prefix = pending_prefix();
+    let gap_prefix_len = id_prefix(GAP_NAMESPACE).len();
 
-        (len > 0 && line[name_start + len..].starts_with(']'))
-            .then(|| &line[id_start..name_start + len])
-    })
+    line.match_indices(pending_prefix.as_str())
+        .filter_map(|(start, _)| {
+            let name_start = start + pending_prefix.len();
+            let len = semantic_id_len(&line[name_start..]);
+            let id_start = name_start - gap_prefix_len;
+
+            (len > 0 && line[name_start + len..].starts_with(']'))
+                .then(|| &line[id_start..name_start + len])
+        })
+        .collect()
 }
 
 /// `(linha, id)` de cada `premises.x` e `guidelines.x` da seção de diretivas e premissas.
@@ -747,9 +769,9 @@ fn cited_ids<'a>(doc: &Doc<'a>) -> Vec<(usize, &'a str)> {
         return Vec::new();
     };
 
-    CITED_PREFIXES
+    CITED_NAMESPACES
         .iter()
-        .flat_map(|prefix| prefixed_ids(section, prefix))
+        .flat_map(|namespace| prefixed_ids(section, &id_prefix(namespace)))
         .collect()
 }
 

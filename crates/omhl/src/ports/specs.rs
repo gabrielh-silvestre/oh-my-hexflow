@@ -4,13 +4,12 @@ use std::path::{Path, PathBuf};
 
 use crate::ports::files::{FILE_TOO_LARGE, list_sorted_capped, read_regular_utf8};
 use crate::project::layout::{EXT_FILE_MAX_BYTES, GITIGNORE_CONTENT, GITIGNORE_NAME};
+use crate::workflow::names::{
+    AMENDMENT_PREFIX, FILE_SUFFIX, FIRST_PART_FILE, PART_PREFIX, folder_prefix,
+};
 
 /// Teto próprio da busca por prefixo; o `DIR_ENTRIES_MAX` (100) é das pastas de extension.
 const SPEC_ENTRIES_MAX: usize = 10_000;
-const FIRST_PART_FILE: &str = "parte-01.md";
-const PART_PREFIX: &str = "parte-";
-const AMENDMENT_PREFIX: &str = "emenda-";
-const FILE_SUFFIX: &str = ".md";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecStoreError {
@@ -186,10 +185,6 @@ fn exists_without_following(path: &Path) -> Result<bool, SpecStoreError> {
             "the spec file cannot be inspected",
         )),
     }
-}
-
-fn folder_prefix(work_item: &str) -> String {
-    format!("wi-{work_item}__")
 }
 
 fn write_new(path: &Path, content: &str) -> std::io::Result<()> {

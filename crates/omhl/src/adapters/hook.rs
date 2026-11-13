@@ -5,11 +5,11 @@ use std::process::ExitCode;
 
 use serde_json::{Value, json};
 
-use crate::app::ExtensionKind;
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
 use crate::app::runtime::Runtime;
+use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
 use crate::app::{Verdict, spec_lock as check_spec_lock};
 use crate::project::Env;
 
@@ -121,7 +121,7 @@ fn workflow_note(report: &Value) -> Option<String> {
     report["warnings"]
         .as_array()?
         .iter()
-        .any(|issue| issue["code"] == "invalid-workflow-config")
+        .any(|issue| issue["code"] == INVALID_WORKFLOW_CONFIG)
         .then(|| {
             "WARNING: .omhl/workflow.toml is invalid and the defaults apply (invalid-workflow-config); run omhl load --dry-run for details".to_owned()
         })

@@ -7,7 +7,7 @@ use crate::ports::git::GitProbe;
 use crate::probe::GitTopology;
 use crate::project::ProjectError;
 use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
-use crate::workflow::config::{WorkflowConfig, parse_workflow};
+use crate::workflow::config::{INVALID_WORKFLOW_CONFIG, WorkflowConfig, parse_workflow};
 
 /// Lê `.omhl/workflow.toml` da raiz do projeto. Arquivo ausente vale os padrões; presente e ilegível ou inválido é recusa.
 pub fn read_workflow(root: &Path) -> Result<WorkflowConfig, ProjectError> {
@@ -18,7 +18,7 @@ pub fn read_workflow(root: &Path) -> Result<WorkflowConfig, ProjectError> {
         return Ok(WorkflowConfig::default());
     }
     let text = read_regular_utf8(&path, EXT_FILE_MAX_BYTES).map_err(|reason| ProjectError {
-        code: "invalid-workflow-config",
+        code: INVALID_WORKFLOW_CONFIG,
         message: format!("{}: {reason}", path.display()),
     })?;
 

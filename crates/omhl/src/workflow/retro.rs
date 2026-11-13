@@ -3,9 +3,8 @@
 use std::collections::BTreeMap;
 
 use super::gap::GapState;
+use super::names::FILE_SUFFIX;
 use super::spec::SPEC_STALE;
-
-const FILE_SUFFIX: &str = ".md";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetroFacts {

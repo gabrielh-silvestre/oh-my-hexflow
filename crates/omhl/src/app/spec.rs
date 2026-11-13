@@ -17,12 +17,12 @@ use crate::probe::{GitTopology, ProbeError};
 use crate::project::marker::{Located, find_marker};
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{Facts, Tool, Verdict, decide, parse_spec_path};
+use crate::workflow::names::WORK_ITEM_ID_PREFIX;
 use crate::workflow::spec::{
     AmendmentState, SPEC_STALE, SpecFile, Violation, amendment_divergence_mismatch,
     amendment_state, is_amendment_id, validate_graph, validate_spec,
 };
 
-const WORK_ITEM_ID_PREFIX: &str = "work-items.";
 const SLUG_MAX: usize = 64;
 const FIRST_PART: &str = "## Objetivo\n\n## Diretivas e premissas aplicáveis\n\n## Comportamentos\n\n## Critérios de aceitação\n\n## Fora de escopo\n";
 
