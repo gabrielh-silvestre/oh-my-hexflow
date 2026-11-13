@@ -4,7 +4,7 @@ Vocabulário em [GLOSSARY.md](../GLOSSARY.md). Visão geral e primeiros passos n
 
 O humano define diretivas e premissas. O agente escolhe os comportamentos e escreve a spec a partir delas. Este fluxo roda no binário `omhl`, sem o MCP hexlog em TypeScript. O núcleo `crates/hexlog` não muda: tipos, relações, gates, hooks e comandos deste fluxo são do `omhl`.
 
-**Estado de ativação.** A página descreve o código que já existe. O gate de criação da worktree (`.config/wt.toml`) e o hook de congelamento (`PreToolUse` em `plugin/hooks/hooks.json`) só entram na fatia de ativação, a S14, depois de reinstalar o binário (seção 10). Até lá, o `omhl gate-worktree` e o `omhl hook spec-lock` funcionam quando você os chama, mas nada os chama sozinho.
+**Estado de ativação.** O gate de criação da worktree (`.config/wt.toml`) e o hook de congelamento (`PreToolUse` em `plugin/hooks/hooks.json`) estão ativos: o `wt` chama o `omhl gate-worktree` antes de criar uma worktree, e o Claude Code chama o `omhl hook spec-lock` antes de cada `Edit`, `Write` e `MultiEdit`. A ordem da ativação e o que o dono faz a cada mudança estão na seção 10.
 
 Os exemplos de saída vêm de uma execução real do `omhl` num repositório descartável. Onde um caminho absoluto aparece, ele foi encurtado para `<repo>`.
 
@@ -186,7 +186,7 @@ Quando a spec não existe ou não valida, o gate trata `spec` como não satisfei
 
 ### O hook `pre-switch` do `wt`
 
-O gate roda pelo `wt`. A S14 versiona o hook de projeto `.config/wt.toml`:
+O gate roda pelo `wt`, pelo hook de projeto versionado em `.config/wt.toml`:
 
 ```toml
 [pre-switch]
@@ -198,6 +198,7 @@ omhl-gate = "case {{ branch }} in develop|main) exit 0;; esac; omhl gate-worktre
 - Num `wt switch -c`, o `{{ branch }}` é o destino. `^`, `-` e `@` chegam resolvidos. `pr:N` chega literal, porque o hook roda antes de o `wt` buscar o PR, e o gate o recusa com `prefix-not-allowed`.
 - O `case` garante `wt switch develop` e `wt switch main` mesmo sem o `omhl` no `PATH`. Para qualquer outro nome, sem o `omhl` o `sh` sai com `127` e o `wt` aborta.
 - O `omhl` do hook é o do `PATH`. Instale-o fora de qualquer worktree (veja `binary-in-worktree` na seção 5 de [mechanical-gates.md](mechanical-gates.md)), senão um `wt remove` o apaga.
+- O gate só funciona com o `omhl` no `PATH` do `wt`. Sem ele, todo `wt switch` para uma branch que não seja `develop` nem `main` sai com `127` e o `wt` aborta, inclusive `wt switch -c`. Confira com `command -v omhl` antes de rodar `wt config approvals add`.
 - **`wt switch -c` parte da `main`**, a branch padrão, não da `develop`. Para partir da `develop`, passe `--base develop`.
 
 **A aprovação do hook.** O `wt` guarda a aprovação de um comando de projeto pelo projeto e pelo **texto do comando**. Qualquer mudança no texto do comando em `.config/wt.toml` pede uma aprovação nova. Sem aprovação salva e sem terminal interativo, o `wt` aborta todo `wt switch`, inclusive para a `develop`, com `Cannot prompt for approval in non-interactive environment` (saída 1). O `case` do hook não ajuda, porque o `wt` pede a aprovação antes de rodar o hook.
@@ -494,11 +495,11 @@ O `omhl spec validate` aplica as regras de grafo da emenda à divergência que e
 
 ## 10. Ativação, bypasses e limites
 
-### Ativação (S14)
+### Ativação
 
-A ativação segue esta ordem. Nada disso está ativo hoje.
+O gate do `wt` e o hook `spec-lock` estão ativos. A ativação seguiu esta ordem, que vale de novo se o texto do comando em `.config/wt.toml` mudar:
 
-1. Compile e reinstale o `omhl` fora de qualquer worktree, e copie-o para `plugin/bin/omhl` ([README](../README.md), "Instalação").
+1. Compile e reinstale o `omhl` fora de qualquer worktree: copie-o para `plugin/bin/omhl` e deixe-o no `PATH`, por exemplo com um link em `~/.local/bin` ([README](../README.md), "Instalação").
 2. Rode `omhl hooks install`.
 3. Só então versione o `.config/wt.toml` e a entrada `PreToolUse` (`matcher` `Edit|Write|MultiEdit`) em `plugin/hooks/hooks.json`.
 4. O dono roda `wt config approvals add` e confere com `wt config approvals list` (seção 5), antes de qualquer `wt switch` do agente.

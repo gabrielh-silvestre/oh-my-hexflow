@@ -131,7 +131,7 @@ O `check run` descobre o work item pelo nome da branch. O padrão é `tipo/wi-<i
 
 `feat/wi-w1__x` e `fix/wi-pr-7__ajusta/parser` seguem o padrão. `feat/wi-w1`, `wi-w1__x`, `feat/wi-W1__x` e `a/b/wi-w1__x` não seguem.
 
-**Criação da branch.** O `tipo` é livre para o `check run`, mas a criação da branch passa pelo `omhl gate-worktree`, que só aceita os prefixos da matriz do fluxo por diretivas e premissas (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` e `docs`) e exige o que cada um pede antes de a worktree nascer. O hook do `wt` que chama o gate é um passo da fatia de ativação (S14) e ainda não está ativo. A matriz, o hook e os bypasses estão em [directives-flow.md](directives-flow.md).
+**Criação da branch.** O `tipo` é livre para o `check run`, mas a criação da branch passa pelo `omhl gate-worktree`, que só aceita os prefixos da matriz do fluxo por diretivas e premissas (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` e `docs`) e exige o que cada um pede antes de a worktree nascer. O hook do `wt` que chama o gate está ativo em `.config/wt.toml`. A matriz, o hook e os bypasses estão em [directives-flow.md](directives-flow.md).
 
 | Branch | O que o `check run` faz |
 |---|---|

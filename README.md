@@ -36,14 +36,21 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    cp target/release/omhl plugin/bin/omhl
    ```
 
-3. Abra o Claude Code com o plugin:
+3. Deixe o mesmo binário no `PATH`, que o hook `pre-switch` do `wt` chama
+   (`.config/wt.toml`):
+
+   ```bash
+   ln -s "$PWD/plugin/bin/omhl" ~/.local/bin/omhl
+   ```
+
+4. Abra o Claude Code com o plugin:
 
    ```bash
    claude --plugin-dir plugin/
    ```
 
-O plugin liga o hook `SessionStart` (`plugin/hooks/hooks.json`) e o servidor
-MCP `omhl` (`plugin/.mcp.json`).
+O plugin liga os hooks `SessionStart` e `PreToolUse` (`hook spec-lock`, em
+`plugin/hooks/hooks.json`) e o servidor MCP `omhl` (`plugin/.mcp.json`).
 
 ## Marcar um projeto
 

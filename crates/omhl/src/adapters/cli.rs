@@ -114,7 +114,7 @@ pub enum ActionCommand {
         #[command(subcommand)]
         command: SpecCommand,
     },
-    /// Report on the gaps and their answers.
+    /// Read-only reports: gap answers, premise recurrences and the retro of a work item.
     Report {
         #[command(subcommand)]
         command: ReportCommand,

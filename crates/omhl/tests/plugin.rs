@@ -21,7 +21,7 @@ fn it_should_declare_the_plugin_name_and_the_cargo_version() {
 }
 
 #[test]
-fn it_should_wire_the_session_start_hook_in_exec_form() {
+fn it_should_wire_the_session_start_and_spec_lock_hooks_in_exec_form() {
     let hooks = plugin_file("hooks/hooks.json");
 
     assert_eq!(
@@ -35,6 +35,15 @@ fn it_should_wire_the_session_start_hook_in_exec_form() {
                         "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
                         "args": ["hook", "session-start"],
                         "timeout": 15,
+                    }],
+                }],
+                "PreToolUse": [{
+                    "matcher": "Edit|Write|MultiEdit",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
+                        "args": ["hook", "spec-lock"],
+                        "timeout": 10,
                     }],
                 }],
             }
