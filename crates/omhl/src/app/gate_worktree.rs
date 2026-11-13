@@ -3,6 +3,7 @@ use std::path::Path;
 use hexlog::SemanticId;
 use serde_json::{Value, json};
 
+use super::App;
 use super::action::{Action, Caller};
 use super::error::AppError;
 use super::runtime::Runtime;
@@ -12,13 +13,14 @@ use crate::ports::workflow::read_workflow;
 use crate::probe::GitTopology;
 use crate::project::Env;
 use crate::project::marker::find_marker;
+use crate::workflow::config::RequireAtom;
 use crate::workflow::matrix::{PremiseFact, PremiseKind, missing_atoms};
 
 const BRANCH_POINTER: &str = "/branch";
 const PREMISE_TYPE: &str = "premise";
 
 /// Ordem da decisão (d): marcador, `develop` e `main`, branch com worktree, formato e prefixo, matriz.
-/// O banco só é aberto quando algum átomo de premissa precisa ser conferido.
+/// O banco só é aberto quando o `require` tem algum átomo de premissa ou `spec`.
 pub(super) fn run(
     start: &Path,
     db: Option<&Path>,
@@ -44,14 +46,18 @@ pub(super) fn run(
     else {
         return Err(AppError::prefix_not_allowed(BRANCH_POINTER));
     };
-    let without_premises = missing_atoms(prefix, &config, &[])
+    let without_facts = missing_atoms(prefix, &config, &[], false)
         .ok_or_else(|| AppError::prefix_not_allowed(BRANCH_POINTER))?;
-    if without_premises.is_empty() {
+    if without_facts.is_empty() {
         return Ok(allowed(branch, "matrix-satisfied"));
     }
 
-    let premises = work_item_premises(start, db, env, caller, &work_item)?;
-    let missing = missing_atoms(prefix, &config, &premises)
+    let runtime = Runtime::discover(start, db, env)?;
+    let mut app = runtime.app()?;
+    let premises = work_item_premises(&mut app, caller, &work_item)?;
+    let spec_valid =
+        !without_facts.contains(&RequireAtom::Spec) || spec_is_valid(&mut app, caller, &work_item)?;
+    let missing = missing_atoms(prefix, &config, &premises, spec_valid)
         .ok_or_else(|| AppError::prefix_not_allowed(BRANCH_POINTER))?;
     if missing.is_empty() {
         return Ok(allowed(branch, "matrix-satisfied"));
@@ -74,16 +80,32 @@ fn allowed(branch: &str, reason: &str) -> Value {
     json!({ "allowed": true, "branch": branch, "reason": reason })
 }
 
+/// Roda o mesmo validador do `spec validate`; pasta de spec ausente e spec reprovada valem `false`, e a violação nunca sai daqui.
+fn spec_is_valid(
+    app: &mut App<'_>,
+    caller: &Caller,
+    work_item: &SemanticId,
+) -> Result<bool, AppError> {
+    let validation = app.dispatch(
+        caller,
+        &Action::SpecValidate {
+            work_item: work_item.as_str().to_owned(),
+        },
+    );
+
+    match validation {
+        Ok(_) => Ok(true),
+        Err(error) if matches!(error.code(), "spec-not-found" | "spec-invalid") => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 /// As premissas do work item, lidas do banco página a página.
 fn work_item_premises(
-    start: &Path,
-    db: Option<&Path>,
-    env: &Env<'_>,
+    app: &mut App<'_>,
     caller: &Caller,
     work_item: &SemanticId,
 ) -> Result<Vec<PremiseFact>, AppError> {
-    let runtime = Runtime::discover(start, db, env)?;
-    let mut app = runtime.app()?;
     let mut premises = Vec::new();
     let mut after_seq = None;
     loop {

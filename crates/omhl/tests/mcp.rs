@@ -1045,7 +1045,7 @@ fn it_should_refuse_feat_without_a_premise_through_the_gate_worktree_tool() {
     assert_eq!(error["code"], json!("worktree-gate-refused"));
     assert_eq!(
         error["details"][0]["context"]["missing"],
-        json!(["business-premise"])
+        json!(["business-premise", "spec"])
     );
 }
 

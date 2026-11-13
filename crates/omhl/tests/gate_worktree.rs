@@ -15,6 +15,7 @@ use tempfile::TempDir;
 const W1: &str = "work-items.w1";
 const W2: &str = "work-items.w2";
 const LINKED_BRANCH: &str = "feat/wi-w1__login";
+const SPEC_SLUG: &str = "login";
 
 // Função pura: a matriz de prefixos
 
@@ -43,8 +44,17 @@ fn confirmed_technical() -> PremiseFact {
     fact(Some(PremiseKind::Technical), true)
 }
 
+/// Só os átomos de premissa: a spec entra como válida.
 fn missing(prefix: &str, premises: &[PremiseFact]) -> Option<Vec<RequireAtom>> {
-    missing_atoms(prefix, &WorkflowConfig::default(), premises)
+    missing_with_spec(prefix, premises, true)
+}
+
+fn missing_with_spec(
+    prefix: &str,
+    premises: &[PremiseFact],
+    spec_valid: bool,
+) -> Option<Vec<RequireAtom>> {
+    missing_atoms(prefix, &WorkflowConfig::default(), premises, spec_valid)
 }
 
 fn assert_missing_for(prefixes: &[&str], premises: &[PremiseFact], expected: &[RequireAtom]) {
@@ -86,10 +96,35 @@ fn it_should_not_accept_a_technical_premise_for_feat_and_fix() {
 }
 
 #[test]
-fn it_should_not_report_the_spec_atom_as_missing_for_feat_and_fix() {
-    let missing_for_feat = missing("feat", &[]);
+fn it_should_not_report_the_spec_atom_as_missing_for_feat_and_fix_when_the_spec_is_valid() {
+    let missing_for_feat = missing_with_spec("feat", &[], true);
 
     assert_eq!(missing_for_feat, Some(vec![RequireAtom::BusinessPremise]));
+}
+
+#[test]
+fn it_should_report_the_spec_atom_as_missing_for_feat_and_fix_when_the_spec_is_not_valid() {
+    let premises = [confirmed_business()];
+
+    let missing_for_each: Vec<Option<Vec<RequireAtom>>> = BUSINESS_PREFIXES
+        .iter()
+        .map(|prefix| missing_with_spec(prefix, &premises, false))
+        .collect();
+
+    assert_eq!(missing_for_each, vec![Some(vec![RequireAtom::Spec]); 2]);
+}
+
+#[test]
+fn it_should_not_ask_for_a_spec_from_a_prefix_whose_require_has_no_spec() {
+    let premises = [confirmed_business(), confirmed_technical()];
+    let prefixes = ["refactor", "tests", "bugfix", "chore", "docs"];
+
+    let missing_for_each: Vec<Option<Vec<RequireAtom>>> = prefixes
+        .iter()
+        .map(|prefix| missing_with_spec(prefix, &premises, false))
+        .collect();
+
+    assert_eq!(missing_for_each, vec![Some(vec![]); prefixes.len()]);
 }
 
 #[test]
@@ -199,14 +234,25 @@ fn it_should_give_none_for_a_prefix_outside_the_table() {
     assert_eq!(outside, None);
 }
 
-#[test]
-fn it_should_not_report_the_spec_atom_even_when_it_is_the_only_one_required() {
+fn config_requiring_only_spec() -> WorkflowConfig {
     let mut config = WorkflowConfig::default();
     config
         .prefixes
         .insert("feat".to_owned(), vec![RequireAtom::Spec]);
 
-    let missing_for_feat = missing_atoms("feat", &config, &[]);
+    config
+}
+
+#[test]
+fn it_should_report_the_spec_atom_when_it_is_the_only_one_required_and_the_spec_is_not_valid() {
+    let missing_for_feat = missing_atoms("feat", &config_requiring_only_spec(), &[], false);
+
+    assert_eq!(missing_for_feat, Some(vec![RequireAtom::Spec]));
+}
+
+#[test]
+fn it_should_report_nothing_when_the_spec_is_the_only_atom_required_and_the_spec_is_valid() {
+    let missing_for_feat = missing_atoms("feat", &config_requiring_only_spec(), &[], true);
 
     assert_eq!(missing_for_feat, Some(vec![]));
 }
@@ -223,7 +269,31 @@ fn it_should_report_the_missing_atoms_in_the_order_of_the_require_list() {
         ],
     );
 
-    let missing_for_perf = missing_atoms("perf", &config, &[]);
+    let missing_for_perf = missing_atoms("perf", &config, &[], false);
+
+    assert_eq!(
+        missing_for_perf,
+        Some(vec![
+            RequireAtom::AgentPremise,
+            RequireAtom::Spec,
+            RequireAtom::BusinessPremise
+        ])
+    );
+}
+
+#[test]
+fn it_should_skip_a_valid_spec_in_the_middle_of_the_require_list() {
+    let mut config = WorkflowConfig::default();
+    config.prefixes.insert(
+        "perf".to_owned(),
+        vec![
+            RequireAtom::AgentPremise,
+            RequireAtom::Spec,
+            RequireAtom::BusinessPremise,
+        ],
+    );
+
+    let missing_for_perf = missing_atoms("perf", &config, &[], true);
 
     assert_eq!(
         missing_for_perf,
@@ -231,6 +301,122 @@ fn it_should_report_the_missing_atoms_in_the_order_of_the_require_list() {
             RequireAtom::AgentPremise,
             RequireAtom::BusinessPremise
         ])
+    );
+}
+
+// A tabela completa da spec: 7 prefixos x 5 estados de premissa x spec válida ou não.
+// Cada célula é escrita à mão, sem derivar uma tabela da outra.
+
+const NONE: &[RequireAtom] = &[];
+const BUSINESS: &[RequireAtom] = &[RequireAtom::BusinessPremise];
+const BUSINESS_AND_SPEC: &[RequireAtom] = &[RequireAtom::BusinessPremise, RequireAtom::Spec];
+const SPEC: &[RequireAtom] = &[RequireAtom::Spec];
+const TECHNICAL: &[RequireAtom] = &[RequireAtom::TechnicalPremiseConfirmed];
+const AGENT: &[RequireAtom] = &[RequireAtom::AgentPremise];
+
+const ALL_PREFIXES: [&str; 7] = [
+    "feat", "fix", "refactor", "tests", "bugfix", "chore", "docs",
+];
+
+/// Sem premissa, negócio pendente, negócio confirmada, técnica autônoma, técnica confirmada.
+fn premise_states() -> [Vec<PremiseFact>; 5] {
+    [
+        vec![],
+        vec![pending_business()],
+        vec![confirmed_business()],
+        vec![autonomous_technical()],
+        vec![confirmed_technical()],
+    ]
+}
+
+/// Por prefixo, o que falta em cada estado de `premise_states`, na mesma ordem.
+type Row = (&'static str, [&'static [RequireAtom]; 5]);
+
+const TABLE_WITH_A_VALID_SPEC: [Row; 7] = [
+    ("feat", [BUSINESS, BUSINESS, NONE, BUSINESS, BUSINESS]),
+    ("fix", [BUSINESS, BUSINESS, NONE, BUSINESS, BUSINESS]),
+    (
+        "refactor",
+        [TECHNICAL, TECHNICAL, TECHNICAL, TECHNICAL, NONE],
+    ),
+    ("tests", [TECHNICAL, TECHNICAL, TECHNICAL, TECHNICAL, NONE]),
+    ("bugfix", [AGENT, AGENT, AGENT, NONE, NONE]),
+    ("chore", [NONE, NONE, NONE, NONE, NONE]),
+    ("docs", [NONE, NONE, NONE, NONE, NONE]),
+];
+
+const TABLE_WITHOUT_A_VALID_SPEC: [Row; 7] = [
+    (
+        "feat",
+        [
+            BUSINESS_AND_SPEC,
+            BUSINESS_AND_SPEC,
+            SPEC,
+            BUSINESS_AND_SPEC,
+            BUSINESS_AND_SPEC,
+        ],
+    ),
+    (
+        "fix",
+        [
+            BUSINESS_AND_SPEC,
+            BUSINESS_AND_SPEC,
+            SPEC,
+            BUSINESS_AND_SPEC,
+            BUSINESS_AND_SPEC,
+        ],
+    ),
+    (
+        "refactor",
+        [TECHNICAL, TECHNICAL, TECHNICAL, TECHNICAL, NONE],
+    ),
+    ("tests", [TECHNICAL, TECHNICAL, TECHNICAL, TECHNICAL, NONE]),
+    ("bugfix", [AGENT, AGENT, AGENT, NONE, NONE]),
+    ("chore", [NONE, NONE, NONE, NONE, NONE]),
+    ("docs", [NONE, NONE, NONE, NONE, NONE]),
+];
+
+fn computed_cells(spec_valid: bool) -> Vec<(String, Option<Vec<RequireAtom>>)> {
+    let mut cells = Vec::new();
+    for (index, premises) in premise_states().iter().enumerate() {
+        for prefix in ALL_PREFIXES {
+            cells.push((
+                format!("{prefix} / premise state {index}"),
+                missing_with_spec(prefix, premises, spec_valid),
+            ));
+        }
+    }
+
+    cells
+}
+
+fn expected_cells(table: &[Row; 7]) -> Vec<(String, Option<Vec<RequireAtom>>)> {
+    let mut cells = Vec::new();
+    for index in 0..5 {
+        for (prefix, row) in table {
+            cells.push((
+                format!("{prefix} / premise state {index}"),
+                Some(row[index].to_vec()),
+            ));
+        }
+    }
+
+    cells
+}
+
+#[test]
+fn it_should_require_in_every_cell_exactly_what_the_matrix_says_when_the_spec_is_valid() {
+    assert_eq!(
+        computed_cells(true),
+        expected_cells(&TABLE_WITH_A_VALID_SPEC)
+    );
+}
+
+#[test]
+fn it_should_require_in_every_cell_exactly_what_the_matrix_says_when_the_spec_is_not_valid() {
+    assert_eq!(
+        computed_cells(false),
+        expected_cells(&TABLE_WITHOUT_A_VALID_SPEC)
     );
 }
 
@@ -350,6 +536,39 @@ impl Fixture {
             .to_string_lossy()
             .into_owned()
     }
+
+    /// `omhl spec init`: devolve o caminho da primeira parte, ainda com as 5 seções vazias.
+    fn init_spec(&self, work_item: &str) -> PathBuf {
+        let output = self.run_in(self.project.dir(), &["spec", "init", work_item, SPEC_SLUG]);
+        assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+
+        PathBuf::from(
+            json_line(&output.stdout)["path"]
+                .as_str()
+                .expect("spec init prints the path"),
+        )
+    }
+
+    /// Spec criada por `omhl spec init` e preenchida com as 5 seções, citando `cited`.
+    fn write_spec(&self, work_item: &str, cited: &str) {
+        let path = self.init_spec(work_item);
+
+        fs::write(path, valid_spec(cited)).expect("the spec part is written");
+    }
+
+    /// Como `write_spec`, e confere pela CLI que o validador a aprova: o gate não é o único juiz.
+    fn write_valid_spec(&self, work_item: &str, cited: &str) {
+        self.write_spec(work_item, cited);
+
+        let validated = self.run_in(self.project.dir(), &["spec", "validate", work_item]);
+        assert_eq!(validated.code, Some(0), "stderr: {}", validated.stderr);
+    }
+}
+
+fn valid_spec(cited: &str) -> String {
+    format!(
+        "## Objetivo\n\nPermitir o login.\n\n## Diretivas e premissas aplicáveis\n\n- {cited}\n\n## Comportamentos\n\n- CMP-001: o sistema autentica o usuário.\n\n## Critérios de aceitação\n\n- CA-001: login válido devolve sessão.\n\n## Fora de escopo\n\nLogout.\n"
+    )
 }
 
 fn node_item(id: &str, type_name: &str, data: &Value) -> Value {
@@ -609,14 +828,14 @@ fn it_should_refuse_feat_without_a_premise_with_worktree_gate_refused() {
 }
 
 #[test]
-fn it_should_list_the_missing_atom_in_the_context_of_the_refusal() {
+fn it_should_list_the_premise_and_the_spec_atoms_in_the_context_when_feat_has_neither() {
     let fixture = Fixture::seeded();
 
     let output = fixture.gate("feat/wi-w1__new");
 
     assert_eq!(
         error_context(&output)["missing"],
-        json!(["business-premise"])
+        json!(["business-premise", "spec"])
     );
 }
 
@@ -700,23 +919,25 @@ fn it_should_refuse_feat_with_a_pending_business_premise() {
 }
 
 #[test]
-fn it_should_allow_feat_with_a_confirmed_business_premise_and_no_spec() {
+fn it_should_refuse_feat_with_a_confirmed_business_premise_and_no_spec_listing_only_spec() {
     let fixture = Fixture::seeded();
     fixture.premise("premises.b1", W1, "business", true);
 
     let output = fixture.gate("feat/wi-w1__new");
 
-    assert_allowed(&output, "matrix-satisfied");
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(error_context(&output)["missing"], json!(["spec"]));
 }
 
 #[test]
-fn it_should_allow_fix_with_a_confirmed_business_premise_and_no_spec() {
+fn it_should_refuse_fix_with_a_confirmed_business_premise_and_no_spec_listing_only_spec() {
     let fixture = Fixture::seeded();
     fixture.premise("premises.b1", W1, "business", true);
 
     let output = fixture.gate("fix/wi-w1__new");
 
-    assert_allowed(&output, "matrix-satisfied");
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(error_context(&output)["missing"], json!(["spec"]));
 }
 
 #[test]
@@ -861,4 +1082,204 @@ fn it_should_keep_refusing_a_prefix_that_workflow_toml_does_not_declare() {
     let output = fixture.gate("style/wi-w1__new");
 
     assert_refused(&output, "prefix-not-allowed");
+}
+
+// Átomo spec: sem spec, spec inválida e spec válida
+
+#[test]
+fn it_should_list_the_premise_and_the_spec_atoms_when_feat_has_a_pending_business_premise_and_no_spec()
+ {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", false);
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_eq!(
+        error_context(&output)["missing"],
+        json!(["business-premise", "spec"])
+    );
+}
+
+#[test]
+fn it_should_list_the_premise_and_the_spec_atoms_when_feat_has_an_autonomous_technical_premise_and_no_spec()
+ {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.t1", W1, "technical", false);
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_eq!(
+        error_context(&output)["missing"],
+        json!(["business-premise", "spec"])
+    );
+}
+
+#[test]
+fn it_should_refuse_feat_when_the_spec_is_the_empty_skeleton_created_by_spec_init() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.init_spec(W1);
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(error_context(&output)["missing"], json!(["spec"]));
+}
+
+#[test]
+fn it_should_refuse_feat_when_the_spec_cites_a_premise_that_is_not_in_the_database() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.write_spec(W1, "premises.ghost");
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(error_context(&output)["missing"], json!(["spec"]));
+}
+
+#[test]
+fn it_should_allow_feat_with_a_confirmed_business_premise_and_a_valid_spec() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.write_valid_spec(W1, "premises.b1");
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_allowed(&output, "matrix-satisfied");
+}
+
+#[test]
+fn it_should_allow_fix_with_a_confirmed_business_premise_and_a_valid_spec() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.write_valid_spec(W1, "premises.b1");
+
+    let output = fixture.gate("fix/wi-w1__new");
+
+    assert_allowed(&output, "matrix-satisfied");
+}
+
+#[test]
+fn it_should_find_the_valid_spec_in_the_main_directory_when_run_from_a_linked_worktree() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.write_valid_spec(W1, "premises.b1");
+
+    let output = fixture.gate_from_linked("feat/wi-w1__new");
+
+    assert_allowed(&output, "matrix-satisfied");
+}
+
+#[test]
+fn it_should_not_count_the_valid_spec_of_another_work_item() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.premise("premises.b2", W2, "business", true);
+    fixture.write_valid_spec(W2, "premises.b2");
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(error_context(&output)["missing"], json!(["spec"]));
+}
+
+#[test]
+fn it_should_list_only_the_premise_atom_when_the_spec_is_valid_but_the_premise_is_missing() {
+    let fixture = Fixture::seeded();
+    fixture.write_workflow("version = 1\n\n[specs]\ncite_business_premise = false\n");
+    fixture.premise("premises.t1", W1, "technical", true);
+    fixture.write_valid_spec(W1, "premises.t1");
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(
+        error_context(&output)["missing"],
+        json!(["business-premise"])
+    );
+}
+
+#[test]
+fn it_should_allow_refactor_with_a_confirmed_technical_premise_whatever_the_spec_is() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.t1", W1, "technical", true);
+    fixture.init_spec(W1);
+
+    let output = fixture.gate("refactor/wi-w1__new");
+
+    assert_allowed(&output, "matrix-satisfied");
+}
+
+#[test]
+fn it_should_keep_refusing_perf_with_prefix_not_allowed_even_with_a_premise_and_a_valid_spec() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.write_valid_spec(W1, "premises.b1");
+
+    let output = fixture.gate("perf/wi-w1__new");
+
+    assert_refused(&output, "prefix-not-allowed");
+}
+
+// Prefixo novo do workflow.toml com require = ["spec"]
+
+const SPEC_ONLY_PERF: &str = "version = 1\n\n[prefix.perf]\nrequire = [\"spec\"]\n";
+
+#[test]
+fn it_should_require_a_spec_for_a_new_prefix_whose_require_is_only_spec() {
+    let fixture = Fixture::seeded();
+    fixture.write_workflow(SPEC_ONLY_PERF);
+
+    let output = fixture.gate("perf/wi-w1__new");
+
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(error_context(&output)["missing"], json!(["spec"]));
+}
+
+#[test]
+fn it_should_refuse_a_new_prefix_whose_require_is_only_spec_when_the_spec_is_invalid() {
+    let fixture = Fixture::seeded();
+    fixture.write_workflow(SPEC_ONLY_PERF);
+    fixture.init_spec(W1);
+
+    let output = fixture.gate("perf/wi-w1__new");
+
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(error_context(&output)["missing"], json!(["spec"]));
+}
+
+#[test]
+fn it_should_allow_a_new_prefix_whose_require_is_only_spec_once_the_spec_is_valid() {
+    let fixture = Fixture::seeded();
+    fixture.write_workflow(SPEC_ONLY_PERF);
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.write_valid_spec(W1, "premises.b1");
+
+    let output = fixture.gate("perf/wi-w1__new");
+
+    assert_allowed(&output, "matrix-satisfied");
+}
+
+// Roteiro 7.3, passos 1, 3 e 5
+
+#[test]
+fn it_should_walk_the_gate_from_refusal_without_premise_to_release_with_a_valid_spec() {
+    let fixture = Fixture::new();
+    fixture.append(&[node_item(W1, "work-item", &work_item_data("t"))]);
+
+    let without_premise = fixture.gate("feat/wi-w1__new");
+    fixture.premise("premises.b1", W1, "business", true);
+    let without_spec = fixture.gate("feat/wi-w1__new");
+    fixture.write_valid_spec(W1, "premises.b1");
+    let with_spec = fixture.gate("feat/wi-w1__new");
+
+    assert_refused(&without_premise, "worktree-gate-refused");
+    assert_eq!(
+        error_context(&without_premise)["missing"],
+        json!(["business-premise", "spec"])
+    );
+    assert_refused(&without_spec, "worktree-gate-refused");
+    assert_eq!(error_context(&without_spec)["missing"], json!(["spec"]));
+    assert_allowed(&with_spec, "matrix-satisfied");
 }

@@ -13,11 +13,12 @@ pub struct PremiseFact {
     pub confirmed: bool,
 }
 
-/// Os átomos de `require` do prefixo que as premissas não satisfazem, na ordem do `require`; `None` quando o prefixo não está na tabela.
+/// Os átomos de `require` do prefixo que as premissas e a validação da spec não satisfazem, na ordem do `require`; `None` quando o prefixo não está na tabela.
 pub fn missing_atoms(
     prefix: &str,
     config: &WorkflowConfig,
     premises: &[PremiseFact],
+    spec_valid: bool,
 ) -> Option<Vec<RequireAtom>> {
     let required = config.prefixes.get(prefix)?;
 
@@ -25,12 +26,12 @@ pub fn missing_atoms(
         required
             .iter()
             .copied()
-            .filter(|atom| !is_satisfied(*atom, premises))
+            .filter(|atom| !is_satisfied(*atom, premises, spec_valid))
             .collect(),
     )
 }
 
-fn is_satisfied(atom: RequireAtom, premises: &[PremiseFact]) -> bool {
+fn is_satisfied(atom: RequireAtom, premises: &[PremiseFact], spec_valid: bool) -> bool {
     let any = |kind: PremiseKind, needs_confirmation: bool| {
         premises
             .iter()
@@ -41,7 +42,6 @@ fn is_satisfied(atom: RequireAtom, premises: &[PremiseFact]) -> bool {
         RequireAtom::BusinessPremise => any(PremiseKind::Business, true),
         RequireAtom::TechnicalPremiseConfirmed => any(PremiseKind::Technical, true),
         RequireAtom::AgentPremise => any(PremiseKind::Technical, false),
-        // A validação da spec não é de premissa: quem a avalia é o gate completo (S5b).
-        RequireAtom::Spec => true,
+        RequireAtom::Spec => spec_valid,
     }
 }
