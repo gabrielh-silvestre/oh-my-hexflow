@@ -177,6 +177,12 @@ pub enum ReportCommand {
         #[arg(long)]
         work_item: Option<String>,
     },
+    /// List the premises repeated in enough work items to suggest promoting them to a guideline.
+    Recurrences {
+        /// Minimum number of distinct work items; without it, `promotion.min_work_items` of workflow.toml applies.
+        #[arg(long)]
+        min: Option<u32>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -396,6 +402,9 @@ fn to_action(
         ActionCommand::Report {
             command: ReportCommand::Answers { work_item },
         } => Action::ReportAnswers { work_item },
+        ActionCommand::Report {
+            command: ReportCommand::Recurrences { min },
+        } => Action::ReportRecurrences { min },
     })
 }
 

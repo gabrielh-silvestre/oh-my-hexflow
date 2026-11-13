@@ -387,5 +387,11 @@ fn extension_tools() -> Vec<Value> {
             &json!({ "work_item": { "type": "string", "description": "Work item semantic id." } }),
             &[],
         ),
+        tool(
+            "report_recurrences",
+            "List the premises repeated in at least min distinct work items (closed ones count) that no guideline covers yet, as candidates to promote; read-only.",
+            &json!({ "min": { "type": "integer", "minimum": 0, "description": "Minimum distinct work items; promotion.min_work_items of workflow.toml by default." } }),
+            &[],
+        ),
     ]
 }

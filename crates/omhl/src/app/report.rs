@@ -7,7 +7,10 @@ use super::engine::{Engine, parse_at};
 use super::error::AppError;
 use super::output;
 use super::read::{all_nodes, nodes_matching};
+use crate::ports::workflow::read_workflow;
+use crate::workflow::config::WorkflowConfig;
 use crate::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_by, gap_state};
+use crate::workflow::recurrence::{Premise, recurrences};
 
 const GAP_RELATIONS: [&str; 3] = ["answers", "supports", "contradicts"];
 
@@ -29,6 +32,45 @@ impl Engine<'_> {
             .collect();
 
         Ok(json!({ "gaps": entries }))
+    }
+
+    /// Só lê: sugerir a promoção é com o agente, e a `guideline` só entra com `confirmed_by`.
+    pub(super) fn report_recurrences(&mut self, min: Option<u32>) -> Result<Value, AppError> {
+        let min = match min {
+            Some(min) => min,
+            None => self.default_promotion_min()?,
+        };
+        let premises: Vec<Premise> = all_nodes(&mut self.omhl, &self.tenant, "premise")?
+            .iter()
+            .filter_map(recurrence_premise)
+            .collect();
+        let directives: Vec<String> = all_nodes(&mut self.omhl, &self.tenant, "guideline")?
+            .iter()
+            .filter_map(|view| text_field(view, "text"))
+            .collect();
+        let groups: Vec<Value> = recurrences(&premises, &directives, min)
+            .into_iter()
+            .map(|group| {
+                json!({
+                    "kind": group.kind,
+                    "text": group.text,
+                    "work_items": group.work_items,
+                    "premises": group.premises,
+                })
+            })
+            .collect();
+
+        Ok(json!({ "min": min, "recurrences": groups }))
+    }
+
+    /// Sem raiz de projeto (`--db`) não há `workflow.toml`: vale o padrão.
+    fn default_promotion_min(&self) -> Result<u32, AppError> {
+        let config = match self.project_root.as_deref() {
+            Some(root) => read_workflow(root)?,
+            None => WorkflowConfig::default(),
+        };
+
+        Ok(config.promotion.min_work_items)
     }
 
     /// As premissas vigentes e os fatos de gap do tenant (premissas, diretivas e relations).
@@ -125,4 +167,18 @@ fn state_name(state: GapState) -> &'static str {
         GapState::Answered { .. } => "answered",
         GapState::NeedsHuman => "needs-human",
     }
+}
+
+/// Premissa legada, sem `kind` ou `work_item`, não entra no agrupamento.
+fn recurrence_premise(view: &NodeView) -> Option<Premise> {
+    Some(Premise {
+        id: view.id.as_str().to_owned(),
+        kind: text_field(view, "kind")?,
+        text: text_field(view, "text")?,
+        work_item: text_field(view, "work_item")?,
+    })
+}
+
+fn text_field(view: &NodeView, field: &str) -> Option<String> {
+    view.data.get(field)?.as_str().map(str::to_owned)
 }

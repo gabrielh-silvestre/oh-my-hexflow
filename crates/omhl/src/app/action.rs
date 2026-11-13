@@ -72,6 +72,10 @@ pub enum Action {
     ReportAnswers {
         work_item: Option<String>,
     },
+    /// Sem `min`, vale `promotion.min_work_items` do `workflow.toml`.
+    ReportRecurrences {
+        min: Option<u32>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,23 +176,23 @@ pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError>
                 work_item: optional_text(&mut args, "work_item")?,
             })
         }),
+        "report_recurrences" => only(&args, &["min"]).and_then(|()| {
+            Ok(Action::ReportRecurrences {
+                min: optional_u32(&args, "min")?,
+            })
+        }),
         _ => Err(AppError::unknown_tool()),
     }
 }
 
 fn list(args: &mut Map<String, Value>) -> Result<Action, AppError> {
     only(args, &["type", "id_prefix", "limit", "after_seq", "where"])?;
-    let limit = optional_uint(args, "limit")?;
+    let limit = optional_u32(args, "limit")?;
 
     Ok(Action::List {
         type_name: optional_text(args, "type")?,
         id_prefix: optional_text(args, "id_prefix")?,
-        limit: limit
-            .map(|value| {
-                u32::try_from(value)
-                    .map_err(|_| AppError::invalid_arguments("/limit", "unknown value"))
-            })
-            .transpose()?,
+        limit,
         after_seq: optional_uint(args, "after_seq")?,
         where_eq: where_pairs(args)?,
     })
@@ -224,11 +228,7 @@ fn attest(args: &mut Map<String, Value>) -> Result<Action, AppError> {
 
 fn byproduct(args: &mut Map<String, Value>) -> Result<Action, AppError> {
     only(args, &["check", "work_item", "tail"])?;
-    let tail = match optional_uint(args, "tail")? {
-        None => DEFAULT_TAIL,
-        Some(value) => u32::try_from(value)
-            .map_err(|_| AppError::invalid_arguments("/tail", "unknown value"))?,
-    };
+    let tail = optional_u32(args, "tail")?.unwrap_or(DEFAULT_TAIL);
 
     Ok(Action::Byproduct {
         check: required_text(args, "check")?,
@@ -280,4 +280,13 @@ fn optional_uint(args: &Map<String, Value>, key: &str) -> Result<Option<u64>, Ap
         Some(number) => Ok(Some(number)),
         None => Err(AppError::invalid_arguments(&pointer(key), "wrong type")),
     }
+}
+
+fn optional_u32(args: &Map<String, Value>, key: &str) -> Result<Option<u32>, AppError> {
+    optional_uint(args, key)?
+        .map(|value| {
+            u32::try_from(value)
+                .map_err(|_| AppError::invalid_arguments(&pointer(key), "unknown value"))
+        })
+        .transpose()
 }

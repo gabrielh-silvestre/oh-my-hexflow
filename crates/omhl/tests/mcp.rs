@@ -19,7 +19,7 @@ use support::project::Project;
 use support::{FakeProbe, FixedClock, SeqIds, executor_attestation_data, executor_author, snap};
 use tempfile::TempDir;
 
-const TOOLS: [&str; 12] = [
+const TOOLS: [&str; 13] = [
     "list",
     "get",
     "append",
@@ -32,6 +32,7 @@ const TOOLS: [&str; 12] = [
     "byproduct",
     "project",
     "report_answers",
+    "report_recurrences",
 ];
 const LINT_TOML: &str =
     "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
@@ -304,7 +305,7 @@ fn it_should_answer_ping_with_an_empty_result() {
 // Ferramentas
 
 #[test]
-fn it_should_list_exactly_the_twelve_tools_in_a_fixed_order() {
+fn it_should_list_exactly_the_thirteen_tools_in_a_fixed_order() {
     let (_project, session) = serve();
 
     session.send(&rpc(json!(1), "tools/list", json!({})));

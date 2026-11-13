@@ -112,6 +112,7 @@ impl Engine<'_> {
             Action::SpecInit { work_item, slug } => self.spec_init(work_item, slug),
             Action::SpecValidate { work_item } => self.spec_validate(work_item),
             Action::ReportAnswers { work_item } => self.report_answers(work_item.as_deref()),
+            Action::ReportRecurrences { min } => self.report_recurrences(*min),
             Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
             Action::CheckSweep => unreachable!("check sweep is dispatched by the runtime"),
             Action::GateWorktree { .. } => {
