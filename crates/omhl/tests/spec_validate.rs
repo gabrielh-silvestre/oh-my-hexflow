@@ -9,6 +9,7 @@ use ::omhl::workflow::spec::{SpecFile, validate_spec};
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
 use support::git::git_in;
+use support::legacy::seed_legacy_confirmed_premise;
 use support::omhl::work_item_data;
 use support::project::Project;
 use tempfile::TempDir;
@@ -30,6 +31,7 @@ const CITED_DIVERGENCE: &str = "divergences.login-cmp-001";
 const PART_OBJECTIVE_LINE: usize = 3;
 const PART_CMP_LINE: usize = 11;
 const PART_CA_LINE: usize = 15;
+const PART_SECOND_CITATION_LINE: usize = 8;
 
 fn valid_part() -> Vec<&'static str> {
     vec![
@@ -973,6 +975,31 @@ fn it_should_refuse_the_skeleton_created_by_spec_init_with_one_detail_per_empty_
             "parte-01.md:7 section-empty",
             "parte-01.md:9 section-empty",
         ]
+    );
+}
+
+#[test]
+fn it_should_refuse_a_spec_that_cites_a_legacy_confirmed_premise() {
+    let fixture = Fixture::new();
+    seed_legacy_confirmed_premise(
+        &fixture.project.db_path(),
+        "premises.legacy-rule",
+        WORK_ITEM,
+        "technical",
+    );
+    let lines = with_line(
+        valid_part(),
+        PART_SECOND_CITATION_LINE,
+        "- premises.legacy-rule",
+    );
+    fixture.write("parte-01.md", &lines);
+
+    let output = fixture.validate_from_linked();
+
+    assert_eq!(output.code, Some(1));
+    assert_eq!(
+        error_details(&output),
+        vec!["parte-01.md:8 cited-id-unconfirmed"]
     );
 }
 

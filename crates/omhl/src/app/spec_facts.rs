@@ -7,7 +7,9 @@ use super::error::AppError;
 use super::read::{all_nodes, nodes_matching};
 use super::report::work_item_filter;
 use crate::native::NativeBase;
-use crate::workflow::gap::{GapFacts, GapState, gap_state, is_confirmed_guideline};
+use crate::workflow::gap::{
+    GapFacts, GapState, gap_state, is_confirmed_guideline, is_confirmed_premise,
+};
 use crate::workflow::matrix::{PremiseFact, PremiseKind};
 use crate::workflow::spec::{DivergenceFact, SPEC_STALE, SpecFacts};
 
@@ -42,7 +44,6 @@ impl Engine<'_> {
     }
 }
 
-/// Confirmada é `status` confirmado com `confirmed_by`, a mesma regra do grafo da spec.
 fn premise_fact(data: &Value) -> PremiseFact {
     let kind = match text(data, "kind") {
         Some("business") => Some(PremiseKind::Business),
@@ -52,7 +53,7 @@ fn premise_fact(data: &Value) -> PremiseFact {
 
     PremiseFact {
         kind,
-        confirmed: text(data, "status") == Some("confirmed") && data.get("confirmed_by").is_some(),
+        confirmed: is_confirmed_premise(data),
     }
 }
 
@@ -80,9 +81,8 @@ impl SpecFacts for GraphFacts {
         let Some(fact) = self.gap.nodes.iter().find(|fact| fact.id == id) else {
             return false;
         };
-        let has_confirmed_by = fact.data.get("confirmed_by").is_some();
         if fact.type_name == PREMISE {
-            return text(&fact.data, "status") == Some("confirmed") && has_confirmed_by;
+            return is_confirmed_premise(&fact.data);
         }
 
         is_confirmed_guideline(fact.native, fact.loader, &fact.data)

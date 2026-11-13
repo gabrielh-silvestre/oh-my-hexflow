@@ -8,6 +8,7 @@ use ::omhl::workflow::matrix::{PremiseFact, PremiseKind, missing_atoms};
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
 use support::git::git_in;
+use support::legacy::seed_legacy_confirmed_premise;
 use support::omhl::work_item_data;
 use support::project::Project;
 use tempfile::TempDir;
@@ -981,6 +982,16 @@ fn it_should_not_count_a_technical_premise_for_feat() {
 fn it_should_refuse_refactor_with_an_autonomous_technical_premise() {
     let fixture = Fixture::seeded();
     fixture.premise("premises.t1", W1, "technical", false);
+
+    let output = fixture.gate("refactor/wi-w1__new");
+
+    assert_refused(&output, "worktree-gate-refused");
+}
+
+#[test]
+fn it_should_refuse_refactor_with_a_legacy_confirmed_technical_premise() {
+    let fixture = Fixture::seeded();
+    seed_legacy_confirmed_premise(&fixture.project.db_path(), "premises.t1", W1, "technical");
 
     let output = fixture.gate("refactor/wi-w1__new");
 

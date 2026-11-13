@@ -4,7 +4,7 @@ use hexlog::{NodeView, SemanticId};
 use serde_json::Value;
 
 use crate::native::NativeBase;
-use crate::workflow::gap::is_confirmed_guideline;
+use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 
 pub const CONTEXT_BUDGET: usize = 9_500;
 
@@ -274,7 +274,7 @@ impl PremiseMark {
 
 /// Premissa de negócio sem confirmação espera o dono; a técnica ou sem `kind` o agente assume sozinho.
 fn premise_mark(node: &NodeView) -> PremiseMark {
-    if node.data["status"] == "confirmed" {
+    if is_confirmed_premise(&node.data) {
         return PremiseMark::Confirmed;
     }
     if node.data["kind"] == "business" {

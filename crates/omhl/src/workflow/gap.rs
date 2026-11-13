@@ -48,7 +48,7 @@ pub fn gap_state(facts: &GapFacts, gap: &str) -> GapState {
     let Some(premise) = answering_premise(facts, gap) else {
         return GapState::Open;
     };
-    let human = has_confirmed_by(premise);
+    let human = is_confirmed_premise(&premise.data);
     if !human && contradicts_a_confirmed_directive(facts, &premise.id) {
         return GapState::NeedsHuman;
     }
@@ -68,7 +68,7 @@ pub fn answered_by(facts: &GapFacts, gap: &str) -> Option<String> {
     answering_premise(facts, gap).map(|premise| premise.id.clone())
 }
 
-/// Vale a primeira com `confirmed_by`; sem nenhuma, a primeira gravada.
+/// Vale a primeira confirmada; sem nenhuma, a primeira gravada.
 fn answering_premise<'a>(facts: &'a GapFacts, gap: &str) -> Option<&'a Fact> {
     let mut answers = facts
         .edges
@@ -78,10 +78,12 @@ fn answering_premise<'a>(facts: &'a GapFacts, gap: &str) -> Option<&'a Fact> {
         .filter(|fact| fact.type_name == PREMISE);
     let first = answers.next()?;
 
-    Some(if has_confirmed_by(first) {
+    Some(if is_confirmed_premise(&first.data) {
         first
     } else {
-        answers.find(|fact| has_confirmed_by(fact)).unwrap_or(first)
+        answers
+            .find(|fact| is_confirmed_premise(&fact.data))
+            .unwrap_or(first)
     })
 }
 
@@ -89,8 +91,10 @@ fn node<'a>(facts: &'a GapFacts, id: &str) -> Option<&'a Fact> {
     facts.nodes.iter().find(|fact| fact.id == id)
 }
 
-fn has_confirmed_by(fact: &Fact) -> bool {
-    fact.data.get("confirmed_by").is_some()
+/// Premissa confirmada: `status` confirmado e `confirmed_by`; a legada `confirmed` sem `confirmed_by` não conta.
+pub fn is_confirmed_premise(data: &Value) -> bool {
+    data.get("status").and_then(Value::as_str) == Some("confirmed")
+        && data.get("confirmed_by").is_some()
 }
 
 /// Diretiva confirmada: nativa, escrita pelo cliente `loader` ou com `confirmed_by`.
@@ -116,4 +120,23 @@ fn contradicts_a_confirmed_directive(facts: &GapFacts, premise: &str) -> bool {
             && edge.from == premise
             && node(facts, &edge.to).is_some_and(is_confirmed_directive)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::is_confirmed_premise;
+
+    #[test]
+    fn it_should_confirm_a_premise_only_with_confirmed_status_and_confirmed_by() {
+        let by = json!({"by": "person:ana"});
+        let confirmed = json!({"status": "confirmed", "confirmed_by": by});
+        let legacy = json!({"status": "confirmed"});
+        let assumed_with_confirmation = json!({"status": "assumed", "confirmed_by": by});
+
+        assert!(is_confirmed_premise(&confirmed));
+        assert!(!is_confirmed_premise(&legacy));
+        assert!(!is_confirmed_premise(&assumed_with_confirmation));
+    }
 }

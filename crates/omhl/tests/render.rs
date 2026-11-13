@@ -605,6 +605,36 @@ fn it_should_mark_a_confirmed_technical_premise_as_confirmed() {
     assert!(block(&rendered.text, "premises.t").contains(&"- mark: confirmed"));
 }
 
+/// Premissa de antes do PR: `status: confirmed` sem `confirmed_by`.
+fn legacy_confirmed_premise(id: &str, kind: &str) -> NodeView {
+    node(
+        id,
+        "premise",
+        json!({ "text": "the rule", "kind": kind, "status": "confirmed", "work_item": "work-items.w1" }),
+    )
+}
+
+#[test]
+fn it_should_mark_a_legacy_confirmed_technical_premise_as_autonomous() {
+    let rendered = rendered_premises(vec![legacy_confirmed_premise("premises.t", "technical")]);
+
+    assert!(block(&rendered.text, "premises.t").contains(&"- mark: autonomous"));
+}
+
+#[test]
+fn it_should_mark_a_legacy_confirmed_business_premise_as_pending() {
+    let rendered = rendered_premises(vec![legacy_confirmed_premise("premises.b", "business")]);
+
+    assert!(block(&rendered.text, "premises.b").contains(&"- mark: pending"));
+}
+
+#[test]
+fn it_should_list_a_legacy_confirmed_business_premise_among_the_pending_ones() {
+    let rendered = rendered_premises(vec![legacy_confirmed_premise("premises.b", "business")]);
+
+    assert!(section(&rendered.text, "Pending premises").contains("### premises.b\n"));
+}
+
 #[test]
 fn it_should_mark_an_assumed_technical_premise_as_autonomous() {
     let rendered = rendered_premises(vec![kinded_premise("premises.t", "technical", "assumed")]);

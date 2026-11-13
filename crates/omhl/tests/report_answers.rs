@@ -149,6 +149,20 @@ fn it_should_attribute_to_an_agent_a_legacy_confirmed_premise_without_confirmed_
 }
 
 #[test]
+fn it_should_attribute_to_an_agent_an_assumed_premise_that_carries_confirmed_by() {
+    let data = json!({
+        "text": "t", "status": "assumed", "kind": "technical", "work_item": W1,
+        "confirmed_by": confirmed_by(),
+    });
+    let nodes = vec![fact(ANSWER, "premise", false, data)];
+    let edges = vec![edge("answers", ANSWER, GAP)];
+
+    let state = state_of(nodes, edges);
+
+    assert_eq!(state, answered(Answerer::Autonomous, false));
+}
+
+#[test]
 fn it_should_have_no_criterion_when_no_directive_supports_the_answer() {
     let nodes = vec![agent_premise(ANSWER), confirmed_directive(DIRECTIVE)];
     let edges = vec![edge("answers", ANSWER, GAP)];

@@ -78,6 +78,8 @@ omhl list --type divergence --where work_item=work-items.w1 --where resolution=o
 
 Diretiva (`guideline`) e premissa de negócio só vinculam o agente depois de confirmadas. A premissa técnica pode ser autônoma (`status` `assumed`): o agente a registra sozinho e o humano confirma depois, se quiser.
 
+Premissa confirmada tem uma regra só, em todos os pontos que a leem (render, gate, `spec validate` e relatório de gaps): `status` `confirmed` **e** `confirmed_by` presente. Uma premissa antiga `confirmed` sem `confirmed_by` vale como não confirmada em todos eles, e um `assumed` com `confirmed_by` também não é confirmado.
+
 A confirmação é a aprovação do humano dentro da sessão. O registro leva o campo `confirmed_by`, com a pergunta e a resposta literais como evidência:
 
 ```json
@@ -372,10 +374,10 @@ omhl report answers --work-item work-items.w1
 | Campo | Valores |
 |---|---|
 | `state` | `open`: nenhuma resposta. `answered`: há resposta. `needs-human`: a resposta contraria uma diretiva confirmada e não tem `confirmed_by`; o gap segue contando como aberto no validador e na retro |
-| `answerer` | `human` quando a premissa que responde tem `confirmed_by`; `autonomous` em qualquer outro caso, inclusive a premissa antiga `confirmed` sem `confirmed_by` |
+| `answerer` | `human` quando a premissa que responde está confirmada (`confirmed` com `confirmed_by`); `autonomous` em qualquer outro caso, inclusive a premissa antiga `confirmed` sem `confirmed_by` e a `assumed` com `confirmed_by` |
 | `no_criterion` | `true` quando nenhuma diretiva confirmada sustenta a resposta |
 
-Com mais de uma resposta, vale a premissa com `confirmed_by`. Sem nenhuma, vale a primeira em ordem de gravação. O crítico automatizado dessa cadeira não existe nesta entrega: ele só precisará gravar `supports` e `contradicts`.
+Com mais de uma resposta, vale a primeira premissa confirmada. Sem nenhuma, vale a primeira em ordem de gravação. O crítico automatizado dessa cadeira não existe nesta entrega: ele só precisará gravar `supports` e `contradicts`.
 
 ### Divergência
 
