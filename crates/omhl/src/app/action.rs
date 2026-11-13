@@ -12,6 +12,7 @@ pub enum Action {
         id_prefix: Option<String>,
         limit: Option<u32>,
         after_seq: Option<u64>,
+        where_eq: Vec<(String, String)>,
     },
     Get {
         id: String,
@@ -161,7 +162,7 @@ pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError>
 }
 
 fn list(args: &mut Map<String, Value>) -> Result<Action, AppError> {
-    only(args, &["type", "id_prefix", "limit", "after_seq"])?;
+    only(args, &["type", "id_prefix", "limit", "after_seq", "where"])?;
     let limit = optional_uint(args, "limit")?;
 
     Ok(Action::List {
@@ -174,7 +175,25 @@ fn list(args: &mut Map<String, Value>) -> Result<Action, AppError> {
             })
             .transpose()?,
         after_seq: optional_uint(args, "after_seq")?,
+        where_eq: where_pairs(args)?,
     })
+}
+
+fn where_pairs(args: &mut Map<String, Value>) -> Result<Vec<(String, String)>, AppError> {
+    match args.remove("where") {
+        None => Ok(Vec::new()),
+        Some(Value::Object(fields)) => fields
+            .into_iter()
+            .map(|(field, value)| match value {
+                Value::String(text) => Ok((field, text)),
+                _ => Err(AppError::invalid_arguments(
+                    &format!("/where/{field}"),
+                    "wrong type",
+                )),
+            })
+            .collect(),
+        Some(_) => Err(AppError::invalid_arguments("/where", "wrong type")),
+    }
 }
 
 fn attest(args: &mut Map<String, Value>) -> Result<Action, AppError> {

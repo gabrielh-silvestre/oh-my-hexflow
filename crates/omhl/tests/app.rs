@@ -15,13 +15,17 @@ use omhl::probe::{ProbeOutcome, TreeSource};
 use omhl::project::Env;
 use serde_json::{Value, json};
 use support::busy::{AttemptClock, with_write_lock, with_write_lock_until_attempt};
-use support::omhl::{acme, check_data, decision_data, premise_data, work_item_data};
+use support::omhl::{
+    acme, check_data, decision_data, divergence_wires, divergence_work_item_wires, premise_data,
+    work_item_data,
+};
 use support::project::Project;
 use support::raw::RawHarness;
 use support::{DEFAULT_INSTANT, FakeProbe, rty, sid, snap};
 use tempfile::TempDir;
 
 const W1: &str = "work-items.w1";
+const W2: &str = "work-items.w2";
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 const USE_WAL: &str = "decisions.use-wal";
@@ -163,6 +167,20 @@ fn list_action(type_name: Option<&str>, limit: Option<u32>, after_seq: Option<u6
         id_prefix: None,
         limit,
         after_seq,
+        where_eq: Vec::new(),
+    }
+}
+
+fn where_action(type_name: &str, pairs: &[(&str, &str)]) -> Action {
+    Action::List {
+        type_name: Some(type_name.to_owned()),
+        id_prefix: None,
+        limit: None,
+        after_seq: None,
+        where_eq: pairs
+            .iter()
+            .map(|(field, value)| ((*field).to_owned(), (*value).to_owned()))
+            .collect(),
     }
 }
 
@@ -588,6 +606,7 @@ fn it_should_refuse_an_id_prefix_longer_than_two_hundred_characters() {
         id_prefix: Some("a".repeat(201)),
         limit: None,
         after_seq: None,
+        where_eq: Vec::new(),
     };
 
     let error = refuse(&mut app, &action);
@@ -606,6 +625,146 @@ fn it_should_refuse_an_id_prefix_longer_than_two_hundred_characters() {
             }
         })
     );
+}
+
+// Consulta por campo
+
+/// Grava `w1`, `w2` e as três divergências de `DIVERGENCE_ROWS` (os work items primeiro).
+fn seed_divergences(app: &mut App<'_>) {
+    run(app, &append_action(divergence_work_item_wires()));
+    run(app, &append_action(divergence_wires()));
+}
+
+fn divergence_ids_where(app: &mut App<'_>, pairs: &[(&str, &str)]) -> Vec<String> {
+    item_ids(&run(app, &where_action("divergence", pairs)))
+}
+
+#[test]
+fn it_should_list_the_divergences_of_a_work_item_by_where_eq() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    seed_divergences(&mut app);
+
+    let ids = divergence_ids_where(&mut app, &[("work_item", W2)]);
+
+    assert_eq!(ids, ["divergences.d2", "divergences.d3"]);
+}
+
+#[test]
+fn it_should_list_the_divergences_of_a_kind_by_where_eq() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    seed_divergences(&mut app);
+
+    let ids = divergence_ids_where(&mut app, &[("kind", "missing")]);
+
+    assert_eq!(ids, ["divergences.d1", "divergences.d2"]);
+}
+
+#[test]
+fn it_should_list_the_divergences_of_a_resolution_by_where_eq() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    seed_divergences(&mut app);
+
+    let ids = divergence_ids_where(&mut app, &[("resolution", "open")]);
+
+    assert_eq!(ids, ["divergences.d1", "divergences.d3"]);
+}
+
+#[test]
+fn it_should_combine_every_where_eq_pair_into_one_match() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    seed_divergences(&mut app);
+    let pairs = [
+        ("work_item", W2),
+        ("kind", "missing"),
+        ("resolution", "code-fixed"),
+    ];
+
+    let ids = divergence_ids_where(&mut app, &pairs);
+
+    assert_eq!(ids, ["divergences.d2"]);
+}
+
+#[test]
+fn it_should_return_nothing_when_no_divergence_matches_every_where_eq_pair() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    seed_divergences(&mut app);
+    let pairs = [
+        ("work_item", W2),
+        ("kind", "missing"),
+        ("resolution", "open"),
+    ];
+
+    let ids = divergence_ids_where(&mut app, &pairs);
+
+    assert!(ids.is_empty(), "each pair matches a different row: {ids:?}");
+}
+
+#[test]
+fn it_should_accept_eight_where_eq_pairs() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let pairs = [
+        ("f1", "v"),
+        ("f2", "v"),
+        ("f3", "v"),
+        ("f4", "v"),
+        ("f5", "v"),
+        ("f6", "v"),
+        ("f7", "v"),
+        ("f8", "v"),
+    ];
+
+    let ids = divergence_ids_where(&mut app, &pairs);
+
+    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
+}
+
+#[test]
+fn it_should_refuse_more_than_eight_where_eq_pairs() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let pairs = [
+        ("f1", "v"),
+        ("f2", "v"),
+        ("f3", "v"),
+        ("f4", "v"),
+        ("f5", "v"),
+        ("f6", "v"),
+        ("f7", "v"),
+        ("f8", "v"),
+        ("f9", "v"),
+    ];
+
+    let error = refuse(&mut app, &where_action("divergence", &pairs));
+
+    assert_eq!(error.code(), "where-eq-too-many");
+}
+
+#[test]
+fn it_should_accept_a_where_eq_value_of_256_characters() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let value = "x".repeat(256);
+
+    let ids = divergence_ids_where(&mut app, &[("text", &value)]);
+
+    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
+}
+
+#[test]
+fn it_should_refuse_a_where_eq_value_longer_than_256_characters() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let value = "x".repeat(257);
+
+    let error = refuse(&mut app, &where_action("divergence", &[("text", &value)]));
+
+    assert_eq!(error.code(), "where-eq-value-too-long");
 }
 
 #[test]

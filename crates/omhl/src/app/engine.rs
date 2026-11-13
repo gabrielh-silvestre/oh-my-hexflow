@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use hexlog::{HexlogError, ListFilter, PageRequest, SemanticId, Snapshot, TenantId, TypeName};
+use hexlog::{
+    FieldName, HexlogError, ListFilter, PageRequest, Scalar, SemanticId, Snapshot, TenantId,
+    TypeName,
+};
 use serde_json::{Value, json};
 
 use super::action::{Action, Caller};
@@ -72,11 +75,13 @@ impl Engine<'_> {
                 id_prefix,
                 limit,
                 after_seq,
+                where_eq,
             } => self.list(
                 type_name.as_deref(),
                 id_prefix.as_deref(),
                 *limit,
                 *after_seq,
+                where_eq,
             ),
             Action::Get { id } => self.get(id),
             Action::Append { request } => self.append(caller, request),
@@ -117,6 +122,7 @@ impl Engine<'_> {
         id_prefix: Option<&str>,
         limit: Option<u32>,
         after_seq: Option<u64>,
+        where_eq: &[(String, String)],
     ) -> Result<Value, AppError> {
         if limit == Some(0) {
             return Err(AppError::invalid_arguments("/limit", "unknown value"));
@@ -130,7 +136,13 @@ impl Engine<'_> {
                 .transpose()?,
             id_prefix: id_prefix.map(str::to_owned),
             snapshot: None,
-            where_eq: Vec::new(),
+            where_eq: where_eq
+                .iter()
+                .map(|(field, value)| {
+                    let name = parse_at(FieldName::parse, field, &format!("/where/{field}"))?;
+                    Ok((name, Scalar::Str(value.clone())))
+                })
+                .collect::<Result<_, AppError>>()?,
         };
         let request = PageRequest {
             limit: limit.unwrap_or(DEFAULT_PAGE_LIMIT),

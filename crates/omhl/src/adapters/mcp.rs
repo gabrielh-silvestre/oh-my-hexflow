@@ -287,12 +287,17 @@ fn read_tools() -> Vec<Value> {
     vec![
         tool(
             "list",
-            "List the current nodes, optionally filtered by type or id prefix.",
+            "List the current nodes, optionally filtered by type, id prefix or field equality.",
             &json!({
                 "type": { "type": "string", "description": "Node type name." },
                 "id_prefix": { "type": "string", "description": "Semantic id prefix." },
                 "limit": { "type": "integer", "minimum": 1, "description": "Page size." },
                 "after_seq": { "type": "integer", "minimum": 0, "description": "Page cursor." },
+                "where": {
+                    "type": "object",
+                    "additionalProperties": { "type": "string" },
+                    "description": "Field name to the text value it must equal.",
+                },
             }),
             &[],
         ),

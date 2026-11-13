@@ -11,7 +11,10 @@ use support::child::{Output, omhl};
 use support::ext::ExtTree;
 use support::git::git_in;
 use support::mcp_session::McpSession;
-use support::omhl::{acme, attestation_id_for, node_item, with_snapshot, work_item_data};
+use support::omhl::{
+    acme, attestation_id_for, divergence_wires, divergence_work_item_wires, node_item,
+    with_snapshot, work_item_data,
+};
 use support::project::Project;
 use support::{FakeProbe, FixedClock, SeqIds, executor_attestation_data, executor_author, snap};
 use tempfile::TempDir;
@@ -652,6 +655,204 @@ fn it_should_not_expose_load_through_the_mcp_tools() {
         !items.stdout.contains(CHECK),
         "nothing was loaded: {}",
         items.stdout
+    );
+}
+
+// list com where
+
+/// Projeto com os work items `w1` e `w2` e as três divergências de `DIVERGENCE_ROWS`, já com a
+/// sessão MCP aberta.
+fn session_with_divergences() -> (Project, McpSession) {
+    let project = Project::new("acme");
+    for items in [divergence_work_item_wires(), divergence_wires()] {
+        let appended = omhl(&["append"])
+            .cwd(project.dir())
+            .xdg(project.xdg())
+            .stdin(json!({ "items": items }).to_string())
+            .run();
+
+        assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+    }
+    let session = McpSession::start(project.dir(), project.xdg());
+
+    (project, session)
+}
+
+fn list_divergences(session: &McpSession, filter: &Value) -> Value {
+    let arguments = json!({ "type": "divergence", "where": filter });
+    session.send(&tool_call(1, "list", arguments, None));
+
+    session.recv()["result"].clone()
+}
+
+fn divergence_ids_where(session: &McpSession, filter: &Value) -> Vec<String> {
+    let result = list_divergences(session, filter);
+
+    assert_ne!(result["isError"], json!(true), "result: {result}");
+    result["structuredContent"]["items"]
+        .as_array()
+        .expect("items is an array")
+        .iter()
+        .map(|item| item["id"].as_str().expect("the id is text").to_owned())
+        .collect()
+}
+
+fn where_error(session: &McpSession, filter: &Value) -> Value {
+    let result = list_divergences(session, filter);
+
+    assert_eq!(result["isError"], json!(true), "result: {result}");
+
+    result["structuredContent"]["error"].clone()
+}
+
+fn where_error_code(session: &McpSession, filter: &Value) -> Value {
+    where_error(session, filter)["code"].clone()
+}
+
+fn eight_pairs() -> serde_json::Map<String, Value> {
+    (1..=8).map(|n| (format!("f{n}"), json!("v"))).collect()
+}
+
+#[test]
+fn it_should_declare_where_as_an_object_of_text_in_the_list_tool_schema() {
+    let (_project, session) = serve();
+
+    session.send(&rpc(json!(1), "tools/list", json!({})));
+
+    let response = session.recv();
+    let list = response["result"]["tools"]
+        .as_array()
+        .expect("tools is an array")
+        .iter()
+        .find(|tool| tool["name"] == json!("list"))
+        .expect("the list tool is listed");
+    assert_eq!(
+        list["inputSchema"]["properties"]["where"]["type"],
+        json!("object")
+    );
+    assert_eq!(
+        list["inputSchema"]["properties"]["where"]["additionalProperties"]["type"],
+        json!("string")
+    );
+}
+
+#[test]
+fn it_should_list_the_divergences_of_a_work_item_with_where() {
+    let (_project, session) = session_with_divergences();
+
+    let ids = divergence_ids_where(&session, &json!({ "work_item": "work-items.w2" }));
+
+    assert_eq!(ids, ["divergences.d2", "divergences.d3"]);
+}
+
+#[test]
+fn it_should_list_the_divergences_of_a_kind_with_where() {
+    let (_project, session) = session_with_divergences();
+
+    let ids = divergence_ids_where(&session, &json!({ "kind": "missing" }));
+
+    assert_eq!(ids, ["divergences.d1", "divergences.d2"]);
+}
+
+#[test]
+fn it_should_list_the_divergences_of_a_resolution_with_where() {
+    let (_project, session) = session_with_divergences();
+
+    let ids = divergence_ids_where(&session, &json!({ "resolution": "open" }));
+
+    assert_eq!(ids, ["divergences.d1", "divergences.d3"]);
+}
+
+#[test]
+fn it_should_combine_every_where_field_into_one_match() {
+    let (_project, session) = session_with_divergences();
+    let filter = json!({
+        "work_item": "work-items.w2",
+        "kind": "missing",
+        "resolution": "code-fixed",
+    });
+
+    let ids = divergence_ids_where(&session, &filter);
+
+    assert_eq!(ids, ["divergences.d2"]);
+}
+
+#[test]
+fn it_should_return_nothing_when_no_divergence_matches_every_where_field() {
+    let (_project, session) = session_with_divergences();
+    let filter = json!({
+        "work_item": "work-items.w2",
+        "kind": "missing",
+        "resolution": "open",
+    });
+
+    let ids = divergence_ids_where(&session, &filter);
+
+    assert!(
+        ids.is_empty(),
+        "each field matches a different row: {ids:?}"
+    );
+}
+
+#[test]
+fn it_should_accept_eight_where_fields() {
+    let (_project, session) = session_with_divergences();
+
+    let ids = divergence_ids_where(&session, &Value::Object(eight_pairs()));
+
+    assert!(ids.is_empty(), "no divergence has those fields: {ids:?}");
+}
+
+#[test]
+fn it_should_refuse_more_than_eight_where_fields() {
+    let (_project, session) = session_with_divergences();
+    let mut pairs = eight_pairs();
+    pairs.insert("f9".to_owned(), json!("v"));
+
+    let code = where_error_code(&session, &Value::Object(pairs));
+
+    assert_eq!(code, json!("where-eq-too-many"));
+}
+
+#[test]
+fn it_should_accept_a_where_value_of_256_characters() {
+    let (_project, session) = session_with_divergences();
+
+    let ids = divergence_ids_where(&session, &json!({ "text": "x".repeat(256) }));
+
+    assert!(ids.is_empty(), "no divergence has that text: {ids:?}");
+}
+
+#[test]
+fn it_should_refuse_a_where_value_longer_than_256_characters() {
+    let (_project, session) = session_with_divergences();
+
+    let code = where_error_code(&session, &json!({ "text": "x".repeat(257) }));
+
+    assert_eq!(code, json!("where-eq-value-too-long"));
+}
+
+#[test]
+fn it_should_refuse_a_where_argument_that_is_not_an_object() {
+    let (_project, session) = session_with_divergences();
+
+    let error = where_error(&session, &json!("kind=missing"));
+
+    assert_eq!(
+        error["details"],
+        json!([{ "path": "/where", "code": "invalid-arguments", "message": "wrong type" }])
+    );
+}
+
+#[test]
+fn it_should_refuse_a_where_value_that_is_not_text() {
+    let (_project, session) = session_with_divergences();
+
+    let error = where_error(&session, &json!({ "kind": 1 }));
+
+    assert_eq!(
+        error["details"],
+        json!([{ "path": "/where/kind", "code": "invalid-arguments", "message": "wrong type" }])
     );
 }
 

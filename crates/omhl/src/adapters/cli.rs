@@ -54,6 +54,9 @@ pub enum ActionCommand {
         limit: Option<u32>,
         #[arg(long)]
         after_seq: Option<u64>,
+        /// Keep the nodes whose `field` equals `value`; repeatable.
+        #[arg(long = "where", value_name = "FIELD=VALUE")]
+        where_eq: Vec<String>,
     },
     /// Print one node, or null when it does not exist.
     Get { id: String },
@@ -277,6 +280,17 @@ fn execute(
     run_action(start, db, env, &caller, &action)
 }
 
+/// Divide no primeiro `=`: o valor pode conter `=`.
+fn split_where(index: usize, pair: &str) -> Result<(String, String), AppError> {
+    match pair.split_once('=') {
+        Some((field, value)) if !field.is_empty() => Ok((field.to_owned(), value.to_owned())),
+        _ => Err(AppError::invalid_arguments(
+            &format!("/where/{index}"),
+            "unknown value",
+        )),
+    }
+}
+
 fn to_action(
     command: ActionCommand,
     stdin: &mut impl Read,
@@ -288,11 +302,17 @@ fn to_action(
             id_prefix,
             limit,
             after_seq,
+            where_eq,
         } => Action::List {
             type_name,
             id_prefix,
             limit,
             after_seq,
+            where_eq: where_eq
+                .iter()
+                .enumerate()
+                .map(|(index, pair)| split_where(index, pair))
+                .collect::<Result<_, AppError>>()?,
         },
         ActionCommand::Get { id } => Action::Get { id },
         ActionCommand::Append => Action::Append {
