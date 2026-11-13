@@ -76,6 +76,9 @@ pub enum Action {
     ReportRecurrences {
         min: Option<u32>,
     },
+    ReportRetro {
+        work_item: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,6 +184,7 @@ pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError>
                 min: optional_u32(&args, "min")?,
             })
         }),
+        "report_retro" => work_item(&mut args).map(|work_item| Action::ReportRetro { work_item }),
         _ => Err(AppError::unknown_tool()),
     }
 }

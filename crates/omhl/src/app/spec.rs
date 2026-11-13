@@ -17,12 +17,11 @@ use crate::project::marker::find_marker;
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{Facts, Tool, Verdict, decide, parse_spec_path};
 use crate::workflow::spec::{
-    AmendmentState, SpecFile, Violation, amendment_divergence_mismatch, amendment_state,
-    is_amendment_id, validate_graph, validate_spec,
+    AmendmentState, SPEC_STALE, SpecFile, Violation, amendment_divergence_mismatch,
+    amendment_state, is_amendment_id, validate_graph, validate_spec,
 };
 
 const WORK_ITEM_ID_PREFIX: &str = "work-items.";
-const SPEC_STALE: &str = "spec-stale";
 const SLUG_MAX: usize = 64;
 const FIRST_PART: &str = "## Objetivo\n\n## Diretivas e premissas aplicáveis\n\n## Comportamentos\n\n## Critérios de aceitação\n\n## Fora de escopo\n";
 
@@ -61,14 +60,8 @@ impl Engine<'_> {
     pub(super) fn spec_validate(&mut self, work_item: &str) -> Result<Value, AppError> {
         let id = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
-        let name = id
-            .as_str()
-            .strip_prefix(WORK_ITEM_ID_PREFIX)
-            .ok_or_else(|| AppError::spec_not_found("/work_item"))?;
-        let (config, store) = open_store(&root)?;
-        let folder = store
-            .read_folder(name)
-            .map_err(spec_store_refusal)?
+        let (config, folder) = read_spec_folder(&root, id.as_str())?;
+        let folder = folder
             .filter(|folder| !folder.parts.is_empty())
             .ok_or_else(|| AppError::spec_not_found("/work_item"))?;
         let facts = self.load_spec_facts()?;
@@ -164,11 +157,7 @@ impl Engine<'_> {
         }
 
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
-        let (config, store) = open_store(&root)?;
-        let folder = match work_item.strip_prefix(WORK_ITEM_ID_PREFIX) {
-            Some(name) => store.read_folder(name).map_err(spec_store_refusal)?,
-            None => None,
-        };
+        let (config, folder) = read_spec_folder(&root, work_item)?;
         let file = format!("{amendment}.md");
         let not_found = || AppError::amendment_not_found(&format!("{data_pointer}/amendment"));
         let folder = folder.ok_or_else(not_found)?;
@@ -196,6 +185,40 @@ impl Engine<'_> {
             None => Ok(()),
         }
     }
+}
+
+impl Engine<'_> {
+    /// Os `emenda-NN.md` da pasta da spec do work item; vazio sem raiz de projeto ou sem pasta.
+    pub(super) fn amendment_files(&self, work_item: &str) -> Result<Vec<String>, AppError> {
+        let Some(root) = self.project_root.as_deref() else {
+            return Ok(Vec::new());
+        };
+        let (_, folder) = read_spec_folder(root, work_item)?;
+
+        Ok(folder
+            .map(|folder| {
+                folder
+                    .amendments
+                    .into_iter()
+                    .map(|document| document.name)
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+}
+
+/// A pasta do work item no `specs.dir`; `None` quando o id não é de work item ou a pasta não existe.
+fn read_spec_folder(
+    root: &Path,
+    work_item: &str,
+) -> Result<(WorkflowConfig, Option<SpecFolder>), AppError> {
+    let (config, store) = open_store(root)?;
+    let folder = match work_item.strip_prefix(WORK_ITEM_ID_PREFIX) {
+        Some(name) => store.read_folder(name).map_err(spec_store_refusal)?,
+        None => None,
+    };
+
+    Ok((config, folder))
 }
 
 /// Estrutura e grafo da pasta inteira, na ordem de arquivo e linha.

@@ -19,6 +19,7 @@ use crate::probe::{DevelopMark, ProbeError, ProbeOutcome, SnapshotProbe, TreeSou
 use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
+use crate::workflow::retro::retro;
 
 /// Tamanho de página quando o pedido não traz `limit` (o padrão do motor).
 const DEFAULT_PAGE_LIMIT: u32 = 50;
@@ -113,6 +114,7 @@ impl Engine<'_> {
             Action::SpecValidate { work_item } => self.spec_validate(work_item),
             Action::ReportAnswers { work_item } => self.report_answers(work_item.as_deref()),
             Action::ReportRecurrences { min } => self.report_recurrences(*min),
+            Action::ReportRetro { work_item } => self.report_retro(work_item),
             Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
             Action::CheckSweep => unreachable!("check sweep is dispatched by the runtime"),
             Action::GateWorktree { .. } => {
@@ -185,11 +187,13 @@ impl Engine<'_> {
     fn close(&mut self, caller: &Caller, work_item: &str) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshots = self.probe_gate_snapshots()?;
+        // Lida antes de gravar: o `close` nunca devolve erro depois do record de fechamento.
+        let facts = self.retro_facts(&work_item)?;
         let closed =
             self.omhl
                 .close_work_item(&self.tenant, &work_item, &snapshots, &caller.author())?;
 
-        Ok(output::closed(&closed))
+        Ok(output::closed(&closed, retro(&facts).as_ref()))
     }
 
     /// Regenera `.omhl/projection` a partir do estado vigente; não grava nenhum record.

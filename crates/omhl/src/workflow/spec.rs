@@ -6,6 +6,8 @@ use std::collections::{HashMap, HashSet};
 use super::config::SpecsConfig;
 use super::gap::GapState;
 
+/// Resolução da divergência que a emenda aprovada leva (`resolution`).
+pub const SPEC_STALE: &str = "spec-stale";
 const PART_SECTIONS: [&str; 5] = [
     "Objetivo",
     DIRECTIVES,

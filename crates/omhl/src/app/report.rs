@@ -11,6 +11,7 @@ use crate::ports::workflow::read_workflow;
 use crate::workflow::config::WorkflowConfig;
 use crate::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_by, gap_state};
 use crate::workflow::recurrence::{Premise, recurrences};
+use crate::workflow::retro::{DivergenceFact, GapFact, RetroFacts, retro};
 
 const GAP_RELATIONS: [&str; 3] = ["answers", "supports", "contradicts"];
 
@@ -21,7 +22,7 @@ impl Engine<'_> {
             None => Vec::new(),
             Some(id) => {
                 parse_at(SemanticId::parse, id, "/work_item")?;
-                vec![(FieldName::parse("work_item")?, Scalar::Str(id.to_owned()))]
+                work_item_filter(id)?
             }
         };
         let gaps = nodes_matching(&mut self.omhl, &self.tenant, "gap", where_eq)?;
@@ -32,6 +33,41 @@ impl Engine<'_> {
             .collect();
 
         Ok(json!({ "gaps": entries }))
+    }
+
+    /// Só lê: vale para work item aberto ou fechado.
+    pub(super) fn report_retro(&mut self, work_item: &str) -> Result<Value, AppError> {
+        let id = parse_at(SemanticId::parse, work_item, "/work_item")?;
+        let facts = self.retro_facts(&id)?;
+
+        Ok(json!({ "retro": output::retro(retro(&facts).as_ref()) }))
+    }
+
+    /// Os fatos da retro não dependem do fechamento: o `close` os lê antes de gravar.
+    pub(super) fn retro_facts(&mut self, work_item: &SemanticId) -> Result<RetroFacts, AppError> {
+        self.omhl.find_work_item(&self.tenant, work_item)?;
+        let filter = work_item_filter(work_item.as_str())?;
+        let divergences =
+            nodes_matching(&mut self.omhl, &self.tenant, "divergence", filter.clone())?
+                .iter()
+                .filter_map(divergence_fact)
+                .collect();
+        let gap_nodes = nodes_matching(&mut self.omhl, &self.tenant, "gap", filter)?;
+        let (_, facts) = self.load_gap_facts()?;
+        let gaps = gap_nodes
+            .iter()
+            .map(|gap| GapFact {
+                id: gap.id.as_str().to_owned(),
+                state: gap_state(&facts, gap.id.as_str()),
+                answered_by: answered_by(&facts, gap.id.as_str()),
+            })
+            .collect();
+
+        Ok(RetroFacts {
+            divergences,
+            gaps,
+            amendment_files: self.amendment_files(work_item.as_str())?,
+        })
     }
 
     /// Só lê: sugerir a promoção é com o agente, e a `guideline` só entra com `confirmed_by`.
@@ -91,6 +127,22 @@ impl Engine<'_> {
 
         Ok((premises, facts))
     }
+}
+
+fn work_item_filter(work_item: &str) -> Result<Vec<(FieldName, Scalar)>, AppError> {
+    Ok(vec![(
+        FieldName::parse("work_item")?,
+        Scalar::Str(work_item.to_owned()),
+    )])
+}
+
+fn divergence_fact(view: &NodeView) -> Option<DivergenceFact> {
+    Some(DivergenceFact {
+        id: view.id.as_str().to_owned(),
+        kind: text_field(view, "kind")?,
+        resolution: text_field(view, "resolution")?,
+        amendment: text_field(view, "amendment"),
+    })
 }
 
 /// Diretiva nativa não é node do tenant: entra pelas pontas das relations.
@@ -161,7 +213,7 @@ fn gap_entry(facts: &GapFacts, premises: &[NodeView], gap: &NodeView) -> Value {
     entry
 }
 
-fn state_name(state: GapState) -> &'static str {
+pub(super) fn state_name(state: GapState) -> &'static str {
     match state {
         GapState::Open => "open",
         GapState::Answered { .. } => "answered",

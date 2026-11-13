@@ -393,5 +393,11 @@ fn extension_tools() -> Vec<Value> {
             &json!({ "min": { "type": "integer", "minimum": 0, "description": "Minimum distinct work items; promotion.min_work_items of workflow.toml by default." } }),
             &[],
         ),
+        tool(
+            "report_retro",
+            "Report the retro of a work item, open or closed: divergences by kind and resolution, approved and pending amendments, answers without criterion and open gaps; null when there is nothing to report; read-only.",
+            &json!({ "work_item": { "type": "string", "description": "Work item semantic id." } }),
+            &["work_item"],
+        ),
     ]
 }

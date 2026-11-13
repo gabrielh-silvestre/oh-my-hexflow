@@ -261,7 +261,8 @@ impl<'d> Omhl<'d> {
         Ok(ClosedWorkItem { outcome, report })
     }
 
-    fn find_work_item(
+    /// Recusa `work-item-not-found` quando o id não é de um work item, aberto ou fechado.
+    pub fn find_work_item(
         &mut self,
         tenant: &TenantId,
         work_item: &SemanticId,

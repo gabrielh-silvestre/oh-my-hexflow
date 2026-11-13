@@ -183,6 +183,11 @@ pub enum ReportCommand {
         #[arg(long)]
         min: Option<u32>,
     },
+    /// Print the retro of a work item (open or closed): divergences, amendments and unanswered gaps.
+    Retro {
+        /// Id of the work item, such as work-items.w1.
+        work_item: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -410,6 +415,9 @@ fn to_action(
         ActionCommand::Report {
             command: ReportCommand::Recurrences { min },
         } => Action::ReportRecurrences { min },
+        ActionCommand::Report {
+            command: ReportCommand::Retro { work_item },
+        } => Action::ReportRetro { work_item },
     })
 }
 

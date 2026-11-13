@@ -6,10 +6,9 @@ use super::error::AppError;
 use super::read::all_nodes;
 use crate::native::NativeBase;
 use crate::workflow::gap::{GapFacts, GapState, gap_state};
-use crate::workflow::spec::{DivergenceFact, SpecFacts};
+use crate::workflow::spec::{DivergenceFact, SPEC_STALE, SpecFacts};
 
 const PREMISE: &str = "premise";
-const SPEC_STALE: &str = "spec-stale";
 
 /// Os fatos do grafo que o `validate_graph` consulta, lidos uma vez por validação.
 pub(super) struct GraphFacts {
