@@ -1032,7 +1032,10 @@ fn append_technical_premise(project: &Project) {
 
 #[test]
 fn it_should_refuse_feat_without_a_premise_through_the_gate_worktree_tool() {
-    let (_project, session) = git_project();
+    let project = Project::new("acme");
+    commit_marker(&project);
+    open_work_item(&project);
+    let session = McpSession::start(project.dir(), project.xdg());
 
     session.send(&tool_call(
         1,

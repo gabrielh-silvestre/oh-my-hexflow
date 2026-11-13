@@ -1,11 +1,14 @@
 use hexlog::NodeView;
+use hexlog::SemanticId;
 use serde_json::Value;
 
 use super::engine::Engine;
 use super::error::AppError;
-use super::read::all_nodes;
+use super::read::{all_nodes, nodes_matching};
+use super::report::work_item_filter;
 use crate::native::NativeBase;
 use crate::workflow::gap::{GapFacts, GapState, gap_state, is_confirmed_guideline};
+use crate::workflow::matrix::{PremiseFact, PremiseKind};
 use crate::workflow::spec::{DivergenceFact, SPEC_STALE, SpecFacts};
 
 const PREMISE: &str = "premise";
@@ -22,6 +25,34 @@ impl Engine<'_> {
         let divergences = all_nodes(&mut self.omhl, &self.tenant, "divergence")?;
 
         Ok(GraphFacts { gap, divergences })
+    }
+
+    /// As premissas vigentes do work item, filtradas no banco.
+    pub(super) fn premise_facts(
+        &mut self,
+        work_item: &SemanticId,
+    ) -> Result<Vec<PremiseFact>, AppError> {
+        let filter = work_item_filter(work_item.as_str())?;
+        let premises = nodes_matching(&mut self.omhl, &self.tenant, PREMISE, filter)?;
+
+        Ok(premises
+            .iter()
+            .map(|premise| premise_fact(&premise.data))
+            .collect())
+    }
+}
+
+/// Confirmada é `status` confirmado com `confirmed_by`, a mesma regra do grafo da spec.
+fn premise_fact(data: &Value) -> PremiseFact {
+    let kind = match text(data, "kind") {
+        Some("business") => Some(PremiseKind::Business),
+        Some("technical") => Some(PremiseKind::Technical),
+        _ => None,
+    };
+
+    PremiseFact {
+        kind,
+        confirmed: text(data, "status") == Some("confirmed") && data.get("confirmed_by").is_some(),
     }
 }
 

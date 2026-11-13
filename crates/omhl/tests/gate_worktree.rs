@@ -537,6 +537,12 @@ impl Fixture {
         assert!(output.status.success(), "git {args:?} failed");
     }
 
+    fn close_work_item(&self, work_item: &str) {
+        let closed = self.run_in(self.project.dir(), &["close", work_item]);
+
+        assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    }
+
     fn main_dir(&self) -> String {
         fs::canonicalize(self.project.dir())
             .expect("the main directory exists")
@@ -603,6 +609,10 @@ fn json_line(text: &str) -> Value {
 
 fn error_code(output: &Child) -> Value {
     json_line(&output.stderr)["error"]["code"].clone()
+}
+
+fn error_pointer(output: &Child) -> Value {
+    json_line(&output.stderr)["error"]["details"][0]["path"].clone()
 }
 
 fn error_context(output: &Child) -> Value {
@@ -1338,4 +1348,39 @@ fn it_should_walk_the_gate_from_refusal_without_premise_to_release_with_a_valid_
     assert_refused(&without_spec, "worktree-gate-refused");
     assert_eq!(error_context(&without_spec)["missing"], json!(["spec"]));
     assert_allowed(&with_spec, "matrix-satisfied");
+}
+
+// Status do work item: o gate recusa work item fechado ou inexistente
+
+#[test]
+fn it_should_refuse_a_closed_work_item_even_with_a_confirmed_premise_and_a_valid_spec() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.write_valid_spec(W1, "premises.b1");
+    fixture.close_work_item(W1);
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_refused(&output, "work-item-closed");
+    assert_eq!(error_pointer(&output), json!("/branch"));
+}
+
+#[test]
+fn it_should_refuse_feat_of_a_work_item_that_is_not_in_the_database_with_work_item_not_found() {
+    let fixture = Fixture::seeded();
+
+    let output = fixture.gate("feat/wi-ghost__new");
+
+    assert_refused(&output, "work-item-not-found");
+    assert_eq!(error_pointer(&output), json!("/branch"));
+}
+
+#[test]
+fn it_should_allow_chore_of_a_closed_work_item_because_its_require_never_opens_the_database() {
+    let fixture = Fixture::seeded();
+    fixture.close_work_item(W1);
+
+    let output = fixture.gate("chore/wi-w1__new");
+
+    assert_allowed(&output, "matrix-satisfied");
 }

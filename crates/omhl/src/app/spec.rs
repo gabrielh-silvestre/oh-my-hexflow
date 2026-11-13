@@ -26,6 +26,13 @@ const WORK_ITEM_ID_PREFIX: &str = "work-items.";
 const SLUG_MAX: usize = 64;
 const FIRST_PART: &str = "## Objetivo\n\n## Diretivas e premissas aplicáveis\n\n## Comportamentos\n\n## Critérios de aceitação\n\n## Fora de escopo\n";
 
+/// O resultado da validação da spec de um work item; `Valid` carrega o relatório do `spec validate`.
+enum SpecCheck {
+    Missing,
+    Invalid(Vec<Violation>),
+    Valid(Value),
+}
+
 impl Engine<'_> {
     /// O slug vira nome de pasta: é validado antes de qualquer leitura ou escrita.
     pub(super) fn spec_init(&mut self, work_item: &str, slug: &str) -> Result<Value, AppError> {
@@ -60,11 +67,25 @@ impl Engine<'_> {
     /// pendente só são listadas.
     pub(super) fn spec_validate(&mut self, work_item: &str) -> Result<Value, AppError> {
         let id = parse_at(SemanticId::parse, work_item, "/work_item")?;
+
+        match self.check_spec(&id)? {
+            SpecCheck::Missing => Err(AppError::spec_not_found("/work_item")),
+            SpecCheck::Invalid(blocking) => Err(AppError::spec_invalid(&blocking)),
+            SpecCheck::Valid(report) => Ok(report),
+        }
+    }
+
+    /// Pasta de spec ausente e spec reprovada valem `false`; a violação nunca sai daqui.
+    pub(super) fn spec_is_valid(&mut self, id: &SemanticId) -> Result<bool, AppError> {
+        Ok(matches!(self.check_spec(id)?, SpecCheck::Valid(_)))
+    }
+
+    fn check_spec(&mut self, id: &SemanticId) -> Result<SpecCheck, AppError> {
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
         let (config, folder) = read_spec_folder(&root, id.as_str())?;
-        let folder = folder
-            .filter(|folder| !folder.parts.is_empty())
-            .ok_or_else(|| AppError::spec_not_found("/work_item"))?;
+        let Some(folder) = folder.filter(|folder| !folder.parts.is_empty()) else {
+            return Ok(SpecCheck::Missing);
+        };
         let facts = self.load_spec_facts()?;
         let violations = folder_violations(id.as_str(), &folder, &config.specs, &facts);
 
@@ -85,14 +106,14 @@ impl Engine<'_> {
             .cloned()
             .collect();
         if !blocking.is_empty() {
-            return Err(AppError::spec_invalid(&blocking));
+            return Ok(SpecCheck::Invalid(blocking));
         }
 
-        Ok(json!({
+        Ok(SpecCheck::Valid(json!({
             "ok": true,
             "parts": folder.parts.iter().map(|part| part.name.as_str()).collect::<Vec<_>>(),
             "amendments": amendments_report(&folder.amendments, &violations, &approved),
-        }))
+        })))
     }
 }
 

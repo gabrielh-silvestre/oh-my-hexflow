@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use super::App;
 use super::action::{Action, Caller};
 use super::error::AppError;
-use super::gate_worktree;
+use super::gate_worktree::{self, Decision};
 use super::retry::RetryPolicy;
 use crate::facade::OmhlDeps;
 use crate::ports::blob::BlobStore;
@@ -148,6 +148,22 @@ fn swept_json(swept: &[SweptProcess]) -> Value {
         .collect()
 }
 
+/// O veredito sem premissa a consultar não pode criar o arquivo do banco, que o `discover` prepara.
+fn run_gate_worktree(
+    start: &Path,
+    db: Option<&Path>,
+    env: &Env<'_>,
+    branch: &str,
+) -> Result<Value, AppError> {
+    match gate_worktree::decide(start, branch)? {
+        Decision::Final(verdict) => Ok(verdict),
+        Decision::NeedsDatabase(pending) => {
+            let runtime = Runtime::discover(start, db, env)?;
+            gate_worktree::finish(&mut runtime.app()?, pending)
+        }
+    }
+}
+
 /// Descobre o projeto, abre o `App` e executa uma ação, para quem só precisa de uma chamada.
 pub fn run_action(
     start: &Path,
@@ -156,9 +172,8 @@ pub fn run_action(
     caller: &Caller,
     action: &Action,
 ) -> Result<Value, AppError> {
-    // O veredito sem premissa a consultar não pode criar o arquivo do banco, que o `discover` prepara.
     if let Action::GateWorktree { branch } = action {
-        return gate_worktree::run(start, db, env, caller, branch);
+        return run_gate_worktree(start, db, env, branch);
     }
     let runtime = Runtime::discover(start, db, env)?;
 

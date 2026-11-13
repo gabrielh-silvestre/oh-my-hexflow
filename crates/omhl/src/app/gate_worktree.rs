@@ -1,43 +1,50 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use hexlog::SemanticId;
 use serde_json::{Value, json};
 
 use super::App;
-use super::action::{Action, Caller};
 use super::error::AppError;
-use super::runtime::Runtime;
+use crate::error::OmhlError;
 use crate::mechanical::branch::{BranchKind, branch_prefix, classify};
 use crate::ports::git::GitProbe;
 use crate::ports::workflow::read_workflow;
 use crate::probe::GitTopology;
-use crate::project::Env;
 use crate::project::marker::find_marker;
-use crate::workflow::config::RequireAtom;
-use crate::workflow::matrix::{PremiseFact, PremiseKind, missing_atoms};
+use crate::workflow::config::{RequireAtom, WorkflowConfig};
+use crate::workflow::matrix::missing_atoms;
 
 const BRANCH_POINTER: &str = "/branch";
-const PREMISE_TYPE: &str = "premise";
+
+/// O que a primeira fase decidiu sem abrir o banco.
+pub(super) enum Decision {
+    Final(Value),
+    NeedsDatabase(PendingLookup),
+}
+
+/// O que a segunda fase precisa para consultar o work item, as premissas e a spec.
+pub(super) struct PendingLookup {
+    branch: String,
+    prefix: String,
+    work_item: SemanticId,
+    without_facts: Vec<RequireAtom>,
+    main_dir: PathBuf,
+    config: WorkflowConfig,
+}
 
 /// Ordem da decisão (d): marcador, `develop` e `main`, branch com worktree, formato e prefixo, matriz.
-/// O banco só é aberto quando o `require` tem algum átomo de premissa ou `spec`.
-pub(super) fn run(
-    start: &Path,
-    db: Option<&Path>,
-    env: &Env<'_>,
-    caller: &Caller,
-    branch: &str,
-) -> Result<Value, AppError> {
+/// O banco só é aberto (pela segunda fase) quando o `require` tem algum átomo de premissa ou `spec`.
+pub(super) fn decide(start: &Path, branch: &str) -> Result<Decision, AppError> {
     let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
     if matches!(branch, "develop" | "main") {
-        return Ok(allowed(branch, "exempt-branch"));
+        return Ok(Decision::Final(allowed(branch, "exempt-branch")));
     }
     let probe = GitProbe::new(&located.root);
     let with_worktree = probe
         .worktree_branches()
         .map_err(|error| AppError::probe_failed(&error.message))?;
     if with_worktree.iter().any(|name| name == branch) {
-        return Ok(allowed(branch, "worktree-exists"));
+        return Ok(Decision::Final(allowed(branch, "worktree-exists")));
     }
 
     let main_dir = probe.main_dir().map_err(|_| AppError::main_dir_unknown())?;
@@ -49,18 +56,39 @@ pub(super) fn run(
     let without_facts = missing_atoms(prefix, &config, &[], false)
         .ok_or_else(|| AppError::prefix_not_allowed(BRANCH_POINTER))?;
     if without_facts.is_empty() {
-        return Ok(allowed(branch, "matrix-satisfied"));
+        return Ok(Decision::Final(allowed(branch, "matrix-satisfied")));
     }
 
-    let runtime = Runtime::discover(start, db, env)?;
-    let mut app = runtime.app()?;
-    let premises = work_item_premises(&mut app, caller, &work_item)?;
+    Ok(Decision::NeedsDatabase(PendingLookup {
+        branch: branch.to_owned(),
+        prefix: prefix.to_owned(),
+        work_item,
+        without_facts,
+        main_dir,
+        config,
+    }))
+}
+
+/// Work item aberto e existente, depois a matriz sobre as premissas e a spec lidas do banco.
+pub(super) fn finish(app: &mut App<'_>, pending: PendingLookup) -> Result<Value, AppError> {
+    let PendingLookup {
+        branch,
+        prefix,
+        work_item,
+        without_facts,
+        main_dir,
+        config,
+    } = pending;
+    if let Some(code) = app.work_item_refusal(&work_item)? {
+        return Err(OmhlError::rule(code, BRANCH_POINTER).into());
+    }
+    let premises = app.premise_facts(&work_item)?;
     let spec_valid =
-        !without_facts.contains(&RequireAtom::Spec) || spec_is_valid(&mut app, caller, &work_item)?;
-    let missing = missing_atoms(prefix, &config, &premises, spec_valid)
+        !without_facts.contains(&RequireAtom::Spec) || app.spec_is_valid(&work_item)?;
+    let missing = missing_atoms(&prefix, &config, &premises, spec_valid)
         .ok_or_else(|| AppError::prefix_not_allowed(BRANCH_POINTER))?;
     if missing.is_empty() {
-        return Ok(allowed(branch, "matrix-satisfied"));
+        return Ok(allowed(&branch, "matrix-satisfied"));
     }
 
     Err(AppError::worktree_gate_refused(
@@ -78,66 +106,4 @@ pub(super) fn run(
 
 fn allowed(branch: &str, reason: &str) -> Value {
     json!({ "allowed": true, "branch": branch, "reason": reason })
-}
-
-/// Roda o mesmo validador do `spec validate`; pasta de spec ausente e spec reprovada valem `false`, e a violação nunca sai daqui.
-fn spec_is_valid(
-    app: &mut App<'_>,
-    caller: &Caller,
-    work_item: &SemanticId,
-) -> Result<bool, AppError> {
-    let validation = app.dispatch(
-        caller,
-        &Action::SpecValidate {
-            work_item: work_item.as_str().to_owned(),
-        },
-    );
-
-    match validation {
-        Ok(_) => Ok(true),
-        Err(error) if matches!(error.code(), "spec-not-found" | "spec-invalid") => Ok(false),
-        Err(error) => Err(error),
-    }
-}
-
-/// As premissas do work item, lidas do banco página a página.
-fn work_item_premises(
-    app: &mut App<'_>,
-    caller: &Caller,
-    work_item: &SemanticId,
-) -> Result<Vec<PremiseFact>, AppError> {
-    let mut premises = Vec::new();
-    let mut after_seq = None;
-    loop {
-        let page = app.dispatch(
-            caller,
-            &Action::List {
-                type_name: Some(PREMISE_TYPE.to_owned()),
-                id_prefix: None,
-                limit: None,
-                after_seq,
-                where_eq: vec![("work_item".to_owned(), work_item.as_str().to_owned())],
-            },
-        )?;
-        let items = page["items"].as_array().map_or(&[][..], Vec::as_slice);
-        premises.extend(items.iter().map(|item| premise_fact(&item["data"])));
-        match page["next_after_seq"].as_u64() {
-            Some(next) => after_seq = Some(next),
-            None => return Ok(premises),
-        }
-    }
-}
-
-/// Confirmada é `status` confirmado com `confirmed_by`, a mesma regra do grafo da spec.
-fn premise_fact(data: &Value) -> PremiseFact {
-    let kind = match data["kind"].as_str() {
-        Some("business") => Some(PremiseKind::Business),
-        Some("technical") => Some(PremiseKind::Technical),
-        _ => None,
-    };
-
-    PremiseFact {
-        kind,
-        confirmed: data["status"] == "confirmed" && data.get("confirmed_by").is_some(),
-    }
 }

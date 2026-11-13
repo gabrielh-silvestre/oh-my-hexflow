@@ -146,7 +146,7 @@ impl Engine<'_> {
     }
 }
 
-fn work_item_filter(work_item: &str) -> Result<Vec<(FieldName, Scalar)>, AppError> {
+pub(super) fn work_item_filter(work_item: &str) -> Result<Vec<(FieldName, Scalar)>, AppError> {
     Ok(vec![(
         FieldName::parse("work_item")?,
         Scalar::Str(work_item.to_owned()),

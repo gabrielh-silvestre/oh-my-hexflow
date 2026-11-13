@@ -167,13 +167,14 @@ O comando decide nesta ordem, antes de abrir o banco:
 1. Sem `.omhl.toml` acima do diretório, a CLI sai com `0` e sem nenhuma saída (o hook roda em qualquer repositório). A tool `gate_worktree` responde `no-marker`.
 2. `develop` e `main`: `allowed` com `reason` `exempt-branch`.
 3. Branch local que já tem worktree (`git worktree list --porcelain`): `allowed` com `reason` `worktree-exists`.
-4. O resto é criação. O nome precisa seguir `tipo/wi-<id>__<slug>` e o `tipo` precisa estar na tabela de prefixos. O `omhl` lê as premissas do work item no banco, valida a spec quando o `require` pede `spec` e aplica a matriz. O banco só é aberto quando o `require` tem algum átomo de premissa ou `spec`.
+4. O resto é criação. O nome precisa seguir `tipo/wi-<id>__<slug>` e o `tipo` precisa estar na tabela de prefixos. O `omhl` confere que o work item existe e está aberto, lê as premissas dele no banco, valida a spec quando o `require` pede `spec` e aplica a matriz. O banco só é aberto quando o `require` tem algum átomo de premissa ou `spec`.
 
 Quando a matriz é satisfeita, a saída é `{"allowed":true,"branch":"feat/wi-w1__export-reports","reason":"matrix-satisfied"}`. Um prefixo com `require = []` (`chore/`, `docs/`) sai com `matrix-satisfied` sem abrir o banco, então o gate não confere se o work item existe.
 
 | Código | Quando | O que tentar |
 |---|---|---|
 | `worktree-gate-refused` | A matriz do prefixo não foi satisfeita. O `context` do detalhe traz `branch`, `prefix`, `work_item`, `missing` (os átomos que faltam) e `main_dir` | Registre e confirme o que `missing` lista, ou escreva e valide a spec. Repita o gate |
+| `work-item-not-found`, `work-item-closed` | O `require` do prefixo abre o banco e o work item da branch não existe ou já foi fechado. O ponteiro é `/branch`. Prefixo com `require = []` não chega aqui | Grave o work item ou use outra branch. Para reabrir uma fatia antiga, veja os bypasses na seção 10 |
 | `prefix-not-allowed` | O nome não segue `tipo/wi-<id>__<slug>`, ou o `tipo` não está na tabela. `pr:N` e `dependabot/...` caem aqui | Corrija o nome. Para uma branch de terceiros, veja os bypasses na seção 10 |
 | `main-dir-unknown` | O `git` não resolveu o diretório principal do repositório (por exemplo, repositório bare) | Rode num checkout comum |
 | `spec-store-unusable` | O `require` pede `spec` e a pasta de spec do work item não pode ser lida (arquivo que não é regular, pasta ilegível, mais de uma pasta `wi-<id>__*`). O ponteiro é `/work_item` | Corrija a pasta de spec no diretório principal |
