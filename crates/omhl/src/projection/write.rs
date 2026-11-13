@@ -6,7 +6,7 @@ use std::path::Path;
 use tempfile::Builder;
 
 use super::{ProjectedFile, ProjectionError, WriteReport};
-use crate::extensions::files::list_sorted_capped;
+use crate::ports::files::list_sorted_capped;
 use crate::project::layout::{
     GENERATED_HEADER, GITIGNORE_CONTENT, GITIGNORE_NAME, LOCK_NAME, OMHL_DIR, PROJECTION_DIR,
     PROJECTION_DIR_ENTRIES_MAX, TMP_PREFIX, TMP_SUFFIX,

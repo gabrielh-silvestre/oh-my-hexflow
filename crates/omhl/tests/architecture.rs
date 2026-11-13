@@ -23,7 +23,7 @@ const FORBIDDEN_PACKAGES: &[&str] = &[
     "serde_yaml",
 ];
 const FORBIDDEN_PACKAGE_PREFIX: &str = "gix";
-const PURE_LAYER_DIRS: &[&str] = &["extensions", "projection", "mechanical"];
+const PURE_LAYER_DIRS: &[&str] = &["extensions", "projection", "mechanical", "workflow"];
 const PURE_LAYER_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const PURE_LAYER_FORBIDDEN_PATHS: &[&str] = &["adapters::", "app::", "facade::"];
 const TEMPFILE_ALLOWED_FILE: &str = "projection/write.rs";
@@ -42,8 +42,12 @@ const EXPECTED_DEPENDENCIES: &[&str] = &[
 const ATOMIC_PATHS: &[&str] = &["sync::atomic", "atomic::"];
 const MECHANICAL_FORBIDDEN_MODULES: &[&str] =
     &["adapters", "app", "facade", "ports", "runner", "byproduct"];
+const WORKFLOW_FORBIDDEN_MODULES: &[&str] = &["ports", "runner", "byproduct"];
+const PORTS_FORBIDDEN_MODULES: &[&str] = &["extensions"];
 const SERVICE_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super::"];
+const SPEC_GRAMMAR_LITERALS: &[&str] = &["wi-", "parte-", "emenda-"];
+const SPEC_GRAMMAR_MODULE: &str = "workflow/names.rs";
 const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
 
 fn src_dir() -> PathBuf {
@@ -323,6 +327,19 @@ fn literal_refs(source: &str, banned: &[&str]) -> Result<usize, String> {
         .literals
         .iter()
         .filter(|text| banned.contains(&text.as_str()))
+        .count())
+}
+
+/// Número de literais de string que começam por um dos prefixos da gramática da spec.
+fn spec_grammar_refs(source: &str) -> Result<usize, String> {
+    Ok(lex(source)?
+        .literals
+        .iter()
+        .filter(|text| {
+            SPEC_GRAMMAR_LITERALS
+                .iter()
+                .any(|prefix| text.starts_with(prefix))
+        })
         .count())
 }
 
@@ -973,6 +990,14 @@ fn mechanical_refs(source: &str) -> Result<usize, String> {
     forbidden_module_refs(source, MECHANICAL_FORBIDDEN_MODULES)
 }
 
+fn workflow_refs(source: &str) -> Result<usize, String> {
+    forbidden_module_refs(source, WORKFLOW_FORBIDDEN_MODULES)
+}
+
+fn ports_refs(source: &str) -> Result<usize, String> {
+    forbidden_module_refs(source, PORTS_FORBIDDEN_MODULES)
+}
+
 fn service_refs(source: &str) -> Result<usize, String> {
     forbidden_module_refs(source, SERVICE_FORBIDDEN_MODULES)
 }
@@ -1130,6 +1155,56 @@ fn it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner
     );
 
     failures.extend(scan_dir(&src_dir().join("mechanical"), mechanical_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_the_workflow_module_free_of_ports_runner_and_byproduct() {
+    let mut failures = prove_both_sides(
+        workflow_refs,
+        &[
+            "use crate::ports::git::GitProbe;",
+            "use crate::runner::RunSpec;",
+            "use crate::byproduct::ByproductHash;",
+            "use crate::{project::Env, ports::git::GitProbe};",
+            "use super::ports::Anything;",
+            "let probe = ports::git::GitProbe::new(dir);",
+        ],
+        &[
+            "use crate::project::layout::OMHL_DIR;",
+            "use super::config::WorkflowConfig;",
+            "// use crate::ports::git::GitProbe;",
+            "const P: &str = \"crate::runner::RunSpec\";",
+            "use crate::reports::Thing;",
+        ],
+    );
+
+    failures.extend(scan_dir(&src_dir().join("workflow"), workflow_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_the_ports_module_free_of_extensions() {
+    let mut failures = prove_both_sides(
+        ports_refs,
+        &[
+            "use crate::extensions::files::read_regular_utf8;",
+            "use crate::{project::Env, extensions::files::list_sorted_capped};",
+            "use super::extensions::files::read_regular_utf8;",
+            "let text = extensions::files::read_regular_utf8(path, max);",
+        ],
+        &[
+            "use crate::ports::files::read_regular_utf8;",
+            "use super::files::list_sorted_capped;",
+            "// use crate::extensions::files::read_regular_utf8;",
+            "const P: &str = \"crate::extensions::files\";",
+            "use crate::extensions_extra::Thing;",
+        ],
+    );
+
+    failures.extend(scan_dir(&src_dir().join("ports"), ports_refs));
 
     assert_no_failures(&failures);
 }
@@ -1309,6 +1384,33 @@ fn it_should_read_the_parent_pid_before_anything_else_in_main() {
         &[src_dir().join("main.rs")],
         parent_pid_not_first,
     ));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_the_spec_grammar_literals_inside_the_names_module() {
+    let mut failures = prove_both_sides(
+        spec_grammar_refs,
+        &[
+            "const PREFIX: &str = \"wi-\";",
+            "let name = format!(\"wi-{id}__\");",
+            "let file = \"parte-01.md\";",
+            "let file = \"emenda-02.md\";",
+        ],
+        &[
+            "use crate::workflow::names::FOLDER_PREFIX;",
+            "// const PREFIX: &str = \"wi-\";",
+            "let text = \"a wi- in the middle\";",
+            "let text = \"parte\";",
+        ],
+    );
+    let outside_names: Vec<PathBuf> = rust_files(&src_dir())
+        .into_iter()
+        .filter(|path| !path.ends_with(SPEC_GRAMMAR_MODULE))
+        .collect();
+
+    failures.extend(scan_paths(&outside_names, spec_grammar_refs));
 
     assert_no_failures(&failures);
 }

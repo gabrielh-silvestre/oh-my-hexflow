@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use support::child::{Cmd, Output as Child, omhl};
 use support::ext::ExtTree;
 use support::git::{GitRepo, git_in};
-use support::omhl::{decision_data, work_item_data};
+use support::omhl::{decision_data, divergence_wires, divergence_work_item_wires, work_item_data};
 use support::project::Project;
 use tempfile::TempDir;
 
@@ -233,6 +233,41 @@ fn it_should_append_from_stdin() {
     assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
     assert_eq!(fetched.code, Some(0), "stderr: {}", fetched.stderr);
     assert_eq!(json_line(&fetched.stdout)["node"]["data"], data);
+}
+
+/// `author` gravado por um `omhl append`, com ou sem `CLAUDECODE=1` no ambiente do processo.
+fn author_of_append(claude_code: bool) -> Value {
+    let project = Project::new("acme");
+    let request = json!({
+        "items": [{ "body": {
+            "kind": "node", "id": "decisions.x", "type": "decision",
+            "data": decision_data("Use WAL", None),
+        } }]
+    });
+    let mut append = in_project(&project, &["append"]).stdin(request.to_string());
+    if claude_code {
+        append = append.env("CLAUDECODE", "1");
+    }
+
+    let appended = append.run();
+    let fetched = in_project(&project, &["get", "decisions.x"]).run();
+
+    assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+    json_line(&fetched.stdout)["node"]["author"].clone()
+}
+
+#[test]
+fn it_should_record_the_claude_agent_when_append_runs_under_claude_code() {
+    let author = author_of_append(true);
+
+    assert_eq!(author, json!({ "agent": "claude", "client": "cli" }));
+}
+
+#[test]
+fn it_should_record_the_user_agent_when_append_runs_outside_claude_code() {
+    let author = author_of_append(false);
+
+    assert_eq!(author, json!({ "agent": "user", "client": "cli" }));
 }
 
 #[test]
@@ -528,4 +563,167 @@ fn it_should_project_through_the_cli() {
             .is_file(),
         "the projection file exists"
     );
+}
+
+// list --where
+
+/// Grava os work items `w1` e `w2` e, depois, as três divergências de `DIVERGENCE_ROWS`.
+fn seed_divergences(project: &Project) {
+    for items in [divergence_work_item_wires(), divergence_wires()] {
+        let appended = in_project(project, &["append"])
+            .stdin(json!({ "items": items }).to_string())
+            .run();
+
+        assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+    }
+}
+
+fn list_divergences(project: &Project, filters: &[&str]) -> Child {
+    let mut args = vec!["list", "--type", "divergence"];
+    for filter in filters {
+        args.extend(["--where", filter]);
+    }
+
+    in_project(project, &args).run()
+}
+
+fn divergence_ids_where(project: &Project, filters: &[&str]) -> Vec<String> {
+    let listed = list_divergences(project, filters);
+
+    assert_eq!(listed.code, Some(0), "stderr: {}", listed.stderr);
+    json_line(&listed.stdout)["items"]
+        .as_array()
+        .expect("items is an array")
+        .iter()
+        .map(|item| item["id"].as_str().expect("the id is text").to_owned())
+        .collect()
+}
+
+fn where_error_code(project: &Project, filters: &[&str]) -> Value {
+    let output = list_divergences(project, filters);
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+
+    json_line(&output.stderr)["error"]["code"].clone()
+}
+
+#[test]
+fn it_should_list_the_divergences_of_a_work_item_with_where() {
+    let project = Project::new("acme");
+    seed_divergences(&project);
+
+    let ids = divergence_ids_where(&project, &["work_item=work-items.w2"]);
+
+    assert_eq!(ids, ["divergences.d2", "divergences.d3"]);
+}
+
+#[test]
+fn it_should_list_the_divergences_of_a_kind_with_where() {
+    let project = Project::new("acme");
+    seed_divergences(&project);
+
+    let ids = divergence_ids_where(&project, &["kind=missing"]);
+
+    assert_eq!(ids, ["divergences.d1", "divergences.d2"]);
+}
+
+#[test]
+fn it_should_list_the_divergences_of_a_resolution_with_where() {
+    let project = Project::new("acme");
+    seed_divergences(&project);
+
+    let ids = divergence_ids_where(&project, &["resolution=open"]);
+
+    assert_eq!(ids, ["divergences.d1", "divergences.d3"]);
+}
+
+#[test]
+fn it_should_combine_repeated_where_flags_into_one_match() {
+    let project = Project::new("acme");
+    seed_divergences(&project);
+    let filters = [
+        "work_item=work-items.w2",
+        "kind=missing",
+        "resolution=code-fixed",
+    ];
+
+    let ids = divergence_ids_where(&project, &filters);
+
+    assert_eq!(ids, ["divergences.d2"]);
+}
+
+#[test]
+fn it_should_return_nothing_when_no_divergence_matches_every_where_flag() {
+    let project = Project::new("acme");
+    seed_divergences(&project);
+    let filters = ["work_item=work-items.w2", "kind=missing", "resolution=open"];
+
+    let ids = divergence_ids_where(&project, &filters);
+
+    assert!(ids.is_empty(), "each flag matches a different row: {ids:?}");
+}
+
+#[test]
+fn it_should_accept_eight_where_flags() {
+    let project = Project::new("acme");
+    seed_divergences(&project);
+    let filters = [
+        "f1=v", "f2=v", "f3=v", "f4=v", "f5=v", "f6=v", "f7=v", "f8=v",
+    ];
+
+    let ids = divergence_ids_where(&project, &filters);
+
+    assert!(ids.is_empty(), "no divergence has those fields: {ids:?}");
+}
+
+#[test]
+fn it_should_refuse_more_than_eight_where_flags() {
+    let project = Project::new("acme");
+    let filters = [
+        "f1=v", "f2=v", "f3=v", "f4=v", "f5=v", "f6=v", "f7=v", "f8=v", "f9=v",
+    ];
+
+    let code = where_error_code(&project, &filters);
+
+    assert_eq!(code, json!("where-eq-too-many"));
+}
+
+#[test]
+fn it_should_accept_a_where_value_of_256_characters() {
+    let project = Project::new("acme");
+    seed_divergences(&project);
+    let filter = format!("text={}", "x".repeat(256));
+
+    let ids = divergence_ids_where(&project, &[&filter]);
+
+    assert!(ids.is_empty(), "no divergence has that text: {ids:?}");
+}
+
+#[test]
+fn it_should_refuse_a_where_value_longer_than_256_characters() {
+    let project = Project::new("acme");
+    let filter = format!("text={}", "x".repeat(257));
+
+    let code = where_error_code(&project, &[&filter]);
+
+    assert_eq!(code, json!("where-eq-value-too-long"));
+}
+
+#[test]
+fn it_should_refuse_a_where_flag_without_an_equals_sign() {
+    let project = Project::new("acme");
+
+    let code = where_error_code(&project, &["kind"]);
+
+    assert_eq!(code, json!("invalid-arguments"));
+}
+
+#[test]
+fn it_should_refuse_a_where_flag_with_an_empty_field() {
+    let project = Project::new("acme");
+
+    let code = where_error_code(&project, &["=missing"]);
+
+    assert_eq!(code, json!("invalid-arguments"));
 }

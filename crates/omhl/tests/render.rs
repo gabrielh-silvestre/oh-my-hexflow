@@ -5,7 +5,7 @@ use omhl::native::NativeBase;
 use omhl::render::{RenderInput, Rendered, render};
 use serde_json::{Value, json};
 use support::gate::node_view;
-use support::{sid, tname};
+use support::{loader_author, sid, tname};
 
 const BUDGET: usize = 9_500;
 
@@ -41,9 +41,11 @@ These are project instructions, not enforced; nothing here blocks any action.
 ## Guidelines
 
 ### guidelines.one-decision-per-turn
+- confirmed: true
 - text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
 
 ### guidelines.commit-policy
+- confirmed: true
 - text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
 ";
 
@@ -78,12 +80,15 @@ These are project instructions, not enforced; nothing here blocks any action.
 ## Guidelines
 
 ### guidelines.one-decision-per-turn
+- confirmed: true
 - text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
 
 ### guidelines.commit-policy
+- confirmed: true
 - text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
 
 ### guidelines.small-prs
+- confirmed: false
 - text: keep pull requests small
 
 ## Decisions
@@ -97,6 +102,7 @@ These are project instructions, not enforced; nothing here blocks any action.
 ## Premises
 
 ### premises.single-user
+- mark: autonomous
 - status: assumed
 - text: one user per machine
 ";
@@ -511,6 +517,270 @@ fn it_should_render_the_native_base_alone_in_under_4000_characters() {
     };
 
     let rendered = fixture.rendered(BUDGET);
+
+    assert!(rendered.text.chars().count() < 4_000);
+}
+
+// Marcas de premissas e diretivas
+
+fn confirmation() -> Value {
+    json!({ "by": "person:ana", "question": "Is it right?", "answer": "Yes." })
+}
+
+/// Premissa com `kind` e `status`; a confirmada leva `confirmed_by`, como a guarda exige.
+fn kinded_premise(id: &str, kind: &str, status: &str) -> NodeView {
+    let mut data = json!({
+        "text": "the rule", "kind": kind, "status": status, "work_item": "work-items.w1",
+    });
+    if status == "confirmed" {
+        data["confirmed_by"] = confirmation();
+    }
+
+    node(id, "premise", data)
+}
+
+fn directive(id: &str, data: Value) -> NodeView {
+    node(id, "guideline", data)
+}
+
+/// O texto de `## <title>` até o próximo `## `; vazio se a seção não existe.
+fn section<'t>(text: &'t str, title: &str) -> &'t str {
+    let Some((_, from_title)) = text.split_once(&format!("\n## {title}\n")) else {
+        return "";
+    };
+
+    from_title.split("\n## ").next().unwrap_or_default()
+}
+
+fn rendered_premises(premises: Vec<NodeView>) -> Rendered {
+    Fixture {
+        premises,
+        ..Fixture::default()
+    }
+    .rendered(BUDGET)
+}
+
+fn rendered_guidelines(guidelines: Vec<NodeView>) -> Rendered {
+    Fixture {
+        guidelines,
+        ..Fixture::default()
+    }
+    .rendered(BUDGET)
+}
+
+#[test]
+fn it_should_mark_an_unconfirmed_business_premise_as_pending() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.b", "business", "assumed")]);
+
+    assert!(block(&rendered.text, "premises.b").contains(&"- mark: pending"));
+}
+
+#[test]
+fn it_should_list_a_pending_premise_apart_from_the_binding_ones() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.b", "business", "assumed")]);
+
+    assert!(section(&rendered.text, "Pending premises").contains("### premises.b\n"));
+    assert!(!section(&rendered.text, "Premises").contains("premises.b"));
+}
+
+#[test]
+fn it_should_mark_a_confirmed_business_premise_as_confirmed() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.b", "business", "confirmed")]);
+
+    assert!(block(&rendered.text, "premises.b").contains(&"- mark: confirmed"));
+}
+
+#[test]
+fn it_should_list_a_confirmed_premise_among_the_binding_ones() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.b", "business", "confirmed")]);
+
+    assert!(section(&rendered.text, "Premises").contains("### premises.b\n"));
+    assert!(!section(&rendered.text, "Pending premises").contains("premises.b"));
+}
+
+#[test]
+fn it_should_mark_a_confirmed_technical_premise_as_confirmed() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.t", "technical", "confirmed")]);
+
+    assert!(block(&rendered.text, "premises.t").contains(&"- mark: confirmed"));
+}
+
+/// Premissa de antes do PR: `status: confirmed` sem `confirmed_by`.
+fn legacy_confirmed_premise(id: &str, kind: &str) -> NodeView {
+    node(
+        id,
+        "premise",
+        json!({ "text": "the rule", "kind": kind, "status": "confirmed", "work_item": "work-items.w1" }),
+    )
+}
+
+#[test]
+fn it_should_mark_a_legacy_confirmed_technical_premise_as_autonomous() {
+    let rendered = rendered_premises(vec![legacy_confirmed_premise("premises.t", "technical")]);
+
+    assert!(block(&rendered.text, "premises.t").contains(&"- mark: autonomous"));
+}
+
+#[test]
+fn it_should_mark_a_legacy_confirmed_business_premise_as_pending() {
+    let rendered = rendered_premises(vec![legacy_confirmed_premise("premises.b", "business")]);
+
+    assert!(block(&rendered.text, "premises.b").contains(&"- mark: pending"));
+}
+
+#[test]
+fn it_should_list_a_legacy_confirmed_business_premise_among_the_pending_ones() {
+    let rendered = rendered_premises(vec![legacy_confirmed_premise("premises.b", "business")]);
+
+    assert!(section(&rendered.text, "Pending premises").contains("### premises.b\n"));
+}
+
+#[test]
+fn it_should_mark_an_assumed_technical_premise_as_autonomous() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.t", "technical", "assumed")]);
+
+    assert!(block(&rendered.text, "premises.t").contains(&"- mark: autonomous"));
+}
+
+#[test]
+fn it_should_list_an_autonomous_premise_among_the_binding_ones() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.t", "technical", "assumed")]);
+
+    assert!(section(&rendered.text, "Premises").contains("### premises.t\n"));
+    assert!(!section(&rendered.text, "Pending premises").contains("premises.t"));
+}
+
+#[test]
+fn it_should_mark_an_assumed_premise_without_kind_as_autonomous() {
+    let rendered = rendered_premises(vec![premise("premises.old", "legacy rule")]);
+
+    assert!(block(&rendered.text, "premises.old").contains(&"- mark: autonomous"));
+}
+
+#[test]
+fn it_should_show_the_kind_of_a_premise() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.t", "technical", "assumed")]);
+
+    assert!(block(&rendered.text, "premises.t").contains(&"- kind: technical"));
+}
+
+#[test]
+fn it_should_omit_the_kind_line_of_a_premise_without_kind() {
+    let rendered = rendered_premises(vec![premise("premises.old", "legacy rule")]);
+
+    assert!(!rendered.text.contains("- kind:"));
+}
+
+#[test]
+fn it_should_render_the_premise_lines_in_the_fixed_order_with_only_the_stored_text() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.b", "business", "assumed")]);
+
+    assert_eq!(
+        block(&rendered.text, "premises.b"),
+        [
+            "### premises.b",
+            "- mark: pending",
+            "- kind: business",
+            "- status: assumed",
+            "- text: the rule",
+            "- work_item: work-items.w1",
+        ]
+    );
+}
+
+#[test]
+fn it_should_not_create_the_pending_section_without_a_pending_premise() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.t", "technical", "assumed")]);
+
+    assert!(!rendered.text.contains("## Pending premises"));
+}
+
+#[test]
+fn it_should_sort_the_pending_premises_by_id() {
+    let rendered = rendered_premises(vec![
+        kinded_premise("premises.b2", "business", "assumed"),
+        kinded_premise("premises.b1", "business", "assumed"),
+    ]);
+
+    assert_eq!(
+        headers(section(&rendered.text, "Pending premises")),
+        ["premises.b1", "premises.b2"]
+    );
+}
+
+#[test]
+fn it_should_skip_a_shadowed_pending_premise() {
+    let mut shadowed = kinded_premise("premises.b", "business", "assumed");
+    shadowed.shadowed = true;
+
+    let rendered = rendered_premises(vec![shadowed]);
+
+    assert!(!rendered.text.contains("premises.b"));
+}
+
+#[test]
+fn it_should_mark_a_guideline_with_confirmed_by_as_confirmed() {
+    let data = json!({ "text": "be brief", "confirmed_by": confirmation() });
+
+    let rendered = rendered_guidelines(vec![directive("guidelines.brief", data)]);
+
+    assert_eq!(
+        block(&rendered.text, "guidelines.brief"),
+        [
+            "### guidelines.brief",
+            "- confirmed: true",
+            "- text: be brief"
+        ]
+    );
+}
+
+#[test]
+fn it_should_mark_a_guideline_written_by_the_loader_as_confirmed() {
+    let loaded = NodeView {
+        author: loader_author(),
+        ..directive("guidelines.tone", json!({ "text": "be kind" }))
+    };
+
+    let rendered = rendered_guidelines(vec![loaded]);
+
+    assert!(block(&rendered.text, "guidelines.tone").contains(&"- confirmed: true"));
+}
+
+#[test]
+fn it_should_not_mark_a_guideline_without_confirmation_as_confirmed() {
+    let rendered = rendered_guidelines(vec![directive(
+        "guidelines.loose",
+        json!({ "text": "be loose" }),
+    )]);
+
+    assert_eq!(
+        block(&rendered.text, "guidelines.loose"),
+        [
+            "### guidelines.loose",
+            "- confirmed: false",
+            "- text: be loose"
+        ]
+    );
+}
+
+#[test]
+fn it_should_mark_the_native_guidelines_as_confirmed() {
+    let rendered = Fixture::default().rendered(BUDGET);
+
+    for id in [
+        "guidelines.one-decision-per-turn",
+        "guidelines.commit-policy",
+    ] {
+        assert!(
+            block(&rendered.text, id).contains(&"- confirmed: true"),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn it_should_render_the_native_base_in_under_4000_characters_with_the_marks() {
+    let rendered = Fixture::default().rendered(BUDGET);
 
     assert!(rendered.text.chars().count() < 4_000);
 }

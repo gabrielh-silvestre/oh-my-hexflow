@@ -37,7 +37,7 @@ impl Guard<'_, '_> {
         }
     }
 
-    fn find_open_work_item(
+    pub(super) fn find_open_work_item(
         &mut self,
         node: &NodeItem<'_>,
     ) -> Result<Option<SemanticId>, OmhlError> {

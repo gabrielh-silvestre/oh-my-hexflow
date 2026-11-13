@@ -6,9 +6,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
+            "command": "omhl",
             "args": ["hook", "session-start"],
             "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "omhl hook spec-lock || exit 1",
+            "timeout": 10
           }
         ]
       }

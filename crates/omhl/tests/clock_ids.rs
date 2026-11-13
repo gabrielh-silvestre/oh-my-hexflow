@@ -105,7 +105,14 @@ fn it_should_generate_ids_the_engine_accepts_as_record_ids() {
     };
     let mut omhl = Omhl::open(&raw.config(), deps).expect("omhl opens");
     omhl.ensure_tenant(&acme()).expect("the tenant is created");
-    let item = node_item("guidelines.g1", "guideline", json!({ "text": "be kind" }));
+    let item = node_item(
+        "guidelines.g1",
+        "guideline",
+        json!({
+            "text": "be kind",
+            "confirmed_by": { "by": "person:tester", "question": "Adopt it?", "answer": "Yes." },
+        }),
+    );
 
     let outcome = omhl
         .append(&request(vec![item]))

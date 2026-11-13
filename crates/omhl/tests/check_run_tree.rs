@@ -194,6 +194,7 @@ fn list_page(app: &mut App<'_>, type_name: Option<&str>) -> Value {
         id_prefix: None,
         limit: None,
         after_seq: None,
+        where_eq: Vec::new(),
     };
 
     app.dispatch(&Caller::cli(), &action)

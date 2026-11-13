@@ -184,6 +184,45 @@ pub fn decision_data(text: &str, work_item: Option<&str>) -> Value {
     data
 }
 
+/// As três divergências da consulta por campo: `(id, work_item, kind, resolution)`.
+/// Cada filtro separa um subconjunto próprio: `w2` pega d2 e d3, `missing` d1 e d2, `open` d1 e d3.
+pub const DIVERGENCE_ROWS: [(&str, &str, &str, &str); 3] = [
+    ("divergences.d1", "work-items.w1", "missing", "open"),
+    ("divergences.d2", "work-items.w2", "missing", "code-fixed"),
+    ("divergences.d3", "work-items.w2", "partial", "open"),
+];
+
+/// Itens (`{"body": ...}`) dos work items `w1` e `w2`, abertos; entram antes das divergências.
+pub fn divergence_work_item_wires() -> Vec<Value> {
+    ["work-items.w1", "work-items.w2"]
+        .iter()
+        .map(|id| {
+            json!({ "body": {
+                "kind": "node", "id": id, "type": "work-item", "data": work_item_data("t"),
+            } })
+        })
+        .collect()
+}
+
+/// Itens (`{"body": ...}`) das divergências de `DIVERGENCE_ROWS`.
+pub fn divergence_wires() -> Vec<Value> {
+    DIVERGENCE_ROWS
+        .iter()
+        .map(|(id, work_item, kind, resolution)| {
+            let data = json!({
+                "source_ref": "spec#ac-3",
+                "kind": kind,
+                "text": "the spec asks for a report the code does not have",
+                "evidence": [{ "source": "docs", "summary": "the docs say so" }],
+                "resolution": resolution,
+                "work_item": work_item,
+            });
+
+            json!({ "body": { "kind": "node", "id": id, "type": "divergence", "data": data } })
+        })
+        .collect()
+}
+
 // Atalhos sobre o `Omhl`
 
 pub fn append_ok(omhl: &mut Omhl<'_>, items: Vec<AppendItem>) -> AppendOutcome {

@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use hexlog::{HexlogError, ListFilter, PageRequest, SemanticId, Snapshot, TenantId, TypeName};
+use hexlog::{
+    FieldName, HexlogError, ListFilter, PageRequest, Scalar, SemanticId, Snapshot, TenantId,
+    TypeName,
+};
 use serde_json::{Value, json};
 
 use super::action::{Action, Caller};
@@ -16,6 +19,7 @@ use crate::probe::{DevelopMark, ProbeError, ProbeOutcome, SnapshotProbe, TreeSou
 use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
+use crate::workflow::retro::retro;
 
 /// Tamanho de página quando o pedido não traz `limit` (o padrão do motor).
 const DEFAULT_PAGE_LIMIT: u32 = 50;
@@ -72,11 +76,13 @@ impl Engine<'_> {
                 id_prefix,
                 limit,
                 after_seq,
+                where_eq,
             } => self.list(
                 type_name.as_deref(),
                 id_prefix.as_deref(),
                 *limit,
                 *after_seq,
+                where_eq,
             ),
             Action::Get { id } => self.get(id),
             Action::Append { request } => self.append(caller, request),
@@ -104,8 +110,16 @@ impl Engine<'_> {
                 tail,
             } => self.byproduct(check, work_item, *tail),
             Action::HooksInstall { force } => self.hooks_install(*force),
+            Action::SpecInit { work_item, slug } => self.spec_init(work_item, slug),
+            Action::SpecValidate { work_item } => self.spec_validate(work_item),
+            Action::ReportAnswers { work_item } => self.report_answers(work_item.as_deref()),
+            Action::ReportRecurrences { min } => self.report_recurrences(*min),
+            Action::ReportRetro { work_item } => self.report_retro(work_item),
             Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
             Action::CheckSweep => unreachable!("check sweep is dispatched by the runtime"),
+            Action::GateWorktree { .. } => {
+                unreachable!("gate worktree is dispatched by the runtime")
+            }
         }
     }
 
@@ -115,6 +129,7 @@ impl Engine<'_> {
         id_prefix: Option<&str>,
         limit: Option<u32>,
         after_seq: Option<u64>,
+        where_eq: &[(String, String)],
     ) -> Result<Value, AppError> {
         if limit == Some(0) {
             return Err(AppError::invalid_arguments("/limit", "unknown value"));
@@ -128,7 +143,13 @@ impl Engine<'_> {
                 .transpose()?,
             id_prefix: id_prefix.map(str::to_owned),
             snapshot: None,
-            where_eq: Vec::new(),
+            where_eq: where_eq
+                .iter()
+                .map(|(field, value)| {
+                    let name = parse_at(FieldName::parse, field, &format!("/where/{field}"))?;
+                    Ok((name, Scalar::Str(value.clone())))
+                })
+                .collect::<Result<_, AppError>>()?,
         };
         let request = PageRequest {
             limit: limit.unwrap_or(DEFAULT_PAGE_LIMIT),
@@ -147,9 +168,10 @@ impl Engine<'_> {
     }
 
     fn append(&mut self, caller: &Caller, request: &Value) -> Result<Value, AppError> {
-        let request = append_request(request, &self.tenant, caller)?;
+        let parsed = append_request(request, &self.tenant, caller)?;
+        self.check_amendment_approvals(request)?;
 
-        Ok(output::appended(&self.omhl.append(&request)?))
+        Ok(output::appended(&self.omhl.append(&parsed)?))
     }
 
     fn gate_pr(&mut self, work_item: &str) -> Result<Value, AppError> {
@@ -165,11 +187,13 @@ impl Engine<'_> {
     fn close(&mut self, caller: &Caller, work_item: &str) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshots = self.probe_gate_snapshots()?;
+        // Lida antes de gravar: o `close` nunca devolve erro depois do record de fechamento.
+        let facts = self.retro_facts(&work_item)?;
         let closed =
             self.omhl
                 .close_work_item(&self.tenant, &work_item, &snapshots, &caller.author())?;
 
-        Ok(output::closed(&closed))
+        Ok(output::closed(&closed, retro(&facts).as_ref()))
     }
 
     /// Regenera `.omhl/projection` a partir do estado vigente; não grava nenhum record.

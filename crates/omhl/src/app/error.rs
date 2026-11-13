@@ -8,6 +8,7 @@ use crate::extensions::model::ExtensionIssue;
 use crate::project::ProjectError;
 use crate::project::layout::ISSUES_MAX;
 use crate::projection::ProjectionError;
+use crate::workflow::spec::Violation;
 
 const BUSY_MESSAGE: &str =
     "database is busy: another omhl process is writing; run the command again";
@@ -425,6 +426,110 @@ impl AppError {
             path,
             "the hooks folder cannot be written",
         )
+    }
+
+    pub(crate) fn spec_exists(path: &str) -> AppError {
+        AppError::at_pointer(
+            "spec-exists",
+            path,
+            "a spec folder of this work item already exists",
+        )
+    }
+
+    pub(crate) fn spec_store_unusable(reason: &str) -> AppError {
+        AppError::at_pointer("spec-store-unusable", "/work_item", reason)
+    }
+
+    pub(crate) fn spec_slug_invalid(path: &str) -> AppError {
+        AppError::at_pointer(
+            "spec-slug-invalid",
+            path,
+            "the slug must have 1 to 64 characters of a-z, 0-9 and -, and not start with -",
+        )
+    }
+
+    pub(crate) fn spec_not_found(path: &str) -> AppError {
+        AppError::at_pointer(
+            "spec-not-found",
+            path,
+            "the work item has no spec folder with a part",
+        )
+    }
+
+    pub(crate) fn prefix_not_allowed(path: &str) -> AppError {
+        AppError::at_pointer(
+            "prefix-not-allowed",
+            path,
+            "the branch name must be <type>/wi-<id>__<slug> with a type listed in the workflow prefixes",
+        )
+    }
+
+    pub(crate) fn main_dir_unknown() -> AppError {
+        AppError::plain(
+            "main-dir-unknown",
+            "the main directory of the repository cannot be resolved",
+        )
+    }
+
+    /// `context` leva a branch, o prefixo, o work item, os átomos que faltam e o diretório principal.
+    pub(crate) fn worktree_gate_refused(path: &str, context: Value) -> AppError {
+        AppError::at_pointer(
+            "worktree-gate-refused",
+            path,
+            "the premises the branch prefix requires are missing",
+        )
+        .with_context(context)
+    }
+
+    /// Mostra até `ISSUES_MAX` violações; o conteúdo da spec nunca entra.
+    pub(crate) fn spec_invalid(violations: &[Violation]) -> AppError {
+        AppError::violations_of("spec-invalid", "spec", violations)
+    }
+
+    fn violations_of(code: &str, subject: &str, violations: &[Violation]) -> AppError {
+        let omitted = violations.len().saturating_sub(ISSUES_MAX);
+        let details: Vec<Detail> = violations
+            .iter()
+            .take(ISSUES_MAX)
+            .map(|violation| {
+                let message = format!("the {subject} breaks the rule {}", violation.code);
+
+                Detail::new(&violation.path, violation.code, &message)
+            })
+            .collect();
+        let message = format!(
+            "the {subject} is invalid: {} violation(s) shown, {omitted} omitted",
+            details.len()
+        );
+
+        AppError {
+            code: code.to_owned(),
+            message,
+            details,
+        }
+    }
+
+    pub(crate) fn amendment_divergence_not_open(path: &str) -> AppError {
+        AppError::at_pointer(
+            "amendment-divergence-not-open",
+            path,
+            "only an open divergence can be approved with an amendment",
+        )
+    }
+
+    pub(crate) fn amendment_not_found(path: &str) -> AppError {
+        let message = "the amendment file does not exist in the spec folder of the work item";
+
+        AppError {
+            code: "amendment-invalid".to_owned(),
+            message: message.to_owned(),
+            details: vec![Detail::new(path, "amendment-not-found", message)],
+        }
+    }
+
+    /// Mostra até `ISSUES_MAX` violações; o conteúdo da emenda nunca entra.
+    pub(crate) fn amendment_invalid(violations: &[Violation]) -> AppError {
+        AppError::violations_of("amendment-invalid", "amendment", violations)
     }
 
     /// Único caminho, além de `CheckDetail.context`, por onde `context` entra num detalhe; nunca é gravado.

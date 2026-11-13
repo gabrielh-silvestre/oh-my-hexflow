@@ -5,11 +5,12 @@ use std::process::ExitCode;
 
 use serde_json::{Value, json};
 
-use crate::app::ExtensionKind;
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
 use crate::app::runtime::Runtime;
+use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
+use crate::app::{Verdict, spec_lock as check_spec_lock};
 use crate::project::Env;
 
 /// Without a marker the hook stays silent; any failure leaves stdout empty so no partial context is injected.
@@ -38,6 +39,28 @@ pub fn session_start(
     }
 }
 
+/// Nunca sai com 2: a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
+pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
+    match read_json_input(stdin).and_then(|input| check_spec_lock(&input)) {
+        Ok(Verdict::Allow) => {}
+        Ok(Verdict::Deny { reason, .. }) => {
+            let output = json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason,
+                }
+            });
+            let _ = writeln!(out, "{output}");
+        }
+        Err(error) => {
+            let _ = writeln!(err, "{}", error.to_json());
+        }
+    }
+
+    ExitCode::SUCCESS
+}
+
 fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<String>, AppError> {
     let cwd = read_cwd(stdin)?;
     let runtime = match Runtime::discover(Path::new(&cwd), None, env) {
@@ -63,10 +86,14 @@ fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<St
 fn extension_notice(checked: &Result<Value, AppError>) -> Option<String> {
     match checked {
         Ok(report) => {
-            let notes: Vec<String> = [pending_note(report), orphan_note(report)]
-                .into_iter()
-                .flatten()
-                .collect();
+            let notes: Vec<String> = [
+                pending_note(report),
+                orphan_note(report),
+                workflow_note(report),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
 
             (!notes.is_empty()).then(|| notes.join("\n"))
         }
@@ -87,6 +114,17 @@ fn pending_note(report: &Value) -> Option<String> {
             "NOTE: {pending} extension change(s) not loaded into tenant {tenant}; run omhl load"
         )
     })
+}
+
+/// The scan falls back to the defaults on an invalid workflow file; the agent still has to hear it.
+fn workflow_note(report: &Value) -> Option<String> {
+    report["warnings"]
+        .as_array()?
+        .iter()
+        .any(|issue| issue["code"] == INVALID_WORKFLOW_CONFIG)
+        .then(|| {
+            "WARNING: .omhl/workflow.toml is invalid and the defaults apply (invalid-workflow-config); run omhl load --dry-run for details".to_owned()
+        })
 }
 
 /// Only the checks: the load report also lists guideline orphans, which `omhl check retire` does not cover.

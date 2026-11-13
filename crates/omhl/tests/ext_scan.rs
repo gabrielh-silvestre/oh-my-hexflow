@@ -118,6 +118,42 @@ fn it_should_ignore_the_projection_directory() {
     assert_scanned_nothing(&output);
 }
 
+// Entradas do fluxo de diretivas: nunca são extension nem aviso
+
+#[test]
+fn it_should_ignore_the_specs_directory_and_its_content() {
+    let tree = ExtTree::new();
+    tree.file(".omhl/specs/.gitignore", "*\n")
+        .file(".omhl/specs/wi-dir0__x/part-1.md", "spec text\n")
+        .file(".omhl/specs/stray.txt", "stray\n");
+
+    let output = scan(tree.root());
+
+    assert_scanned_nothing(&output);
+}
+
+#[test]
+fn it_should_not_apply_the_entry_cap_to_the_specs_directory() {
+    let tree = ExtTree::new();
+    for n in 0..101 {
+        tree.dir(&format!(".omhl/specs/wi-dir0__{n}"));
+    }
+
+    let output = scan(tree.root());
+
+    assert_scanned_nothing(&output);
+}
+
+#[test]
+fn it_should_ignore_the_workflow_toml_file() {
+    let tree = ExtTree::new();
+    tree.file(".omhl/workflow.toml", "version = 1\n");
+
+    let output = scan(tree.root());
+
+    assert_scanned_nothing(&output);
+}
+
 // Avisos
 
 #[test]

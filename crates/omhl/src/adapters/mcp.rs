@@ -287,12 +287,17 @@ fn read_tools() -> Vec<Value> {
     vec![
         tool(
             "list",
-            "List the current nodes, optionally filtered by type or id prefix.",
+            "List the current nodes, optionally filtered by type, id prefix or field equality.",
             &json!({
                 "type": { "type": "string", "description": "Node type name." },
                 "id_prefix": { "type": "string", "description": "Semantic id prefix." },
                 "limit": { "type": "integer", "minimum": 1, "description": "Page size." },
                 "after_seq": { "type": "integer", "minimum": 0, "description": "Page cursor." },
+                "where": {
+                    "type": "object",
+                    "additionalProperties": { "type": "string" },
+                    "description": "Field name to the text value it must equal.",
+                },
             }),
             &[],
         ),
@@ -343,6 +348,12 @@ fn plain_tools() -> Vec<Value> {
             &["work_item"],
         ),
         tool(
+            "gate_worktree",
+            "Check whether a worktree may be created for a branch name, from its prefix and the premises of its work item.",
+            &json!({ "branch": { "type": "string", "description": "Branch name, <type>/wi-<id>__<slug>." } }),
+            &["branch"],
+        ),
+        tool(
             "close",
             "Close a work item once the gate is evaluated.",
             &work_item,
@@ -369,6 +380,24 @@ fn extension_tools() -> Vec<Value> {
             "Write the projection of the tenant under .omhl/projection/.",
             &json!({}),
             &[],
+        ),
+        tool(
+            "report_answers",
+            "Report the state of each gap, who answered it and whether a directive backs the answer; optionally for one work item.",
+            &json!({ "work_item": { "type": "string", "description": "Work item semantic id." } }),
+            &[],
+        ),
+        tool(
+            "report_recurrences",
+            "List the premises repeated in at least min distinct work items (closed ones count) that no guideline covers yet, as candidates to promote; read-only.",
+            &json!({ "min": { "type": "integer", "minimum": 0, "description": "Minimum distinct work items; promotion.min_work_items of workflow.toml by default." } }),
+            &[],
+        ),
+        tool(
+            "report_retro",
+            "Report the retro of a work item, open or closed: divergences by kind and resolution, approved and pending amendments, answers without criterion and open gaps; null when there is nothing to report; read-only.",
+            &json!({ "work_item": { "type": "string", "description": "Work item semantic id." } }),
+            &["work_item"],
         ),
     ]
 }

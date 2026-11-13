@@ -54,6 +54,9 @@ pub enum ActionCommand {
         limit: Option<u32>,
         #[arg(long)]
         after_seq: Option<u64>,
+        /// Keep the nodes whose `field` equals `value`; repeatable.
+        #[arg(long = "where", value_name = "FIELD=VALUE")]
+        where_eq: Vec<String>,
     },
     /// Print one node, or null when it does not exist.
     Get { id: String },
@@ -72,6 +75,11 @@ pub enum ActionCommand {
     Render,
     /// Evaluate the pull-request gate for a work item.
     GatePr { work_item: String },
+    /// Decide whether a worktree may be created for a branch; silent without a project marker.
+    GateWorktree {
+        #[arg(long, allow_hyphen_values = true)]
+        branch: String,
+    },
     /// Close a work item once the gate is evaluated.
     Close { work_item: String },
     /// Verify the hash chain.
@@ -100,6 +108,16 @@ pub enum ActionCommand {
     Hooks {
         #[command(subcommand)]
         command: HooksCommand,
+    },
+    /// Manage the specs of work items.
+    Spec {
+        #[command(subcommand)]
+        command: SpecCommand,
+    },
+    /// Read-only reports: gap answers, premise recurrences and the retro of a work item.
+    Report {
+        #[command(subcommand)]
+        command: ReportCommand,
     },
 }
 
@@ -136,9 +154,48 @@ pub enum HooksCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum SpecCommand {
+    /// Create the spec folder of an open work item, with its first part, in the main directory.
+    Init {
+        /// Id of the work item, such as work-items.w1.
+        work_item: String,
+        /// Folder name after the work item: 1 to 64 characters of a-z, 0-9 and -, not starting with -.
+        slug: String,
+    },
+    /// Check the structure and the graph of the spec folder of a work item.
+    Validate {
+        /// Id of the work item, such as work-items.w1.
+        work_item: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ReportCommand {
+    /// Report the state of each gap, who answered it and whether a directive backs the answer.
+    Answers {
+        /// Id of the work item, such as work-items.w1; without it, every gap is reported.
+        #[arg(long)]
+        work_item: Option<String>,
+    },
+    /// List the premises repeated in enough work items to suggest promoting them to a guideline.
+    Recurrences {
+        /// Minimum number of distinct work items; without it, `promotion.min_work_items` of workflow.toml applies.
+        #[arg(long)]
+        min: Option<u32>,
+    },
+    /// Print the retro of a work item (open or closed): divergences, amendments and unanswered gaps.
+    Retro {
+        /// Id of the work item, such as work-items.w1.
+        work_item: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,
+    /// Deny edits to the spec of a work item that already has a branch; reads the PreToolUse event on stdin.
+    SpecLock,
 }
 
 pub fn run(
@@ -166,14 +223,24 @@ pub fn run(
         Command::Hook {
             event: HookEvent::SessionStart,
         } => hook::session_start(stdin, out, err, env),
+        Command::Hook {
+            event: HookEvent::SpecLock,
+        } => hook::spec_lock(stdin, out, err),
         Command::Mcp => match start_dir(project_dir.as_deref()) {
             Ok(dir) => mcp::serve(BufReader::new(stdin), out, &dir, db, env),
             Err(error) => report(Err(error), out, err),
         },
         Command::Action(command) => {
+            // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
+            let silent_without_marker = matches!(command, ActionCommand::GateWorktree { .. });
             let result = start_dir(project_dir.as_deref())
                 .and_then(|dir| execute(command, stdin, &dir, db, env));
-            report(result, out, err)
+            match &result {
+                Err(error) if silent_without_marker && error.code() == "no-marker" => {
+                    ExitCode::SUCCESS
+                }
+                _ => report(result, out, err),
+            }
         }
     }
 }
@@ -247,7 +314,24 @@ fn execute(
 ) -> Result<Value, AppError> {
     let action = to_action(command, stdin, env)?;
 
-    run_action(start, db, env, &Caller::cli(), &action)
+    let caller = if env.claude_code {
+        Caller::cli_under_claude_code()
+    } else {
+        Caller::cli()
+    };
+
+    run_action(start, db, env, &caller, &action)
+}
+
+/// Divide no primeiro `=`: o valor pode conter `=`.
+fn split_where(index: usize, pair: &str) -> Result<(String, String), AppError> {
+    match pair.split_once('=') {
+        Some((field, value)) if !field.is_empty() => Ok((field.to_owned(), value.to_owned())),
+        _ => Err(AppError::invalid_arguments(
+            &format!("/where/{index}"),
+            "unknown value",
+        )),
+    }
 }
 
 fn to_action(
@@ -261,11 +345,17 @@ fn to_action(
             id_prefix,
             limit,
             after_seq,
+            where_eq,
         } => Action::List {
             type_name,
             id_prefix,
             limit,
             after_seq,
+            where_eq: where_eq
+                .iter()
+                .enumerate()
+                .map(|(index, pair)| split_where(index, pair))
+                .collect::<Result<_, AppError>>()?,
         },
         ActionCommand::Get { id } => Action::Get { id },
         ActionCommand::Append => Action::Append {
@@ -284,6 +374,7 @@ fn to_action(
         },
         ActionCommand::Render => Action::Render,
         ActionCommand::GatePr { work_item } => Action::GatePr { work_item },
+        ActionCommand::GateWorktree { branch } => Action::GateWorktree { branch },
         ActionCommand::Close { work_item } => Action::Close { work_item },
         ActionCommand::Verify => Action::Verify,
         ActionCommand::Load { dry_run } => Action::Load { dry_run },
@@ -312,6 +403,21 @@ fn to_action(
         ActionCommand::Hooks {
             command: HooksCommand::PostCommit,
         } => Action::ConsumeDevelopMark,
+        ActionCommand::Spec {
+            command: SpecCommand::Init { work_item, slug },
+        } => Action::SpecInit { work_item, slug },
+        ActionCommand::Spec {
+            command: SpecCommand::Validate { work_item },
+        } => Action::SpecValidate { work_item },
+        ActionCommand::Report {
+            command: ReportCommand::Answers { work_item },
+        } => Action::ReportAnswers { work_item },
+        ActionCommand::Report {
+            command: ReportCommand::Recurrences { min },
+        } => Action::ReportRecurrences { min },
+        ActionCommand::Report {
+            command: ReportCommand::Retro { work_item },
+        } => Action::ReportRetro { work_item },
     })
 }
 

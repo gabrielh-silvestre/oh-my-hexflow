@@ -1,8 +1,10 @@
 use hexlog::{AppendOutcome, Author, BreakReason, ChainReport, NodeView, Page};
 use serde_json::{Value, json};
 
+use super::report::state_name;
 use crate::facade::ClosedWorkItem;
 use crate::gate::{GateReport, QuestionKind, QuestionReport};
+use crate::workflow::retro::Retro;
 
 pub fn node(view: &NodeView) -> Value {
     let mut node = json!({
@@ -60,8 +62,48 @@ pub fn gate(report: &GateReport) -> Value {
     })
 }
 
-pub fn closed(closed: &ClosedWorkItem) -> Value {
-    json!({ "outcome": appended(&closed.outcome), "report": gate(&closed.report) })
+pub fn closed(closed: &ClosedWorkItem, retro_report: Option<&Retro>) -> Value {
+    json!({
+        "outcome": appended(&closed.outcome),
+        "report": gate(&closed.report),
+        "retro": retro(retro_report),
+    })
+}
+
+/// Só ids e nomes de arquivo: nunca o texto de divergência, spec ou emenda.
+pub fn retro(report: Option<&Retro>) -> Value {
+    let Some(report) = report else {
+        return Value::Null;
+    };
+    let divergences: Vec<Value> = report
+        .divergences
+        .iter()
+        .map(
+            |group| json!({ "kind": group.kind, "resolution": group.resolution, "ids": group.ids }),
+        )
+        .collect();
+    let approved: Vec<Value> = report
+        .approved
+        .iter()
+        .map(|amendment| json!({ "name": amendment.name, "divergence": amendment.divergence }))
+        .collect();
+    let no_criterion: Vec<Value> = report
+        .no_criterion
+        .iter()
+        .map(|answer| json!({ "gap": answer.gap, "answered_by": answer.answered_by }))
+        .collect();
+    let open_gaps: Vec<Value> = report
+        .open_gaps
+        .iter()
+        .map(|open| json!({ "gap": open.gap, "state": state_name(open.state) }))
+        .collect();
+
+    json!({
+        "divergences": divergences,
+        "amendments": { "approved": approved, "pending": report.pending },
+        "no_criterion": no_criterion,
+        "open_gaps": open_gaps,
+    })
 }
 
 pub fn verify(report: &ChainReport) -> Value {
@@ -86,7 +128,7 @@ pub fn verify(report: &ChainReport) -> Value {
     })
 }
 
-fn author(author: &Author) -> Value {
+pub fn author(author: &Author) -> Value {
     let mut value = json!({ "agent": author.agent, "client": author.client });
     if let Some(model) = &author.model {
         value["model"] = json!(model);
