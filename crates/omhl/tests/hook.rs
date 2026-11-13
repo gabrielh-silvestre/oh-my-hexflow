@@ -6,6 +6,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
 use support::ext::ExtTree;
+use support::git::git_in;
 use support::omhl::decision_data;
 use support::project::Project;
 use tempfile::TempDir;
@@ -624,4 +625,285 @@ fn it_should_refuse_any_argument_to_spec_lock() {
     let output = omhl(&["hook", "spec-lock", "--unfreeze"]).run();
 
     assert_eq!(output.code, Some(2));
+}
+
+// Contexto com premissas e diretivas marcadas; premissa expira com o work item
+
+const W1: &str = "work-items.w1";
+const W2: &str = "work-items.w2";
+
+fn confirmation() -> Value {
+    json!({ "by": "person:ana", "question": "Is it right?", "answer": "Yes." })
+}
+
+fn node_item(id: &str, type_name: &str, data: Value) -> Value {
+    let mut item = json!({ "body": { "kind": "node", "id": id, "type": type_name } });
+    item["body"]["data"] = data;
+
+    item
+}
+
+fn append_nodes(project: &Project, items: Vec<Value>) {
+    let mut request = json!({});
+    request["items"] = Value::Array(items);
+    let appended = omhl(&["append"])
+        .cwd(project.dir())
+        .xdg(project.xdg())
+        .stdin(request.to_string())
+        .run();
+
+    assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+}
+
+/// Repositório git com o marcador commitado, para o `close` achar a árvore limpa.
+fn git_project() -> Project {
+    let project = Project::new("acme");
+    for args in [
+        &["init", "-b", "main"][..],
+        &["add", "-A"],
+        &["commit", "-m", "add marker"],
+    ] {
+        let output = git_in(project.dir(), args);
+        assert!(output.status.success(), "git {args:?} failed");
+    }
+
+    project
+}
+
+fn append_open_work_item(project: &Project, id: &str) {
+    let data = json!({ "title": "Login", "status": "open" });
+
+    append_nodes(project, vec![node_item(id, "work-item", data)]);
+}
+
+fn close_work_item(project: &Project, id: &str) {
+    let closed = in_project(project, &["close", id]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+}
+
+fn premise_data(kind: &str, status: &str, work_item: &str) -> Value {
+    let mut data = json!({
+        "text": "the rule", "kind": kind, "status": status, "work_item": work_item,
+    });
+    if status == "confirmed" {
+        data["confirmed_by"] = confirmation();
+    }
+
+    data
+}
+
+/// O contexto de uma sessão com o work item `W1` aberto e uma só premissa dele.
+fn context_with_premise(data: Value) -> String {
+    let project = git_project();
+    append_open_work_item(&project, W1);
+    append_nodes(&project, vec![node_item("premises.rule", "premise", data)]);
+
+    context_of(&hook_for(&project))
+}
+
+/// As linhas do bloco `### <id>` do contexto, até a primeira linha em branco.
+fn block_of<'c>(context: &'c str, id: &str) -> Vec<&'c str> {
+    let header = format!("### {id}");
+
+    context
+        .lines()
+        .skip_while(|line| *line != header)
+        .take_while(|line| !line.is_empty())
+        .collect()
+}
+
+/// O texto de `## <title>` até o próximo `## `; vazio se a seção não existe.
+fn section_of<'c>(context: &'c str, title: &str) -> &'c str {
+    let Some((_, from_title)) = context.split_once(&format!("\n## {title}\n")) else {
+        return "";
+    };
+
+    from_title.split("\n## ").next().unwrap_or_default()
+}
+
+#[test]
+fn it_should_show_an_unconfirmed_business_premise_as_pending_apart_from_the_binding_ones() {
+    let context = context_with_premise(premise_data("business", "assumed", W1));
+
+    assert!(block_of(&context, "premises.rule").contains(&"- mark: pending"));
+    assert!(section_of(&context, "Pending premises").contains("### premises.rule\n"));
+    assert!(!section_of(&context, "Premises").contains("premises.rule"));
+}
+
+#[test]
+fn it_should_show_a_confirmed_business_premise_as_confirmed() {
+    let context = context_with_premise(premise_data("business", "confirmed", W1));
+
+    assert!(block_of(&context, "premises.rule").contains(&"- mark: confirmed"));
+    assert!(section_of(&context, "Premises").contains("### premises.rule\n"));
+}
+
+#[test]
+fn it_should_show_an_assumed_technical_premise_as_autonomous() {
+    let context = context_with_premise(premise_data("technical", "assumed", W1));
+
+    assert!(block_of(&context, "premises.rule").contains(&"- mark: autonomous"));
+    assert!(section_of(&context, "Premises").contains("### premises.rule\n"));
+}
+
+#[test]
+fn it_should_show_the_kind_of_a_premise() {
+    let context = context_with_premise(premise_data("business", "assumed", W1));
+
+    assert!(block_of(&context, "premises.rule").contains(&"- kind: business"));
+}
+
+#[test]
+fn it_should_drop_the_premises_of_a_closed_work_item_from_the_context() {
+    let project = git_project();
+    append_open_work_item(&project, W1);
+    append_nodes(
+        &project,
+        vec![node_item(
+            "premises.rule",
+            "premise",
+            premise_data("technical", "assumed", W1),
+        )],
+    );
+    close_work_item(&project, W1);
+
+    let context = context_of(&hook_for(&project));
+
+    assert!(!context.contains("premises.rule"), "context: {context}");
+}
+
+#[test]
+fn it_should_keep_the_premises_of_an_open_work_item_when_another_one_is_closed() {
+    let project = git_project();
+    append_open_work_item(&project, W1);
+    append_open_work_item(&project, W2);
+    append_nodes(
+        &project,
+        vec![
+            node_item(
+                "premises.closed-rule",
+                "premise",
+                premise_data("technical", "assumed", W1),
+            ),
+            node_item(
+                "premises.open-rule",
+                "premise",
+                premise_data("technical", "assumed", W2),
+            ),
+        ],
+    );
+    close_work_item(&project, W1);
+
+    let context = context_of(&hook_for(&project));
+
+    assert!(
+        context.contains("### premises.open-rule\n"),
+        "context: {context}"
+    );
+    assert!(
+        !context.contains("premises.closed-rule"),
+        "context: {context}"
+    );
+}
+
+#[test]
+fn it_should_keep_the_premises_of_a_closed_work_item_in_the_projection() {
+    let project = git_project();
+    append_open_work_item(&project, W1);
+    append_nodes(
+        &project,
+        vec![node_item(
+            "premises.rule",
+            "premise",
+            premise_data("technical", "assumed", W1),
+        )],
+    );
+    close_work_item(&project, W1);
+
+    let projected = in_project(&project, &["project"]);
+
+    let file = fs::read_to_string(project.dir().join(".omhl/projection/work-items.w1.md"))
+        .expect("the projection file exists");
+    assert_eq!(projected.code, Some(0), "stderr: {}", projected.stderr);
+    assert!(file.contains("### premises.rule\n"), "file: {file}");
+}
+
+#[test]
+fn it_should_keep_a_premise_without_work_item_in_the_context_after_any_work_item_closes() {
+    let project = git_project();
+    append_open_work_item(&project, W1);
+    let loose = json!({ "text": "the rule", "status": "assumed" });
+    append_nodes(
+        &project,
+        vec![node_item("premises.loose", "premise", loose)],
+    );
+    close_work_item(&project, W1);
+
+    let context = context_of(&hook_for(&project));
+
+    assert!(
+        context.contains("### premises.loose\n"),
+        "context: {context}"
+    );
+    assert!(!block_of(&context, "premises.loose").contains(&"- work_item: work-items.w1"));
+}
+
+#[test]
+fn it_should_mark_a_directive_with_confirmed_by_as_confirmed() {
+    let project = Project::new("acme");
+    let data = json!({ "text": "be brief", "confirmed_by": confirmation() });
+    append_nodes(
+        &project,
+        vec![node_item("guidelines.brief", "guideline", data)],
+    );
+
+    let context = context_of(&hook_for(&project));
+
+    assert_eq!(
+        block_of(&context, "guidelines.brief"),
+        [
+            "### guidelines.brief",
+            "- confirmed: true",
+            "- text: be brief"
+        ]
+    );
+}
+
+#[test]
+fn it_should_mark_a_loaded_extension_directive_as_confirmed() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).guideline("tone", "text = \"Be brief\"\n");
+    let loaded = in_project(&project, &["load"]);
+
+    let context = context_of(&hook_for(&project));
+
+    assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
+    assert!(block_of(&context, "guidelines.tone").contains(&"- confirmed: true"));
+}
+
+#[test]
+fn it_should_keep_the_context_within_10000_characters_with_60_marked_directives() {
+    let project = Project::new("acme");
+    let text = "y".repeat(400);
+    let directives: Vec<Value> = (0..60)
+        .map(|n| {
+            let data = json!({ "text": text, "confirmed_by": confirmation() });
+            node_item(&format!("guidelines.d{n:02}"), "guideline", data)
+        })
+        .collect();
+    for batch in directives.chunks(30) {
+        append_nodes(&project, batch.to_vec());
+    }
+
+    let context = context_of(&hook_for(&project));
+
+    let shown = context
+        .lines()
+        .filter(|line| line.starts_with("### guidelines.d"))
+        .count();
+    let confirmed = context.matches("- confirmed: true\n").count();
+    assert!(context.chars().count() <= CONTEXT_CEILING);
+    assert!(shown > 0, "some directives fit");
+    assert_eq!(confirmed, NATIVE_GUIDELINES.len() + shown);
 }

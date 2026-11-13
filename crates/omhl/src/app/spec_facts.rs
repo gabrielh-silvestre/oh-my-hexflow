@@ -5,7 +5,7 @@ use super::engine::Engine;
 use super::error::AppError;
 use super::read::all_nodes;
 use crate::native::NativeBase;
-use crate::workflow::gap::{GapFacts, GapState, gap_state};
+use crate::workflow::gap::{GapFacts, GapState, gap_state, is_confirmed_guideline};
 use crate::workflow::spec::{DivergenceFact, SPEC_STALE, SpecFacts};
 
 const PREMISE: &str = "premise";
@@ -54,7 +54,7 @@ impl SpecFacts for GraphFacts {
             return text(&fact.data, "status") == Some("confirmed") && has_confirmed_by;
         }
 
-        fact.native || fact.loader || has_confirmed_by
+        is_confirmed_guideline(fact.native, fact.loader, &fact.data)
     }
 
     fn kind(&self, id: &str) -> Option<String> {

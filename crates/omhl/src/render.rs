@@ -4,6 +4,7 @@ use hexlog::{NodeView, SemanticId};
 use serde_json::Value;
 
 use crate::native::NativeBase;
+use crate::workflow::gap::is_confirmed_guideline;
 
 pub const CONTEXT_BUDGET: usize = 9_500;
 
@@ -40,11 +41,15 @@ pub fn render(input: &RenderInput<'_>, budget: usize) -> Rendered {
         &visible_sorted(input.decisions),
         push_decision,
     );
+    let (pending, binding): (Vec<&NodeView>, Vec<&NodeView>) = visible_sorted(input.premises)
+        .into_iter()
+        .partition(|node| premise_mark(node) == PremiseMark::Pending);
+    push_tail_section(&mut text, &mut cuts, "Premises", &binding, push_premise);
     push_tail_section(
         &mut text,
         &mut cuts,
-        "Premises",
-        &visible_sorted(input.premises),
+        "Pending premises",
+        &pending,
         push_premise,
     );
 
@@ -97,6 +102,7 @@ fn push_guidelines(text: &mut String, cuts: &mut Vec<usize>, input: &RenderInput
     text.push_str("## Guidelines\n");
     for guideline in input.native.guidelines() {
         begin_block(text, guideline.id);
+        push_line(text, "confirmed", "true");
         push_line(text, "text", guideline.text);
     }
     let cut_at = text.len();
@@ -228,8 +234,11 @@ fn push_after(text: &mut String, id: &str, after: &[(SemanticId, SemanticId)]) {
     text.push('\n');
 }
 
+/// Diretiva confirmada: escrita pelo `loader` (extension) ou com `confirmed_by`; a nativa já é confirmada.
 fn push_guideline(text: &mut String, node: &NodeView) {
+    let confirmed = is_confirmed_guideline(false, node.author.client == "loader", &node.data);
     begin_block(text, node.id.as_str());
+    push_line(text, "confirmed", if confirmed { "true" } else { "false" });
     push_line(text, "text", str_of(&node.data["text"]));
 }
 
@@ -246,8 +255,40 @@ fn push_decision(text: &mut String, node: &NodeView) {
     push_work_item(text, node);
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PremiseMark {
+    Confirmed,
+    Pending,
+    Autonomous,
+}
+
+impl PremiseMark {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Confirmed => "confirmed",
+            Self::Pending => "pending",
+            Self::Autonomous => "autonomous",
+        }
+    }
+}
+
+/// Premissa de negócio sem confirmação espera o dono; a técnica ou sem `kind` o agente assume sozinho.
+fn premise_mark(node: &NodeView) -> PremiseMark {
+    if node.data["status"] == "confirmed" {
+        return PremiseMark::Confirmed;
+    }
+    if node.data["kind"] == "business" {
+        return PremiseMark::Pending;
+    }
+    PremiseMark::Autonomous
+}
+
 fn push_premise(text: &mut String, node: &NodeView) {
     begin_block(text, node.id.as_str());
+    push_line(text, "mark", premise_mark(node).label());
+    if let Some(kind) = node.data["kind"].as_str() {
+        push_line(text, "kind", kind);
+    }
     push_line(text, "status", str_of(&node.data["status"]));
     push_line(text, "text", str_of(&node.data["text"]));
     push_work_item(text, node);

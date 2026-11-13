@@ -93,8 +93,13 @@ fn has_confirmed_by(fact: &Fact) -> bool {
     fact.data.get("confirmed_by").is_some()
 }
 
+/// Diretiva confirmada: nativa, escrita pelo cliente `loader` ou com `confirmed_by`.
+pub fn is_confirmed_guideline(native: bool, loader: bool, data: &Value) -> bool {
+    native || loader || data.get("confirmed_by").is_some()
+}
+
 fn is_confirmed_directive(fact: &Fact) -> bool {
-    fact.type_name == GUIDELINE && (fact.native || fact.loader || has_confirmed_by(fact))
+    fact.type_name == GUIDELINE && is_confirmed_guideline(fact.native, fact.loader, &fact.data)
 }
 
 fn is_supported_by_a_confirmed_directive(facts: &GapFacts, premise: &str) -> bool {
