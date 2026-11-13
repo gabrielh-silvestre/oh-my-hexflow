@@ -98,18 +98,25 @@ JSON.
 
 | Comando | O que faz |
 |---|---|
-| `list` | Lista os nodes vigentes, com filtros `--type`, `--id-prefix`, `--limit` e `--after-seq` |
+| `list` | Lista os nodes vigentes, com filtros `--type`, `--id-prefix`, `--limit`, `--after-seq` e `--where <campo>=<valor>` (repetível, igualdade de campo) |
 | `get <id>` | Imprime um node, ou `null` quando ele não existe |
 | `append` | Grava os records de um pedido JSON lido do stdin |
 | `attest <check> <work-item> --outcome <outcome>` | Registra o resultado de um check no commit atual |
 | `render` | Imprime o contexto da sessão |
 | `gate-pr <work-item>` | Avalia o gate de pull request |
-| `close <work-item>` | Fecha um work item e grava o resultado do gate |
+| `gate-worktree --branch <nome>` | Decide se a worktree da branch pode ser criada. Fica em silêncio fora de um projeto com marcador |
+| `close <work-item>` | Fecha um work item e grava o resultado do gate. Devolve também o campo `retro` |
 | `verify` | Verifica a cadeia de hash |
 | `load [--dry-run]` | Carrega as extensions de `.omhl/` no tenant |
 | `project` | Gera a projeção em Markdown em `.omhl/projection/` |
 | `mcp` | Serve as ferramentas MCP por stdio |
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
+| `hook spec-lock` | Roda o hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de uma spec congelada |
+| `spec init <work-item> <slug>` | Cria a pasta da spec de um work item aberto, com a primeira parte, no diretório principal |
+| `spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
+| `report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta |
+| `report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção a guideline |
+| `report retro <work-item>` | A retro de um work item, aberto ou fechado: divergências, emendas e gaps sem resposta |
 | `check run --event <evento>` ou `check run --check <id>` | Roda os checks mecânicos de um evento (ou um só) e grava as attestations do work item da branch atual. `--pre-push` é do hook `pre-push` |
 | `check sweep` | Encerra os processos que fugiram de um `check run` anterior |
 | `check retire <check-id>` | Aposenta o check órfão, cujo arquivo `.omhl/checks/<slug>.toml` não existe na árvore, e some o aviso `check-orphaned`. É definitivo e vale para todos os clones e branches: o id não volta. Se a branch ou a worktree é anterior ao check, faça rebase sobre a `main` (ou restaure o arquivo) em vez de aposentar |
@@ -120,9 +127,11 @@ JSON.
 `attest` e `close` exigem a árvore git limpa. Um erro sai no stderr como JSON,
 com o código de saída 1.
 
-O servidor MCP expõe dez ferramentas com a mesma saída da CLI: `list`, `get`,
-`append`, `attest`, `render`, `gate_pr`, `close`, `verify`, `byproduct` e
-`project`. O `load`, o `check run`, o `check sweep`, o `check retire` e os comandos `hooks`
+O servidor MCP expõe catorze ferramentas com a mesma saída da CLI: `list`, `get`,
+`append`, `attest`, `render`, `gate_pr`, `gate_worktree`, `close`, `verify`,
+`byproduct`, `project`, `report_answers`, `report_recurrences` e
+`report_retro`. O `load`, o `check run`, o `check sweep`, o `check retire`, o
+`spec init`, o `spec validate`, o `hook spec-lock` e os comandos `hooks`
 existem só na CLI.
 
 ## Extensions e projeção
@@ -138,6 +147,14 @@ mesmos bytes.
 
 O formato dos arquivos e as regras estão em
 [docs/extensions-and-projection.md](docs/extensions-and-projection.md).
+
+## Fluxo por diretivas e premissas
+
+O humano define diretivas e premissas; o agente escreve a spec a partir delas.
+O ciclo vai da premissa confirmada ao gate de criação da worktree, à spec
+congelada, à emenda e à retro do `close`. Os comandos, o `workflow.toml`, os
+códigos de erro e os limites estão em
+[docs/directives-flow.md](docs/directives-flow.md).
 
 ## Checks mecânicos
 

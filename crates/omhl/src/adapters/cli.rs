@@ -162,7 +162,7 @@ pub enum SpecCommand {
         /// Folder name after the work item: 1 to 64 characters of a-z, 0-9 and -, not starting with -.
         slug: String,
     },
-    /// Check the structure of the spec folder of a work item (the graph is not consulted).
+    /// Check the structure and the graph of the spec folder of a work item.
     Validate {
         /// Id of the work item, such as work-items.w1.
         work_item: String,
