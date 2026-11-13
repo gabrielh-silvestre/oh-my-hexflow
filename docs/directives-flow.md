@@ -144,7 +144,7 @@ require = []
 |---|---|
 | `version` | Obrigatória quando o arquivo existe. O único valor aceito é `1` |
 | `specs.dir` | Pasta das specs, relativa ao diretório principal (e lida do `workflow.toml` dele). É recusado: caminho absoluto, com `..`, sem pasta própria (`""`, `.`, `./`), o `.git` e o `.omhl` sozinhos, e qualquer coisa dentro de `.git`, `.omhl/checks`, `.omhl/guidelines`, `.omhl/projection` e `.omhl/workflow.toml`. O padrão `.omhl/specs` e pastas como `docs/specs` valem |
-| `specs.max_lines` | Máximo de linhas de cada parte e de cada emenda. Mínimo `1` |
+| `specs.max_lines` | Máximo de linhas de cada parte e de cada emenda. Mínimo `1`. Cada arquivo também tem um teto fixo de 65 536 bytes (64 KiB), que não é configurável |
 | `specs.placeholders` | Textos que reprovam a spec (`placeholder-found`). A lista substitui a padrão |
 | `specs.cite_business_premise` | Quando `true`, a spec de um work item precisa citar uma premissa de negócio confirmada dele |
 | `promotion.min_work_items` | Número de work items distintos que dispara a sugestão de promoção |
@@ -176,6 +176,7 @@ Quando a matriz é satisfeita, a saída é `{"allowed":true,"branch":"feat/wi-w1
 | `worktree-gate-refused` | A matriz do prefixo não foi satisfeita. O `context` do detalhe traz `branch`, `prefix`, `work_item`, `missing` (os átomos que faltam) e `main_dir` | Registre e confirme o que `missing` lista, ou escreva e valide a spec. Repita o gate |
 | `prefix-not-allowed` | O nome não segue `tipo/wi-<id>__<slug>`, ou o `tipo` não está na tabela. `pr:N` e `dependabot/...` caem aqui | Corrija o nome. Para uma branch de terceiros, veja os bypasses na seção 10 |
 | `main-dir-unknown` | O `git` não resolveu o diretório principal do repositório (por exemplo, repositório bare) | Rode num checkout comum |
+| `spec-store-unusable` | O `require` pede `spec` e a pasta de spec do work item não pode ser lida (arquivo que não é regular, pasta ilegível, mais de uma pasta `wi-<id>__*`). O ponteiro é `/work_item` | Corrija a pasta de spec no diretório principal |
 | `invalid-workflow-config` | O `.omhl/workflow.toml` é inválido (seção 4) | Corrija o arquivo |
 
 Exemplo de recusa (campos de `context` abreviados):
@@ -229,6 +230,7 @@ O comando cria a pasta no diretório principal, com o `parte-01.md` já com as c
 |---|---|
 | `spec-slug-invalid` | O slug não tem 1 a 64 caracteres de `a-z`, `0-9` e `-`, ou começa com `-`. O slug vira nome de pasta |
 | `spec-exists` | O work item já tem uma pasta de spec, de qualquer slug |
+| `spec-store-unusable` | A pasta de specs não pode ser lida nem escrita, passa de 10 000 entradas, ou o work item tem mais de uma pasta `wi-<id>__*`. O ponteiro é `/work_item` |
 | `work-item-not-found`, `work-item-closed` | O work item não existe ou já foi fechado |
 
 ### O formato
@@ -241,7 +243,7 @@ Cada parte tem estas cinco seções `##`, nesta ordem:
 4. `Critérios de aceitação`: itens `- CA-###: ...`, mensuráveis
 5. `Fora de escopo`
 
-Cada parte tem no máximo `specs.max_lines` linhas (300 por padrão). Passou disso, divida o trabalho em mais partes completas, todas no mesmo work item. Uma dúvida aberta entra no texto como `[PENDENTE: gaps.<nome>]`.
+Cada parte tem no máximo `specs.max_lines` linhas (300 por padrão) e no máximo 64 KiB. Passou disso, divida o trabalho em mais partes completas, todas no mesmo work item. Uma dúvida aberta entra no texto como `[PENDENTE: gaps.<nome>]`.
 
 Exemplo de parte válida:
 
@@ -280,7 +282,7 @@ Com sucesso, a saída lista as partes e o estado de cada emenda:
 {"amendments":[{"name":"emenda-01.md","state":"approved","violations":[]}],"ok":true,"parts":["parte-01.md"]}
 ```
 
-Com violação, o erro é `spec-invalid`. Cada detalhe traz o `path` (`<arquivo>:<linha>`, linha a partir de 1) e o `code` da regra. O erro lista até 20 detalhes e conta os omitidos na mensagem. O conteúdo da spec nunca entra no erro. Sem pasta ou sem nenhuma parte, o erro é `spec-not-found`.
+Com violação, o erro é `spec-invalid`. Cada detalhe traz o `path` (`<arquivo>:<linha>`, linha a partir de 1) e o `code` da regra. O erro lista até 20 detalhes e conta os omitidos na mensagem. O conteúdo da spec nunca entra no erro. Sem pasta ou sem nenhuma parte, o erro é `spec-not-found`. Pasta ilegível, arquivo de spec que não é regular ou não é UTF-8, mais de uma pasta `wi-<id>__*` do work item e mais de 10 000 entradas em `specs.dir` dão `spec-store-unusable` (ponteiro `/work_item`), não `spec-invalid`.
 
 As violações de uma parte reprovam sempre. As de uma emenda reprovam só quando a emenda está aprovada (seção 9). Uma emenda `pending` com violação aparece em `amendments[].violations` e não derruba o `ok`.
 
@@ -293,6 +295,7 @@ As violações de uma parte reprovam sempre. As de uma emenda reprovam só quand
 | `item-id-invalid` | Um item de `Comportamentos` não começa com `CMP-###`, um de `Critérios de aceitação` não começa com `CA-###`, ou um de `Correções` não começa com `EMD-###`. O número tem 3 dígitos |
 | `item-id-duplicate` | O mesmo `CMP-###` ou `CA-###` aparece em mais de um lugar das partes, ou o mesmo `EMD-###` em mais de um lugar das emendas, inclusive numa emenda abandonada |
 | `file-too-long` | O arquivo passa de `specs.max_lines` linhas. A linha reportada é a primeira acima do teto |
+| `file-too-large` | O arquivo passa de 65 536 bytes (64 KiB), mesmo com poucas linhas. O arquivo não é lido e a linha reportada é sempre `1` |
 | `placeholder-found` | Uma linha contém algum texto de `specs.placeholders` |
 | `pending-marker-invalid` | Existe um `[PENDENTE` que não tem a forma `[PENDENTE: gaps.<nome>]` |
 
@@ -327,8 +330,9 @@ O hook lê o evento no stdin e decide por regras fechadas:
 1. O caminho precisa estar sob `<specs.dir>/wi-<id>__<slug>/`. Senão ele sai com `0` sem abrir banco nem git. O caminho é normalizado no texto (`.` e `..`) antes do filtro.
 2. Está congelada a spec cujo work item tem uma branch local (`tipo/wi-<id>__<slug>`). O hook só olha o disco e o git, nunca o banco.
 3. Numa spec congelada, o hook nega `Edit` e `MultiEdit` em qualquer arquivo da pasta, `Write` sobre um arquivo que já existe e `Write` de uma `parte-NN.md` nova.
-4. A única exceção é a criação de emenda: `Write` de um arquivo que ainda não existe, chamado `emenda-NN.md`, em que `NN` é o próximo número da pasta (o maior existente mais um, ou `01`). Um arquivo novo que não é `parte-*` nem `emenda-*` (por exemplo `notas.md`) também passa.
-5. Escrever uma spec dentro de uma worktree ligada é barrado, com ou sem branch do work item.
+4. Numa spec congelada, `parte-*.md` e `emenda-*.md` só se escrevem numa pasta que já existe. Pasta nova do work item (por exemplo, um slug digitado errado) é negada com `spec-folder-unknown`.
+5. A única exceção é a criação de emenda: `Write` de um arquivo que ainda não existe, chamado `emenda-NN.md`, em que `NN` é o próximo número da pasta (o maior existente mais um, ou `01`). Um arquivo novo que não é `parte-*` nem `emenda-*` (por exemplo `notas.md`) também passa.
+6. Escrever uma spec dentro de uma worktree ligada é barrado, com ou sem branch do work item.
 
 A negação sai no stdout, com código de saída `0`:
 
@@ -340,6 +344,7 @@ A negação sai no stdout, com código de saída `0`:
 |---|---|---|
 | `spec-frozen` | A edição é de uma spec congelada. A mensagem diz o caminho da emenda que se pode criar | Registre uma `divergence` e crie a emenda (seção 9) |
 | `spec-in-linked-worktree` | O caminho está numa worktree ligada. As specs vivem só no diretório principal | Escreva no caminho do diretório principal que a mensagem informa |
+| `spec-folder-unknown` | O work item tem branch e a pasta do caminho não existe. Vale para `parte-*.md` e `emenda-*.md` | Escreva a emenda na pasta de spec que o work item já tem |
 
 O hook nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto pelo caminho do arquivo e, se ele estiver fora de qualquer projeto, pelo `cwd` da sessão. Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
 
@@ -401,7 +406,7 @@ A retro é um relatório somente leitura. Ele sai de duas formas: no campo `retr
 | `no_criterion` | Gaps respondidos sem diretiva que sustente a resposta |
 | `open_gaps` | Gaps `open` e `needs-human` |
 
-A retro traz só ids e nomes de arquivo, nunca o texto de uma divergência, spec ou emenda. O `close` lê os fatos da retro antes de gravar o fechamento; se a leitura falhar (pasta de spec ilegível ou `workflow.toml` inválido), o `close` recusa sem gravar nada.
+A retro traz só ids e nomes de arquivo, nunca o texto de uma divergência, spec ou emenda. O `close` lê os fatos da retro antes de gravar o fechamento. A pasta de spec e o `workflow.toml` só são lidos quando há retro (divergência ou gap respondido sem critério); nesse caso, se a leitura falhar (pasta de spec ilegível ou `workflow.toml` inválido), o `close` recusa sem gravar nada. Sem retro, o `close` grava com `retro: null` mesmo com o `workflow.toml` inválido. A lista de emendas vem só dos nomes dos arquivos: um arquivo de spec ilegível não a impede.
 
 Depois do `close`, o agente propõe uma melhoria por item da retro. Cada proposta é de uma destas categorias, e só vira registro com a confirmação do humano:
 
@@ -529,7 +534,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`. O comando não tem a guarda `{% if branch %}`.
 - O `confirmed_by` é autodeclarado por qualquer canal. A tool `append` do MCP e a CLI aceitam a mesma confirmação inventada, e o record forjado sai igual ao legítimo. O MCP protege só o rótulo de autoria (`agent: "claude"`), que a CLI perde com `env -u CLAUDECODE`. A trava técnica contra forja não existe nesta entrega (seção 3).
 - A spec vive no diretório principal, fora do git. Ela não vai com um clone e some com o diretório.
-- A busca de pastas de spec lê até 10 000 entradas.
+- A busca de pastas de spec lê até 10 000 entradas e recusa (`spec-store-unusable`) o work item que tem mais de uma pasta `wi-<id>__*`, mesmo a segunda vazia.
 - O `spec-invalid` e o `amendment-invalid` mostram até 20 detalhes por erro.
-- O `close` depende de a pasta de spec ser legível e de o `workflow.toml` ser válido (seção 8).
+- O `close` de um work item com retro depende de a pasta de spec ser legível e de o `workflow.toml` ser válido (seção 8).
 - A cadeira não tem o crítico automatizado: ninguém grava `supports` e `contradicts` sozinho.

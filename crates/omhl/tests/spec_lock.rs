@@ -62,6 +62,7 @@ mod lock {
         let facts = Facts {
             frozen,
             linked_worktree: linked,
+            folder_exists: true,
             file_exists: existing.contains(&file),
             folder_files: &files,
             main_folder: Path::new(MAIN_FOLDER),
@@ -469,6 +470,27 @@ mod lock {
         assert!(reason.contains(MAIN_FOLDER), "reason: {reason}");
         assert!(reason.contains(IN_WORKTREE), "reason: {reason}");
     }
+
+    #[test]
+    fn it_should_deny_a_spec_file_in_a_folder_that_does_not_exist_when_frozen() {
+        let facts = Facts {
+            frozen: true,
+            linked_worktree: false,
+            folder_exists: false,
+            file_exists: false,
+            folder_files: &[],
+            main_folder: Path::new(MAIN_FOLDER),
+        };
+
+        let (code, reason) = denial(decide(
+            Tool::Write,
+            &spec_path("w1", FOLDER, "emenda-01.md"),
+            &facts,
+        ));
+
+        assert_eq!(code, "spec-folder-unknown");
+        assert!(reason.contains(MAIN_FOLDER), "reason: {reason}");
+    }
 }
 
 // Hook `omhl hook spec-lock` sobre repositório git real
@@ -550,6 +572,11 @@ impl Repo {
 
     fn spec_file(&self, name: &str) -> PathBuf {
         self.folder(DEFAULT_SPECS).join(name)
+    }
+
+    /// Arquivo numa pasta do mesmo work item que não é a da spec (`DECOY_FOLDER`).
+    fn decoy_file(&self, name: &str) -> PathBuf {
+        self.main.join(DEFAULT_SPECS).join(DECOY_FOLDER).join(name)
     }
 
     /// Roda o hook de uma pasta que não é a do projeto: o `cwd` só pode vir do stdin.
@@ -926,6 +953,56 @@ fn it_should_deny_a_new_amendment_whose_number_has_one_digit() {
 
     let reason = denied_reason(&output);
     assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+// Pasta nova de work item congelado: nenhum arquivo de spec nasce nela
+
+const FOLDER_UNKNOWN: &str = "spec-folder-unknown";
+const DECOY_FOLDER: &str = "wi-w1__other";
+
+#[test]
+fn it_should_deny_the_first_amendment_in_a_new_folder_of_a_frozen_work_item() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.decoy_file("emenda-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FOLDER_UNKNOWN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_the_first_amendment_when_a_frozen_work_item_has_no_spec_folder_at_all() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("emenda-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FOLDER_UNKNOWN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_a_new_part_in_a_new_folder_of_a_frozen_work_item() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.decoy_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FOLDER_UNKNOWN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_allow_a_new_folder_when_the_work_item_has_no_branch() {
+    let repo = Repo::new();
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.decoy_file("emenda-01.md"));
+
+    assert_allowed(&output);
 }
 
 // Fora de `specs.dir`: nada é aberto

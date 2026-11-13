@@ -395,6 +395,14 @@ fn json_line(text: &str) -> Value {
     serde_json::from_str(text.trim_end()).expect("the line is JSON")
 }
 
+fn error_code(output: &Output) -> Value {
+    json_line(&output.stderr)["error"]["code"].clone()
+}
+
+fn error_pointer(output: &Output) -> Value {
+    json_line(&output.stderr)["error"]["details"][0]["path"].clone()
+}
+
 /// O `retro` de uma saída de `close` ou de `report retro`; a chave precisa existir, mesmo `null`.
 fn retro_of(value: &Value) -> Value {
     let object = value.as_object().expect("the output is an object");
@@ -524,6 +532,20 @@ impl Fixture {
         let dir = self.project.dir().join(".omhl");
         fs::create_dir_all(&dir).expect("the .omhl directory exists");
         fs::write(dir.join("workflow.toml"), toml).expect("workflow.toml is written");
+    }
+
+    /// Uma segunda pasta `wi-w1__*` do mesmo work item, ao lado de `PART_DIR`.
+    fn seed_second_folder(&self) {
+        let dir = self.spec_dir().with_file_name("wi-w1__other");
+        fs::create_dir_all(&dir).expect("second spec directory is created");
+        fs::write(dir.join("parte-01.md"), "seed\n").expect("second part is written");
+    }
+
+    /// `parte-01.md` vira diretório: a parte existe na listagem, mas não dá para ler como arquivo.
+    fn replace_first_part_with_directory(&self) {
+        let part = self.spec_dir().join("parte-01.md");
+        fs::remove_file(&part).expect("the part exists");
+        fs::create_dir(&part).expect("directory takes the part name");
     }
 
     fn commit_all(&self) {
@@ -825,7 +847,134 @@ fn it_should_not_echo_the_spec_or_the_amendment_content_in_the_close_output() {
     );
 }
 
+// `close` só lê a pasta de spec e o `workflow.toml` quando a retro pode existir
+
+const INVALID_WORKFLOW: &str = "version = 1\ncolour = true\n";
+
+#[test]
+fn it_should_close_with_a_null_retro_when_workflow_toml_is_invalid_and_there_is_nothing_to_report()
+{
+    let fixture = Fixture::new();
+    fixture.write_workflow(INVALID_WORKFLOW);
+
+    let closed = fixture.close();
+
+    assert_eq!(retro_of(&closed), Value::Null);
+}
+
+#[test]
+fn it_should_close_with_a_null_retro_when_workflow_toml_is_invalid_and_the_only_finding_is_an_open_gap()
+ {
+    let fixture = Fixture::new();
+    fixture.append(vec![gap(GAP)]);
+    fixture.write_workflow(INVALID_WORKFLOW);
+
+    let closed = fixture.close();
+
+    assert_eq!(retro_of(&closed), Value::Null);
+}
+
+#[test]
+fn it_should_close_with_a_null_retro_when_the_work_item_has_two_spec_folders_and_nothing_to_report()
+{
+    let fixture = Fixture::new();
+    fixture.write("parte-01.md", &valid_part());
+    fixture.seed_second_folder();
+
+    let closed = fixture.close();
+
+    assert_eq!(retro_of(&closed), Value::Null);
+}
+
+#[test]
+fn it_should_refuse_to_close_and_write_nothing_when_an_answer_without_criterion_needs_a_workflow_file_that_is_invalid()
+ {
+    let fixture = Fixture::new();
+    fixture.answer_without_criterion();
+    fixture.write_workflow(INVALID_WORKFLOW);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.run(&["close", W1]);
+
+    assert_eq!(
+        (closed.code, fixture.chain()),
+        (Some(1), before),
+        "stdout: {} stderr: {}",
+        closed.stdout,
+        closed.stderr
+    );
+}
+
+// Pasta de spec inutilizável: `spec-store-unusable` em `/work_item`, nunca `probe-failed`
+
+#[test]
+fn it_should_refuse_to_close_with_spec_store_unusable_when_the_work_item_has_two_spec_folders() {
+    let fixture = Fixture::with_spec();
+    fixture.seed_second_folder();
+    fixture.commit_all();
+
+    let closed = fixture.run(&["close", W1]);
+
+    assert_eq!(closed.code, Some(1), "stdout: {}", closed.stdout);
+    assert_eq!(error_code(&closed), json!("spec-store-unusable"));
+    assert_eq!(error_pointer(&closed), json!("/work_item"));
+}
+
+#[test]
+fn it_should_write_nothing_when_close_is_refused_for_two_spec_folders() {
+    let fixture = Fixture::with_spec();
+    fixture.seed_second_folder();
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    fixture.run(&["close", W1]);
+
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_list_the_amendments_in_the_close_retro_when_a_part_cannot_be_read() {
+    let fixture = Fixture::with_spec();
+    fixture.write("emenda-01.md", &amendment_for(DIVERGENCE));
+    fixture.replace_first_part_with_directory();
+
+    let closed = fixture.close();
+
+    assert_eq!(
+        retro_of(&closed)["amendments"],
+        json!({ "approved": [], "pending": ["emenda-01.md"] })
+    );
+}
+
 // `omhl report retro`
+
+#[test]
+fn it_should_refuse_report_retro_with_spec_store_unusable_when_the_work_item_has_two_spec_folders()
+{
+    let fixture = Fixture::with_spec();
+    fixture.seed_second_folder();
+
+    let report = fixture.report_retro();
+
+    assert_eq!(report.code, Some(1), "stdout: {}", report.stdout);
+    assert_eq!(error_code(&report), json!("spec-store-unusable"));
+    assert_eq!(error_pointer(&report), json!("/work_item"));
+}
+
+#[test]
+fn it_should_list_the_amendments_in_report_retro_when_a_part_cannot_be_read() {
+    let fixture = Fixture::with_spec();
+    fixture.write("emenda-01.md", &amendment_for(DIVERGENCE));
+    fixture.replace_first_part_with_directory();
+
+    let report = fixture.retro_report();
+
+    assert_eq!(
+        retro_of(&report)["amendments"],
+        json!({ "approved": [], "pending": ["emenda-01.md"] })
+    );
+}
 
 #[test]
 fn it_should_print_the_retro_of_an_open_work_item_with_a_divergence() {

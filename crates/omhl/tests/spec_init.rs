@@ -1,6 +1,7 @@
 mod support;
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -132,6 +133,33 @@ impl Fixture {
             self.seed_spec_dir(&format!("wi-o{n:03}__x"));
         }
     }
+
+    /// `count` arquivos vazios direto no `specs.dir`, que só contam como entradas da pasta.
+    fn seed_entries(&self, count: usize) {
+        let dir = self.project.dir().join(DEFAULT_SPECS);
+        fs::create_dir_all(&dir).expect("specs directory is created");
+        for n in 0..count {
+            fs::write(dir.join(format!("entry-{n:05}")), "").expect("entry is written");
+        }
+    }
+}
+
+/// Tira a leitura da pasta até o fim do escopo; `None` quando o processo ignora permissões (root).
+struct Unreadable(PathBuf);
+
+impl Unreadable {
+    fn new(dir: &Path) -> Option<Unreadable> {
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o000)).expect("permissions change");
+        let guard = Unreadable(dir.to_owned());
+
+        fs::read_dir(dir).is_err().then_some(guard)
+    }
+}
+
+impl Drop for Unreadable {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
 }
 
 fn json_line(text: &str) -> Value {
@@ -140,6 +168,15 @@ fn json_line(text: &str) -> Value {
 
 fn error_code(output: &Child) -> Value {
     json_line(&output.stderr)["error"]["code"].clone()
+}
+
+fn assert_spec_store_unusable(output: &Child) {
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert_eq!(error_code(output), json!("spec-store-unusable"));
+    assert_eq!(
+        json_line(&output.stderr)["error"]["details"][0]["path"],
+        json!("/work_item")
+    );
 }
 
 fn porcelain(dir: &Path) -> String {
@@ -406,6 +443,53 @@ fn it_should_find_an_existing_spec_of_the_work_item_among_150_other_specs() {
 
     assert_eq!(output.code, Some(1));
     assert_eq!(error_code(&output), json!("spec-exists"));
+}
+
+#[test]
+fn it_should_init_when_the_specs_dir_has_exactly_10000_entries() {
+    let fixture = Fixture::new();
+    fixture.seed_entries(10_000);
+
+    let output = fixture.init_from_linked(WORK_ITEM, SLUG);
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+}
+
+#[test]
+fn it_should_refuse_with_spec_store_unusable_when_the_specs_dir_has_10001_entries() {
+    let fixture = Fixture::new();
+    fixture.seed_entries(10_001);
+
+    let output = fixture.init_from_linked(WORK_ITEM, SLUG);
+
+    assert_spec_store_unusable(&output);
+}
+
+// Pasta de spec inutilizável
+
+#[test]
+fn it_should_refuse_with_spec_store_unusable_when_the_work_item_has_two_spec_folders() {
+    let fixture = Fixture::new();
+    fixture.seed_spec_dir("wi-w1__first");
+    fixture.seed_spec_dir("wi-w1__second");
+
+    let output = fixture.init_from_linked(WORK_ITEM, SLUG);
+
+    assert_spec_store_unusable(&output);
+}
+
+#[test]
+fn it_should_refuse_with_spec_store_unusable_when_the_specs_dir_cannot_be_read() {
+    let fixture = Fixture::new();
+    fixture.seed_entries(1);
+    let specs = fixture.main_dir().join(DEFAULT_SPECS);
+    let Some(_unreadable) = Unreadable::new(&specs) else {
+        return;
+    };
+
+    let output = fixture.init_from_linked(WORK_ITEM, SLUG);
+
+    assert_spec_store_unusable(&output);
 }
 
 // specs.dir customizado

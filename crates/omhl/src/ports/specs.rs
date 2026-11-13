@@ -2,7 +2,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
-use crate::ports::files::read_regular_utf8;
+use crate::ports::files::{FILE_TOO_LARGE, list_sorted_capped, read_regular_utf8};
 use crate::project::layout::{EXT_FILE_MAX_BYTES, GITIGNORE_CONTENT, GITIGNORE_NAME};
 
 /// Teto próprio da busca por prefixo; o `DIR_ENTRIES_MAX` (100) é das pastas de extension.
@@ -24,7 +24,10 @@ pub enum SpecStoreError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecDocument {
     pub name: String,
+    /// Vazio quando `oversized`.
     pub text: String,
+    /// Passa de `EXT_FILE_MAX_BYTES`: o arquivo não é lido, a validação reporta `file-too-large`.
+    pub oversized: bool,
 }
 
 /// O conteúdo de uma pasta de spec, cada lista ordenada pelo nome do arquivo.
@@ -54,13 +57,14 @@ impl SpecStore {
         let Some(folder) = self.find_folder(work_item)? else {
             return Ok(None);
         };
-        let mut names = list_names(&folder)?;
-        names.sort();
         let mut spec = SpecFolder {
             parts: Vec::new(),
             amendments: Vec::new(),
         };
-        for name in names.into_iter().filter(|name| name.ends_with(FILE_SUFFIX)) {
+        for name in list_names(&folder)?
+            .into_iter()
+            .filter(|name| name.ends_with(FILE_SUFFIX))
+        {
             let target = if name.starts_with(PART_PREFIX) {
                 &mut spec.parts
             } else if name.starts_with(AMENDMENT_PREFIX) {
@@ -68,12 +72,32 @@ impl SpecStore {
             } else {
                 continue;
             };
-            let text = read_regular_utf8(&folder.join(&name), EXT_FILE_MAX_BYTES)
-                .map_err(|_| SpecStoreError::Unusable("a spec file cannot be read"))?;
-            target.push(SpecDocument { name, text });
+            let (text, oversized) = match read_regular_utf8(&folder.join(&name), EXT_FILE_MAX_BYTES)
+            {
+                Ok(text) => (text, false),
+                Err(FILE_TOO_LARGE) => (String::new(), true),
+                Err(_) => return Err(SpecStoreError::Unusable("a spec file cannot be read")),
+            };
+            target.push(SpecDocument {
+                name,
+                text,
+                oversized,
+            });
         }
 
         Ok(Some(spec))
+    }
+
+    /// Os `emenda-NN.md` da pasta do work item, só pelo nome: o conteúdo não é lido.
+    pub fn amendment_names(&self, work_item: &str) -> Result<Vec<String>, SpecStoreError> {
+        let Some(folder) = self.find_folder(work_item)? else {
+            return Ok(Vec::new());
+        };
+
+        Ok(list_names(&folder)?
+            .into_iter()
+            .filter(|name| name.starts_with(AMENDMENT_PREFIX) && name.ends_with(FILE_SUFFIX))
+            .collect())
     }
 
     /// Nomes dos arquivos da pasta `folder`; pasta ausente lista vazio.
@@ -83,22 +107,27 @@ impl SpecStore {
 
     /// Não segue link simbólico: um link pendente também ocupa o nome.
     pub fn file_exists(&self, folder: &str, file: &str) -> Result<bool, SpecStoreError> {
-        match fs::symlink_metadata(self.dir.join(folder).join(file)) {
-            Ok(_) => Ok(true),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
-            Err(_) => Err(SpecStoreError::Unusable(
-                "the spec file cannot be inspected",
-            )),
-        }
+        exists_without_following(&self.dir.join(folder).join(file))
     }
 
+    pub fn folder_exists(&self, folder: &str) -> Result<bool, SpecStoreError> {
+        exists_without_following(&self.dir.join(folder))
+    }
+
+    /// Mais de uma pasta `wi-<id>__*` é recusa: escolher uma deixaria a outra ser lida ou ignorada ao acaso.
     fn find_folder(&self, work_item: &str) -> Result<Option<PathBuf>, SpecStoreError> {
         let prefix = folder_prefix(work_item);
-
-        Ok(list_names(&self.dir)?
+        let mut matches = list_names(&self.dir)?
             .into_iter()
-            .find(|name| name.starts_with(&prefix))
-            .map(|name| self.dir.join(name)))
+            .filter(|name| name.starts_with(&prefix));
+        let first = matches.next();
+        if matches.next().is_some() {
+            return Err(SpecStoreError::Unusable(
+                "the work item has more than one spec folder",
+            ));
+        }
+
+        Ok(first.map(|name| self.dir.join(name)))
     }
 
     /// Cria o `.gitignore` do diretório (sem sobrescrever o que existe), a pasta e a primeira parte; devolve a pasta e o arquivo.
@@ -133,26 +162,30 @@ impl SpecStore {
     }
 }
 
-/// Passar do teto é recusa, nunca omissão silenciosa. Pasta ausente lista vazio.
+/// Em ordem estável. Passar do teto é recusa, nunca omissão silenciosa. Pasta ausente lista vazio.
 fn list_names(dir: &Path) -> Result<Vec<String>, SpecStoreError> {
-    let entries = match fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(_) => return Err(SpecStoreError::Unusable("the specs folder cannot be read")),
-    };
-    let mut names = Vec::new();
-    for entry in entries {
-        if names.len() >= SPEC_ENTRIES_MAX {
-            return Err(SpecStoreError::Unusable(
-                "the specs folder has too many entries",
-            ));
-        }
-        let entry =
-            entry.map_err(|_| SpecStoreError::Unusable("the specs folder cannot be read"))?;
-        names.push(entry.file_name().to_string_lossy().into_owned());
+    if matches!(fs::metadata(dir), Err(error) if error.kind() == ErrorKind::NotFound) {
+        return Ok(Vec::new());
     }
+    let names = list_sorted_capped(dir, SPEC_ENTRIES_MAX).map_err(|code| match code {
+        "too-many-entries" => SpecStoreError::Unusable("the specs folder has too many entries"),
+        _ => SpecStoreError::Unusable("the specs folder cannot be read"),
+    })?;
 
-    Ok(names)
+    Ok(names
+        .into_iter()
+        .map(|name| name.to_string_lossy().into_owned())
+        .collect())
+}
+
+fn exists_without_following(path: &Path) -> Result<bool, SpecStoreError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+        Err(_) => Err(SpecStoreError::Unusable(
+            "the spec file cannot be inspected",
+        )),
+    }
 }
 
 fn folder_prefix(work_item: &str) -> String {

@@ -436,6 +436,10 @@ impl AppError {
         )
     }
 
+    pub(crate) fn spec_store_unusable(reason: &str) -> AppError {
+        AppError::at_pointer("spec-store-unusable", "/work_item", reason)
+    }
+
     pub(crate) fn spec_slug_invalid(path: &str) -> AppError {
         AppError::at_pointer(
             "spec-slug-invalid",

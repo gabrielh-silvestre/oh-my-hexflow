@@ -1145,6 +1145,43 @@ fn it_should_refuse_feat_when_the_spec_is_the_empty_skeleton_created_by_spec_ini
     assert_eq!(error_context(&output)["missing"], json!(["spec"]));
 }
 
+fn assert_spec_store_unusable(output: &Child) {
+    assert_refused(output, "spec-store-unusable");
+    assert_eq!(
+        json_line(&output.stderr)["error"]["details"][0]["path"],
+        json!("/work_item")
+    );
+}
+
+#[test]
+fn it_should_refuse_with_spec_store_unusable_when_a_part_of_the_spec_is_a_directory() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    let part = fixture.init_spec(W1);
+    fs::remove_file(&part).expect("the part exists");
+    fs::create_dir(&part).expect("directory takes the part name");
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_spec_store_unusable(&output);
+}
+
+#[test]
+fn it_should_refuse_with_spec_store_unusable_when_the_work_item_has_two_spec_folders() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    let part = fixture.init_spec(W1);
+    let other = part
+        .parent()
+        .expect("the part has a folder")
+        .with_file_name("wi-w1__other");
+    fs::create_dir(&other).expect("second spec directory is created");
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_spec_store_unusable(&output);
+}
+
 #[test]
 fn it_should_refuse_feat_when_the_spec_cites_a_premise_that_is_not_in_the_database() {
     let fixture = Fixture::seeded();

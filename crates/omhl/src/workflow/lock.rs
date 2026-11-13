@@ -11,6 +11,7 @@ const AMENDMENT_PREFIX: &str = "emenda-";
 const FILE_SUFFIX: &str = ".md";
 const FROZEN: &str = "spec-frozen";
 const IN_LINKED_WORKTREE: &str = "spec-in-linked-worktree";
+const FOLDER_UNKNOWN: &str = "spec-folder-unknown";
 
 /// Um arquivo sob `<specs.dir>/wi-<id>__<slug>/`; `file` é o restante do caminho depois da pasta.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +51,8 @@ pub struct Facts<'a> {
     pub frozen: bool,
     /// O caminho está dentro de uma worktree ligada, não no diretório principal.
     pub linked_worktree: bool,
+    /// A pasta `wi-<id>__<slug>` do caminho já existe no diretório principal.
+    pub folder_exists: bool,
     pub file_exists: bool,
     /// Nomes dos arquivos da pasta de spec no diretório principal.
     pub folder_files: &'a [String],
@@ -94,7 +97,7 @@ pub fn next_amendment(folder_files: &[String]) -> String {
     format!("{AMENDMENT_PREFIX}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
-/// Ordem: worktree ligada; sem branch libera; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
+/// Ordem: worktree ligada; sem branch libera; congelada nega arquivo de spec em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {
@@ -105,7 +108,19 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
             ),
         };
     }
-    if !facts.frozen || creates_allowed_file(tool, spec, facts) {
+    if !facts.frozen {
+        return Verdict::Allow;
+    }
+    if is_spec_family(spec) && !facts.folder_exists {
+        return Verdict::Deny {
+            code: FOLDER_UNKNOWN,
+            reason: format!(
+                "{FOLDER_UNKNOWN}: the work item has a branch and {} does not exist; spec files are only written in the existing spec folder of the work item",
+                facts.main_folder.display()
+            ),
+        };
+    }
+    if creates_allowed_file(tool, spec, facts) {
         return Verdict::Allow;
     }
     let amendment: PathBuf = facts.main_folder.join(next_amendment(facts.folder_files));
@@ -124,9 +139,12 @@ fn creates_allowed_file(tool: Tool, spec: &SpecPath, facts: &Facts) -> bool {
     if tool != Tool::Write || facts.file_exists {
         return false;
     }
-    let spec_family = spec.file.starts_with(PART_PREFIX) || spec.file.starts_with(AMENDMENT_PREFIX);
 
-    !spec_family || spec.file == next_amendment(facts.folder_files)
+    !is_spec_family(spec) || spec.file == next_amendment(facts.folder_files)
+}
+
+fn is_spec_family(spec: &SpecPath) -> bool {
+    spec.file.starts_with(PART_PREFIX) || spec.file.starts_with(AMENDMENT_PREFIX)
 }
 
 /// Componentes `Normal` do caminho depois de resolver `.` e `..` no texto; `None` se algum não é UTF-8.

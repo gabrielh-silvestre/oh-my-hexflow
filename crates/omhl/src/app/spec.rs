@@ -9,6 +9,7 @@ use super::spec_facts::GraphFacts;
 use super::work_item::work_item_refusal;
 use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::branch::work_item_id;
+use crate::ports::files::FILE_TOO_LARGE;
 use crate::ports::git::GitProbe;
 use crate::ports::specs::{SpecDocument, SpecFolder, SpecStore, SpecStoreError};
 use crate::ports::workflow::{read_policy, read_workflow};
@@ -193,17 +194,12 @@ impl Engine<'_> {
         let Some(root) = self.project_root.as_deref() else {
             return Ok(Vec::new());
         };
-        let (_, folder) = read_spec_folder(root, work_item)?;
+        let Some(name) = work_item.strip_prefix(WORK_ITEM_ID_PREFIX) else {
+            return Ok(Vec::new());
+        };
+        let (_, store) = open_store(root)?;
 
-        Ok(folder
-            .map(|folder| {
-                folder
-                    .amendments
-                    .into_iter()
-                    .map(|document| document.name)
-                    .collect()
-            })
-            .unwrap_or_default())
+        store.amendment_names(name).map_err(spec_store_refusal)
     }
 }
 
@@ -231,6 +227,17 @@ fn folder_violations(
     let parts = spec_files(&folder.parts);
     let amendments = spec_files(&folder.amendments);
     let mut violations = validate_spec(&parts, &amendments, config);
+    violations.extend(
+        folder
+            .parts
+            .iter()
+            .chain(&folder.amendments)
+            .filter(|document| document.oversized)
+            .map(|document| Violation {
+                path: format!("{}:1", document.name),
+                code: FILE_TOO_LARGE,
+            }),
+    );
     violations.extend(validate_graph(
         work_item,
         &parts,
@@ -291,8 +298,12 @@ pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
     let file_exists = store
         .file_exists(&spec.folder, &spec.file)
         .map_err(spec_store_refusal)?;
+    let folder_exists = store
+        .folder_exists(&spec.folder)
+        .map_err(spec_store_refusal)?;
     let facts = Facts {
         frozen,
+        folder_exists,
         linked_worktree: checkout != main_dir,
         file_exists,
         folder_files: &folder_files,
@@ -338,6 +349,7 @@ fn open_store(root: &Path) -> Result<(WorkflowConfig, SpecStore), AppError> {
 fn spec_files(documents: &[SpecDocument]) -> Vec<SpecFile<'_>> {
     documents
         .iter()
+        .filter(|document| !document.oversized)
         .map(|document| SpecFile {
             name: &document.name,
             text: &document.text,
@@ -391,6 +403,6 @@ fn is_valid_slug(slug: &str) -> bool {
 fn spec_store_refusal(error: SpecStoreError) -> AppError {
     match error {
         SpecStoreError::Exists => AppError::spec_exists("/work_item"),
-        SpecStoreError::Unusable(reason) => AppError::probe_failed(reason),
+        SpecStoreError::Unusable(reason) => AppError::spec_store_unusable(reason),
     }
 }

@@ -1,6 +1,7 @@
 mod support;
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use ::omhl::workflow::config::{SpecsConfig, WorkflowConfig};
@@ -1075,6 +1076,114 @@ fn it_should_refuse_a_work_item_without_a_spec_folder() {
     assert_eq!(output.code, Some(1));
     assert!(output.stdout.is_empty(), "stdout stays empty");
     assert_eq!(error_code(&output), json!("spec-not-found"));
+}
+
+// Pasta de spec inutilizável
+
+/// Tira a leitura da pasta até o fim do escopo; `None` quando o processo ignora permissões (root).
+struct Unreadable(PathBuf);
+
+impl Unreadable {
+    fn new(dir: &Path) -> Option<Unreadable> {
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o000)).expect("permissions change");
+        let guard = Unreadable(dir.to_owned());
+
+        fs::read_dir(dir).is_err().then_some(guard)
+    }
+}
+
+impl Drop for Unreadable {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
+fn assert_spec_store_unusable(output: &Child) {
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert_eq!(error_code(output), json!("spec-store-unusable"));
+    assert_eq!(
+        error_details(output),
+        vec!["/work_item spec-store-unusable"]
+    );
+}
+
+#[test]
+fn it_should_report_file_too_large_for_a_part_over_the_byte_limit_with_few_lines() {
+    let fixture = Fixture::new();
+    let long_line = "a".repeat(70 * 1024);
+    fixture.write(
+        "parte-01.md",
+        &with_line(valid_part(), PART_OBJECTIVE_LINE, &long_line),
+    );
+
+    let output = fixture.validate_from_linked();
+
+    assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+    assert_eq!(error_code(&output), json!("spec-invalid"));
+    let details = error_details(&output);
+    assert!(
+        details
+            .iter()
+            .any(|detail| detail.starts_with("parte-01.md:") && detail.ends_with(" file-too-large")),
+        "details: {details:?}"
+    );
+}
+
+#[test]
+fn it_should_not_echo_the_content_of_a_part_over_the_byte_limit() {
+    let fixture = Fixture::new();
+    let long_line = format!("{CANARY}{}", "a".repeat(70 * 1024));
+    fixture.write(
+        "parte-01.md",
+        &with_line(valid_part(), PART_OBJECTIVE_LINE, &long_line),
+    );
+
+    let output = fixture.validate_from_linked();
+
+    assert!(!output.stderr.contains(CANARY), "stderr: {}", output.stderr);
+}
+
+#[test]
+fn it_should_refuse_with_spec_store_unusable_when_a_part_is_a_directory() {
+    let fixture = Fixture::new();
+    let part = fixture
+        .main_dir()
+        .join(DEFAULT_SPECS)
+        .join(PART_DIR)
+        .join("parte-01.md");
+    fs::create_dir_all(&part).expect("directory takes the part name");
+
+    let output = fixture.validate_from_linked();
+
+    assert_spec_store_unusable(&output);
+}
+
+#[test]
+fn it_should_refuse_with_spec_store_unusable_when_the_spec_folder_cannot_be_read() {
+    let fixture = Fixture::new();
+    fixture.write("parte-01.md", &valid_part());
+    let folder = fixture.main_dir().join(DEFAULT_SPECS).join(PART_DIR);
+    let Some(_unreadable) = Unreadable::new(&folder) else {
+        return;
+    };
+
+    let output = fixture.validate_from_linked();
+
+    assert_spec_store_unusable(&output);
+}
+
+#[test]
+fn it_should_refuse_with_spec_store_unusable_when_the_work_item_has_two_spec_folders() {
+    let fixture = Fixture::new();
+    fixture.write("parte-01.md", &valid_part());
+    let other = fixture.main_dir().join(DEFAULT_SPECS).join("wi-w1__other");
+    fs::create_dir_all(&other).expect("second spec directory is created");
+    fs::write(other.join("parte-01.md"), text(&valid_part())).expect("second part is written");
+
+    let output = fixture.validate_from_linked();
+
+    assert_spec_store_unusable(&output);
 }
 
 // Emendas na saída: nenhuma está aprovada nestes testes, então todas saem `pending`

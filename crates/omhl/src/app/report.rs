@@ -47,14 +47,14 @@ impl Engine<'_> {
     pub(super) fn retro_facts(&mut self, work_item: &SemanticId) -> Result<RetroFacts, AppError> {
         self.omhl.find_work_item(&self.tenant, work_item)?;
         let filter = work_item_filter(work_item.as_str())?;
-        let divergences =
+        let divergences: Vec<DivergenceFact> =
             nodes_matching(&mut self.omhl, &self.tenant, "divergence", filter.clone())?
                 .iter()
                 .filter_map(divergence_fact)
                 .collect();
         let gap_nodes = nodes_matching(&mut self.omhl, &self.tenant, "gap", filter)?;
         let (_, facts) = self.load_gap_facts()?;
-        let gaps = gap_nodes
+        let gaps: Vec<GapFact> = gap_nodes
             .iter()
             .map(|gap| GapFact {
                 id: gap.id.as_str().to_owned(),
@@ -63,10 +63,27 @@ impl Engine<'_> {
             })
             .collect();
 
+        let has_retro = !divergences.is_empty()
+            || gaps.iter().any(|gap| {
+                matches!(
+                    gap.state,
+                    GapState::Answered {
+                        criterion: false,
+                        ..
+                    }
+                )
+            });
+        // Sem retro a pasta de spec e o `workflow.toml` não são lidos: o `close` não depende deles.
+        let amendment_files = if has_retro {
+            self.amendment_files(work_item.as_str())?
+        } else {
+            Vec::new()
+        };
+
         Ok(RetroFacts {
             divergences,
             gaps,
-            amendment_files: self.amendment_files(work_item.as_str())?,
+            amendment_files,
         })
     }
 
