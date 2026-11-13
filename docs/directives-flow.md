@@ -110,6 +110,8 @@ A confirmação é autodeclarada: o `Author` do record continua sendo quem o dig
 
 Um arquivo opcional e versionado configura o fluxo. Sem ele valem os padrões abaixo. O `omhl load` ignora o arquivo e a pasta de specs; eles não geram `unknown-entry`.
 
+A política vale sempre da cópia do diretório principal: o gate, o hook de congelamento, o `spec init`, o `spec validate`, o `report` e o scan leem o mesmo arquivo, qualquer que seja a worktree da sessão. Só quando o git não responde (sem repositório) vale a cópia da raiz do projeto. Mudar o `workflow.toml` numa branch ou worktree ligada só vale depois do merge no diretório principal; a cópia da branch não muda a validação dela.
+
 ```toml
 version = 1
 
@@ -141,7 +143,7 @@ require = []
 | Chave | Efeito |
 |---|---|
 | `version` | Obrigatória quando o arquivo existe. O único valor aceito é `1` |
-| `specs.dir` | Pasta das specs, relativa ao diretório principal. Caminho absoluto ou com `..` é recusado |
+| `specs.dir` | Pasta das specs, relativa ao diretório principal (e lida do `workflow.toml` dele). Caminho absoluto ou com `..` é recusado |
 | `specs.max_lines` | Máximo de linhas de cada parte e de cada emenda. Mínimo `1` |
 | `specs.placeholders` | Textos que reprovam a spec (`placeholder-found`). A lista substitui a padrão |
 | `specs.cite_business_premise` | Quando `true`, a spec de um work item precisa citar uma premissa de negócio confirmada dele |
@@ -154,7 +156,7 @@ O arquivo é estrito: uma chave desconhecida é erro. O erro é `invalid-workflo
 {"error":{"code":"invalid-workflow-config","details":[],"message":"<repo>/.omhl/workflow.toml: not a valid workflow file at line 3, column 1"}}
 ```
 
-O `specs.dir` é lido pelo scanner de extensions, pelo `spec init`, pelo `spec validate` e pelo hook de congelamento. Trocá-lo não desliga o congelamento em silêncio.
+O `specs.dir` é lido pelo scanner de extensions, pelo `spec init`, pelo `spec validate` e pelo hook de congelamento. Trocá-lo numa branch não desliga o congelamento, porque só a cópia do diretório principal vale. Um `workflow.toml` inválido não é lido: o scan cai nos padrões e avisa (`invalid-workflow-config`, também no `omhl load` e no `session-start`), e o hook segue a decisão com os padrões.
 
 ## 5. O gate de criação da worktree
 
@@ -339,7 +341,7 @@ A negação sai no stdout, com código de saída `0`:
 | `spec-frozen` | A edição é de uma spec congelada. A mensagem diz o caminho da emenda que se pode criar | Registre uma `divergence` e crie a emenda (seção 9) |
 | `spec-in-linked-worktree` | O caminho está numa worktree ligada. As specs vivem só no diretório principal | Escreva no caminho do diretório principal que a mensagem informa |
 
-O hook nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr.
+O hook nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto pelo caminho do arquivo e, se ele estiver fora de qualquer projeto, pelo `cwd` da sessão. Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
 
 ## 8. Gap, divergência e retro
 
@@ -521,6 +523,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 ### Limites
 
+- O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo nem do `cwd`, o binário `omhl` não existe (`plugin/bin/omhl` é ignorado pelo git e uma worktree nova pode não tê-lo), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
 - O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
 - O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
 - Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`. O comando não tem a guarda `{% if branch %}`.

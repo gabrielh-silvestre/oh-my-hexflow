@@ -218,7 +218,7 @@ fn it_should_ignore_the_specs_directory_named_by_the_workflow_file() {
 }
 
 #[test]
-fn it_should_fall_back_to_the_defaults_when_the_workflow_file_is_invalid() {
+fn it_should_fall_back_to_the_defaults_and_warn_when_the_workflow_file_is_invalid() {
     let tree = ExtTree::new();
     tree.file(".omhl/workflow.toml", "version = 1\ncolour = true\n")
         .file(".omhl/my-specs/wi-dir0__x/part-1.md", "spec text\n");
@@ -228,7 +228,10 @@ fn it_should_fall_back_to_the_defaults_when_the_workflow_file_is_invalid() {
     assert!(collected.errors.is_empty(), "errors must be empty");
     assert_eq!(
         summary(&collected.warnings),
-        vec![at(".omhl/my-specs", "unknown-entry")]
+        vec![
+            at(".omhl/my-specs", "unknown-entry"),
+            at(".omhl/workflow.toml", "invalid-workflow-config")
+        ]
     );
 }
 

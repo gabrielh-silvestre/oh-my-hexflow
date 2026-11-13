@@ -605,6 +605,40 @@ fn it_should_let_the_minimum_flag_win_over_workflow_toml() {
     assert_eq!(group_texts(&report), Vec::<String>::new());
 }
 
+#[test]
+fn it_should_apply_the_minimum_of_the_main_directory_workflow_file_from_a_linked_worktree() {
+    let project = Project::new("acme");
+    write_workflow(&project, "version = 1\n\n[promotion]\nmin_work_items = 2\n");
+    commit_marker(&project);
+    let scratch = tempfile::TempDir::new().expect("scratch directory is created");
+    let linked = scratch.path().join("wt");
+    let added = git_in(
+        project.dir(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feat/other",
+            &linked.to_string_lossy(),
+        ],
+    );
+    assert!(added.status.success(), "git worktree add failed");
+    fs::write(
+        linked.join(".omhl/workflow.toml"),
+        "version = 1\n\n[promotion]\nmin_work_items = 4\n",
+    )
+    .expect("the branch version of workflow.toml is written");
+
+    let output = omhl(&["report", "recurrences"])
+        .cwd(&linked)
+        .xdg(project.xdg())
+        .run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(json_line(&output.stdout)["min"], json!(2));
+}
+
 // Promoção: a diretiva confirmada tira o grupo; sem confirmação nada é registrado (AC 4)
 
 #[test]

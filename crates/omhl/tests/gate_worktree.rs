@@ -524,6 +524,13 @@ impl Fixture {
         fs::write(path, toml).expect("workflow.toml is written");
     }
 
+    /// A versão do `workflow.toml` que está na worktree ligada (a da branch), não no diretório principal.
+    fn write_linked_workflow(&self, toml: &str) {
+        let path = self.linked.join(".omhl/workflow.toml");
+        fs::create_dir_all(path.parent().expect("the file has a parent")).expect("parent");
+        fs::write(path, toml).expect("workflow.toml is written");
+    }
+
     fn git(&self, args: &[&str]) {
         let output = git_in(self.project.dir(), args);
 
@@ -1082,6 +1089,18 @@ fn it_should_keep_refusing_a_prefix_that_workflow_toml_does_not_declare() {
     let output = fixture.gate("style/wi-w1__new");
 
     assert_refused(&output, "prefix-not-allowed");
+}
+
+#[test]
+fn it_should_read_the_workflow_file_of_the_main_directory_when_run_from_a_linked_worktree() {
+    let fixture = Fixture::seeded();
+    fixture.write_workflow("version = 1\n\n[prefix.perf]\nrequire = [\"agent-premise\"]\n");
+    fixture.write_linked_workflow("version = 1\n\n[prefix.perf]\nrequire = []\n");
+
+    let output = fixture.gate_from_linked("perf/wi-w1__new");
+
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(error_context(&output)["missing"], json!(["agent-premise"]));
 }
 
 // Átomo spec: sem spec, spec inválida e spec válida

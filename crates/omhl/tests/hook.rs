@@ -359,6 +359,22 @@ fn it_should_not_append_anything_when_extensions_are_synced() {
 }
 
 #[test]
+fn it_should_warn_about_an_invalid_workflow_file_instead_of_swallowing_it() {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).file(
+        ".omhl/workflow.toml",
+        "version = 1\n\n[specs]\ndirr = \"x\"\n",
+    );
+
+    let context = context_of(&hook_for(&project)).to_lowercase();
+
+    assert!(
+        context.contains("workflow") && context.contains("invalid"),
+        "context: {context}"
+    );
+}
+
+#[test]
 fn it_should_not_write_to_the_database_when_extensions_are_pending() {
     let project = Project::new("acme");
     ExtTree::at(project.dir()).check("lint", LINT_TOML);

@@ -827,6 +827,13 @@ impl Fixture {
     fn write(&self, name: &str, lines: &[&str]) {
         self.write_in(DEFAULT_SPECS, name, lines);
     }
+
+    /// Sobrescreve o `workflow.toml` da worktree ligada (a versão da branch, não commitada).
+    fn write_linked_workflow(&self, toml: &str) {
+        let path = self.linked.join(WORKFLOW_PATH);
+        fs::create_dir_all(path.parent().expect("the file has a parent")).expect("parent");
+        fs::write(path, toml).expect("workflow.toml is written");
+    }
 }
 
 fn node(id: &str, type_name: &str, data: Value) -> Value {
@@ -1023,6 +1030,34 @@ fn it_should_read_the_parts_from_the_configured_specs_dir() {
         WORKFLOW_PATH,
         "version = 1\n\n[specs]\ndir = \"docs/team-specs\"\n",
     )]);
+    fixture.write_in(CUSTOM_SPECS, "parte-01.md", &valid_part());
+
+    let output = fixture.validate_from_linked();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(json_line(&output.stdout)["parts"], json!(["parte-01.md"]));
+}
+
+#[test]
+fn it_should_apply_the_max_lines_of_the_main_directory_workflow_file_from_a_linked_worktree() {
+    let fixture =
+        Fixture::with_files(&[(WORKFLOW_PATH, "version = 1\n\n[specs]\nmax_lines = 10\n")]);
+    fixture.write_linked_workflow("version = 1\n");
+    fixture.write("parte-01.md", &valid_part());
+
+    let output = fixture.validate_from_linked();
+
+    assert_eq!(error_code(&output), json!("spec-invalid"));
+    assert_eq!(error_details(&output), vec!["parte-01.md:11 file-too-long"]);
+}
+
+#[test]
+fn it_should_read_the_specs_dir_of_the_main_directory_workflow_file_from_a_linked_worktree() {
+    let fixture = Fixture::with_files(&[(
+        WORKFLOW_PATH,
+        "version = 1\n\n[specs]\ndir = \"docs/team-specs\"\n",
+    )]);
+    fixture.write_linked_workflow("version = 1\n");
     fixture.write_in(CUSTOM_SPECS, "parte-01.md", &valid_part());
 
     let output = fixture.validate_from_linked();

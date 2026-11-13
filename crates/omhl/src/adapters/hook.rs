@@ -86,10 +86,14 @@ fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<St
 fn extension_notice(checked: &Result<Value, AppError>) -> Option<String> {
     match checked {
         Ok(report) => {
-            let notes: Vec<String> = [pending_note(report), orphan_note(report)]
-                .into_iter()
-                .flatten()
-                .collect();
+            let notes: Vec<String> = [
+                pending_note(report),
+                orphan_note(report),
+                workflow_note(report),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
 
             (!notes.is_empty()).then(|| notes.join("\n"))
         }
@@ -110,6 +114,17 @@ fn pending_note(report: &Value) -> Option<String> {
             "NOTE: {pending} extension change(s) not loaded into tenant {tenant}; run omhl load"
         )
     })
+}
+
+/// The scan falls back to the defaults on an invalid workflow file; the agent still has to hear it.
+fn workflow_note(report: &Value) -> Option<String> {
+    report["warnings"]
+        .as_array()?
+        .iter()
+        .any(|issue| issue["code"] == "invalid-workflow-config")
+        .then(|| {
+            "WARNING: .omhl/workflow.toml is invalid and the defaults apply (invalid-workflow-config); run omhl load --dry-run for details".to_owned()
+        })
 }
 
 /// Only the checks: the load report also lists guideline orphans, which `omhl check retire` does not cover.

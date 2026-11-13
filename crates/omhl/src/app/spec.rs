@@ -11,9 +11,9 @@ use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::branch::work_item_id;
 use crate::ports::git::GitProbe;
 use crate::ports::specs::{SpecDocument, SpecFolder, SpecStore, SpecStoreError};
-use crate::ports::workflow::read_workflow;
+use crate::ports::workflow::{read_policy, read_workflow};
 use crate::probe::{GitTopology, ProbeError};
-use crate::project::marker::find_marker;
+use crate::project::marker::{Located, find_marker};
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{Facts, Tool, Verdict, decide, parse_spec_path};
 use crate::workflow::spec::{
@@ -262,10 +262,11 @@ pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
     };
     let cwd = absolute_path(&input["cwd"])?;
     let file_path = absolute_path(&input["tool_input"]["file_path"])?;
-    let Some(located) = find_marker(&cwd)? else {
+    let Some(located) = find_project(&file_path, &cwd)? else {
         return Ok(Verdict::Allow);
     };
-    let config = read_workflow(&located.root)?;
+    // Arquivo inválido cai nos padrões: liberar aqui deixaria a spec congelada editável por um typo.
+    let config = read_policy(&located.root).unwrap_or_default();
     let Some(spec) = parse_spec_path(&config.specs.dir, &file_path) else {
         return Ok(Verdict::Allow);
     };
@@ -301,6 +302,14 @@ pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
     Ok(decide(tool, &spec, &facts))
 }
 
+/// O projeto do arquivo editado; o do `cwd` da sessão só vale quando o arquivo está fora de qualquer projeto.
+fn find_project(file_path: &Path, cwd: &Path) -> Result<Option<Located>, AppError> {
+    match find_marker(nearest_existing_dir(file_path))? {
+        Some(located) => Ok(Some(located)),
+        None => Ok(find_marker(cwd)?),
+    }
+}
+
 fn absolute_path(value: &Value) -> Result<PathBuf, AppError> {
     match value.as_str().map(Path::new) {
         Some(path) if path.is_absolute() => Ok(path.to_path_buf()),
@@ -317,10 +326,10 @@ fn nearest_existing_dir(path: &Path) -> &Path {
 }
 
 fn open_store(root: &Path) -> Result<(WorkflowConfig, SpecStore), AppError> {
-    let config = read_workflow(root)?;
     let main_dir = GitProbe::new(root)
         .main_dir()
         .map_err(|error| AppError::probe_failed(&error.message))?;
+    let config = read_workflow(&main_dir)?;
     let store = SpecStore::new(main_dir.join(&config.specs.dir));
 
     Ok((config, store))

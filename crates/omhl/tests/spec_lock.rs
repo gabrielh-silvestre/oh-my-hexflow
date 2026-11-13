@@ -14,6 +14,7 @@ const FOLDER: &str = "wi-w1__login";
 const DEFAULT_SPECS: &str = ".omhl/specs";
 const CUSTOM_SPECS: &str = "docs/team-specs";
 const CUSTOM_WORKFLOW: &str = "version = 1\n\n[specs]\ndir = \"docs/team-specs\"\n";
+const INVALID_WORKFLOW: &str = "version = 1\n\n[specs]\ndirr = \"x\"\n";
 const FROZEN: &str = "spec-frozen";
 const IN_WORKTREE: &str = "spec-in-linked-worktree";
 
@@ -1014,6 +1015,74 @@ fn it_should_stop_freezing_the_default_dir_once_the_specs_dir_is_customized() {
     let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
 
     assert_allowed(&output);
+}
+
+// Política do `workflow.toml` vem sempre do diretório principal
+
+/// Sobrescreve o `workflow.toml` da cópia de trabalho `dir` (a versão da branch, não commitada).
+fn write_workflow_in(dir: &Path, toml: &str) {
+    let path = dir.join(".omhl/workflow.toml");
+    fs::create_dir_all(path.parent().expect("the file has a parent")).expect("parent");
+    fs::write(path, toml).expect("workflow.toml is written");
+}
+
+#[test]
+fn it_should_deny_a_frozen_spec_from_a_linked_worktree_whose_workflow_file_customizes_specs_dir() {
+    let repo = Repo::new();
+    let linked = repo.linked(BRANCH);
+    write_workflow_in(&linked, CUSTOM_WORKFLOW);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook(&linked, "Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_a_frozen_spec_under_the_custom_specs_dir_of_the_main_directory_from_a_linked_worktree_with_the_default()
+ {
+    let repo = Repo::with_files(&[(".omhl/workflow.toml", CUSTOM_WORKFLOW)]);
+    let linked = repo.linked(BRANCH);
+    write_workflow_in(&linked, "version = 1\n");
+    repo.seed(CUSTOM_SPECS, "parte-01.md");
+
+    let output = repo.hook(
+        &linked,
+        "Edit",
+        &repo.folder(CUSTOM_SPECS).join("parte-01.md"),
+    );
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+// `workflow.toml` ou marcador inexistente/inválido
+
+#[test]
+fn it_should_deny_a_frozen_spec_when_the_workflow_file_is_invalid_and_specs_dir_is_the_default() {
+    let repo = Repo::with_files(&[(".omhl/workflow.toml", INVALID_WORKFLOW)]);
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_a_frozen_spec_when_the_session_cwd_has_no_marker_but_the_file_is_inside_a_project()
+ {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let outside = TempDir::new().expect("directory without a marker is created");
+
+    let output = repo.hook(outside.path(), "Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
 }
 
 // Spec dentro de uma worktree ligada

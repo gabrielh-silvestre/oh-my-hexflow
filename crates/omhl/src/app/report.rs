@@ -7,7 +7,7 @@ use super::engine::{Engine, parse_at};
 use super::error::AppError;
 use super::output;
 use super::read::{all_nodes, nodes_matching};
-use crate::ports::workflow::read_workflow;
+use crate::ports::workflow::read_policy;
 use crate::workflow::config::WorkflowConfig;
 use crate::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_by, gap_state};
 use crate::workflow::recurrence::{Premise, recurrences};
@@ -102,7 +102,7 @@ impl Engine<'_> {
     /// Sem raiz de projeto (`--db`) não há `workflow.toml`: vale o padrão.
     fn default_promotion_min(&self) -> Result<u32, AppError> {
         let config = match self.project_root.as_deref() {
-            Some(root) => read_workflow(root)?,
+            Some(root) => read_policy(root)?,
             None => WorkflowConfig::default(),
         };
 
