@@ -1030,6 +1030,8 @@ fn it_should_keep_another_amendment_of_the_work_item_pending_when_one_is_approve
 fn it_should_refuse_the_spec_when_an_approved_amendment_has_a_violation() {
     let fixture = Fixture::new();
     fixture.write("parte-01.md", &valid_part());
+    fixture.write("emenda-01.md", &valid_amendment());
+    fixture.approve("emenda-01");
     fixture.write(
         "emenda-01.md",
         &with_line(
@@ -1038,7 +1040,6 @@ fn it_should_refuse_the_spec_when_an_approved_amendment_has_a_violation() {
             "Motivo TODO.",
         ),
     );
-    fixture.approve("emenda-01");
 
     let output = fixture.validate();
 
@@ -1050,6 +1051,8 @@ fn it_should_refuse_the_spec_when_an_approved_amendment_has_a_graph_violation() 
     let fixture = Fixture::new();
     fixture.append(vec![gap("gaps.pay-day")]);
     fixture.write("parte-01.md", &valid_part());
+    fixture.write("emenda-01.md", &valid_amendment());
+    fixture.approve("emenda-01");
     fixture.write(
         "emenda-01.md",
         &with_line(
@@ -1058,7 +1061,6 @@ fn it_should_refuse_the_spec_when_an_approved_amendment_has_a_graph_violation() 
             "Depende de [PENDENTE: gaps.pay-day].",
         ),
     );
-    fixture.approve("emenda-01");
 
     let output = fixture.validate();
 

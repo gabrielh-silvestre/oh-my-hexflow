@@ -5,21 +5,24 @@ use serde_json::{Value, json};
 
 use super::engine::{Engine, parse_at, require_project_root};
 use super::error::AppError;
+use super::spec_facts::GraphFacts;
 use super::work_item::work_item_refusal;
 use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::branch::work_item_id;
 use crate::ports::git::GitProbe;
-use crate::ports::specs::{SpecDocument, SpecStore, SpecStoreError};
+use crate::ports::specs::{SpecDocument, SpecFolder, SpecStore, SpecStoreError};
 use crate::ports::workflow::read_workflow;
 use crate::probe::{GitTopology, ProbeError};
 use crate::project::marker::find_marker;
-use crate::workflow::config::WorkflowConfig;
+use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{Facts, Tool, Verdict, decide, parse_spec_path};
 use crate::workflow::spec::{
-    AmendmentState, SpecFile, Violation, amendment_state, validate_graph, validate_spec,
+    AmendmentState, SpecFile, Violation, amendment_divergence_mismatch, amendment_state,
+    is_amendment_id, validate_graph, validate_spec,
 };
 
 const WORK_ITEM_ID_PREFIX: &str = "work-items.";
+const SPEC_STALE: &str = "spec-stale";
 const SLUG_MAX: usize = 64;
 const FIRST_PART: &str = "## Objetivo\n\n## Diretivas e premissas aplicáveis\n\n## Comportamentos\n\n## Critérios de aceitação\n\n## Fora de escopo\n";
 
@@ -69,28 +72,7 @@ impl Engine<'_> {
             .filter(|folder| !folder.parts.is_empty())
             .ok_or_else(|| AppError::spec_not_found("/work_item"))?;
         let facts = self.load_spec_facts()?;
-        let parts = spec_files(&folder.parts);
-        let amendments = spec_files(&folder.amendments);
-        let mut violations = validate_spec(&parts, &amendments, &config.specs);
-        violations.extend(validate_graph(
-            id.as_str(),
-            &parts,
-            &amendments,
-            &config.specs,
-            &facts,
-        ));
-        let files: Vec<&str> = folder
-            .parts
-            .iter()
-            .chain(&folder.amendments)
-            .map(|document| document.name.as_str())
-            .collect();
-        violations.sort_by_key(|violation| {
-            (
-                files.iter().position(|name| *name == file_of(violation)),
-                line_of(violation),
-            )
-        });
+        let violations = folder_violations(id.as_str(), &folder, &config.specs, &facts);
 
         let approved: Vec<&str> = folder
             .amendments
@@ -118,6 +100,135 @@ impl Engine<'_> {
             "amendments": amendments_report(&folder.amendments, &violations, &approved),
         }))
     }
+}
+
+impl Engine<'_> {
+    /// Antes da guarda e de qualquer escrita: cada divergência que o lote leva a `spec-stale` com
+    /// `amendment` na forma `emenda-NN` precisa estar `open` e citar uma emenda existente e válida.
+    /// Fora dessa forma nada é lido do disco; a guarda recusa.
+    pub(super) fn check_amendment_approvals(&mut self, request: &Value) -> Result<(), AppError> {
+        let items = request["items"].as_array().map_or(&[][..], Vec::as_slice);
+        for (index, item) in items.iter().enumerate() {
+            let body = &item["body"];
+            let data = &body["data"];
+            if body["kind"] != "node"
+                || body["type"] != "divergence"
+                || data["resolution"] != SPEC_STALE
+            {
+                continue;
+            }
+            let Some(amendment) = data["amendment"]
+                .as_str()
+                .filter(|name| is_amendment_id(name))
+            else {
+                continue;
+            };
+            self.check_amendment_approval(index, body, amendment)?;
+        }
+
+        Ok(())
+    }
+
+    fn check_amendment_approval(
+        &mut self,
+        index: usize,
+        body: &Value,
+        amendment: &str,
+    ) -> Result<(), AppError> {
+        let data_pointer = format!("/items/{index}/body/data");
+        let id = parse_at(
+            SemanticId::parse,
+            body["id"].as_str().unwrap_or_default(),
+            &format!("/items/{index}/body/id"),
+        )?;
+        let Some(current) = self
+            .omhl
+            .get(&self.tenant, &id)?
+            .filter(|node| node.data["resolution"] == "open")
+        else {
+            return Err(AppError::amendment_divergence_not_open(&format!(
+                "{data_pointer}/resolution"
+            )));
+        };
+        let Some(work_item) = current.data["work_item"].as_str() else {
+            return Ok(());
+        };
+        if body["data"]["work_item"]
+            .as_str()
+            .is_some_and(|revised| revised != work_item)
+        {
+            return Err(AppError::amendment_invalid(&[Violation {
+                path: format!("{data_pointer}/work_item"),
+                code: "amendment-work-item-mismatch",
+            }]));
+        }
+
+        let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
+        let (config, store) = open_store(&root)?;
+        let folder = match work_item.strip_prefix(WORK_ITEM_ID_PREFIX) {
+            Some(name) => store.read_folder(name).map_err(spec_store_refusal)?,
+            None => None,
+        };
+        let file = format!("{amendment}.md");
+        let not_found = || AppError::amendment_not_found(&format!("{data_pointer}/amendment"));
+        let folder = folder.ok_or_else(not_found)?;
+        let document = folder
+            .amendments
+            .iter()
+            .find(|document| document.name == file)
+            .ok_or_else(not_found)?;
+
+        let facts = self.load_spec_facts()?;
+        let violations: Vec<Violation> =
+            folder_violations(work_item, &folder, &config.specs, &facts)
+                .into_iter()
+                .filter(|violation| file_of(violation) == file)
+                .collect();
+        if !violations.is_empty() {
+            return Err(AppError::amendment_invalid(&violations));
+        }
+        let spec_file = SpecFile {
+            name: &document.name,
+            text: &document.text,
+        };
+        match amendment_divergence_mismatch(&spec_file, id.as_str()) {
+            Some(mismatch) => Err(AppError::amendment_invalid(&[mismatch])),
+            None => Ok(()),
+        }
+    }
+}
+
+/// Estrutura e grafo da pasta inteira, na ordem de arquivo e linha.
+fn folder_violations(
+    work_item: &str,
+    folder: &SpecFolder,
+    config: &SpecsConfig,
+    facts: &GraphFacts,
+) -> Vec<Violation> {
+    let parts = spec_files(&folder.parts);
+    let amendments = spec_files(&folder.amendments);
+    let mut violations = validate_spec(&parts, &amendments, config);
+    violations.extend(validate_graph(
+        work_item,
+        &parts,
+        &amendments,
+        config,
+        facts,
+    ));
+    let files: Vec<&str> = folder
+        .parts
+        .iter()
+        .chain(&folder.amendments)
+        .map(|document| document.name.as_str())
+        .collect();
+    violations.sort_by_key(|violation| {
+        (
+            files.iter().position(|name| *name == file_of(violation)),
+            line_of(violation),
+        )
+    });
+
+    violations
 }
 
 /// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. A ordem importa: o

@@ -442,6 +442,12 @@ pub(crate) fn is_digits(text: &str, len: usize) -> bool {
     text.len() == len && text.bytes().all(|byte| byte.is_ascii_digit())
 }
 
+/// `emenda-NN`, sempre com dois dígitos.
+pub(crate) fn is_amendment_id(id: &str) -> bool {
+    id.strip_prefix(AMENDMENT_FILE_PREFIX)
+        .is_some_and(|number| is_digits(number, 2))
+}
+
 /// `emenda-NN.md` com exatamente dois dígitos.
 pub(crate) fn amendment_number(name: &str) -> Option<u32> {
     let digits = name
@@ -588,6 +594,21 @@ pub fn validate_graph(
     }
 
     violations
+}
+
+/// A seção Divergência cita uma divergência que não é a revisada: `None` quando cita a esperada ou
+/// quando a citação já é `divergence-ref-invalid` da validação estrutural.
+pub fn amendment_divergence_mismatch(file: &SpecFile<'_>, expected: &str) -> Option<Violation> {
+    let doc = Doc::new(file);
+    let refs = prefixed_ids(doc.section(DIVERGENCE)?, DIVERGENCE_REF_PREFIX);
+
+    match refs[..] {
+        [(line, id)] if id != expected => Some(Violation {
+            path: format!("{}:{line}", file.name),
+            code: "amendment-divergence-mismatch",
+        }),
+        _ => None,
+    }
 }
 
 fn check_part_graph(doc: &Doc, facts: &impl SpecFacts) -> Vec<Found> {

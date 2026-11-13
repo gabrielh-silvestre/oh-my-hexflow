@@ -1,5 +1,5 @@
 use crate::error::{OmhlError, RuleCode};
-use crate::workflow::spec::is_digits;
+use crate::workflow::spec::is_amendment_id;
 
 use super::append::NodeItem;
 
@@ -7,7 +7,6 @@ const CONFIRMED_BY: &str = "body/data/confirmed_by";
 const CONFIRMED_BY_AUTHOR: &str = "body/data/confirmed_by/by";
 const AMENDMENT: &str = "body/data/amendment";
 const PERSON_PREFIX: &str = "person:";
-const AMENDMENT_PREFIX: &str = "emenda-";
 
 /// Prova humana de `premise`, `guideline` e `divergence`: o `pattern` é proibido no catálogo, então a forma é imposta aqui.
 pub(super) fn check_confirmation(node: &NodeItem<'_>) -> Result<(), OmhlError> {
@@ -69,10 +68,4 @@ fn forbid_field(node: &NodeItem<'_>, key: &str, pointer: &str) -> Result<(), Omh
     } else {
         Ok(())
     }
-}
-
-/// `emenda-NN`, sempre com dois dígitos.
-fn is_amendment_id(id: &str) -> bool {
-    id.strip_prefix(AMENDMENT_PREFIX)
-        .is_some_and(|number| is_digits(number, 2))
 }

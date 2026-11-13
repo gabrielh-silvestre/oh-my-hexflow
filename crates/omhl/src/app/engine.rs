@@ -166,9 +166,10 @@ impl Engine<'_> {
     }
 
     fn append(&mut self, caller: &Caller, request: &Value) -> Result<Value, AppError> {
-        let request = append_request(request, &self.tenant, caller)?;
+        let parsed = append_request(request, &self.tenant, caller)?;
+        self.check_amendment_approvals(request)?;
 
-        Ok(output::appended(&self.omhl.append(&request)?))
+        Ok(output::appended(&self.omhl.append(&parsed)?))
     }
 
     fn gate_pr(&mut self, work_item: &str) -> Result<Value, AppError> {
