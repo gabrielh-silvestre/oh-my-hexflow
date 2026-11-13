@@ -104,6 +104,7 @@ impl Engine<'_> {
                 tail,
             } => self.byproduct(check, work_item, *tail),
             Action::HooksInstall { force } => self.hooks_install(*force),
+            Action::SpecInit { work_item, slug } => self.spec_init(work_item, slug),
             Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
             Action::CheckSweep => unreachable!("check sweep is dispatched by the runtime"),
         }

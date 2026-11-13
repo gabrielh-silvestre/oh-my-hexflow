@@ -57,6 +57,10 @@ pub enum Action {
     HooksInstall {
         force: bool,
     },
+    SpecInit {
+        work_item: String,
+        slug: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -7,6 +7,7 @@ mod engine;
 mod hooks;
 mod load;
 mod read;
+mod spec;
 mod wire;
 mod work_item;
 

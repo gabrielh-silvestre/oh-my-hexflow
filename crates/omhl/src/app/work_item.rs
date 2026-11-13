@@ -103,16 +103,7 @@ fn open_work_item(
     branch: &str,
     id: SemanticId,
 ) -> Result<WorkItemRoute, AppError> {
-    let view = with_retry(&engine.retry, || {
-        Ok(engine.omhl.get(&engine.tenant, &id)?)
-    })?;
-    let refusal = match view {
-        Some(view) if view.type_name.as_str() == WORK_ITEM_TYPE => {
-            (view.data["status"] == "closed").then_some(RuleCode::WorkItemClosed)
-        }
-        _ => Some(RuleCode::WorkItemNotFound),
-    };
-    let Some(code) = refusal else {
+    let Some(code) = work_item_refusal(engine, &id)? else {
         return Ok(WorkItemRoute::Recorded(id));
     };
 
@@ -124,6 +115,21 @@ fn open_work_item(
             "work_item": id,
         })),
     )
+}
+
+/// `None` quando o id é de um work item aberto.
+pub(super) fn work_item_refusal(
+    engine: &mut Engine<'_>,
+    id: &SemanticId,
+) -> Result<Option<RuleCode>, AppError> {
+    let view = with_retry(&engine.retry, || Ok(engine.omhl.get(&engine.tenant, id)?))?;
+
+    Ok(match view {
+        Some(view) if view.type_name.as_str() == WORK_ITEM_TYPE => {
+            (view.data["status"] == "closed").then_some(RuleCode::WorkItemClosed)
+        }
+        _ => Some(RuleCode::WorkItemNotFound),
+    })
 }
 
 fn branch_context(kind: &str, event: &str, branch: &str, hint: &str) -> Value {

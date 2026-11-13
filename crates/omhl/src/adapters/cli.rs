@@ -101,6 +101,11 @@ pub enum ActionCommand {
         #[command(subcommand)]
         command: HooksCommand,
     },
+    /// Manage the specs of work items.
+    Spec {
+        #[command(subcommand)]
+        command: SpecCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -133,6 +138,17 @@ pub enum HooksCommand {
     },
     /// Consume the develop mark after a commit on develop; the git post-commit hook calls it.
     PostCommit,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SpecCommand {
+    /// Create the spec folder of an open work item, with its first part, in the main directory.
+    Init {
+        /// Id of the work item, such as work-items.w1.
+        work_item: String,
+        /// Folder name after the work item: 1 to 64 characters of a-z, 0-9 and -, not starting with -.
+        slug: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -318,6 +334,9 @@ fn to_action(
         ActionCommand::Hooks {
             command: HooksCommand::PostCommit,
         } => Action::ConsumeDevelopMark,
+        ActionCommand::Spec {
+            command: SpecCommand::Init { work_item, slug },
+        } => Action::SpecInit { work_item, slug },
     })
 }
 

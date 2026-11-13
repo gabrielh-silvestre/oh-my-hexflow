@@ -5,3 +5,4 @@ pub mod hooks;
 pub mod ids;
 pub mod pipes;
 pub mod process;
+pub mod specs;

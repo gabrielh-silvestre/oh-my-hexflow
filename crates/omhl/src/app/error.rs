@@ -427,6 +427,22 @@ impl AppError {
         )
     }
 
+    pub(crate) fn spec_exists(path: &str) -> AppError {
+        AppError::at_pointer(
+            "spec-exists",
+            path,
+            "a spec folder of this work item already exists",
+        )
+    }
+
+    pub(crate) fn spec_slug_invalid(path: &str) -> AppError {
+        AppError::at_pointer(
+            "spec-slug-invalid",
+            path,
+            "the slug must have 1 to 64 characters of a-z, 0-9 and -, and not start with -",
+        )
+    }
+
     /// Único caminho, além de `CheckDetail.context`, por onde `context` entra num detalhe; nunca é gravado.
     pub(crate) fn with_context(mut self, context: Value) -> AppError {
         if let Some(detail) = self.details.last_mut() {
