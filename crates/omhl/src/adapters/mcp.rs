@@ -348,6 +348,12 @@ fn plain_tools() -> Vec<Value> {
             &["work_item"],
         ),
         tool(
+            "gate_worktree",
+            "Check whether a worktree may be created for a branch name, from its prefix and the premises of its work item.",
+            &json!({ "branch": { "type": "string", "description": "Branch name, <type>/wi-<id>__<slug>." } }),
+            &["branch"],
+        ),
+        tool(
             "close",
             "Close a work item once the gate is evaluated.",
             &work_item,

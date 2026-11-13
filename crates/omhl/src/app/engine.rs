@@ -114,6 +114,9 @@ impl Engine<'_> {
             Action::ReportAnswers { work_item } => self.report_answers(work_item.as_deref()),
             Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
             Action::CheckSweep => unreachable!("check sweep is dispatched by the runtime"),
+            Action::GateWorktree { .. } => {
+                unreachable!("gate worktree is dispatched by the runtime")
+            }
         }
     }
 

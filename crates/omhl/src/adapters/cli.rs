@@ -75,6 +75,11 @@ pub enum ActionCommand {
     Render,
     /// Evaluate the pull-request gate for a work item.
     GatePr { work_item: String },
+    /// Decide whether a worktree may be created for a branch; silent without a project marker.
+    GateWorktree {
+        #[arg(long, allow_hyphen_values = true)]
+        branch: String,
+    },
     /// Close a work item once the gate is evaluated.
     Close { work_item: String },
     /// Verify the hash chain.
@@ -210,9 +215,16 @@ pub fn run(
             Err(error) => report(Err(error), out, err),
         },
         Command::Action(command) => {
+            // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
+            let silent_without_marker = matches!(command, ActionCommand::GateWorktree { .. });
             let result = start_dir(project_dir.as_deref())
                 .and_then(|dir| execute(command, stdin, &dir, db, env));
-            report(result, out, err)
+            match &result {
+                Err(error) if silent_without_marker && error.code() == "no-marker" => {
+                    ExitCode::SUCCESS
+                }
+                _ => report(result, out, err),
+            }
         }
     }
 }
@@ -346,6 +358,7 @@ fn to_action(
         },
         ActionCommand::Render => Action::Render,
         ActionCommand::GatePr { work_item } => Action::GatePr { work_item },
+        ActionCommand::GateWorktree { branch } => Action::GateWorktree { branch },
         ActionCommand::Close { work_item } => Action::Close { work_item },
         ActionCommand::Verify => Action::Verify,
         ActionCommand::Load { dry_run } => Action::Load { dry_run },

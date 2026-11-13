@@ -71,6 +71,13 @@ pub fn classify(branch: &str) -> BranchKind {
     }
 }
 
+/// O `<tipo>` de `<tipo>/wi-<id>__<slug>`; não julga se o tipo existe na tabela de prefixos.
+pub fn branch_prefix(branch: &str) -> Option<&str> {
+    work_item_id(branch)?;
+
+    branch.split_once('/').map(|(kind, _)| kind)
+}
+
 /// `<tipo>/wi-<id>__<slug>`: o `<id>` vai até o primeiro `__` e precisa ser nome de um segmento.
 fn work_item_id(branch: &str) -> Option<SemanticId> {
     let (kind, rest) = branch.split_once('/')?;

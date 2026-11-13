@@ -452,6 +452,31 @@ impl AppError {
         )
     }
 
+    pub(crate) fn prefix_not_allowed(path: &str) -> AppError {
+        AppError::at_pointer(
+            "prefix-not-allowed",
+            path,
+            "the branch name must be <type>/wi-<id>__<slug> with a type listed in the workflow prefixes",
+        )
+    }
+
+    pub(crate) fn main_dir_unknown() -> AppError {
+        AppError::plain(
+            "main-dir-unknown",
+            "the main directory of the repository cannot be resolved",
+        )
+    }
+
+    /// `context` leva a branch, o prefixo, o work item, os átomos que faltam e o diretório principal.
+    pub(crate) fn worktree_gate_refused(path: &str, context: Value) -> AppError {
+        AppError::at_pointer(
+            "worktree-gate-refused",
+            path,
+            "the premises the branch prefix requires are missing",
+        )
+        .with_context(context)
+    }
+
     /// Mostra até `ISSUES_MAX` violações; o conteúdo da spec nunca entra.
     pub(crate) fn spec_invalid(violations: &[Violation]) -> AppError {
         let omitted = violations.len().saturating_sub(ISSUES_MAX);

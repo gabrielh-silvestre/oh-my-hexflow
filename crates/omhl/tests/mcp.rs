@@ -19,13 +19,14 @@ use support::project::Project;
 use support::{FakeProbe, FixedClock, SeqIds, executor_attestation_data, executor_author, snap};
 use tempfile::TempDir;
 
-const TOOLS: [&str; 11] = [
+const TOOLS: [&str; 12] = [
     "list",
     "get",
     "append",
     "attest",
     "render",
     "gate_pr",
+    "gate_worktree",
     "close",
     "verify",
     "byproduct",
@@ -303,7 +304,7 @@ fn it_should_answer_ping_with_an_empty_result() {
 // Ferramentas
 
 #[test]
-fn it_should_list_exactly_the_eleven_tools_in_a_fixed_order() {
+fn it_should_list_exactly_the_twelve_tools_in_a_fixed_order() {
     let (_project, session) = serve();
 
     session.send(&rpc(json!(1), "tools/list", json!({})));
@@ -991,4 +992,156 @@ fn it_should_exit_zero_on_stdin_eof() {
     let code = session.finish();
 
     assert_eq!(code, Some(0));
+}
+
+// gate_worktree
+
+fn git_project() -> (Project, McpSession) {
+    let project = Project::new("acme");
+    commit_marker(&project);
+    let session = McpSession::start(project.dir(), project.xdg());
+
+    (project, session)
+}
+
+fn append_technical_premise(project: &Project) {
+    let request = json!({
+        "items": [{ "body": {
+            "kind": "node",
+            "id": "premises.t1",
+            "type": "premise",
+            "data": {
+                "text": "the parser drops the last line",
+                "status": "assumed",
+                "kind": "technical",
+                "work_item": "work-items.w1",
+            },
+        } }]
+    });
+
+    let appended = omhl(&["append"])
+        .cwd(project.dir())
+        .xdg(project.xdg())
+        .stdin(request.to_string())
+        .run();
+
+    assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+}
+
+#[test]
+fn it_should_refuse_feat_without_a_premise_through_the_gate_worktree_tool() {
+    let (_project, session) = git_project();
+
+    session.send(&tool_call(
+        1,
+        "gate_worktree",
+        json!({ "branch": "feat/wi-w1__new" }),
+        None,
+    ));
+
+    let result = &session.recv()["result"];
+    assert_eq!(result["isError"], json!(true));
+    let error = &result["structuredContent"]["error"];
+    assert_eq!(error["code"], json!("worktree-gate-refused"));
+    assert_eq!(
+        error["details"][0]["context"]["missing"],
+        json!(["business-premise"])
+    );
+}
+
+#[test]
+fn it_should_allow_chore_through_the_gate_worktree_tool() {
+    let (_project, session) = git_project();
+
+    session.send(&tool_call(
+        1,
+        "gate_worktree",
+        json!({ "branch": "chore/wi-w1__new" }),
+        None,
+    ));
+
+    let result = &session.recv()["result"];
+    assert!(result.get("isError").is_none(), "the call succeeds");
+    assert_eq!(result["structuredContent"]["allowed"], json!(true));
+    assert_eq!(
+        result["structuredContent"]["reason"],
+        json!("matrix-satisfied")
+    );
+    assert_eq!(text_of(result), result["structuredContent"]);
+}
+
+#[test]
+fn it_should_allow_develop_through_the_gate_worktree_tool() {
+    let (_project, session) = git_project();
+
+    session.send(&tool_call(
+        1,
+        "gate_worktree",
+        json!({ "branch": "develop" }),
+        None,
+    ));
+
+    let result = &session.recv()["result"];
+    assert!(result.get("isError").is_none(), "the call succeeds");
+    assert_eq!(
+        result["structuredContent"]["reason"],
+        json!("exempt-branch")
+    );
+}
+
+#[test]
+fn it_should_read_the_premises_of_the_database_through_the_gate_worktree_tool() {
+    let project = Project::new("acme");
+    commit_marker(&project);
+    open_work_item(&project);
+    append_technical_premise(&project);
+    let session = McpSession::start(project.dir(), project.xdg());
+
+    session.send(&tool_call(
+        1,
+        "gate_worktree",
+        json!({ "branch": "bugfix/wi-w1__new" }),
+        None,
+    ));
+
+    let result = &session.recv()["result"];
+    assert!(result.get("isError").is_none(), "the call succeeds");
+    assert_eq!(result["structuredContent"]["allowed"], json!(true));
+}
+
+#[test]
+fn it_should_refuse_a_pr_reference_through_the_gate_worktree_tool() {
+    let (_project, session) = git_project();
+
+    session.send(&tool_call(
+        1,
+        "gate_worktree",
+        json!({ "branch": "pr:7" }),
+        None,
+    ));
+
+    let result = &session.recv()["result"];
+    assert_eq!(result["isError"], json!(true));
+    assert_eq!(
+        result["structuredContent"]["error"]["code"],
+        json!("prefix-not-allowed")
+    );
+}
+
+#[test]
+fn it_should_refuse_a_missing_branch_argument_of_the_gate_worktree_tool() {
+    let (_project, session) = git_project();
+
+    session.send(&tool_call(1, "gate_worktree", json!({}), None));
+
+    let result = &session.recv()["result"];
+    assert_eq!(result["isError"], json!(true));
+    assert_eq!(
+        result["structuredContent"]["error"]["code"],
+        json!("invalid-arguments")
+    );
+    assert_eq!(
+        result["structuredContent"]["error"]["details"][0]["path"],
+        json!("/branch")
+    );
 }

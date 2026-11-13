@@ -30,6 +30,10 @@ pub enum Action {
     GatePr {
         work_item: String,
     },
+    /// Tratada pelo `Runtime`, não pelo `Engine`: o veredito costuma sair sem abrir o banco.
+    GateWorktree {
+        branch: String,
+    },
     Close {
         work_item: String,
     },
@@ -156,6 +160,9 @@ pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError>
         "attest" => attest(&mut args),
         "render" => only(&args, &[]).map(|()| Action::Render),
         "gate_pr" => work_item(&mut args).map(|work_item| Action::GatePr { work_item }),
+        "gate_worktree" => only(&args, &["branch"])
+            .and_then(|()| required_text(&mut args, "branch"))
+            .map(|branch| Action::GateWorktree { branch }),
         "close" => work_item(&mut args).map(|work_item| Action::Close { work_item }),
         "verify" => only(&args, &[]).map(|()| Action::Verify),
         "byproduct" => byproduct(&mut args),

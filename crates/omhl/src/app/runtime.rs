@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use super::App;
 use super::action::{Action, Caller};
 use super::error::AppError;
+use super::gate_worktree;
 use super::retry::RetryPolicy;
 use crate::facade::OmhlDeps;
 use crate::ports::blob::BlobStore;
@@ -155,6 +156,10 @@ pub fn run_action(
     caller: &Caller,
     action: &Action,
 ) -> Result<Value, AppError> {
+    // O veredito sem premissa a consultar não pode criar o arquivo do banco, que o `discover` prepara.
+    if let Action::GateWorktree { branch } = action {
+        return gate_worktree::run(start, db, env, caller, branch);
+    }
     let runtime = Runtime::discover(start, db, env)?;
 
     match action {

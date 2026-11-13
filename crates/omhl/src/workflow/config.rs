@@ -40,6 +40,17 @@ pub enum RequireAtom {
     Spec,
 }
 
+impl RequireAtom {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RequireAtom::BusinessPremise => "business-premise",
+            RequireAtom::TechnicalPremiseConfirmed => "technical-premise-confirmed",
+            RequireAtom::AgentPremise => "agent-premise",
+            RequireAtom::Spec => "spec",
+        }
+    }
+}
+
 impl Default for WorkflowConfig {
     fn default() -> Self {
         use RequireAtom::{AgentPremise, BusinessPremise, Spec, TechnicalPremiseConfirmed};

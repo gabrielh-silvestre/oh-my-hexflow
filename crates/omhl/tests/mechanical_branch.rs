@@ -1,7 +1,8 @@
 mod support;
 
 use ::omhl::mechanical::branch::{
-    BranchError, BranchKind, HeadFacts, PushError, PushPlan, classify, current_branch, plan_push,
+    BranchError, BranchKind, HeadFacts, PushError, PushPlan, branch_prefix, classify,
+    current_branch, plan_push,
 };
 use support::sid;
 
@@ -410,4 +411,92 @@ fn it_should_accept_a_head_local_ref_in_a_push_whatever_the_checkout_branch() {
     let plan = plan_push(&lines, Some(HEAD_SHA), Some("feat/wi-w3__z"));
 
     assert_eq!(plan, Ok(PushPlan::CheckHead));
+}
+
+// Prefixo (tipo) da branch
+
+#[test]
+fn it_should_extract_the_type_of_each_of_the_seven_prefixes() {
+    let types = [
+        "feat", "fix", "refactor", "tests", "bugfix", "chore", "docs",
+    ];
+
+    let names: Vec<String> = types
+        .iter()
+        .map(|kind| format!("{kind}/wi-w1__x"))
+        .collect();
+
+    let prefixes: Vec<_> = names.iter().map(|name| branch_prefix(name)).collect();
+
+    let expected: Vec<_> = types.iter().map(|kind| Some(*kind)).collect();
+    assert_eq!(prefixes, expected);
+}
+
+#[test]
+fn it_should_extract_a_type_outside_the_seven_prefixes_without_judging_it() {
+    let prefix = branch_prefix("perf/wi-w1__x");
+
+    assert_eq!(prefix, Some("perf"));
+}
+
+#[test]
+fn it_should_extract_the_type_when_the_slug_has_a_double_underscore_or_a_slash() {
+    let with_extra_slug = branch_prefix("feat/wi-w1__x__y");
+    let with_slash = branch_prefix("fix/wi-w1__a/b");
+
+    assert_eq!(with_extra_slug, Some("feat"));
+    assert_eq!(with_slash, Some("fix"));
+}
+
+#[test]
+fn it_should_give_no_prefix_to_main_and_develop() {
+    let main = branch_prefix("main");
+    let develop = branch_prefix("develop");
+
+    assert_eq!(main, None);
+    assert_eq!(develop, None);
+}
+
+#[test]
+fn it_should_give_no_prefix_to_a_work_item_branch_without_a_slug() {
+    let without_separator = branch_prefix("feat/wi-w1");
+    let with_empty_slug = branch_prefix("feat/wi-w1__");
+
+    assert_eq!(without_separator, None);
+    assert_eq!(with_empty_slug, None);
+}
+
+#[test]
+fn it_should_give_no_prefix_to_a_branch_without_a_type_or_with_nested_types() {
+    let without_type = branch_prefix("wi-w1__x");
+    let nested = branch_prefix("a/b/wi-w1__x");
+    let empty_type = branch_prefix("/wi-w1__x");
+
+    assert_eq!(without_type, None);
+    assert_eq!(nested, None);
+    assert_eq!(empty_type, None);
+}
+
+#[test]
+fn it_should_give_no_prefix_when_the_id_is_not_a_valid_name() {
+    let too_long = format!("feat/wi-{}__x", "a".repeat(64));
+    let names = [
+        "feat/wi-W1__x",
+        "feat/wi-w.1__x",
+        "feat/wi-__x",
+        too_long.as_str(),
+    ];
+
+    let prefixes: Vec<_> = names.iter().map(|name| branch_prefix(name)).collect();
+
+    assert_eq!(prefixes, vec![None; 4]);
+}
+
+#[test]
+fn it_should_give_no_prefix_to_a_ref_shaped_or_option_shaped_name() {
+    let names = ["pr:7", "-x", "--branch=-x", "$(id)", "a;touch x", ""];
+
+    let prefixes: Vec<_> = names.iter().map(|name| branch_prefix(name)).collect();
+
+    assert_eq!(prefixes, vec![None; 6]);
 }
