@@ -61,6 +61,9 @@ pub enum Action {
         work_item: String,
         slug: String,
     },
+    SpecValidate {
+        work_item: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

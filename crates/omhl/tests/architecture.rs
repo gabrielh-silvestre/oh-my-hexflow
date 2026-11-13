@@ -43,6 +43,7 @@ const ATOMIC_PATHS: &[&str] = &["sync::atomic", "atomic::"];
 const MECHANICAL_FORBIDDEN_MODULES: &[&str] =
     &["adapters", "app", "facade", "ports", "runner", "byproduct"];
 const WORKFLOW_FORBIDDEN_MODULES: &[&str] = &["ports", "runner", "byproduct"];
+const PORTS_FORBIDDEN_MODULES: &[&str] = &["extensions"];
 const SERVICE_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super::"];
 const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
@@ -978,6 +979,10 @@ fn workflow_refs(source: &str) -> Result<usize, String> {
     forbidden_module_refs(source, WORKFLOW_FORBIDDEN_MODULES)
 }
 
+fn ports_refs(source: &str) -> Result<usize, String> {
+    forbidden_module_refs(source, PORTS_FORBIDDEN_MODULES)
+}
+
 fn service_refs(source: &str) -> Result<usize, String> {
     forbidden_module_refs(source, SERVICE_FORBIDDEN_MODULES)
 }
@@ -1161,6 +1166,30 @@ fn it_should_keep_the_workflow_module_free_of_ports_runner_and_byproduct() {
     );
 
     failures.extend(scan_dir(&src_dir().join("workflow"), workflow_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_the_ports_module_free_of_extensions() {
+    let mut failures = prove_both_sides(
+        ports_refs,
+        &[
+            "use crate::extensions::files::read_regular_utf8;",
+            "use crate::{project::Env, extensions::files::list_sorted_capped};",
+            "use super::extensions::files::read_regular_utf8;",
+            "let text = extensions::files::read_regular_utf8(path, max);",
+        ],
+        &[
+            "use crate::ports::files::read_regular_utf8;",
+            "use super::files::list_sorted_capped;",
+            "// use crate::extensions::files::read_regular_utf8;",
+            "const P: &str = \"crate::extensions::files\";",
+            "use crate::extensions_extra::Thing;",
+        ],
+    );
+
+    failures.extend(scan_dir(&src_dir().join("ports"), ports_refs));
 
     assert_no_failures(&failures);
 }

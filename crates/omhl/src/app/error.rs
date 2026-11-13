@@ -8,6 +8,7 @@ use crate::extensions::model::ExtensionIssue;
 use crate::project::ProjectError;
 use crate::project::layout::ISSUES_MAX;
 use crate::projection::ProjectionError;
+use crate::workflow::spec::Violation;
 
 const BUSY_MESSAGE: &str =
     "database is busy: another omhl process is writing; run the command again";
@@ -441,6 +442,38 @@ impl AppError {
             path,
             "the slug must have 1 to 64 characters of a-z, 0-9 and -, and not start with -",
         )
+    }
+
+    pub(crate) fn spec_not_found(path: &str) -> AppError {
+        AppError::at_pointer(
+            "spec-not-found",
+            path,
+            "the work item has no spec folder with a part",
+        )
+    }
+
+    /// Mostra até `ISSUES_MAX` violações; o conteúdo da spec nunca entra.
+    pub(crate) fn spec_invalid(violations: &[Violation]) -> AppError {
+        let omitted = violations.len().saturating_sub(ISSUES_MAX);
+        let details: Vec<Detail> = violations
+            .iter()
+            .take(ISSUES_MAX)
+            .map(|violation| {
+                let message = format!("the spec breaks the rule {}", violation.code);
+
+                Detail::new(&violation.path, violation.code, &message)
+            })
+            .collect();
+        let message = format!(
+            "the spec is invalid: {} violation(s) shown, {omitted} omitted",
+            details.len()
+        );
+
+        AppError {
+            code: "spec-invalid".to_owned(),
+            message,
+            details,
+        }
     }
 
     /// Único caminho, além de `CheckDetail.context`, por onde `context` entra num detalhe; nunca é gravado.

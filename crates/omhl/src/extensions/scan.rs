@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::Path;
 
-use super::files::{list_sorted_capped, read_regular_utf8};
 use super::model::{ExtensionIssue, ExtensionKind, RawExtension};
+use crate::ports::files::{list_sorted_capped, read_regular_utf8};
 use crate::project::layout::{
     DIR_ENTRIES_MAX, EXT_FILE_MAX_BYTES, OMHL_DIR, PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE,
 };

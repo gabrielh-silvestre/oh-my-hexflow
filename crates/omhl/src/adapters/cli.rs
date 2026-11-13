@@ -149,6 +149,11 @@ pub enum SpecCommand {
         /// Folder name after the work item: 1 to 64 characters of a-z, 0-9 and -, not starting with -.
         slug: String,
     },
+    /// Check the structure of the spec folder of a work item (the graph is not consulted).
+    Validate {
+        /// Id of the work item, such as work-items.w1.
+        work_item: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -337,6 +342,9 @@ fn to_action(
         ActionCommand::Spec {
             command: SpecCommand::Init { work_item, slug },
         } => Action::SpecInit { work_item, slug },
+        ActionCommand::Spec {
+            command: SpecCommand::Validate { work_item },
+        } => Action::SpecValidate { work_item },
     })
 }
 

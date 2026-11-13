@@ -1,13 +1,12 @@
 use std::fs;
 use std::path::{Component, Path};
 
-use super::files::read_regular_utf8;
 use super::model::{Extension, ExtensionIssue, ExtensionKind};
 use super::parse::parse;
 use super::scan::scan_with;
 use crate::native::NativeBase;
-use crate::project::layout::{EXT_FILE_MAX_BYTES, ISSUES_MAX, OMHL_DIR, WORKFLOW_FILE};
-use crate::workflow::config::parse_workflow;
+use crate::ports::workflow::read_workflow;
+use crate::project::layout::{ISSUES_MAX, OMHL_DIR};
 
 #[derive(Debug, Default)]
 pub struct Collected {
@@ -51,9 +50,7 @@ pub fn collect(root: &Path) -> Collected {
 /// Nome que o `specs.dir` configurado ocupa dentro de `.omhl/`. Arquivo ausente ou inválido cai nos
 /// padrões (quem recusa a configuração é outro caminho), e `specs.dir` fora de `.omhl/` não muda o scan.
 fn configured_specs_name(root: &Path) -> Option<String> {
-    let path = root.join(OMHL_DIR).join(WORKFLOW_FILE);
-    let text = read_regular_utf8(&path, EXT_FILE_MAX_BYTES).ok()?;
-    let config = parse_workflow(&path, text.as_bytes()).ok()?;
+    let config = read_workflow(root).ok()?;
     let mut components = Path::new(&config.specs.dir).components();
     match (components.next(), components.next()) {
         (Some(Component::Normal(first)), Some(Component::Normal(name))) if first == OMHL_DIR => {
