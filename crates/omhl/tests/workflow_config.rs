@@ -301,6 +301,78 @@ fn it_should_refuse_a_specs_dir_with_a_parent_component_in_the_middle_with_its_p
     assert_refused_at_line(&error, 3);
 }
 
+fn specs_dir_text(dir: &str) -> String {
+    lines(&["version = 1", "[specs]", &format!("dir = \"{dir}\"")])
+}
+
+#[test]
+fn it_should_refuse_a_specs_dir_without_a_folder_name_with_its_position() {
+    for dir in ["", ".", "./"] {
+        let text = specs_dir_text(dir);
+
+        let error = refusal(&text);
+
+        assert_refused_at_line(&error, 3);
+    }
+}
+
+#[test]
+fn it_should_refuse_a_specs_dir_that_is_the_git_or_the_omhl_root_with_its_position() {
+    for dir in [".git", ".omhl"] {
+        let text = specs_dir_text(dir);
+
+        let error = refusal(&text);
+
+        assert_refused_at_line(&error, 3);
+    }
+}
+
+#[test]
+fn it_should_refuse_a_specs_dir_that_is_a_subtree_read_by_the_extensions_scan_with_its_position() {
+    for dir in [
+        ".omhl/checks",
+        ".omhl/guidelines",
+        ".omhl/projection",
+        ".omhl/workflow.toml",
+    ] {
+        let text = specs_dir_text(dir);
+
+        let error = refusal(&text);
+
+        assert_refused_at_line(&error, 3);
+    }
+}
+
+#[test]
+fn it_should_refuse_a_specs_dir_nested_inside_the_git_dir_or_a_reserved_subtree_with_its_position()
+{
+    for dir in [".git/specs", ".omhl/checks/specs", ".omhl/guidelines/specs"] {
+        let text = specs_dir_text(dir);
+
+        let error = refusal(&text);
+
+        assert_refused_at_line(&error, 3);
+    }
+}
+
+#[test]
+fn it_should_accept_the_default_specs_dir_written_out() {
+    let text = specs_dir_text(".omhl/specs");
+
+    let config = accepted(&text);
+
+    assert_eq!(config.specs.dir, ".omhl/specs");
+}
+
+#[test]
+fn it_should_accept_a_specs_dir_with_a_folder_name_outside_the_omhl_directory() {
+    let text = specs_dir_text("docs/specs");
+
+    let config = accepted(&text);
+
+    assert_eq!(config.specs.dir, "docs/specs");
+}
+
 #[test]
 fn it_should_refuse_an_unknown_require_atom_with_its_position() {
     let text = lines(&[

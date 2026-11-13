@@ -15,6 +15,18 @@ const DEFAULT_SPECS: &str = ".omhl/specs";
 const CUSTOM_SPECS: &str = "docs/team-specs";
 const CUSTOM_WORKFLOW: &str = "version = 1\n\n[specs]\ndir = \"docs/team-specs\"\n";
 const INVALID_WORKFLOW: &str = "version = 1\n\n[specs]\ndirr = \"x\"\n";
+/// Sem pasta própria (raiz do repositório), `.git` e as raízes de `.omhl/` que o scan de extensions lê.
+const UNUSABLE_SPECS_DIRS: [&str; 9] = [
+    "",
+    ".",
+    "./",
+    ".git",
+    ".omhl",
+    ".omhl/checks",
+    ".omhl/guidelines",
+    ".omhl/projection",
+    ".omhl/workflow.toml",
+];
 const FROZEN: &str = "spec-frozen";
 const IN_WORKTREE: &str = "spec-in-linked-worktree";
 
@@ -1083,6 +1095,107 @@ fn it_should_deny_a_frozen_spec_when_the_session_cwd_has_no_marker_but_the_file_
 
     let reason = denied_reason(&output);
     assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+// `specs.dir` sem pasta própria: a política inválida cai nos padrões, o congelamento não some
+
+fn workflow_with_specs_dir(dir: &str) -> String {
+    format!("version = 1\n\n[specs]\ndir = \"{dir}\"\n")
+}
+
+/// Work item `w1` aberto no banco e, só depois, o `workflow.toml` da cópia de trabalho com o `dir`.
+fn repo_with_open_work_item_and_specs_dir(dir: &str) -> Repo {
+    let repo = Repo::new();
+    let appended = omhl(&["append"])
+        .cwd(&repo.main)
+        .xdg(repo.project.xdg())
+        .stdin(
+            json!({ "items": [{ "body": {
+                "kind": "node",
+                "id": "work-items.w1",
+                "type": "work-item",
+                "data": { "title": "t", "status": "open" },
+            } }] })
+            .to_string(),
+        )
+        .run();
+    assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+    write_workflow_in(&repo.main, &workflow_with_specs_dir(dir));
+
+    repo
+}
+
+fn spec_init(repo: &Repo) -> Child {
+    omhl(&["spec", "init", "work-items.w1", "login"])
+        .cwd(&repo.main)
+        .xdg(repo.project.xdg())
+        .run()
+}
+
+#[test]
+fn it_should_keep_freezing_the_default_dir_when_specs_dir_has_no_folder_of_its_own() {
+    for dir in UNUSABLE_SPECS_DIRS {
+        let repo = Repo::with_files(&[(".omhl/workflow.toml", &workflow_with_specs_dir(dir))]);
+        repo.branch(BRANCH);
+        repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+        let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+        let reason = denied_reason(&output);
+        assert!(
+            reason.contains(FROZEN),
+            "specs.dir {dir:?}, reason: {reason}"
+        );
+    }
+}
+
+#[test]
+fn it_should_refuse_spec_init_when_specs_dir_has_no_folder_of_its_own() {
+    for dir in UNUSABLE_SPECS_DIRS {
+        let repo = repo_with_open_work_item_and_specs_dir(dir);
+
+        let output = spec_init(&repo);
+
+        assert_eq!(
+            output.code,
+            Some(1),
+            "specs.dir {dir:?}, stderr: {}",
+            output.stderr
+        );
+        assert_eq!(
+            json_line(&output.stderr)["error"]["code"],
+            json!("invalid-workflow-config"),
+            "specs.dir {dir:?}"
+        );
+    }
+}
+
+#[test]
+fn it_should_not_create_the_work_item_folder_when_specs_dir_has_no_folder_of_its_own() {
+    for dir in UNUSABLE_SPECS_DIRS {
+        let repo = repo_with_open_work_item_and_specs_dir(dir);
+
+        spec_init(&repo);
+
+        assert!(
+            !repo.main.join(dir).join(FOLDER).exists(),
+            "specs.dir {dir:?} got a work item folder"
+        );
+    }
+}
+
+#[test]
+fn it_should_not_write_a_gitignore_when_specs_dir_has_no_folder_of_its_own() {
+    for dir in UNUSABLE_SPECS_DIRS {
+        let repo = repo_with_open_work_item_and_specs_dir(dir);
+
+        spec_init(&repo);
+
+        assert!(
+            !repo.main.join(dir).join(".gitignore").exists(),
+            "specs.dir {dir:?} got a .gitignore"
+        );
+    }
 }
 
 // Spec dentro de uma worktree ligada

@@ -143,7 +143,7 @@ require = []
 | Chave | Efeito |
 |---|---|
 | `version` | Obrigatória quando o arquivo existe. O único valor aceito é `1` |
-| `specs.dir` | Pasta das specs, relativa ao diretório principal (e lida do `workflow.toml` dele). Caminho absoluto ou com `..` é recusado |
+| `specs.dir` | Pasta das specs, relativa ao diretório principal (e lida do `workflow.toml` dele). É recusado: caminho absoluto, com `..`, sem pasta própria (`""`, `.`, `./`), o `.git` e o `.omhl` sozinhos, e qualquer coisa dentro de `.git`, `.omhl/checks`, `.omhl/guidelines`, `.omhl/projection` e `.omhl/workflow.toml`. O padrão `.omhl/specs` e pastas como `docs/specs` valem |
 | `specs.max_lines` | Máximo de linhas de cada parte e de cada emenda. Mínimo `1` |
 | `specs.placeholders` | Textos que reprovam a spec (`placeholder-found`). A lista substitui a padrão |
 | `specs.cite_business_premise` | Quando `true`, a spec de um work item precisa citar uma premissa de negócio confirmada dele |

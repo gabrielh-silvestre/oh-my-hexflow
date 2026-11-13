@@ -6,6 +6,7 @@ use serde::Deserialize;
 use toml::Spanned;
 
 use crate::project::ProjectError;
+use crate::project::layout::{CHECKS_DIR, GUIDELINES_DIR, OMHL_DIR, PROJECTION_DIR, WORKFLOW_FILE};
 use crate::project::text::{position_at, toml_error_position};
 
 const SUPPORTED_VERSION: u32 = 1;
@@ -124,10 +125,30 @@ fn invalid_at(path: &Path, text: &str, span: Range<usize>, reason: &str) -> Proj
     invalid(path, format!("{reason} at line {line}, column {column}"))
 }
 
+/// Pasta do git na raiz do projeto: nenhuma spec cabe nela.
+const GIT_DIR: &str = ".git";
+
+/// Subárvores de `.omhl/` com dono próprio: `specs.dir` dentro delas misturaria as specs com outro conteúdo.
+const RESERVED_OMHL_SUBTREES: [&str; 4] =
+    [CHECKS_DIR, GUIDELINES_DIR, PROJECTION_DIR, WORKFLOW_FILE];
+
 /// `specs.dir` é relativo ao diretório principal: absoluto ou com `..` escaparia dele.
-fn stays_inside_main_dir(dir: &str) -> bool {
+/// Precisa ter pasta própria (`""`, `.` e `./` são a raiz) e ficar fora do `.git`, da raiz do `.omhl`
+/// e das subárvores reservadas dele.
+fn is_usable_specs_dir(dir: &str) -> bool {
     let dir = Path::new(dir);
-    !dir.has_root() && !dir.components().any(|c| c == Component::ParentDir)
+    if dir.has_root() || dir.components().any(|c| c == Component::ParentDir) {
+        return false;
+    }
+    let mut names = dir.components().filter_map(|c| match c {
+        Component::Normal(name) => name.to_str(),
+        _ => None,
+    });
+    match (names.next(), names.next()) {
+        (None, _) | (Some(GIT_DIR), _) | (Some(OMHL_DIR), None) => false,
+        (Some(OMHL_DIR), Some(child)) => !RESERVED_OMHL_SUBTREES.contains(&child),
+        _ => true,
+    }
 }
 
 pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, ProjectError> {
@@ -151,12 +172,12 @@ pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, Proje
     let mut config = WorkflowConfig::default();
     if let Some(specs) = raw.specs {
         if let Some(dir) = specs.dir {
-            if !stays_inside_main_dir(dir.as_ref()) {
+            if !is_usable_specs_dir(dir.as_ref()) {
                 return Err(invalid_at(
                     path,
                     text,
                     dir.span(),
-                    "specs.dir must be relative and stay inside the main directory",
+                    "specs.dir must be a relative folder inside the main directory, outside .git and the reserved .omhl subtrees",
                 ));
             }
             config.specs.dir = dir.into_inner();
