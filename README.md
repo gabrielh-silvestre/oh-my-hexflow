@@ -30,20 +30,17 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    cargo build --release
    ```
 
-2. Copie o binário para a pasta do plugin, onde o git o ignora:
+2. Instale esse binário no `PATH`, fora de qualquer worktree. É o único `omhl`:
+   o plugin (hooks e servidor MCP) e o hook `pre-switch` do `wt`
+   (`.config/wt.toml`) chamam o `omhl` do `PATH`, sem cópia por worktree.
 
    ```bash
-   cp target/release/omhl plugin/bin/omhl
+   cp target/release/omhl ~/.local/bin/omhl
    ```
 
-3. Deixe o mesmo binário no `PATH`, que o hook `pre-switch` do `wt` chama
-   (`.config/wt.toml`):
+   Depois de puxar mudanças, recompile e copie de novo.
 
-   ```bash
-   ln -s "$PWD/plugin/bin/omhl" ~/.local/bin/omhl
-   ```
-
-4. Abra o Claude Code com o plugin:
+3. Abra o Claude Code com o plugin:
 
    ```bash
    claude --plugin-dir plugin/
@@ -216,7 +213,7 @@ pasta. Rode-o uma vez em cada clone.
   com 1 se esse binário sumir. Rode `omhl hooks install` com um binário fora de
   qualquer worktree e fora de `target/` (`cargo install` ou uma cópia em
   `~/.local/bin`); um binário dentro de uma worktree ligada some com ela e a
-  saída avisa (`binary-in-worktree`); o `plugin/bin/omhl` do clone principal não
+  saída avisa (`binary-in-worktree`); um binário na worktree principal do clone não
   avisa, porque o `wt remove` não remove a worktree principal. A pasta de hooks é uma só por usuário: reinstalar em
   outro clone troca o binário de todos.
 

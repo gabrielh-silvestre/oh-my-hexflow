@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
+            "command": "omhl",
             "args": ["hook", "session-start"],
             "timeout": 15
           }
@@ -19,8 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
-            "args": ["hook", "spec-lock"],
+            "command": "omhl hook spec-lock || true",
             "timeout": 10
           }
         ]

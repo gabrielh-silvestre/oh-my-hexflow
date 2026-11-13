@@ -21,7 +21,7 @@ fn it_should_declare_the_plugin_name_and_the_cargo_version() {
 }
 
 #[test]
-fn it_should_wire_the_session_start_and_spec_lock_hooks_in_exec_form() {
+fn it_should_wire_the_session_start_hook_in_exec_form_and_the_spec_lock_hook_in_shell_form() {
     let hooks = plugin_file("hooks/hooks.json");
 
     assert_eq!(
@@ -32,7 +32,7 @@ fn it_should_wire_the_session_start_and_spec_lock_hooks_in_exec_form() {
                     "matcher": "startup|resume|clear|compact",
                     "hooks": [{
                         "type": "command",
-                        "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
+                        "command": "omhl",
                         "args": ["hook", "session-start"],
                         "timeout": 15,
                     }],
@@ -41,8 +41,7 @@ fn it_should_wire_the_session_start_and_spec_lock_hooks_in_exec_form() {
                     "matcher": "Edit|Write|MultiEdit",
                     "hooks": [{
                         "type": "command",
-                        "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
-                        "args": ["hook", "spec-lock"],
+                        "command": "omhl hook spec-lock || true",
                         "timeout": 10,
                     }],
                 }],
@@ -60,7 +59,7 @@ fn it_should_wire_the_mcp_server() {
         json!({
             "mcpServers": {
                 "omhl": {
-                    "command": "${CLAUDE_PLUGIN_ROOT}/bin/omhl",
+                    "command": "omhl",
                     "args": ["mcp"],
                 }
             }

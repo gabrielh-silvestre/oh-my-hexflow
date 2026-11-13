@@ -101,7 +101,9 @@ impl Caller {
         }
     }
 
-    /// O Claude Code define `CLAUDECODE=1` nas chamadas de Bash; o falso positivo (humano) é o erro seguro.
+    /// O Claude Code define `CLAUDECODE=1` nos subprocessos que lança (Bash, hooks, tmux, MCP stdio) e as extensões
+    /// de IDE o definem nos terminais integrados; o falso positivo (humano) é o erro seguro, e o falso negativo
+    /// (variável removida) é o Follow-up da trava técnica.
     pub fn cli_under_claude_code() -> Caller {
         Caller {
             client: "cli",

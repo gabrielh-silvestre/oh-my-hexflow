@@ -72,7 +72,7 @@ O servidor MCP expõe 14 tools: `list`, `get`, `append`, `attest`, `render`, `ga
 omhl list --type divergence --where work_item=work-items.w1 --where resolution=open
 ```
 
-**Autoria.** Grave tudo pelas tools MCP (`append`, `attest`), nunca pela CLI (`omhl append`). A tool grava `agent: "claude"`. A CLI grava `agent: "user"`, com uma exceção: sob o Claude Code (variável `CLAUDECODE=1`, que ele define nas chamadas de Bash), a CLI grava `agent: "claude"` com `client: "cli"`. O erro seguro é o falso positivo: um humano que roda o `omhl` dentro de uma sessão do Claude Code sai registrado como agente.
+**Autoria.** Grave tudo pelas tools MCP (`append`, `attest`), nunca pela CLI (`omhl append`). A tool grava `agent: "claude"`. A CLI grava `agent: "user"`, com uma exceção: sob o Claude Code (variável `CLAUDECODE=1`, que ele e as extensões de IDE definem em subprocessos e terminais integrados: Bash, hooks, tmux, MCP stdio e o terminal integrado da IDE), a CLI grava `agent: "claude"` com `client: "cli"`. O erro seguro é o falso positivo: um humano que roda o `omhl` dentro de uma sessão do Claude Code, ou no terminal integrado de uma IDE, sai registrado como agente. O inverso, `env -u CLAUDECODE`, grava `agent: "user"` (Follow-up da trava técnica, seção 3).
 
 ## 3. Confirmação humana (`confirmed_by`)
 
@@ -350,7 +350,7 @@ A negação sai no stdout, com código de saída `0`:
 | `spec-in-linked-worktree` | O caminho está numa worktree ligada. As specs vivem só no diretório principal | Escreva no caminho do diretório principal que a mensagem informa |
 | `spec-folder-unknown` | O work item tem branch e a pasta do caminho não existe. Vale para `parte-*.md` e `emenda-*.md` | Escreva a emenda na pasta de spec que o work item já tem |
 
-O hook nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto pelo caminho do arquivo e, se ele estiver fora de qualquer projeto, pelo `cwd` da sessão. Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
+O subcomando `hook spec-lock` nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto pelo caminho do arquivo e, se ele estiver fora de qualquer projeto, pelo `cwd` da sessão. Um `omhl` velho, sem o subcomando, é outro caso: o clap sai com `2`, e o envoltório `|| true` do `hooks.json` o converte em `0` (seção 10). Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
 
 ## 8. Gap, divergência e retro
 
@@ -510,12 +510,12 @@ O `omhl spec validate` aplica as regras de grafo da emenda à divergência que e
 
 O gate do `wt` e o hook `spec-lock` estão ativos. A ativação seguiu esta ordem, que vale de novo se o texto do comando em `.config/wt.toml` mudar:
 
-1. Compile e reinstale o `omhl` fora de qualquer worktree: copie-o para `plugin/bin/omhl` e deixe-o no `PATH`, por exemplo com um link em `~/.local/bin` ([README](../README.md), "Instalação").
+1. Compile e reinstale o `omhl` fora de qualquer worktree, num único binário no `PATH`, por exemplo em `~/.local/bin` ([README](../README.md), "Instalação"). O plugin (hooks e servidor MCP) chama o `omhl` do `PATH`, sem cópia por worktree.
 2. Rode `omhl hooks install`.
 3. Só então versione o `.config/wt.toml` e a entrada `PreToolUse` (`matcher` `Edit|Write|MultiEdit`) em `plugin/hooks/hooks.json`.
 4. O dono roda `wt config approvals add` e confere com `wt config approvals list` (seção 5), antes de qualquer `wt switch` do agente.
 
-Depois de puxar mudanças, recopie o binário antes de usar o plugin. Um `omhl` velho, sem o subcomando `hook spec-lock`, sai com `2` (erro de uso do clap), e isso pode bloquear todo `Edit` e `Write`.
+Depois de puxar mudanças, recompile e reinstale o `omhl` do `PATH` antes de usar o plugin. Um `omhl` velho, sem o subcomando `hook spec-lock`, sairia com `2` (erro de uso do clap), e em `PreToolUse` isso bloquearia todo `Edit` e `Write`. O hook roda como `omhl hook spec-lock || true`, que converte essa saída em `0`: a escrita passa e o congelamento fica sem efeito até a reinstalação (limite abaixo). A negação legítima vai por JSON com saída `0` e não depende do código de saída.
 
 ### Bypasses do gate
 
@@ -532,8 +532,8 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 ### Limites
 
-- O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo nem do `cwd`, o binário `omhl` não existe (`plugin/bin/omhl` é ignorado pelo git e uma worktree nova pode não tê-lo), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
-- O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
+- O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo nem do `cwd`, o binário `omhl` não existe no `PATH`, o `omhl` do `PATH` é velho e não tem o subcomando `hook spec-lock` (o envoltório `|| true` converte a saída `2` do clap em `0`), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
+- O hook de congelamento vale para `Edit, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
 - O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
 - Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`. O comando não tem a guarda `{% if branch %}`.
 - O `confirmed_by` é autodeclarado por qualquer canal. A tool `append` do MCP e a CLI aceitam a mesma confirmação inventada, e o record forjado sai igual ao legítimo. O MCP protege só o rótulo de autoria (`agent: "claude"`), que a CLI perde com `env -u CLAUDECODE`. A trava técnica contra forja não existe nesta entrega (seção 3).
