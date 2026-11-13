@@ -109,6 +109,11 @@ pub enum ActionCommand {
         #[command(subcommand)]
         command: SpecCommand,
     },
+    /// Report on the gaps and their answers.
+    Report {
+        #[command(subcommand)]
+        command: ReportCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -156,6 +161,16 @@ pub enum SpecCommand {
     Validate {
         /// Id of the work item, such as work-items.w1.
         work_item: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ReportCommand {
+    /// Report the state of each gap, who answered it and whether a directive backs the answer.
+    Answers {
+        /// Id of the work item, such as work-items.w1; without it, every gap is reported.
+        #[arg(long)]
+        work_item: Option<String>,
     },
 }
 
@@ -365,6 +380,9 @@ fn to_action(
         ActionCommand::Spec {
             command: SpecCommand::Validate { work_item },
         } => Action::SpecValidate { work_item },
+        ActionCommand::Report {
+            command: ReportCommand::Answers { work_item },
+        } => Action::ReportAnswers { work_item },
     })
 }
 

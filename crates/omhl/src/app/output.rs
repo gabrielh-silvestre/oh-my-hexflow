@@ -86,7 +86,7 @@ pub fn verify(report: &ChainReport) -> Value {
     })
 }
 
-fn author(author: &Author) -> Value {
+pub fn author(author: &Author) -> Value {
     let mut value = json!({ "agent": author.agent, "client": author.client });
     if let Some(model) = &author.model {
         value["model"] = json!(model);

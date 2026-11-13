@@ -375,5 +375,11 @@ fn extension_tools() -> Vec<Value> {
             &json!({}),
             &[],
         ),
+        tool(
+            "report_answers",
+            "Report the state of each gap, who answered it and whether a directive backs the answer; optionally for one work item.",
+            &json!({ "work_item": { "type": "string", "description": "Work item semantic id." } }),
+            &[],
+        ),
     ]
 }

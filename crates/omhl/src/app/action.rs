@@ -65,6 +65,9 @@ pub enum Action {
     SpecValidate {
         work_item: String,
     },
+    ReportAnswers {
+        work_item: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,6 +160,11 @@ pub fn parse_tool_call(name: &str, arguments: Value) -> Result<Action, AppError>
         "verify" => only(&args, &[]).map(|()| Action::Verify),
         "byproduct" => byproduct(&mut args),
         "project" => only(&args, &[]).map(|()| Action::Project),
+        "report_answers" => only(&args, &["work_item"]).and_then(|()| {
+            Ok(Action::ReportAnswers {
+                work_item: optional_text(&mut args, "work_item")?,
+            })
+        }),
         _ => Err(AppError::unknown_tool()),
     }
 }
