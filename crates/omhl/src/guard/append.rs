@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use hexlog::{
     AppendItem, AppendRequest, Author, Hexlog, ItemBody, Lineage, NodeView, RecordId, SemanticId,
     Snapshot, TenantId,
@@ -5,6 +7,7 @@ use hexlog::{
 use serde_json::Value;
 
 use super::confirmation::check_confirmation;
+use super::rests_on::rests_on_allowed;
 use crate::error::{OmhlError, RuleCode};
 use crate::graphs::{WORK_ITEM_TYPES, namespace_of};
 use crate::mechanical::is_mechanical;
@@ -59,6 +62,13 @@ impl<'i> NodeItem<'i> {
     }
 }
 
+/// Tipo e `kind` de um node, lidos do lote ou do banco.
+#[derive(Clone)]
+struct Endpoint {
+    type_name: String,
+    kind: Option<String>,
+}
+
 pub(super) struct Guard<'a, 'd> {
     pub(super) hexlog: &'a mut Hexlog<'d>,
     pub(super) tenant: &'a TenantId,
@@ -66,6 +76,8 @@ pub(super) struct Guard<'a, 'd> {
     probe: &'a dyn SnapshotProbe,
     probed: Option<Result<ProbeOutcome, ProbeError>>,
     probed_index_tree: Option<Result<ProbeOutcome, ProbeError>>,
+    /// Nodes já vistos no lote, na ordem dos itens; prevalecem sobre o banco.
+    batch: HashMap<SemanticId, Endpoint>,
 }
 
 /// Valida o lote inteiro, lendo só o banco; o primeiro achado encerra com erro.
@@ -81,6 +93,7 @@ pub(crate) fn check_append(
         probe,
         probed: None,
         probed_index_tree: None,
+        batch: HashMap::new(),
     };
     for (index, item) in req.items.iter().enumerate() {
         if let Some(node) = NodeItem::from_item(index, item) {
@@ -90,6 +103,14 @@ pub(crate) fn check_append(
         } = &item.body
         {
             guard.check_retirement(index, id)?;
+        } else if let ItemBody::Relation {
+            relation_type,
+            from,
+            to,
+        } = &item.body
+            && relation_type.as_str() == "rests-on"
+        {
+            guard.check_rests_on(index, from, to)?;
         }
     }
 
@@ -126,6 +147,13 @@ fn check_guideline_kind(node: &NodeItem<'_>) -> Result<(), OmhlError> {
 impl Guard<'_, '_> {
     fn check_node(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         check_namespace(node)?;
+        self.batch.insert(
+            node.id.clone(),
+            Endpoint {
+                type_name: node.type_name.to_owned(),
+                kind: node.field("kind").map(str::to_owned),
+            },
+        );
         match node.type_name {
             name if WORK_ITEM_TYPES.contains(&name) => {
                 self.check_work_item_status(node)?;
@@ -224,6 +252,40 @@ impl Guard<'_, '_> {
         }
 
         Ok(())
+    }
+
+    /// Extremo ausente do lote e do banco fica para o motor: nativo é aceito, inexistente é `endpoint-not-found`.
+    fn check_rests_on(
+        &mut self,
+        index: usize,
+        from: &SemanticId,
+        to: &SemanticId,
+    ) -> Result<(), OmhlError> {
+        let (Some(source), target) = (self.endpoint_of(from)?, self.endpoint_of(to)?) else {
+            return Ok(());
+        };
+        let target = target
+            .as_ref()
+            .map(|node| (node.type_name.as_str(), node.kind.as_deref()));
+
+        rests_on_allowed(&source.type_name, target)
+            .map_err(|refusal| OmhlError::rule(refusal.code(), &format!("/items/{index}/body/to")))
+    }
+
+    fn endpoint_of(&mut self, id: &SemanticId) -> Result<Option<Endpoint>, OmhlError> {
+        if let Some(node) = self.batch.get(id) {
+            return Ok(Some(node.clone()));
+        }
+        let current = self.hexlog.get(self.tenant, id)?;
+
+        Ok(current.map(|view| Endpoint {
+            type_name: view.type_name.as_str().to_owned(),
+            kind: view
+                .data
+                .get("kind")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        }))
     }
 
     fn check_retirement(&mut self, index: usize, id: &SemanticId) -> Result<(), OmhlError> {

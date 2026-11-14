@@ -1,6 +1,6 @@
 use std::fmt;
 
-use hexlog::{ErrorCode, HexlogError};
+use hexlog::{AppendItem, ErrorCode, HexlogError, ItemBody};
 use serde_json::{Value, json};
 
 use crate::error::{OmhlError, RuleCode};
@@ -14,6 +14,17 @@ use crate::workflow::spec::Violation;
 const BUSY_MESSAGE: &str =
     "database is busy: another omhl process is writing; run the command again";
 const STORE_ERROR_MESSAGE: &str = "storage error; run the command again";
+
+const CYCLE_GUIDANCE: Guidance = Guidance {
+    cause: "the relation would close a cycle: its target already leads back to its source",
+    next_step: "drop this relation, or retire the existing link that closes the loop",
+};
+const ENDPOINT_GUIDANCE: Guidance = Guidance {
+    cause: "a relation endpoint is not a current node",
+    next_step: "append the missing node before the relation, in the same batch or an earlier one, or fix the id",
+};
+/// Tipos de relação cujas recusas do motor ganham causa e próximo passo.
+const GUIDED_RELATION_TYPES: [&str; 2] = ["rests-on", "supersedes"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Detail {
@@ -237,6 +248,34 @@ impl AppError {
             message: "the projection could not be written".to_owned(),
             details: vec![Detail::new(&error.path, error.code, &error.message)],
         }
+    }
+
+    /// Recusa do motor (`cycle` ou `endpoint-not-found`) num `rests-on` ou `supersedes`: ganha causa e próximo passo; as demais ficam como vieram.
+    pub(crate) fn guide_relation_refusal(mut self, items: &[AppendItem]) -> AppError {
+        let Some(detail) = self.details.first_mut() else {
+            return self;
+        };
+        let guidance = match detail.code.as_str() {
+            "cycle" => CYCLE_GUIDANCE,
+            "endpoint-not-found" => ENDPOINT_GUIDANCE,
+            _ => return self,
+        };
+        let guided = item_index(&detail.path)
+            .and_then(|index| items.get(index))
+            .is_some_and(|item| match &item.body {
+                ItemBody::Relation { relation_type, .. } => {
+                    GUIDED_RELATION_TYPES.contains(&relation_type.as_str())
+                }
+                _ => false,
+            });
+        if !guided {
+            return self;
+        }
+        detail.message = guidance.cause.to_owned();
+        detail.next_step = Some(guidance.next_step.to_owned());
+        self.message = guidance.cause.to_owned();
+
+        self
     }
 
     /// Troca o ponteiro `/items/<i>/...` de cada detalhe pelo arquivo `files[i]`.

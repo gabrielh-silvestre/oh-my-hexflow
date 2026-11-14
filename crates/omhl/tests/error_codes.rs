@@ -35,6 +35,8 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::ConfirmationRequired, "confirmation-required"),
         (RuleCode::ConfirmationInvalid, "confirmation-invalid"),
         (RuleCode::KindMissing, "kind-missing"),
+        (RuleCode::RestsOnArchitecture, "rests-on-architecture"),
+        (RuleCode::RestsOnTargetType, "rests-on-target-type"),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected
@@ -117,7 +119,11 @@ fn it_should_expose_next_step_only_when_guidance_exists() {
 #[test]
 fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
     // Lista fechada: cada fatia que cria um código de regra o acrescenta aqui.
-    let new_codes = [RuleCode::KindMissing];
+    let new_codes = [
+        RuleCode::KindMissing,
+        RuleCode::RestsOnArchitecture,
+        RuleCode::RestsOnTargetType,
+    ];
 
     let incomplete: Vec<&str> = new_codes
         .iter()

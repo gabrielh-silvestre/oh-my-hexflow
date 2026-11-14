@@ -2,6 +2,7 @@ mod append;
 mod attestation;
 mod confirmation;
 mod filter;
+mod rests_on;
 
 use hexlog::{SemanticId, Snapshot};
 

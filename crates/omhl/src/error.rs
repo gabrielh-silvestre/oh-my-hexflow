@@ -67,6 +67,8 @@ pub enum RuleCode {
     ConfirmationRequired,
     ConfirmationInvalid,
     KindMissing,
+    RestsOnArchitecture,
+    RestsOnTargetType,
 }
 
 impl RuleCode {
@@ -94,6 +96,8 @@ impl RuleCode {
             RuleCode::ConfirmationRequired => "confirmation-required",
             RuleCode::ConfirmationInvalid => "confirmation-invalid",
             RuleCode::KindMissing => "kind-missing",
+            RuleCode::RestsOnArchitecture => "rests-on-architecture",
+            RuleCode::RestsOnTargetType => "rests-on-target-type",
         }
     }
 
@@ -102,6 +106,14 @@ impl RuleCode {
             RuleCode::KindMissing => Some(Guidance {
                 cause: "the guideline has no kind",
                 next_step: "set kind to negocio or arquitetura in the item data and append again",
+            }),
+            RuleCode::RestsOnArchitecture => Some(Guidance {
+                cause: "a guideline cannot rest on an architecture guideline; only a decision or a premise can",
+                next_step: "rest it on a business guideline, or record the link from a decision",
+            }),
+            RuleCode::RestsOnTargetType => Some(Guidance {
+                cause: "a guideline can only rest on another guideline",
+                next_step: "rest the guideline on a business guideline, or move the premise under a decision",
             }),
             _ => None,
         }

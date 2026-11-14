@@ -171,7 +171,12 @@ impl Engine<'_> {
         let parsed = append_request(request, &self.tenant, caller)?;
         self.check_amendment_approvals(request)?;
 
-        Ok(output::appended(&self.omhl.append(&parsed)?))
+        let outcome = self
+            .omhl
+            .append(&parsed)
+            .map_err(|error| AppError::from(error).guide_relation_refusal(&parsed.items))?;
+
+        Ok(output::appended(&outcome))
     }
 
     fn gate_pr(&mut self, work_item: &str) -> Result<Value, AppError> {
