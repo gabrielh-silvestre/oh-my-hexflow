@@ -40,6 +40,7 @@ pub fn collect(root: &Path) -> Collected {
                 path: extension.path,
                 code: "reserved-id",
                 message: "id is reserved for a native check or guideline".to_owned(),
+                next_step: None,
             }),
             Ok(extension) => extensions.push(extension),
             Err(issues) => errors.extend(issues),
@@ -64,6 +65,7 @@ fn invalid_workflow_warning(error: &ProjectError) -> ExtensionIssue {
         path: format!("{OMHL_DIR}/{WORKFLOW_FILE}"),
         code: error.code,
         message: error.message.clone(),
+        next_step: None,
     }
 }
 

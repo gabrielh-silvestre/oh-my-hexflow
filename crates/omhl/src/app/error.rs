@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 use crate::error::{OmhlError, RuleCode};
 use crate::extensions::model::ExtensionIssue;
+use crate::guidance::Guidance;
 use crate::project::ProjectError;
 use crate::project::layout::ISSUES_MAX;
 use crate::projection::ProjectionError;
@@ -22,6 +23,7 @@ struct Detail {
     current: Option<String>,
     retired: Option<bool>,
     context: Option<Value>,
+    next_step: Option<String>,
 }
 
 impl Detail {
@@ -33,6 +35,7 @@ impl Detail {
             current: None,
             retired: None,
             context: None,
+            next_step: None,
         }
     }
 
@@ -46,6 +49,9 @@ impl Detail {
         }
         if let Some(context) = &self.context {
             detail["context"] = context.clone();
+        }
+        if let Some(next_step) = &self.next_step {
+            detail["next_step"] = json!(next_step);
         }
         detail
     }
@@ -205,7 +211,12 @@ impl AppError {
         let details: Vec<Detail> = issues
             .iter()
             .take(ISSUES_MAX)
-            .map(|issue| Detail::new(&issue.path, issue.code, &issue.message))
+            .map(|issue| Detail {
+                next_step: issue
+                    .next_step
+                    .map(|guidance| guidance.next_step.to_owned()),
+                ..Detail::new(&issue.path, issue.code, &issue.message)
+            })
             .collect();
         let message = format!(
             "extensions are invalid: {} error(s) shown, {omitted} omitted; nothing was loaded",
@@ -318,6 +329,34 @@ impl AppError {
             path,
             "the check file still exists in the working tree",
         )
+    }
+
+    /// Recusa da camada `app` com causa e próximo passo; o ponteiro é o único dado de entrada que aparece.
+    pub(crate) fn refusal(code: &str, pointer: &str, guidance: Guidance) -> AppError {
+        AppError {
+            code: code.to_owned(),
+            message: guidance.cause.to_owned(),
+            details: vec![Detail {
+                next_step: Some(guidance.next_step.to_owned()),
+                ..Detail::new(pointer, code, guidance.cause)
+            }],
+        }
+    }
+
+    fn unguided_rule(code: &str, pointer: &str) -> AppError {
+        let (message, details) = match pointer.is_empty() {
+            true => (code.to_owned(), Vec::new()),
+            false => (
+                format!("{code} at {pointer}"),
+                vec![Detail::new(pointer, code, code)],
+            ),
+        };
+
+        AppError {
+            code: code.to_owned(),
+            message,
+            details,
+        }
     }
 
     pub(crate) fn branch_name_invalid(path: &str) -> AppError {
@@ -583,6 +622,7 @@ impl From<HexlogError> for AppError {
                 current: detail.current.map(|id| id.as_str().to_owned()),
                 retired: detail.retired,
                 context: None,
+                next_step: None,
             })
             .collect();
 
@@ -598,22 +638,10 @@ impl From<OmhlError> for AppError {
     fn from(error: OmhlError) -> AppError {
         match error {
             OmhlError::Hexlog(error) => AppError::from(error),
-            OmhlError::Rule { code, pointer } => {
-                let code = code.as_str();
-                let (message, details) = match pointer.is_empty() {
-                    true => (code.to_owned(), Vec::new()),
-                    false => (
-                        format!("{code} at {pointer}"),
-                        vec![Detail::new(&pointer, code, code)],
-                    ),
-                };
-
-                AppError {
-                    code: code.to_owned(),
-                    message,
-                    details,
-                }
-            }
+            OmhlError::Rule { code, pointer } => match code.guidance() {
+                Some(guidance) => AppError::refusal(code.as_str(), &pointer, guidance),
+                None => AppError::unguided_rule(code.as_str(), &pointer),
+            },
         }
     }
 }

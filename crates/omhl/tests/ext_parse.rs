@@ -638,6 +638,7 @@ fn it_should_reject_a_text_only_extension_whose_event_is_outside_the_closed_list
             path: ".omhl/checks/lint.toml".to_owned(),
             code: "event-unsupported",
             message: "`event` is not one of before-commit, before-pr, before-merge".to_owned(),
+            next_step: None,
         }]
     );
     assert!(!found[0].message.contains("before-deploy"));

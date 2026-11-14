@@ -1,3 +1,4 @@
+use crate::guidance::Guidance;
 use crate::project::layout::{CHECKS_DIR, GUIDELINES_DIR};
 
 /// Tipo de extension; a ordem (`Check` antes de `Guideline`) é a ordem de listagem.
@@ -35,6 +36,7 @@ pub struct ExtensionIssue {
     pub path: String,
     pub code: &'static str,
     pub message: String,
+    pub next_step: Option<Guidance>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

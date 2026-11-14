@@ -205,6 +205,7 @@ fn plan_after_targets<'e>(
             path: extension.path.clone(),
             code,
             message,
+            next_step: None,
         };
         match resolve_target(target, context) {
             Target::Unknown => errors.push(issue(

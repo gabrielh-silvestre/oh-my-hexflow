@@ -1,7 +1,9 @@
 mod support;
 
 use hexlog::TypeName;
+use omhl::app::error::AppError;
 use omhl::error::{OmhlError, RuleCode};
+use serde_json::json;
 
 #[test]
 fn it_should_render_each_rule_code_as_its_contract_string() {
@@ -30,6 +32,7 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::AttestationIncomplete, "attestation-incomplete"),
         (RuleCode::ConfirmationRequired, "confirmation-required"),
         (RuleCode::ConfirmationInvalid, "confirmation-invalid"),
+        (RuleCode::KindMissing, "kind-missing"),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected
@@ -63,4 +66,65 @@ fn it_should_display_a_rule_error_with_its_code_and_its_pointer_when_there_is_on
             "gate-inconsistent".to_owned()
         )
     );
+}
+
+#[test]
+fn it_should_keep_the_json_of_a_legacy_refusal_unchanged() {
+    let error = OmhlError::rule(RuleCode::IdNamespace, "/items/0/body/id");
+
+    let rendered = AppError::from(error).to_json();
+
+    assert_eq!(
+        rendered,
+        json!({
+            "error": {
+                "code": "id-namespace",
+                "message": "id-namespace at /items/0/body/id",
+                "details": [{
+                    "path": "/items/0/body/id",
+                    "code": "id-namespace",
+                    "message": "id-namespace"
+                }]
+            }
+        })
+    );
+}
+
+#[test]
+fn it_should_expose_next_step_only_when_guidance_exists() {
+    let guided = OmhlError::rule(RuleCode::KindMissing, "/items/0/body/kind");
+    let legacy = OmhlError::rule(RuleCode::IdNamespace, "/items/0/body/id");
+
+    let guided = AppError::from(guided).to_json();
+    let legacy = AppError::from(legacy).to_json();
+
+    assert_eq!(
+        (
+            &guided["error"]["message"],
+            &guided["error"]["details"][0]["next_step"],
+            legacy["error"]["details"][0].get("next_step"),
+        ),
+        (
+            &json!("the guideline has no kind"),
+            &json!("set kind to negocio or arquitetura in the item data and append again"),
+            None,
+        )
+    );
+}
+
+#[test]
+fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
+    // Lista fechada: cada fatia que cria um código de regra o acrescenta aqui.
+    let new_codes = [RuleCode::KindMissing];
+
+    let incomplete: Vec<&str> = new_codes
+        .iter()
+        .filter(|code| {
+            code.guidance()
+                .is_none_or(|guidance| guidance.cause.is_empty() || guidance.next_step.is_empty())
+        })
+        .map(|code| code.as_str())
+        .collect();
+
+    assert_eq!(incomplete, Vec::<&str>::new());
 }

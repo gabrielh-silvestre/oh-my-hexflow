@@ -70,6 +70,7 @@ fn issue(path: String, code: &'static str) -> ExtensionIssue {
         path,
         code,
         message: message.to_owned(),
+        next_step: None,
     }
 }
 

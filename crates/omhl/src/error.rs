@@ -2,6 +2,8 @@ use std::fmt;
 
 use hexlog::HexlogError;
 
+use crate::guidance::Guidance;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OmhlError {
     Hexlog(HexlogError),
@@ -64,6 +66,7 @@ pub enum RuleCode {
     AttestationIncomplete,
     ConfirmationRequired,
     ConfirmationInvalid,
+    KindMissing,
 }
 
 impl RuleCode {
@@ -90,6 +93,17 @@ impl RuleCode {
             RuleCode::AttestationIncomplete => "attestation-incomplete",
             RuleCode::ConfirmationRequired => "confirmation-required",
             RuleCode::ConfirmationInvalid => "confirmation-invalid",
+            RuleCode::KindMissing => "kind-missing",
+        }
+    }
+
+    pub fn guidance(self) -> Option<Guidance> {
+        match self {
+            RuleCode::KindMissing => Some(Guidance {
+                cause: "the guideline has no kind",
+                next_step: "set kind to negocio or arquitetura in the item data and append again",
+            }),
+            _ => None,
         }
     }
 }

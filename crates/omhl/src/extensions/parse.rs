@@ -252,6 +252,7 @@ fn issue(path: &str, code: &'static str, message: String) -> ExtensionIssue {
         path: path.to_owned(),
         code,
         message,
+        next_step: None,
     }
 }
 
