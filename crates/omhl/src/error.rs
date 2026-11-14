@@ -67,6 +67,7 @@ pub enum RuleCode {
     ConfirmationRequired,
     ConfirmationInvalid,
     KindMissing,
+    KindInvalid,
     RestsOnArchitecture,
     RestsOnTargetType,
     GuidelineRetireByCommand,
@@ -97,6 +98,7 @@ impl RuleCode {
             RuleCode::ConfirmationRequired => "confirmation-required",
             RuleCode::ConfirmationInvalid => "confirmation-invalid",
             RuleCode::KindMissing => "kind-missing",
+            RuleCode::KindInvalid => "kind-invalid",
             RuleCode::RestsOnArchitecture => "rests-on-architecture",
             RuleCode::RestsOnTargetType => "rests-on-target-type",
             RuleCode::GuidelineRetireByCommand => "guideline-retire-by-command",
@@ -107,6 +109,10 @@ impl RuleCode {
         match self {
             RuleCode::KindMissing => Some(Guidance {
                 cause: "the guideline has no kind",
+                next_step: "set kind to negocio or arquitetura in the item data and append again",
+            }),
+            RuleCode::KindInvalid => Some(Guidance {
+                cause: "the guideline kind must be negocio or arquitetura",
                 next_step: "set kind to negocio or arquitetura in the item data and append again",
             }),
             RuleCode::RestsOnArchitecture => Some(Guidance {

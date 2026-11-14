@@ -400,6 +400,24 @@ fn it_should_refuse_a_guideline_without_kind_and_write_nothing() {
 }
 
 #[test]
+fn it_should_refuse_a_guideline_with_an_invalid_kind_and_write_nothing() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .guideline("tone", "kind = \"tecnico\"\ntext = \"Be brief\"\n");
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("extensions-invalid"));
+    assert_eq!(
+        detail_keys(&error),
+        vec![key(".omhl/guidelines/tone.toml", "kind-invalid")]
+    );
+    assert_eq!(fx.list("check"), json!([]));
+    assert_eq!(fx.list("guideline"), json!([]));
+}
+
+#[test]
 fn it_should_not_echo_file_content_in_the_error() {
     let fx = AppFixture::new();
     fx.ext().check(

@@ -16,7 +16,7 @@ const TEXT_MAX_CHARS: usize = 2_000;
 const EVENT_MAX_CHARS: usize = 100;
 const MATCHER_MAX_CHARS: usize = 200;
 const AFTER_MAX_ITEMS: usize = 16;
-const GUIDELINE_KINDS: [&str; 2] = ["negocio", "arquitetura"];
+pub(crate) const GUIDELINE_KINDS: [&str; 2] = ["negocio", "arquitetura"];
 const CONCERN_VARIANTS: [(&str, [&str; 2]); 3] = [
     ("style", ["format", "lint"]),
     ("test", ["suite", "coverage"]),

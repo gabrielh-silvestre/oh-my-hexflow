@@ -101,6 +101,7 @@ flowchart LR
   guard --> probe
   prgate --> gate
   prgate --> native
+  prgate --> extensions
   gate --> hxfacade
   graphs -.-> hxfacade
   native -.-> hxfacade

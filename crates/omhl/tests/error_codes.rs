@@ -36,6 +36,7 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::ConfirmationRequired, "confirmation-required"),
         (RuleCode::ConfirmationInvalid, "confirmation-invalid"),
         (RuleCode::KindMissing, "kind-missing"),
+        (RuleCode::KindInvalid, "kind-invalid"),
         (RuleCode::RestsOnArchitecture, "rests-on-architecture"),
         (RuleCode::RestsOnTargetType, "rests-on-target-type"),
         (
@@ -126,6 +127,7 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
     // Lista fechada: cada fatia que cria um código de regra o acrescenta aqui.
     let new_codes = [
         RuleCode::KindMissing,
+        RuleCode::KindInvalid,
         RuleCode::RestsOnArchitecture,
         RuleCode::RestsOnTargetType,
         RuleCode::GuidelineRetireByCommand,

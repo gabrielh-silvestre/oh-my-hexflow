@@ -1748,6 +1748,50 @@ fn it_should_refuse_a_guideline_without_kind_with_cause_and_next_step() {
     );
 }
 
+#[test]
+fn it_should_refuse_to_append_a_guideline_with_an_invalid_kind() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(
+        with_field(guideline_data(), "kind", json!("tecnico")),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+
+    assert_eq!(result, Err(rule(RuleCode::KindInvalid, KIND_POINTER)));
+}
+
+#[test]
+fn it_should_refuse_a_guideline_with_an_invalid_kind_with_cause_and_next_step() {
+    let raw = RawHarness::new();
+    let probe = FakeProbe::failing();
+    let mut app = open_app(&raw, &probe);
+    let data = with_field(guideline_data(), "kind", json!("tecnico"));
+
+    let error = app
+        .dispatch(
+            &Caller::loader(),
+            &append_wire("guidelines.small-prs", "guideline", &data),
+        )
+        .expect_err("the append is refused")
+        .to_json();
+
+    assert_eq!(error["error"]["code"], json!("kind-invalid"));
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| !message.is_empty())
+    );
+    assert!(
+        error["error"]["details"][0]["next_step"]
+            .as_str()
+            .is_some_and(|step| !step.is_empty())
+    );
+    assert!(!error.to_string().contains("tecnico"));
+}
+
 // R5
 
 #[test]

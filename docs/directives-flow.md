@@ -550,7 +550,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 Toda diretiva nova ou revisada traz `kind`: `negocio` ou `arquitetura`. Uma diretiva antiga, gravada sem `kind`, continua válida no banco.
 
 - O `omhl load` recusa o TOML sem `kind` (`kind-missing`) ou com outro valor (`kind-invalid`) e não grava nada.
-- O `omhl append` recusa a diretiva nova ou revisada sem `kind` (`kind-missing`, em `/items/<i>/body/data/kind`).
+- O `omhl append` recusa a diretiva nova ou revisada sem `kind` (`kind-missing`) ou com outro valor (`kind-invalid`), em `/items/<i>/body/data/kind`.
 - O contexto da sessão lista as diretivas na ordem `negocio`, `arquitetura` e sem `kind`, com uma linha `kind` em cada uma. Acima do teto de caracteres, o corte começa pelo fim da lista; as nativas nunca são cortadas.
 
 **Migração.** Quem tem um arquivo em `.omhl/guidelines/` sem `kind` vê o `omhl load` recusar com `kind-missing`. Acrescente `kind = "negocio"` ou `kind = "arquitetura"` ao arquivo e rode o `omhl load` de novo. O node que já estava no banco segue vigente enquanto isso.
@@ -562,7 +562,7 @@ Toda diretiva nova ou revisada traz `kind`: `negocio` ou `arquitetura`. Uma dire
 | De | Para | Resultado |
 |---|---|---|
 | `decision` ou `premise` | `guideline` ou `premise` | Aceita |
-| `guideline` | `guideline` de `kind` `negocio` ou sem `kind` | Aceita |
+| `guideline` (a nativa conta como sem `kind`) | `guideline` de `kind` `negocio` ou sem `kind` | Aceita |
 | `guideline` | `guideline` de `kind` `arquitetura` | Recusa com `rests-on-architecture` |
 | `guideline` | `premise` | Recusa com `rests-on-target-type` |
 
@@ -579,7 +579,7 @@ O `omhl gate-pr` e o `omhl close` fazem duas perguntas a mais sobre as decisões
 | `decisions-anchored` | Uma decisão do work item não tem nenhum `rests-on` vigente |
 | `anchors-confirmed` | Uma decisão tem `rests-on` para um destino que não está confirmado |
 
-Um destino está confirmado quando é uma premissa com `status` `confirmed` e `confirmed_by`, ou uma diretiva nativa, carregada pelo `omhl load` ou com `confirmed_by`. Só contam a relação e o destino vigentes: um destino retirado deixa a decisão sem âncora. Uma premissa `assumed` em que nenhuma decisão se apoia não reprova.
+Um destino está confirmado quando é uma premissa com `status` `confirmed` e `confirmed_by`, ou uma diretiva nativa, carregada pelo `omhl load` ou com `confirmed_by`. Só contam a relação e o destino vigentes: a decisão cujo único destino foi retirado fica sem âncora, e a que tem outro `rests-on` vigente segue ancorada. Uma premissa `assumed` em que nenhuma decisão se apoia não reprova.
 
 A pergunta que reprova traz o campo `next_step`, com o que fazer. O gate garante um passo de apoio, não a cadeia inteira até uma diretiva de negócio.
 
@@ -593,7 +593,7 @@ O comando retira uma diretiva cujo arquivo `.omhl/guidelines/<nome>.toml` não e
 
 Com `--by`, o comando grava no mesmo pedido a relação `supersedes`, da diretiva nova para a antiga, e a retirada.
 
-**Antes de retirar:** a retirada é definitiva e vale para todos os clones e branches, porque o banco é do usuário e é append-only. O comando confere só a árvore em que roda. Retire só depois de a remoção do arquivo estar mergeada; numa branch anterior à diretiva, faça rebase sobre a `main` em vez de retirar. Retirar uma diretiva em que decisões se apoiam é aceito, e essas decisões passam a reprovar `decisions-anchored` até ganharem outro apoio.
+**Antes de retirar:** a retirada é definitiva e vale para todos os clones e branches, porque o banco é do usuário e é append-only. O comando confere só a árvore em que roda. Retire só depois de a remoção do arquivo estar mergeada; numa branch anterior à diretiva, faça rebase sobre a `main` em vez de retirar. Retirar uma diretiva em que decisões se apoiam é aceito, e as decisões que só tinham esse apoio passam a reprovar `decisions-anchored` até ganharem outro.
 
 | Código | Quando |
 |---|---|

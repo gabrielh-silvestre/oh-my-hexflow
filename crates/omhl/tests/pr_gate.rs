@@ -7,7 +7,7 @@ use hexlog::{
 };
 use omhl::app::RUNNABLE_EVENTS;
 use omhl::error::{OmhlError, RuleCode};
-use omhl::facade::Omhl;
+use omhl::facade::{Omhl, OmhlDeps};
 use omhl::gate::{GateQuestion, GateReport, Question};
 use omhl::mechanical::spec_digest;
 use omhl::pr_gate::{
@@ -16,6 +16,7 @@ use omhl::pr_gate::{
 };
 use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::json;
+use support::legacy::seed_unconfirmed_guideline;
 use support::omhl::{
     OmhlHarness, PR_7, RUN_TESTS, acme, append_ok, attestation_id_for, attestation_item,
     check_data, decision_data, node_item, premise_data, pull_request_data, refusal, request,
@@ -28,6 +29,7 @@ use support::pr_gate::{
     native_check, outcomes, project_check, question, relation_item, relation_retirement_item,
     required_pairs, seed_contradicted_decision, sids, snapshots,
 };
+use support::raw::RawHarness;
 use support::{
     FakeProbe, author, executor_attestation_data, executor_author, loader_author, rty, sid, snap,
     tname,
@@ -1105,6 +1107,33 @@ fn it_should_pass_both_anchor_questions_for_a_decision_resting_on_a_guideline_wr
             (DECISIONS_ANCHORED.to_owned(), true),
             (ANCHORS_CONFIRMED.to_owned(), true),
         ]
+    );
+}
+
+#[test]
+fn it_should_fail_a_decision_resting_on_a_guideline_without_confirmation_written_by_another_client()
+{
+    let raw = RawHarness::new();
+    seed_unconfirmed_guideline(&raw, KEPT_GUIDELINE, "negocio");
+    let probe = FakeProbe::clean(snap('a'));
+    let deps = OmhlDeps {
+        clock: &raw.clock,
+        ids: &raw.ids,
+        probe: &probe,
+    };
+    let mut omhl = Omhl::open(&raw.config(), deps).expect("omhl opens");
+    seed_pull_request(&mut omhl);
+    seed_decision(&mut omhl);
+    append_ok(
+        &mut omhl,
+        vec![relation_item("rests-on", DECISION, KEPT_GUIDELINE)],
+    );
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert_eq!(
+        question(&report, ANCHORS_CONFIRMED).failing,
+        sids(&[DECISION])
     );
 }
 

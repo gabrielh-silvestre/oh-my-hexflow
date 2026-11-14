@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 
 use hexlog::{
-    AppendItem, AppendRequest, Author, Hexlog, ItemBody, Lineage, NodeView, RecordId, SemanticId,
-    Snapshot, TenantId,
+    AppendItem, AppendRequest, Author, Hexlog, ItemBody, Lineage, NativeNodes, NodeView, RecordId,
+    SemanticId, Snapshot, TenantId,
 };
 use serde_json::Value;
 
 use super::confirmation::check_confirmation;
 use super::rests_on::rests_on_allowed;
 use crate::error::{OmhlError, RuleCode};
+use crate::extensions::parse::GUIDELINE_KINDS;
 use crate::graphs::{WORK_ITEM_TYPES, namespace_of};
 use crate::mechanical::is_mechanical;
+use crate::native::NativeBase;
 use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
 /// Único client que grava node `check` com `run`; também fica isento da guarda da confirmação.
@@ -139,11 +141,21 @@ fn check_namespace(node: &NodeItem<'_>) -> Result<(), OmhlError> {
     }
 }
 
+/// Diretriz nativa vale como diretriz sem `kind`; check nativo segue para o motor.
+fn native_guideline_endpoint(id: &SemanticId) -> Option<Endpoint> {
+    let native = NativeBase.lookup(id)?;
+
+    (native.type_name.as_str() == "guideline").then(|| Endpoint {
+        type_name: "guideline".to_owned(),
+        kind: None,
+    })
+}
+
 fn check_guideline_kind(node: &NodeItem<'_>) -> Result<(), OmhlError> {
-    if node.has_field("kind") {
-        Ok(())
-    } else {
-        Err(node.error(RuleCode::KindMissing, "body/data/kind"))
+    match node.field("kind") {
+        Some(kind) if GUIDELINE_KINDS.contains(&kind) => Ok(()),
+        _ if node.has_field("kind") => Err(node.error(RuleCode::KindInvalid, "body/data/kind")),
+        _ => Err(node.error(RuleCode::KindMissing, "body/data/kind")),
     }
 }
 
@@ -279,9 +291,11 @@ impl Guard<'_, '_> {
         if let Some(node) = self.batch.get(id) {
             return Ok(Some(node.clone()));
         }
-        let current = self.hexlog.get(self.tenant, id)?;
+        let Some(view) = self.hexlog.get(self.tenant, id)? else {
+            return Ok(native_guideline_endpoint(id));
+        };
 
-        Ok(current.map(|view| Endpoint {
+        Ok(Some(Endpoint {
             type_name: view.type_name.as_str().to_owned(),
             kind: view
                 .data

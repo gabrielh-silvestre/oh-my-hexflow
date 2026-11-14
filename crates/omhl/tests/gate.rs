@@ -421,6 +421,24 @@ fn it_should_not_count_a_retired_target_as_an_anchor() {
 }
 
 #[test]
+fn it_should_fail_a_node_resting_on_a_target_outside_the_scope() {
+    let mut source = FakeSource::new()
+        .with_nodes(type_filter("decision"), node_views(&["d.one"]))
+        .with_nodes(type_filter("other"), vec![anchor_view("t.outside", true)])
+        .with_relations(
+            "rests-on",
+            vec![relation_view("rests-on", "d.one", "t.outside")],
+        );
+
+    let report = evaluate_one(&mut source, anchored(flagged_anchors()));
+
+    assert_eq!(
+        report,
+        expected_report(QuestionKind::Anchored, false, 1, &["d.one"])
+    );
+}
+
+#[test]
 fn it_should_hand_a_native_target_to_the_predicate_as_native() {
     let native_target = RelationView {
         to_origin: Origin::Native,

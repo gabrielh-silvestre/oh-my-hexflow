@@ -872,6 +872,20 @@ fn it_should_cut_architecture_guidelines_before_business_ones_over_the_budget() 
 }
 
 #[test]
+fn it_should_keep_native_nodes_intact_when_guidelines_with_kind_are_cut() {
+    let long_text = "g".repeat(1_500);
+    let guidelines = (1..=8)
+        .map(|n| kinded_guideline(&format!("guidelines.a{n}"), "arquitetura", &long_text))
+        .collect();
+
+    let rendered = rendered_guidelines(guidelines);
+
+    let shown = headers(&rendered.text);
+    assert!(rendered.omitted > 0);
+    assert!(NATIVE_IDS.iter().all(|id| shown.contains(id)));
+}
+
+#[test]
 fn it_should_render_the_native_base_in_under_4000_characters_with_the_marks() {
     let rendered = Fixture::default().rendered(BUDGET);
 

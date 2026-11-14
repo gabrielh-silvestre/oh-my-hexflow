@@ -211,6 +211,17 @@ fn it_should_accept_a_guideline_resting_on_a_native_guideline() {
 }
 
 #[test]
+fn it_should_accept_a_native_guideline_resting_on_a_business_guideline() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed(&mut omhl, vec![guideline(TARGET, "negocio")]);
+
+    let result = appended(&mut omhl, vec![rests_on(NATIVE_GUIDELINE, TARGET)]);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
 fn it_should_accept_a_guideline_resting_on_a_legacy_guideline_without_kind() {
     let raw = RawHarness::new();
     seed_legacy_guideline(&raw, TARGET);
@@ -294,6 +305,34 @@ fn it_should_refuse_a_guideline_resting_on_a_premise() {
     );
 
     let result = appended(&mut omhl, vec![rests_on(SOURCE, PREMISE)]);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::RestsOnTargetType, &to_pointer(0)))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_native_guideline_resting_on_an_architecture_guideline() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed(&mut omhl, vec![guideline(TARGET, "arquitetura")]);
+
+    let result = appended(&mut omhl, vec![rests_on(NATIVE_GUIDELINE, TARGET)]);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::RestsOnArchitecture, &to_pointer(0)))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_native_guideline_resting_on_a_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed(&mut omhl, vec![premise(PREMISE)]);
+
+    let result = appended(&mut omhl, vec![rests_on(NATIVE_GUIDELINE, PREMISE)]);
 
     assert_eq!(
         result,
