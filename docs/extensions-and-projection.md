@@ -32,8 +32,11 @@ matcher = "*.rs"         # opcional
 Guideline:
 
 ```toml
+kind = "arquitetura"      # obrigatório e fechado: negocio ou arquitetura
 text = "Write commit subjects in English, Conventional Commits, at most 80 characters."
 ```
+
+O `omhl load` recusa a guideline sem `kind` (`kind-missing`) ou com outro valor (`kind-invalid`) e não grava nada; o erro traz a causa e o próximo passo.
 
 O texto longo (`how` no check, `text` na guideline) fica na chave ou num `.md` de mesmo nome ao lado do `.toml`, nunca nos dois. A validação é estrita:
 - chave desconhecida, caractere de controle ou texto acima do limite é erro;

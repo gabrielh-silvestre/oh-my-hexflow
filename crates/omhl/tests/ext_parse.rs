@@ -255,24 +255,87 @@ fn it_should_reject_a_check_depending_on_itself() {
 
 #[test]
 fn it_should_parse_a_guideline() {
-    let extension = parsed(&raw_guideline("text = \"Be brief\"\n", None));
+    let extension = parsed(&raw_guideline(
+        "kind = \"negocio\"\ntext = \"Be brief\"\n",
+        None,
+    ));
 
     assert_eq!(extension.kind, ExtensionKind::Guideline);
     assert_eq!(extension.id, "guidelines.tone");
-    assert_eq!(extension.data, json!({"text": "Be brief"}));
+    assert_eq!(
+        extension.data,
+        json!({"text": "Be brief", "kind": "negocio"})
+    );
     assert!(extension.after.is_empty());
 }
 
 #[test]
 fn it_should_take_guideline_text_from_the_markdown() {
-    let extension = parsed(&raw_guideline("", Some("Long")));
+    let extension = parsed(&raw_guideline("kind = \"negocio\"\n", Some("Long")));
 
-    assert_eq!(extension.data, json!({"text": "Long"}));
+    assert_eq!(extension.data, json!({"text": "Long", "kind": "negocio"}));
+}
+
+#[test]
+fn it_should_parse_a_guideline_with_each_kind() {
+    let kinds: Vec<Value> = ["negocio", "arquitetura"]
+        .iter()
+        .map(|kind| {
+            let toml = format!("kind = \"{kind}\"\ntext = \"x\"\n");
+
+            parsed(&raw_guideline(&toml, None)).data["kind"].clone()
+        })
+        .collect();
+
+    assert_eq!(kinds, vec![json!("negocio"), json!("arquitetura")]);
+}
+
+#[test]
+fn it_should_reject_a_guideline_without_kind() {
+    let found = issues(&raw_guideline("text = \"x\"\n", None));
+
+    assert_eq!(
+        found.iter().map(|issue| issue.code).collect::<Vec<_>>(),
+        vec!["kind-missing"]
+    );
+    assert!(!found[0].message.is_empty());
+    assert!(
+        found[0]
+            .next_step
+            .is_some_and(|guidance| !guidance.next_step.is_empty())
+    );
+}
+
+#[test]
+fn it_should_reject_a_guideline_with_an_unknown_kind() {
+    let found = issues(&raw_guideline("kind = \"banana\"\ntext = \"x\"\n", None));
+
+    assert_eq!(
+        found.iter().map(|issue| issue.code).collect::<Vec<_>>(),
+        vec!["kind-invalid"]
+    );
+    assert!(!found[0].message.is_empty());
+    assert!(
+        found[0]
+            .next_step
+            .is_some_and(|guidance| !guidance.next_step.is_empty())
+    );
+}
+
+#[test]
+fn it_should_not_echo_the_unknown_kind_in_the_issue() {
+    let found = issues(&raw_guideline("kind = \"banana\"\ntext = \"x\"\n", None));
+
+    let echoed = found[0].message.contains("banana")
+        || found[0].next_step.is_some_and(|guidance| {
+            guidance.cause.contains("banana") || guidance.next_step.contains("banana")
+        });
+    assert!(!echoed);
 }
 
 #[test]
 fn it_should_reject_a_guideline_without_text() {
-    let found = codes(&raw_guideline("", None));
+    let found = codes(&raw_guideline("kind = \"negocio\"\n", None));
 
     assert_eq!(found, vec!["text-missing"]);
 }
@@ -280,7 +343,7 @@ fn it_should_reject_a_guideline_without_text() {
 #[test]
 fn it_should_reject_after_in_a_guideline() {
     let found = codes(&raw_guideline(
-        "text = \"x\"\nafter = [\"checks.a\"]\n",
+        "kind = \"negocio\"\ntext = \"x\"\nafter = [\"checks.a\"]\n",
         None,
     ));
 
@@ -289,7 +352,10 @@ fn it_should_reject_after_in_a_guideline() {
 
 #[test]
 fn it_should_reject_blocking_in_a_guideline() {
-    let found = codes(&raw_guideline("text = \"x\"\nblocking = true\n", None));
+    let found = codes(&raw_guideline(
+        "kind = \"negocio\"\ntext = \"x\"\nblocking = true\n",
+        None,
+    ));
 
     assert_eq!(found, vec!["invalid-toml"]);
 }
@@ -458,7 +524,7 @@ fn it_should_reject_text_over_the_schema_limits() {
             "x".repeat(201)
         ),
     );
-    let long_text = format!("text = \"{}\"\n", "x".repeat(2_001));
+    let long_text = format!("kind = \"negocio\"\ntext = \"{}\"\n", "x".repeat(2_001));
     let at_limit_how = check_toml(
         &format!("blocking = true\nhow = \"{}\"\n", "é".repeat(8_000)),
         CHECK_WHEN,
@@ -471,7 +537,7 @@ fn it_should_reject_text_over_the_schema_limits() {
             "é".repeat(200)
         ),
     );
-    let at_limit_text = format!("text = \"{}\"\n", "é".repeat(2_000));
+    let at_limit_text = format!("kind = \"negocio\"\ntext = \"{}\"\n", "é".repeat(2_000));
 
     let over = [
         issues(&raw_check(&long_how, None)),
@@ -506,7 +572,7 @@ fn it_should_reject_text_over_the_schema_limits() {
 #[test]
 fn it_should_derive_ids_from_kind_and_slug() {
     let check_raw = raw_check(&check_toml(CHECK_TOP, CHECK_WHEN), None);
-    let guideline_raw = raw_guideline("text = \"Be brief\"\n", None);
+    let guideline_raw = raw_guideline("kind = \"negocio\"\ntext = \"Be brief\"\n", None);
 
     let check = parsed(&check_raw);
     let guideline = parsed(&guideline_raw);
@@ -584,7 +650,7 @@ fn it_should_reject_invisible_format_characters() {
             CHECK_TOP,
             &format!("event = \"before-commit\"\nmatcher = \"a{escaped}b\"\n"),
         );
-        let text = format!("text = \"a{escaped}b\"\n");
+        let text = format!("kind = \"negocio\"\ntext = \"a{escaped}b\"\n");
         let outcomes = [
             ("how", issues(&raw_check(&how, None))),
             ("event", issues(&raw_check(&event, None))),

@@ -28,7 +28,7 @@ fn check_toml(how: &str, after: &[&str]) -> String {
 }
 
 fn guideline_toml(text: &str) -> String {
-    format!("text = \"{text}\"\n")
+    format!("kind = \"negocio\"\ntext = \"{text}\"\n")
 }
 
 fn check_data(how: &str) -> Value {
@@ -146,7 +146,7 @@ fn it_should_create_checks_and_guidelines() {
     assert_eq!(fx.get("checks.a")["data"], check_data("Run A"));
     assert_eq!(
         fx.get("guidelines.tone")["data"],
-        json!({"text": "Be brief"})
+        json!({"text": "Be brief", "kind": "negocio"})
     );
 }
 
@@ -364,6 +364,30 @@ fn it_should_refuse_invalid_extensions_and_write_nothing() {
         vec![key(".omhl/checks/x.toml", "invalid-toml")]
     );
     assert_eq!(fx.list("check"), json!([]));
+}
+
+#[test]
+fn it_should_refuse_a_guideline_without_kind_and_write_nothing() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .guideline("tone", "text = \"Be brief\"\n");
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("extensions-invalid"));
+    assert_eq!(
+        detail_keys(&error),
+        vec![key(".omhl/guidelines/tone.toml", "kind-missing")]
+    );
+    assert!(
+        error["error"]["details"][0]["next_step"]
+            .as_str()
+            .is_some_and(|step| !step.is_empty()),
+        "the detail has no next_step: {error}"
+    );
+    assert_eq!(fx.list("check"), json!([]));
+    assert_eq!(fx.list("guideline"), json!([]));
 }
 
 #[test]

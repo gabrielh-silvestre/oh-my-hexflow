@@ -681,7 +681,7 @@ fn confirmed_guideline(id: &str) -> Value {
     node(
         id,
         "guideline",
-        json!({ "text": "t", "confirmed_by": confirmed_by() }),
+        json!({ "text": "t", "kind": "negocio", "confirmed_by": confirmed_by() }),
     )
 }
 
@@ -800,7 +800,7 @@ fn it_should_accept_a_cited_directive_that_has_confirmed_by() {
 #[test]
 fn it_should_accept_a_cited_directive_loaded_from_an_extension() {
     let fixture = Fixture::new();
-    ExtTree::at(fixture.project.dir()).guideline("tone", "text = \"t\"\n");
+    ExtTree::at(fixture.project.dir()).guideline("tone", "kind = \"negocio\"\ntext = \"t\"\n");
     let loaded = fixture.run(&["load"]);
     fixture.write(
         "parte-01.md",

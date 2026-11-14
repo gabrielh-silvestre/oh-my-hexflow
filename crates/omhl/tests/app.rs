@@ -1221,6 +1221,7 @@ fn it_should_read_every_page_of_nodes_for_the_render_action() {
         .map(|(index, id)| {
             let data = json!({
                 "text": format!("rule {:02}", index + 1),
+                "kind": "negocio",
                 "confirmed_by": { "by": "person:tester", "question": "Adopt it?", "answer": "Yes." },
             });
 

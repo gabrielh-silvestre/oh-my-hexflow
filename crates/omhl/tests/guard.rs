@@ -1404,6 +1404,7 @@ fn it_should_refuse_a_spec_digest_in_an_attestation_of_a_text_check_authored_by_
 
 const CONFIRMED_BY_POINTER: &str = "/items/0/body/data/confirmed_by";
 const CONFIRMED_BY_BY_POINTER: &str = "/items/0/body/data/confirmed_by/by";
+const KIND_POINTER: &str = "/items/0/body/data/kind";
 const AMENDMENT_POINTER: &str = "/items/0/body/data/amendment";
 
 fn confirmation(by: &str) -> Value {
@@ -1427,7 +1428,7 @@ fn confirmed_premise_data() -> Value {
 }
 
 fn guideline_data() -> Value {
-    json!({ "text": "keep pull requests small" })
+    json!({ "text": "keep pull requests small", "kind": "negocio" })
 }
 
 fn stale_divergence_data() -> Value {
@@ -1682,6 +1683,69 @@ fn it_should_accept_a_guideline_without_a_confirmation_from_the_loader() {
     let result = appended(&mut omhl, loader_author(), vec![item]);
 
     assert_eq!(result, Ok(1));
+}
+
+// kind obrigatório na diretiva
+
+#[test]
+fn it_should_refuse_to_append_a_guideline_without_kind() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(
+        without_field(guideline_data(), "kind"),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+
+    assert_eq!(result, Err(rule(RuleCode::KindMissing, KIND_POINTER)));
+}
+
+#[test]
+fn it_should_refuse_to_revise_a_guideline_dropping_its_kind() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let seed = node_item("guidelines.small-prs", "guideline", guideline_data());
+    let base = append_as(&mut omhl, loader_author(), vec![seed]).expect("the guideline is seeded");
+    let revision = revision_item(
+        "guidelines.small-prs",
+        "guideline",
+        without_field(guideline_data(), "kind"),
+        &base.records[0].id,
+    );
+
+    let result = appended(&mut omhl, loader_author(), vec![revision]);
+
+    assert_eq!(result, Err(rule(RuleCode::KindMissing, KIND_POINTER)));
+}
+
+#[test]
+fn it_should_refuse_a_guideline_without_kind_with_cause_and_next_step() {
+    let raw = RawHarness::new();
+    let probe = FakeProbe::failing();
+    let mut app = open_app(&raw, &probe);
+    let data = without_field(guideline_data(), "kind");
+
+    let error = app
+        .dispatch(
+            &Caller::loader(),
+            &append_wire("guidelines.small-prs", "guideline", &data),
+        )
+        .expect_err("the append is refused")
+        .to_json();
+
+    assert_eq!(error["error"]["code"], json!("kind-missing"));
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| !message.is_empty())
+    );
+    assert!(
+        error["error"]["details"][0]["next_step"]
+            .as_str()
+            .is_some_and(|step| !step.is_empty())
+    );
 }
 
 // R5

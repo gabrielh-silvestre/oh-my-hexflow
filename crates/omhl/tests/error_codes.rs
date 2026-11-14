@@ -3,6 +3,8 @@ mod support;
 use hexlog::TypeName;
 use omhl::app::error::AppError;
 use omhl::error::{OmhlError, RuleCode};
+use omhl::extensions::model::{ExtensionKind, RawExtension};
+use omhl::extensions::parse::parse;
 use serde_json::json;
 
 #[test]
@@ -124,6 +126,41 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
                 .is_none_or(|guidance| guidance.cause.is_empty() || guidance.next_step.is_empty())
         })
         .map(|code| code.as_str())
+        .collect();
+
+    assert_eq!(incomplete, Vec::<&str>::new());
+}
+
+#[test]
+fn it_should_give_every_new_app_refusal_and_extension_issue_a_next_step() {
+    // Lista fechada: cada fatia que cria uma recusa do app ou um issue de extension a acrescenta aqui.
+    let tomls = [
+        ("kind-missing", "text = \"x\"\n"),
+        ("kind-invalid", "kind = \"x\"\ntext = \"x\"\n"),
+    ];
+
+    let incomplete: Vec<&str> = tomls
+        .iter()
+        .filter(|(code, toml)| {
+            let raw = RawExtension {
+                kind: ExtensionKind::Guideline,
+                slug: "tone".to_owned(),
+                toml_path: ".omhl/guidelines/tone.toml".to_owned(),
+                toml: (*toml).to_owned(),
+                markdown_path: None,
+                markdown: None,
+            };
+            let issues = parse(&raw).expect_err("the extension is refused");
+
+            !issues.iter().any(|issue| {
+                issue.code == *code
+                    && !issue.message.is_empty()
+                    && issue
+                        .next_step
+                        .is_some_and(|guidance| !guidance.next_step.is_empty())
+            })
+        })
+        .map(|(code, _)| *code)
         .collect();
 
     assert_eq!(incomplete, Vec::<&str>::new());

@@ -115,6 +115,14 @@ fn check_namespace(node: &NodeItem<'_>) -> Result<(), OmhlError> {
     }
 }
 
+fn check_guideline_kind(node: &NodeItem<'_>) -> Result<(), OmhlError> {
+    if node.has_field("kind") {
+        Ok(())
+    } else {
+        Err(node.error(RuleCode::KindMissing, "body/data/kind"))
+    }
+}
+
 impl Guard<'_, '_> {
     fn check_node(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         check_namespace(node)?;
@@ -128,7 +136,11 @@ impl Guard<'_, '_> {
                 self.check_reactivation(node)?;
                 self.check_human_confirmation(node)
             }
-            "guideline" => self.check_human_confirmation(node),
+            "guideline" => {
+                check_guideline_kind(node)?;
+                self.check_reactivation(node)?;
+                self.check_human_confirmation(node)
+            }
             "check" => {
                 self.check_reactivation(node)?;
                 self.check_run_author(node)
