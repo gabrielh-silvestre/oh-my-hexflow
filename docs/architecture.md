@@ -35,6 +35,7 @@ flowchart LR
       graphs["graphs"]
       native["native"]
       probe["probe"]
+      guidance["guidance"]
     end
 
     subgraph pipes["Pipelines"]
@@ -78,6 +79,10 @@ flowchart LR
   app --> native
   app --> guard
   app --> ports
+  app --> guidance
+  gate --> guidance
+  prgate --> guidance
+  extensions --> guidance
   app --> project
   app -.-> hxfacade
 
@@ -148,7 +153,7 @@ As decisões estruturais dos gates mecânicos, com o porquê de cada uma:
 
 - [0002](adr/0002-pasta-de-hooks-unica-por-usuario.md): a pasta de hooks do git é única por usuário (3.22, `ports/hooks`).
 - [0003](adr/0003-evento-do-check-fechado-em-tres-eventos-do-git.md): o evento do check é fechado em `before-commit`, `before-pr` e `before-merge` (3.17).
-- [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor` e `loader` são a fronteira da guarda (3.23, `guard`).
+- [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor`, `loader` e `guideline-retire` são a fronteira da guarda (3.23, `guard`).
 - [0005](adr/0005-saida-dos-checks-em-blobs-fora-do-banco.md): a saída dos checks fica em blobs fora do banco (3.21, `ports/blob`).
 
 ## 3. Caixas cinzas

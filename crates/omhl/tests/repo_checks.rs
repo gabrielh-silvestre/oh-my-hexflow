@@ -57,7 +57,7 @@ const DEVELOP_MARK_COMMAND: &str = "plugin/commands/omhl-develop-mark.md";
 const DIRECTIVES_FLOW_PAGE: &str = "docs/directives-flow.md";
 const DIRECTIVES_FLOW_SKILL: &str = "plugin/skills/directives-flow/SKILL.md";
 /// Códigos novos da entrega `work-items.dir0`, levantados de `git diff develop..HEAD -- crates/omhl/src`.
-const DIRECTIVES_FLOW_CODES: [&str; 39] = [
+const DIRECTIVES_FLOW_CODES: [&str; 49] = [
     // S3: `RuleCode` em `crates/omhl/src/error.rs`
     "confirmation-required",
     "confirmation-invalid",
@@ -106,6 +106,18 @@ const DIRECTIVES_FLOW_CODES: [&str; 39] = [
     "amendment-not-found",
     "amendment-divergence-not-open",
     "amendment-work-item-mismatch",
+    // E1: `kind` da diretiva e `rests-on`, em `crates/omhl/src/error.rs` e `extensions/parse.rs`
+    "kind-missing",
+    "kind-invalid",
+    "rests-on-architecture",
+    "rests-on-target-type",
+    "guideline-retire-by-command",
+    // E1: retirada de diretiva, em `crates/omhl/src/app/error.rs`
+    "guideline-not-found",
+    "guideline-not-orphaned",
+    "successor-not-current",
+    "successor-is-self",
+    "supersedes-cycle",
 ];
 /// Âncoras da skill, sempre entre crases no texto; origem: bloco S13 do plano e decisões (e), (i) e (j).
 const SKILL_ANCHORS: [&str; 20] = [

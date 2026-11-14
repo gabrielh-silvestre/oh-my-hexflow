@@ -542,3 +542,66 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - O `spec-invalid` e o `amendment-invalid` mostram até 20 detalhes por erro.
 - O `close` de um work item com retro depende de a pasta de spec ser legível e de o `workflow.toml` ser válido (seção 8).
 - A cadeira não tem o crítico automatizado: ninguém grava `supports` e `contradicts` sozinho.
+
+## 11. Diretivas: `kind`, âncora e retirada
+
+### O `kind` da diretiva
+
+Toda diretiva nova ou revisada traz `kind`: `negocio` ou `arquitetura`. Uma diretiva antiga, gravada sem `kind`, continua válida no banco.
+
+- O `omhl load` recusa o TOML sem `kind` (`kind-missing`) ou com outro valor (`kind-invalid`) e não grava nada.
+- O `omhl append` recusa a diretiva nova ou revisada sem `kind` (`kind-missing`, em `/items/<i>/body/data/kind`).
+- O contexto da sessão lista as diretivas na ordem `negocio`, `arquitetura` e sem `kind`, com uma linha `kind` em cada uma. Acima do teto de caracteres, o corte começa pelo fim da lista; as nativas nunca são cortadas.
+
+**Migração.** Quem tem um arquivo em `.omhl/guidelines/` sem `kind` vê o `omhl load` recusar com `kind-missing`. Acrescente `kind = "negocio"` ou `kind = "arquitetura"` ao arquivo e rode o `omhl load` de novo. O node que já estava no banco segue vigente enquanto isso.
+
+### A relação `rests-on`
+
+`rests-on` diz em que um node se apoia. A guarda aceita só estes pares, e confere o par quando a relação é gravada:
+
+| De | Para | Resultado |
+|---|---|---|
+| `decision` ou `premise` | `guideline` ou `premise` | Aceita |
+| `guideline` | `guideline` de `kind` `negocio` ou sem `kind` | Aceita |
+| `guideline` | `guideline` de `kind` `arquitetura` | Recusa com `rests-on-architecture` |
+| `guideline` | `premise` | Recusa com `rests-on-target-type` |
+
+A relação é acíclica. A guarda não revê a relação depois: mudar o `kind` de uma diretiva em que outra já se apoia não é recusado.
+
+`rests-on` e `supports` são relações distintas, em direções opostas. `supports` vai da diretiva ou premissa para a resposta que ela sustenta (seção 8) e não ancora nada. `rests-on` vai do node para o seu apoio, e é a única relação que o gate de âncora lê.
+
+### O gate de âncora
+
+O `omhl gate-pr` e o `omhl close` fazem duas perguntas a mais sobre as decisões do work item:
+
+| Pergunta | Reprova quando |
+|---|---|
+| `decisions-anchored` | Uma decisão do work item não tem nenhum `rests-on` vigente |
+| `anchors-confirmed` | Uma decisão tem `rests-on` para um destino que não está confirmado |
+
+Um destino está confirmado quando é uma premissa com `status` `confirmed` e `confirmed_by`, ou uma diretiva nativa, carregada pelo `omhl load` ou com `confirmed_by`. Só contam a relação e o destino vigentes: um destino retirado deixa a decisão sem âncora. Uma premissa `assumed` em que nenhuma decisão se apoia não reprova.
+
+A pergunta que reprova traz o campo `next_step`, com o que fazer. O gate garante um passo de apoio, não a cadeia inteira até uma diretiva de negócio.
+
+### `omhl guideline retire`
+
+```bash
+omhl guideline retire guidelines.<nome> [--by guidelines.<nova>]
+```
+
+O comando retira uma diretiva cujo arquivo `.omhl/guidelines/<nome>.toml` não existe mais na árvore de trabalho. Ela sai do contexto da sessão, e o `omhl load` seguinte não a recria. A saída é `{"retired": "<id>", "superseded_by": "<id>" ou null}`.
+
+Com `--by`, o comando grava no mesmo pedido a relação `supersedes`, da diretiva nova para a antiga, e a retirada.
+
+**Antes de retirar:** a retirada é definitiva e vale para todos os clones e branches, porque o banco é do usuário e é append-only. O comando confere só a árvore em que roda. Retire só depois de a remoção do arquivo estar mergeada; numa branch anterior à diretiva, faça rebase sobre a `main` em vez de retirar. Retirar uma diretiva em que decisões se apoiam é aceito, e essas decisões passam a reprovar `decisions-anchored` até ganharem outro apoio.
+
+| Código | Quando |
+|---|---|
+| `guideline-not-found` | O id não é uma diretiva vigente do repositório (inexistente, nativa ou de outro tipo) |
+| `guideline-not-orphaned` | O arquivo da diretiva ainda existe na árvore de trabalho |
+| `successor-not-current` | O id de `--by` não é uma diretiva vigente |
+| `successor-is-self` | O id de `--by` é a própria diretiva retirada |
+| `supersedes-cycle` | A sucessora já é superada pela diretiva retirada, direto ou por outras |
+| `guideline-retire-by-command` | A retirada de uma diretiva veio pelo `omhl append`; só o comando a grava |
+
+Cada recusa desta seção traz a causa em `message` e o próximo passo em `next_step`, sem repetir o valor de entrada.

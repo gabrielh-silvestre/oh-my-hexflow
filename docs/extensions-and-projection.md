@@ -52,6 +52,8 @@ O relatório lista `created`, `revised`, `unchanged`, `skipped` e `orphans`. Car
 
 **Arquivo apagado não aposenta o node.** O id passa a aparecer em `orphans`, e o node continua vigente e injetado na sessão até ser retirado de propósito (`omhl check retire <check-id>`, só para check cujo arquivo sumiu; é definitivo e vale para todos os clones e branches, então só depois de a remoção do arquivo estar mergeada). Um check órfão com `run` não é executado pelo `check run`, que avisa com `check-orphaned`. Assim, trocar de branch não perde nada.
 
+A diretiva órfã sai com `omhl guideline retire <guideline-id>`, com `--by <id-novo>` quando outra a substitui. Vale o mesmo cuidado: é definitivo para todos os clones e branches. Detalhes em [directives-flow.md](directives-flow.md), seção 11.
+
 O hook `SessionStart` nunca grava. Quando as extensions divergem do banco, ele acrescenta ao contexto uma linha `NOTE`, ou uma `WARNING` se houver extension inválida. A linha traz só códigos e contagens e pede `omhl load`. Com check órfão (arquivo apagado, node ainda vigente), ele acrescenta uma segunda linha `NOTE` com os ids dos checks órfãos: a nota manda fazer rebase sobre a `main` (ou restaurar o arquivo) se a branch é anterior ao check, e avisa que `check retire` é definitivo para todos os clones e branches; o `check run` só avisa (veja [mechanical-gates.md](mechanical-gates.md)).
 
 ## Projeção (banco para arquivo)
