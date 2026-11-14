@@ -6,7 +6,7 @@ mod rests_on;
 
 use hexlog::{SemanticId, Snapshot};
 
-pub(crate) use self::append::check_append;
+pub(crate) use self::append::{GUIDELINE_RETIRE_CLIENT, check_append};
 pub(crate) use self::attestation::probe_refusal;
 pub(crate) use self::filter::{check_question_filters, check_where_eq};
 use crate::error::{OmhlError, RuleCode};

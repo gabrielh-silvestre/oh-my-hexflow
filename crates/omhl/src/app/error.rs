@@ -370,6 +370,65 @@ impl AppError {
         )
     }
 
+    pub(crate) fn guideline_not_found(pointer: &str) -> AppError {
+        AppError::refusal(
+            "guideline-not-found",
+            pointer,
+            Guidance {
+                cause: "the id is not a current guideline stored in the repository",
+                next_step: "pass the id of a current guideline that is not native",
+            },
+        )
+    }
+
+    pub(crate) fn guideline_not_orphaned(pointer: &str) -> AppError {
+        AppError::refusal(
+            "guideline-not-orphaned",
+            pointer,
+            Guidance {
+                cause: "the guideline file still exists in the working tree",
+                next_step: "delete the guideline file, then run omhl guideline retire again",
+            },
+        )
+    }
+
+    pub(crate) fn successor_not_current(pointer: &str) -> AppError {
+        AppError::refusal(
+            "successor-not-current",
+            pointer,
+            Guidance {
+                cause: "the successor is not a current guideline",
+                next_step: "pass the id of a current guideline in --by, or retire without --by",
+            },
+        )
+    }
+
+    pub(crate) fn successor_is_self(pointer: &str) -> AppError {
+        AppError::refusal(
+            "successor-is-self",
+            pointer,
+            Guidance {
+                cause: "a guideline cannot be its own successor",
+                next_step: "pass a different guideline in --by, or retire without --by",
+            },
+        )
+    }
+
+    /// Troca a recusa `cycle` do motor pela do comando; as demais ficam como vieram.
+    pub(crate) fn into_supersedes_cycle(self, pointer: &str) -> AppError {
+        match self.details.first() {
+            Some(detail) if detail.code == "cycle" => AppError::refusal(
+                "supersedes-cycle",
+                pointer,
+                Guidance {
+                    cause: "the successor is already superseded by the retired guideline, directly or through others",
+                    next_step: "pass a different guideline in --by, or retire without --by",
+                },
+            ),
+            _ => self,
+        }
+    }
+
     /// Recusa da camada `app` com causa e próximo passo; o ponteiro é o único dado de entrada que aparece.
     pub(crate) fn refusal(code: &str, pointer: &str, guidance: Guidance) -> AppError {
         AppError {

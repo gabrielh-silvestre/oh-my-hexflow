@@ -116,16 +116,25 @@ fn total_records(fx: &AppFixture) -> u64 {
         .expect("verify counts the records")
 }
 
-fn retire(fx: &AppFixture, id: &str) {
+fn retirement_request(fx: &AppFixture, id: &str) -> Value {
     let base = fx.get(id)["record_id"].clone();
-    let request = json!({
+
+    json!({
         "items": [{
             "body": {"kind": "retirement", "lineage": {"kind": "node", "id": id}},
             "base": base,
         }]
-    });
+    })
+}
 
-    fx.append_as_user(request)
+fn retire(fx: &AppFixture, id: &str) {
+    fx.append_as_user(retirement_request(fx, id))
+        .expect("the retirement is accepted");
+}
+
+/// A guarda só deixa o client do comando retirar uma diretiva; o arquivo segue na árvore, então o comando recusaria.
+fn retire_guideline(fx: &AppFixture, id: &str) {
+    fx.append_as_guideline_retirer(retirement_request(fx, id))
         .expect("the retirement is accepted");
 }
 
@@ -282,7 +291,7 @@ fn it_should_skip_a_retired_guideline() {
     let fx = AppFixture::new();
     fx.ext().guideline("tone", &guideline_toml("Be brief"));
     loaded(&fx, false);
-    retire(&fx, "guidelines.tone");
+    retire_guideline(&fx, "guidelines.tone");
 
     let report = loaded(&fx, false);
 

@@ -80,16 +80,19 @@ fn configured_specs_name(config: &WorkflowConfig) -> Option<String> {
     }
 }
 
-/// O arquivo TOML que declara o check `id` ainda está na working tree, válido ou não.
-pub fn check_file_exists(root: &Path, id: &str) -> bool {
-    id.strip_prefix(ExtensionKind::Check.id_prefix())
-        .is_some_and(|slug| {
-            let file = Path::new(OMHL_DIR)
-                .join(ExtensionKind::Check.dir())
-                .join(format!("{slug}.toml"));
+/// O arquivo TOML que declara a extensão `id` ainda está na working tree, válido ou não.
+pub fn extension_file_exists(kind: ExtensionKind, root: &Path, id: &str) -> bool {
+    id.strip_prefix(kind.id_prefix()).is_some_and(|slug| {
+        let file = Path::new(OMHL_DIR)
+            .join(kind.dir())
+            .join(format!("{slug}.toml"));
 
-            fs::symlink_metadata(root.join(file)).is_ok()
-        })
+        fs::symlink_metadata(root.join(file)).is_ok()
+    })
+}
+
+pub fn check_file_exists(root: &Path, id: &str) -> bool {
+    extension_file_exists(ExtensionKind::Check, root, id)
 }
 
 fn is_native_id(id: &str) -> bool {

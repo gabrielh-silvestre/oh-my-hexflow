@@ -5,7 +5,8 @@ use omhl::app::error::AppError;
 use omhl::error::{OmhlError, RuleCode};
 use omhl::extensions::model::{ExtensionKind, RawExtension};
 use omhl::extensions::parse::parse;
-use serde_json::json;
+use serde_json::{Value, json};
+use support::appfx::AppFixture;
 
 #[test]
 fn it_should_render_each_rule_code_as_its_contract_string() {
@@ -37,6 +38,10 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::KindMissing, "kind-missing"),
         (RuleCode::RestsOnArchitecture, "rests-on-architecture"),
         (RuleCode::RestsOnTargetType, "rests-on-target-type"),
+        (
+            RuleCode::GuidelineRetireByCommand,
+            "guideline-retire-by-command",
+        ),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected
@@ -123,6 +128,7 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
         RuleCode::KindMissing,
         RuleCode::RestsOnArchitecture,
         RuleCode::RestsOnTargetType,
+        RuleCode::GuidelineRetireByCommand,
     ];
 
     let incomplete: Vec<&str> = new_codes
@@ -168,6 +174,30 @@ fn it_should_give_every_new_app_refusal_and_extension_issue_a_next_step() {
         })
         .map(|(code, _)| *code)
         .collect();
+    let retire_codes = [
+        "guideline-not-found",
+        "guideline-not-orphaned",
+        "successor-not-current",
+        "successor-is-self",
+        "supersedes-cycle",
+    ];
+    let refusals = AppFixture::new().guideline_retire_refusals();
+    let filled = |value: &Value| value.as_str().is_some_and(|text| !text.is_empty());
+    let retire_incomplete: Vec<&str> = retire_codes
+        .iter()
+        .zip(&refusals)
+        .filter(|(code, refusal)| {
+            let error = &refusal["error"];
 
-    assert_eq!(incomplete, Vec::<&str>::new());
+            !(error["code"] == **code
+                && filled(&error["message"])
+                && filled(&error["details"][0]["next_step"]))
+        })
+        .map(|(code, _)| *code)
+        .collect();
+
+    assert_eq!(
+        (incomplete, retire_incomplete),
+        (Vec::<&str>::new(), Vec::<&str>::new())
+    );
 }

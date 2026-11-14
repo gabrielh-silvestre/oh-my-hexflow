@@ -104,6 +104,7 @@ impl Engine<'_> {
             Action::Project => self.project(),
             Action::CheckRun { target, pre_push } => self.check_run(target, pre_push.as_deref()),
             Action::CheckRetire { check } => self.check_retire(check),
+            Action::GuidelineRetire { id, by } => self.guideline_retire(caller, id, by.as_deref()),
             Action::Byproduct {
                 check,
                 work_item,

@@ -69,6 +69,7 @@ pub enum RuleCode {
     KindMissing,
     RestsOnArchitecture,
     RestsOnTargetType,
+    GuidelineRetireByCommand,
 }
 
 impl RuleCode {
@@ -98,6 +99,7 @@ impl RuleCode {
             RuleCode::KindMissing => "kind-missing",
             RuleCode::RestsOnArchitecture => "rests-on-architecture",
             RuleCode::RestsOnTargetType => "rests-on-target-type",
+            RuleCode::GuidelineRetireByCommand => "guideline-retire-by-command",
         }
     }
 
@@ -114,6 +116,10 @@ impl RuleCode {
             RuleCode::RestsOnTargetType => Some(Guidance {
                 cause: "a guideline can only rest on another guideline",
                 next_step: "rest the guideline on a business guideline, or move the premise under a decision",
+            }),
+            RuleCode::GuidelineRetireByCommand => Some(Guidance {
+                cause: "a guideline can only be retired by the retire command",
+                next_step: "retire a guideline with omhl guideline retire",
             }),
             _ => None,
         }

@@ -16,6 +16,9 @@ use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 /// Único client que grava node `check` com `run`; também fica isento da guarda da confirmação.
 const LOADER_CLIENT: &str = "loader";
 
+/// Único client que retira um node `guideline`; só o `omhl guideline retire` o usa, depois das conferências do comando.
+pub(crate) const GUIDELINE_RETIRE_CLIENT: &str = "guideline-retire";
+
 /// Um item `Node` do lote, com o índice para montar o ponteiro dos erros.
 pub(super) struct NodeItem<'i> {
     index: usize,
@@ -289,11 +292,23 @@ impl Guard<'_, '_> {
     }
 
     fn check_retirement(&mut self, index: usize, id: &SemanticId) -> Result<(), OmhlError> {
-        if self.author.client != LOADER_CLIENT && self.current_check_has_run(id)? {
+        let Some(current) = self.hexlog.get(self.tenant, id)? else {
+            return Ok(());
+        };
+        let pointer = format!("/items/{index}/base");
+        if current.type_name.as_str() == "guideline"
+            && self.author.client != GUIDELINE_RETIRE_CLIENT
+        {
             return Err(OmhlError::rule(
-                RuleCode::CheckRunAuthor,
-                &format!("/items/{index}/base"),
+                RuleCode::GuidelineRetireByCommand,
+                &pointer,
             ));
+        }
+        if self.author.client != LOADER_CLIENT
+            && current.type_name.as_str() == "check"
+            && is_mechanical(&current.data)
+        {
+            return Err(OmhlError::rule(RuleCode::CheckRunAuthor, &pointer));
         }
 
         Ok(())
