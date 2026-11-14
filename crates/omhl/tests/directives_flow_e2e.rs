@@ -21,6 +21,7 @@ const BUSINESS_PREMISE: &str = "premises.login-rule";
 const DIVERGENCE: &str = "divergences.login-cmp-001";
 const GAP: &str = "gaps.session-storage";
 const GAP_ANSWER: &str = "premises.session-in-cookie";
+const DECISION: &str = "decisions.cookie-session";
 
 // Repositório git temporário; o `PATH` do filho tem só o `omhl` do teste e o `git`.
 // Sem `node` nem servidor MCP: é a prova do AC 15.
@@ -155,6 +156,21 @@ impl Flow {
         self.append(&[relation("answers", GAP_ANSWER, GAP)]);
     }
 
+    /// Decisão do work item sem `rests-on`.
+    fn record_a_decision(&self) {
+        let data = json!({
+            "text": "keep the session in a cookie",
+            "work_item": W1,
+            "evidence": [{ "source": "docs", "summary": "the docs recommend cookies" }],
+        });
+        self.append(&[node(DECISION, "decision", data)]);
+    }
+
+    /// Apoia a decisão na premissa de negócio confirmada.
+    fn rest_the_decision_on_the_business_premise(&self) {
+        self.append(&[relation("rests-on", DECISION, BUSINESS_PREMISE)]);
+    }
+
     fn open_a_divergence(&self) {
         self.append(&[node(DIVERGENCE, "divergence", divergence_data())]);
     }
@@ -274,6 +290,17 @@ fn error_code(output: &Output) -> Value {
 
 fn missing_atoms(output: &Output) -> Value {
     json_line(&output.stderr)["error"]["details"][0]["context"]["missing"].clone()
+}
+
+/// A pergunta do relatório do gate com o `label` dado.
+fn gate_question(gate: &Value, label: &str) -> Value {
+    gate["questions"]
+        .as_array()
+        .expect("the gate lists its questions")
+        .iter()
+        .find(|question| question["label"] == label)
+        .unwrap_or_else(|| panic!("the gate asks {label}: {gate}"))
+        .clone()
 }
 
 fn decision(output: &Output) -> Value {
@@ -449,6 +476,42 @@ fn it_should_pass_the_pull_request_gate_after_the_cycle() {
     let gate = flow.run_ok(&["gate-pr", W1]);
 
     assert_eq!(gate["passed"], json!(true));
+}
+
+#[test]
+fn it_should_fail_the_gate_for_an_unanchored_decision_and_pass_once_anchored() {
+    let flow = Flow::with_frozen_spec();
+    flow.attest_the_required_checks();
+    flow.record_a_decision();
+    let unanchored = flow.run_ok(&["gate-pr", W1]);
+
+    flow.rest_the_decision_on_the_business_premise();
+    let anchored = flow.run_ok(&["gate-pr", W1]);
+
+    assert_eq!(
+        (unanchored["passed"].clone(), anchored["passed"].clone()),
+        (json!(false), json!(true))
+    );
+}
+
+#[test]
+fn it_should_serialize_the_next_step_only_on_a_failing_question() {
+    let flow = Flow::with_frozen_spec();
+    flow.attest_the_required_checks();
+    flow.record_a_decision();
+
+    let gate = flow.run_ok(&["gate-pr", W1]);
+
+    let failing = gate_question(&gate, "decisions-anchored");
+    let passing = gate_question(&gate, "anchors-confirmed");
+    assert_eq!(
+        (failing["passed"].clone(), failing["next_step"].clone()),
+        (
+            json!(false),
+            json!("record a rests-on from the decision to a confirmed guideline or premise")
+        )
+    );
+    assert_eq!(passing.get("next_step"), None);
 }
 
 #[test]

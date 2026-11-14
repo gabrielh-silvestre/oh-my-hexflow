@@ -388,6 +388,8 @@ fn it_should_attest_both_required_checks_and_pass_the_gate_in_a_real_repo() {
             (RUN_TESTS, true),
             (CI_GREEN, true),
             ("no-open-contradiction", true),
+            ("decisions-anchored", true),
+            ("anchors-confirmed", true),
         ]
     );
     assert_eq!(

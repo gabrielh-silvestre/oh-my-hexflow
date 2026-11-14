@@ -1,14 +1,17 @@
 use std::iter::once;
 
 use hexlog::{
-    AppendItem, AppendRequest, Author, FieldName, ItemBody, ListFilter, NodeView, Scalar,
-    SemanticId, Snapshot, SnapshotKind, TenantId, TypeName,
+    AppendItem, AppendRequest, Author, FieldName, ItemBody, ListFilter, NodeView, RelationTypeName,
+    Scalar, SemanticId, Snapshot, SnapshotKind, TenantId, TypeName,
 };
 use serde_json::json;
 
-use crate::gate::{GateQuestion, GateReport, Question};
+use crate::extensions::plan::LOADER_CLIENT;
+use crate::gate::{GateQuestion, GateReport, Predicate, Question, TargetCheck, TargetFact};
+use crate::guidance::Guidance;
 use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
 use crate::native::NativeCheck;
+use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 
 pub const GATE_NAME: &str = "pull-request";
 pub const REQUIRED_EVENTS: [&str; 3] = RUNNABLE_EVENTS;
@@ -16,6 +19,9 @@ pub const REQUIRED_EVENTS: [&str; 3] = RUNNABLE_EVENTS;
 pub const NATIVE_SNAPSHOT: SnapshotKind = SnapshotKind::GitCommit;
 
 const NO_OPEN_CONTRADICTION_LABEL: &str = "no-open-contradiction";
+const DECISIONS_ANCHORED_LABEL: &str = "decisions-anchored";
+const ANCHORS_CONFIRMED_LABEL: &str = "anchors-confirmed";
+const RESTS_ON: &str = "rests-on";
 /// Prefixo da pergunta que cobra, de um check com `run`, a attestation selada com a definição vigente.
 const SPEC_DIGEST_LABEL: &str = "spec-digest-match";
 
@@ -96,14 +102,14 @@ pub fn pr_gate_questions(
             let sealed = digests
                 .iter()
                 .find(|(id, _)| id == check)
-                .map(|(_, digest)| GateQuestion {
-                    label: format!("{SPEC_DIGEST_LABEL}:{}", check.as_str()),
-                    question: occurred(check, work_item, snapshot, Some(digest)),
+                .map(|(_, digest)| {
+                    GateQuestion::new(
+                        format!("{SPEC_DIGEST_LABEL}:{}", check.as_str()),
+                        occurred(check, work_item, snapshot, Some(digest)),
+                    )
                 });
-            let plain = GateQuestion {
-                label: check.as_str().to_owned(),
-                question: occurred(check, work_item, snapshot, None),
-            };
+            let plain =
+                GateQuestion::new(check.as_str(), occurred(check, work_item, snapshot, None));
 
             once(plain).chain(sealed)
         })
@@ -147,7 +153,16 @@ fn attestation_filter(
 }
 
 fn contradiction_question(work_item: &SemanticId) -> GateQuestion {
-    let decisions = ListFilter {
+    GateQuestion::new(
+        NO_OPEN_CONTRADICTION_LABEL,
+        Question::NoOpenContradiction {
+            of: Some(decisions_filter(work_item)),
+        },
+    )
+}
+
+fn decisions_filter(work_item: &SemanticId) -> ListFilter {
+    ListFilter {
         type_name: Some(type_name("decision")),
         id_prefix: None,
         snapshot: None,
@@ -155,13 +170,55 @@ fn contradiction_question(work_item: &SemanticId) -> GateQuestion {
             "work_item",
             Scalar::Str(work_item.as_str().to_owned()),
         )],
+    }
+}
+
+/// Toda decisão do work item se apoia (`rests-on`) em algo, e esse algo está confirmado.
+pub fn anchor_questions(work_item: &SemanticId) -> Vec<GateQuestion> {
+    let anchored = |target| Question::Anchored {
+        select: decisions_filter(work_item),
+        by: RelationTypeName::parse(RESTS_ON)
+            .expect("the gate relation type names are valid constants"),
+        target,
+    };
+    let confirmed = TargetCheck {
+        scope: ["premise", "guideline"]
+            .map(|name| ListFilter {
+                type_name: Some(type_name(name)),
+                id_prefix: None,
+                snapshot: None,
+                where_eq: Vec::new(),
+            })
+            .to_vec(),
+        confirmed: Predicate(is_anchor_confirmed),
     };
 
-    GateQuestion {
-        label: NO_OPEN_CONTRADICTION_LABEL.to_owned(),
-        question: Question::NoOpenContradiction {
-            of: Some(decisions),
-        },
+    vec![
+        GateQuestion::new(DECISIONS_ANCHORED_LABEL, anchored(None)).with_next_step(Guidance {
+            cause: "a decision of the work item rests on nothing",
+            next_step: "record a rests-on from the decision to a confirmed guideline or premise",
+        }),
+        GateQuestion::new(ANCHORS_CONFIRMED_LABEL, anchored(Some(confirmed))).with_next_step(
+            Guidance {
+                cause: "a decision rests on a target that is not confirmed",
+                next_step: "ask the human to confirm the target (premise: set status confirmed with confirmed_by) or rest the decision on a confirmed one",
+            },
+        ),
+    ]
+}
+
+/// Delega à regra única de confirmação; um destino nativo é diretriz (o gate não lhe sabe o tipo).
+fn is_anchor_confirmed(target: &TargetFact<'_>) -> bool {
+    if target.native {
+        return is_confirmed_guideline(true, false, target.data);
+    }
+
+    match target.type_name {
+        Some("premise") => is_confirmed_premise(target.data),
+        Some("guideline") => {
+            is_confirmed_guideline(false, target.author_client == LOADER_CLIENT, target.data)
+        }
+        _ => false,
     }
 }
 

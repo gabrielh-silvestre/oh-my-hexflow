@@ -64,15 +64,15 @@ fn it_should_run_a_decision_flow_with_approved_and_no_pending_questions() {
         ],
     );
     let questions = vec![
-        GateQuestion {
-            label: "approved".to_owned(),
-            question: Question::Approved {
+        GateQuestion::new(
+            "approved",
+            Question::Approved {
                 of: of_type("decision"),
             },
-        },
-        GateQuestion {
-            label: "no-pending".to_owned(),
-            question: Question::NoPending {
+        ),
+        GateQuestion::new(
+            "no-pending",
+            Question::NoPending {
                 pending: ListFilter {
                     where_eq: vec![(
                         FieldName::parse("status").expect("valid field name"),
@@ -82,7 +82,7 @@ fn it_should_run_a_decision_flow_with_approved_and_no_pending_questions() {
                 },
                 resolved_by: rty("answers"),
             },
-        },
+        ),
     ];
 
     let report = omhl

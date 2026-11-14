@@ -8,26 +8,29 @@ use hexlog::{
 use omhl::app::RUNNABLE_EVENTS;
 use omhl::error::{OmhlError, RuleCode};
 use omhl::facade::Omhl;
-use omhl::gate::{GateQuestion, Question};
+use omhl::gate::{GateQuestion, GateReport, Question};
 use omhl::mechanical::spec_digest;
 use omhl::pr_gate::{
-    GATE_NAME, GateSnapshots, NATIVE_SNAPSHOT, REQUIRED_EVENTS, pr_gate_questions, required_checks,
+    GATE_NAME, GateSnapshots, NATIVE_SNAPSHOT, REQUIRED_EVENTS, anchor_questions,
+    pr_gate_questions, required_checks,
 };
 use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::json;
 use support::omhl::{
     OmhlHarness, PR_7, RUN_TESTS, acme, append_ok, attestation_id_for, attestation_item,
-    check_data, node_item, pull_request_data, refusal, request, retirement_item, revision_item,
-    seed_pull_request, with_snapshot, work_item_data,
+    check_data, decision_data, node_item, premise_data, pull_request_data, refusal, request,
+    retirement_item, revision_item, seed_pull_request, with_snapshot, work_item_data,
 };
 use support::pr_gate::{
-    CI_GREEN, DECISION, FEATURE_1, NO_OPEN_CONTRADICTION, PREMISE, attest, attest_required, close,
-    closed_data, data_of, default_natives, expected_outcomes, gate_of, head_seq,
-    mechanical_project_check, native_check, outcomes, project_check, question,
-    relation_retirement_item, required_pairs, seed_contradicted_decision, sids, snapshots,
+    ANCHOR, ANCHORS_CONFIRMED, CI_GREEN, DECISION, DECISIONS_ANCHORED, FEATURE_1,
+    NO_OPEN_CONTRADICTION, PREMISE, anchor_decision, attest, attest_required, close, closed_data,
+    data_of, default_natives, expected_outcomes, gate_of, head_seq, mechanical_project_check,
+    native_check, outcomes, project_check, question, relation_item, relation_retirement_item,
+    required_pairs, seed_contradicted_decision, sids, snapshots,
 };
 use support::{
-    FakeProbe, author, executor_attestation_data, executor_author, loader_author, sid, snap, tname,
+    FakeProbe, author, executor_attestation_data, executor_author, loader_author, rty, sid, snap,
+    tname,
 };
 
 /// Hash do conteúdo vazio, o `byproduct` das attestations escritas à mão.
@@ -62,9 +65,9 @@ fn flow_probe() -> FakeProbe {
 }
 
 fn occurred_question(check: &str, snapshot: &Snapshot) -> GateQuestion {
-    GateQuestion {
-        label: check.to_owned(),
-        question: Question::Occurred {
+    GateQuestion::new(
+        check,
+        Question::Occurred {
             select: ListFilter {
                 type_name: Some(tname("attestation")),
                 id_prefix: None,
@@ -77,13 +80,13 @@ fn occurred_question(check: &str, snapshot: &Snapshot) -> GateQuestion {
             },
             min: 1,
         },
-    }
+    )
 }
 
 fn no_open_contradiction_question() -> GateQuestion {
-    GateQuestion {
-        label: NO_OPEN_CONTRADICTION.to_owned(),
-        question: Question::NoOpenContradiction {
+    GateQuestion::new(
+        NO_OPEN_CONTRADICTION,
+        Question::NoOpenContradiction {
             of: Some(ListFilter {
                 type_name: Some(tname("decision")),
                 id_prefix: None,
@@ -91,7 +94,7 @@ fn no_open_contradiction_question() -> GateQuestion {
                 where_eq: vec![(field("work_item"), Scalar::Str(PR_7.to_owned()))],
             }),
         },
-    }
+    )
 }
 
 fn append_as(omhl: &mut Omhl<'_>, author: Author, items: Vec<AppendItem>) -> AppendOutcome {
@@ -253,7 +256,7 @@ fn it_should_not_require_a_retired_project_check() {
 
     let after_retirement = gate_of(&mut omhl, &at_head()).questions.len();
 
-    assert_eq!((while_active, after_retirement), (4, 3));
+    assert_eq!((while_active, after_retirement), (6, 5));
 }
 
 #[test]
@@ -274,6 +277,8 @@ fn it_should_pass_when_every_required_check_has_an_ok_attestation_at_the_snapsho
             (RUN_TESTS.to_owned(), true),
             (CI_GREEN.to_owned(), true),
             (NO_OPEN_CONTRADICTION.to_owned(), true),
+            (DECISIONS_ANCHORED.to_owned(), true),
+            (ANCHORS_CONFIRMED.to_owned(), true),
         ]
     );
 }
@@ -306,6 +311,8 @@ fn it_should_fail_when_the_attestation_belongs_to_another_snapshot() {
             (RUN_TESTS.to_owned(), false),
             (CI_GREEN.to_owned(), false),
             (NO_OPEN_CONTRADICTION.to_owned(), true),
+            (DECISIONS_ANCHORED.to_owned(), true),
+            (ANCHORS_CONFIRMED.to_owned(), true),
         ]
     );
 }
@@ -340,6 +347,8 @@ fn it_should_fail_while_a_decision_of_the_work_item_is_contradicted() {
             (RUN_TESTS.to_owned(), true),
             (CI_GREEN.to_owned(), true),
             (NO_OPEN_CONTRADICTION.to_owned(), false),
+            (DECISIONS_ANCHORED.to_owned(), true),
+            (ANCHORS_CONFIRMED.to_owned(), true),
         ]
     );
     assert_eq!(
@@ -577,9 +586,9 @@ fn it_should_refuse_an_evaluation_with_more_than_eight_where_eq_pairs() {
     let nine_pairs = (0..9)
         .map(|i| (field(&format!("f{i}")), Scalar::Int(i)))
         .collect();
-    let questions = vec![GateQuestion {
-        label: "too-many-pairs".to_owned(),
-        question: Question::Occurred {
+    let questions = vec![GateQuestion::new(
+        "too-many-pairs",
+        Question::Occurred {
             select: ListFilter {
                 type_name: None,
                 id_prefix: None,
@@ -588,7 +597,7 @@ fn it_should_refuse_an_evaluation_with_more_than_eight_where_eq_pairs() {
             },
             min: 1,
         },
-    }];
+    )];
 
     let result = omhl.evaluate(&acme(), "custom-gate", &questions);
 
@@ -792,6 +801,8 @@ fn it_should_close_a_work_item_with_the_per_check_snapshots() {
             ("checks.fmt", true),
             ("spec-digest-match:checks.fmt", true),
             (NO_OPEN_CONTRADICTION, true),
+            (DECISIONS_ANCHORED, true),
+            (ANCHORS_CONFIRMED, true),
         ])
     );
 }
@@ -882,4 +893,313 @@ fn it_should_keep_requiring_run_tests_when_the_only_mechanical_before_commit_che
         required,
         required_pairs(&[(RUN_TESTS, GitCommit), (CI_GREEN, GitCommit)])
     );
+}
+
+// Perguntas de âncora
+
+const UNANCHORED_NEXT_STEP: &str =
+    "record a rests-on from the decision to a confirmed guideline or premise";
+const UNCONFIRMED_NEXT_STEP: &str = "ask the human to confirm the target (premise: set status confirmed with confirmed_by) or rest the decision on a confirmed one";
+const KEPT_GUIDELINE: &str = "guidelines.keep-it-simple";
+const NATIVE_GUIDELINE: &str = "guidelines.commit-policy";
+
+fn seed_decision(omhl: &mut Omhl<'_>) {
+    append_ok(
+        omhl,
+        vec![node_item(
+            DECISION,
+            "decision",
+            decision_data("Use SQLite", Some(PR_7)),
+        )],
+    );
+}
+
+/// Premissa `confirmed` sem `confirmed_by` (o formato legado, que só o `loader` grava) e a decisão apoiada nela.
+fn seed_decision_on_a_legacy_premise(omhl: &mut Omhl<'_>) {
+    seed_decision(omhl);
+    let legacy = json!({ "text": "Users pay monthly", "status": "confirmed" });
+    append_as(
+        omhl,
+        loader_author(),
+        vec![node_item(ANCHOR, "premise", legacy)],
+    );
+    append_ok(omhl, vec![relation_item("rests-on", DECISION, ANCHOR)]);
+}
+
+/// `(label, passed)` das duas últimas perguntas do relatório, as de âncora.
+fn anchor_labels(report: &GateReport) -> Vec<(String, bool)> {
+    let all = outcomes(report);
+
+    all[all.len() - 2..].to_vec()
+}
+
+#[test]
+fn it_should_build_the_decisions_anchored_question_without_a_target_check_and_the_anchors_confirmed_one_with_it()
+ {
+    let shape: Vec<(String, bool)> = anchor_questions(&sid(PR_7))
+        .into_iter()
+        .map(|entry| {
+            let Question::Anchored { target, .. } = entry.question else {
+                panic!("the anchor questions are anchored questions");
+            };
+
+            (entry.label, target.is_some())
+        })
+        .collect();
+
+    assert_eq!(
+        shape,
+        vec![
+            (DECISIONS_ANCHORED.to_owned(), false),
+            (ANCHORS_CONFIRMED.to_owned(), true),
+        ]
+    );
+}
+
+#[test]
+fn it_should_select_the_decisions_of_the_work_item_resting_on_rests_on_in_both_anchor_questions() {
+    let decisions = ListFilter {
+        type_name: Some(tname("decision")),
+        id_prefix: None,
+        snapshot: None,
+        where_eq: vec![(field("work_item"), Scalar::Str(PR_7.to_owned()))],
+    };
+
+    let questions = anchor_questions(&sid(PR_7));
+
+    let selections: Vec<_> = questions
+        .into_iter()
+        .map(|entry| match entry.question {
+            Question::Anchored { select, by, .. } => (select, by),
+            other => panic!("the anchor questions are anchored questions, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        selections,
+        vec![
+            (decisions.clone(), rty("rests-on")),
+            (decisions, rty("rests-on"))
+        ]
+    );
+}
+
+#[test]
+fn it_should_append_the_anchor_questions_after_the_required_checks() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    let labels: Vec<String> = outcomes(&report)
+        .into_iter()
+        .map(|(label, _)| label)
+        .collect();
+    assert_eq!(
+        labels,
+        vec![
+            RUN_TESTS.to_owned(),
+            CI_GREEN.to_owned(),
+            NO_OPEN_CONTRADICTION.to_owned(),
+            DECISIONS_ANCHORED.to_owned(),
+            ANCHORS_CONFIRMED.to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn it_should_not_fail_for_a_loose_assumed_premise() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    attest_required(&mut omhl, &snap('a'));
+    append_ok(
+        &mut omhl,
+        vec![node_item(
+            PREMISE,
+            "premise",
+            premise_data("SQLite is fast", Some(PR_7)),
+        )],
+    );
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert!(report.passed);
+}
+
+#[test]
+fn it_should_treat_a_legacy_confirmed_premise_without_confirmed_by_as_unconfirmed() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_decision_on_a_legacy_premise(&mut omhl);
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert_eq!(
+        question(&report, ANCHORS_CONFIRMED).failing,
+        sids(&[DECISION])
+    );
+}
+
+#[test]
+fn it_should_leave_a_decision_without_rests_on_to_the_decisions_anchored_question_only() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_decision(&mut omhl);
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert_eq!(
+        anchor_labels(&report),
+        vec![
+            (DECISIONS_ANCHORED.to_owned(), false),
+            (ANCHORS_CONFIRMED.to_owned(), true),
+        ]
+    );
+}
+
+#[test]
+fn it_should_pass_both_anchor_questions_for_a_decision_resting_on_a_confirmed_premise() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_decision(&mut omhl);
+    anchor_decision(&mut omhl);
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert_eq!(
+        anchor_labels(&report),
+        vec![
+            (DECISIONS_ANCHORED.to_owned(), true),
+            (ANCHORS_CONFIRMED.to_owned(), true),
+        ]
+    );
+}
+
+#[test]
+fn it_should_pass_both_anchor_questions_for_a_decision_resting_on_a_guideline_written_by_the_loader()
+ {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_decision(&mut omhl);
+    let guideline = json!({ "text": "keep it simple", "kind": "negocio" });
+    append_as(
+        &mut omhl,
+        loader_author(),
+        vec![node_item(KEPT_GUIDELINE, "guideline", guideline)],
+    );
+    append_ok(
+        &mut omhl,
+        vec![relation_item("rests-on", DECISION, KEPT_GUIDELINE)],
+    );
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert_eq!(
+        anchor_labels(&report),
+        vec![
+            (DECISIONS_ANCHORED.to_owned(), true),
+            (ANCHORS_CONFIRMED.to_owned(), true),
+        ]
+    );
+}
+
+#[test]
+fn it_should_pass_both_anchor_questions_for_a_decision_resting_on_a_native_guideline() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_decision(&mut omhl);
+    append_ok(
+        &mut omhl,
+        vec![relation_item("rests-on", DECISION, NATIVE_GUIDELINE)],
+    );
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert_eq!(
+        anchor_labels(&report),
+        vec![
+            (DECISIONS_ANCHORED.to_owned(), true),
+            (ANCHORS_CONFIRMED.to_owned(), true),
+        ]
+    );
+}
+
+#[test]
+fn it_should_fail_again_when_the_rests_on_of_a_decision_is_retired() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_decision(&mut omhl);
+    let rests_on = anchor_decision(&mut omhl);
+    append_ok(
+        &mut omhl,
+        vec![relation_retirement_item(
+            "rests-on", DECISION, ANCHOR, &rests_on,
+        )],
+    );
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert_eq!(
+        anchor_labels(&report),
+        vec![
+            (DECISIONS_ANCHORED.to_owned(), false),
+            (ANCHORS_CONFIRMED.to_owned(), true),
+        ]
+    );
+}
+
+#[test]
+fn it_should_fail_an_unanchored_decision_with_cause_and_next_step() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_decision(&mut omhl);
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    let unanchored = question(&report, DECISIONS_ANCHORED);
+    assert_eq!(
+        (unanchored.failing.clone(), unanchored.next_step.clone()),
+        (sids(&[DECISION]), Some(UNANCHORED_NEXT_STEP.to_owned()))
+    );
+}
+
+#[test]
+fn it_should_fail_an_unconfirmed_anchor_with_cause_and_next_step() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_decision_on_a_legacy_premise(&mut omhl);
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    let unconfirmed = question(&report, ANCHORS_CONFIRMED);
+    assert_eq!(
+        (unconfirmed.failing.clone(), unconfirmed.next_step.clone()),
+        (sids(&[DECISION]), Some(UNCONFIRMED_NEXT_STEP.to_owned()))
+    );
+}
+
+#[test]
+fn it_should_not_attach_a_next_step_to_a_passing_question() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    attest_required(&mut omhl, &snap('a'));
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    let next_steps: Vec<Option<String>> = report
+        .questions
+        .iter()
+        .map(|entry| entry.next_step.clone())
+        .collect();
+    assert_eq!(next_steps, vec![None; 5]);
 }

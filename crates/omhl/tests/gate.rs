@@ -1,13 +1,16 @@
 mod support;
 
 use ::omhl::error::{OmhlError, RuleCode};
-use ::omhl::gate::{EVIDENCE_CAP, GateReport, Question, QuestionKind, read_consistent};
-use hexlog::{EndpointStatus, FieldName, ListFilter, RelationView, Scalar};
+use ::omhl::gate::{
+    EVIDENCE_CAP, GateReport, Predicate, Question, QuestionKind, TargetCheck, TargetFact,
+    read_consistent,
+};
+use hexlog::{EndpointStatus, FieldName, ListFilter, NodeView, Origin, RelationView, Scalar};
 use serde_json::json;
 use support::gate::{
     FakeSource, all_filter, append_acme, chain_head, evaluate_on_hexlog, evaluate_one,
-    expected_report, node_item, node_views, open_acme, relation_item, relation_view,
-    retirement_item, snapshot_node_item, type_filter,
+    expected_report, node_item, node_view_with, node_views, open_acme, relation_item,
+    relation_view, retirement_item, snapshot_node_item, type_filter,
 };
 use support::raw::RawHarness;
 use support::{EmptyNative, rty, snap, tenant, tname};
@@ -285,6 +288,157 @@ fn it_should_default_no_open_contradiction_to_all_current_nodes() {
     assert_eq!(
         report,
         expected_report(QuestionKind::NoOpenContradiction, false, 3, &["a.three"])
+    );
+}
+
+// Anchored
+
+/// Predicado de teste: o alvo está confirmado quando o `data` traz `flagged: true`.
+fn is_flagged(fact: &TargetFact<'_>) -> bool {
+    fact.data["flagged"] == true
+}
+
+fn is_native(fact: &TargetFact<'_>) -> bool {
+    fact.native
+}
+
+fn anchored(target: Option<TargetCheck>) -> Question {
+    Question::Anchored {
+        select: type_filter("decision"),
+        by: rty("rests-on"),
+        target,
+    }
+}
+
+fn flagged_anchors() -> Option<TargetCheck> {
+    Some(TargetCheck {
+        scope: vec![type_filter("anchor")],
+        confirmed: Predicate(is_flagged),
+    })
+}
+
+fn anchor_view(id: &str, flagged: bool) -> NodeView {
+    node_view_with(id, json!({ "flagged": flagged }))
+}
+
+#[test]
+fn it_should_fail_an_unanchored_node() {
+    let mut source = FakeSource::new()
+        .with_nodes(type_filter("decision"), node_views(&["d.one", "d.two"]))
+        .with_relations(
+            "rests-on",
+            vec![relation_view("rests-on", "d.one", "t.one")],
+        );
+
+    let report = evaluate_one(&mut source, anchored(None));
+
+    assert_eq!(
+        report,
+        expected_report(QuestionKind::Anchored, false, 2, &["d.two"])
+    );
+}
+
+#[test]
+fn it_should_fail_a_node_resting_on_an_unconfirmed_target() {
+    let mut source = FakeSource::new()
+        .with_nodes(
+            type_filter("decision"),
+            node_views(&["d.one", "d.two", "d.three"]),
+        )
+        .with_nodes(
+            type_filter("anchor"),
+            vec![anchor_view("t.good", true), anchor_view("t.bad", false)],
+        )
+        .with_relations(
+            "rests-on",
+            vec![
+                relation_view("rests-on", "d.one", "t.good"),
+                relation_view("rests-on", "d.two", "t.bad"),
+            ],
+        );
+
+    let report = evaluate_one(&mut source, anchored(flagged_anchors()));
+
+    assert_eq!(
+        report,
+        expected_report(QuestionKind::Anchored, false, 3, &["d.two"])
+    );
+}
+
+#[test]
+fn it_should_pass_when_nothing_matches() {
+    let mut source = FakeSource::new().with_nodes(type_filter("decision"), Vec::new());
+
+    let report = evaluate_one(&mut source, anchored(None));
+
+    assert_eq!(
+        report,
+        expected_report(QuestionKind::Anchored, true, 0, &[])
+    );
+}
+
+#[test]
+fn it_should_apply_the_predicate_to_every_current_target() {
+    let mut source = FakeSource::new()
+        .with_nodes(type_filter("decision"), node_views(&["d.one", "d.two"]))
+        .with_nodes(
+            type_filter("anchor"),
+            vec![anchor_view("t.good", true), anchor_view("t.bad", false)],
+        )
+        .with_relations(
+            "rests-on",
+            vec![
+                relation_view("rests-on", "d.one", "t.good"),
+                relation_view("rests-on", "d.one", "t.bad"),
+                relation_view("rests-on", "d.two", "t.good"),
+            ],
+        );
+
+    let report = evaluate_one(&mut source, anchored(flagged_anchors()));
+
+    assert_eq!(
+        report,
+        expected_report(QuestionKind::Anchored, false, 2, &["d.one"])
+    );
+}
+
+#[test]
+fn it_should_not_count_a_retired_target_as_an_anchor() {
+    let retired_target = RelationView {
+        to_status: EndpointStatus::Retired,
+        ..relation_view("rests-on", "d.one", "t.one")
+    };
+    let mut source = FakeSource::new()
+        .with_nodes(type_filter("decision"), node_views(&["d.one"]))
+        .with_relations("rests-on", vec![retired_target]);
+
+    let report = evaluate_one(&mut source, anchored(None));
+
+    assert_eq!(
+        report,
+        expected_report(QuestionKind::Anchored, false, 1, &["d.one"])
+    );
+}
+
+#[test]
+fn it_should_hand_a_native_target_to_the_predicate_as_native() {
+    let native_target = RelationView {
+        to_origin: Origin::Native,
+        ..relation_view("rests-on", "d.one", "t.native")
+    };
+    let mut source = FakeSource::new()
+        .with_nodes(type_filter("decision"), node_views(&["d.one"]))
+        .with_relations("rests-on", vec![native_target]);
+    let target = Some(TargetCheck {
+        scope: vec![type_filter("anchor")],
+        confirmed: Predicate(is_native),
+    });
+
+    let report = evaluate_one(&mut source, anchored(target));
+
+    assert_eq!(
+        report,
+        expected_report(QuestionKind::Anchored, true, 1, &[])
     );
 }
 

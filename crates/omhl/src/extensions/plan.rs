@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::model::{Extension, ExtensionIssue};
 
-const LOADER_CLIENT: &str = "loader";
+pub(crate) const LOADER_CLIENT: &str = "loader";
 const CHECK_TYPE: &str = "check";
 
 #[derive(Clone, Debug, PartialEq)]

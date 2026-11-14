@@ -10,8 +10,8 @@ use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::plan::CheckNode;
 use crate::native::NativeBase;
 use crate::pr_gate::{
-    GATE_NAME, GateSnapshots, closing_request, pr_gate_questions, project_checks_filter,
-    required_checks, spec_digests,
+    GATE_NAME, GateSnapshots, anchor_questions, closing_request, pr_gate_questions,
+    project_checks_filter, required_checks, spec_digests,
 };
 use crate::probe::{SnapshotProbe, TreeSource};
 use crate::projection::ProjectionState;
@@ -225,7 +225,8 @@ impl<'d> Omhl<'d> {
             let checks = source.nodes(tenant, &project_checks_filter())?;
             let required = required_checks(NATIVE.checks(), &checks);
             let digests = spec_digests(&checks);
-            let questions = pr_gate_questions(&required, work_item, snapshots, &digests);
+            let mut questions = pr_gate_questions(&required, work_item, snapshots, &digests);
+            questions.extend(anchor_questions(work_item));
 
             gate::evaluate(source, tenant, &questions)
         })?;
