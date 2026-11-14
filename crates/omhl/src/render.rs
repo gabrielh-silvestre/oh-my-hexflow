@@ -106,8 +106,19 @@ fn push_guidelines(text: &mut String, cuts: &mut Vec<usize>, input: &RenderInput
         push_line(text, "text", guideline.text);
     }
     let cut_at = text.len();
-    let nodes = visible_sorted(input.guidelines);
+    let mut nodes = visible_sorted(input.guidelines);
+    // Estável: dentro de cada grupo a ordem por id se mantém.
+    nodes.sort_by_key(|node| kind_rank(&node.data));
     push_tenant_nodes(text, cuts, cut_at, &nodes, push_guideline);
+}
+
+/// Negócio antes de arquitetura, as sem `kind` (legadas) por último: o corte do orçamento vem do fim.
+fn kind_rank(data: &Value) -> u8 {
+    match data["kind"].as_str() {
+        Some("negocio") => 0,
+        Some("arquitetura") => 1,
+        _ => 2,
+    }
 }
 
 /// A section with no native nodes: it only exists while it has a tenant node.
@@ -239,6 +250,9 @@ fn push_guideline(text: &mut String, node: &NodeView) {
     let confirmed = is_confirmed_guideline(false, node.author.client == "loader", &node.data);
     begin_block(text, node.id.as_str());
     push_line(text, "confirmed", if confirmed { "true" } else { "false" });
+    if let Some(kind) = node.data["kind"].as_str() {
+        push_line(text, "kind", kind);
+    }
     push_line(text, "text", str_of(&node.data["text"]));
 }
 

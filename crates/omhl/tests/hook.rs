@@ -881,6 +881,7 @@ fn it_should_mark_a_directive_with_confirmed_by_as_confirmed() {
         [
             "### guidelines.brief",
             "- confirmed: true",
+            "- kind: negocio",
             "- text: be brief"
         ]
     );
