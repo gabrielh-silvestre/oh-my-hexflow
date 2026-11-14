@@ -51,18 +51,11 @@ fn it_should_wire_the_session_start_hook_in_exec_form_and_the_spec_lock_hook_in_
 }
 
 #[test]
-fn it_should_wire_the_mcp_server() {
-    let servers = plugin_file(".mcp.json");
+fn it_should_not_start_the_mcp_server() {
+    let mcp_json = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugin/.mcp.json");
 
-    assert_eq!(
-        servers,
-        json!({
-            "mcpServers": {
-                "omhl": {
-                    "command": "omhl",
-                    "args": ["mcp"],
-                }
-            }
-        })
-    );
+    let manifest = plugin_file(".claude-plugin/plugin.json");
+
+    assert!(!mcp_json.exists());
+    assert!(manifest.get("mcpServers").is_none());
 }
