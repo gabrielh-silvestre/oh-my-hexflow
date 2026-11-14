@@ -91,10 +91,6 @@ pub fn extension_file_exists(kind: ExtensionKind, root: &Path, id: &str) -> bool
     })
 }
 
-pub fn check_file_exists(root: &Path, id: &str) -> bool {
-    extension_file_exists(ExtensionKind::Check, root, id)
-}
-
 fn is_native_id(id: &str) -> bool {
     let native = NativeBase;
     native.checks().iter().any(|check| check.id == id)

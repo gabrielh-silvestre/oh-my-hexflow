@@ -8,7 +8,6 @@ use serde_json::json;
 
 use crate::extensions::plan::LOADER_CLIENT;
 use crate::gate::{GateQuestion, GateReport, Predicate, Question, TargetCheck, TargetFact};
-use crate::guidance::Guidance;
 use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
 use crate::native::NativeCheck;
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
@@ -194,16 +193,18 @@ pub fn anchor_questions(work_item: &SemanticId) -> Vec<GateQuestion> {
     };
 
     vec![
-        GateQuestion::new(DECISIONS_ANCHORED_LABEL, anchored(None)).with_next_step(Guidance {
-            cause: "a decision of the work item rests on nothing",
-            next_step: "record a rests-on from the decision to a confirmed guideline or premise",
-        }),
-        GateQuestion::new(ANCHORS_CONFIRMED_LABEL, anchored(Some(confirmed))).with_next_step(
-            Guidance {
-                cause: "a decision rests on a target that is not confirmed",
-                next_step: "ask the human to confirm the target (premise: set status confirmed with confirmed_by) or rest the decision on a confirmed one",
-            },
-        ),
+        GateQuestion {
+            next_step: Some(
+                "record a rests-on from the decision to a confirmed guideline or premise",
+            ),
+            ..GateQuestion::new(DECISIONS_ANCHORED_LABEL, anchored(None))
+        },
+        GateQuestion {
+            next_step: Some(
+                "ask the human to confirm the target (premise: set status confirmed with confirmed_by) or rest the decision on a confirmed one",
+            ),
+            ..GateQuestion::new(ANCHORS_CONFIRMED_LABEL, anchored(Some(confirmed)))
+        },
     ]
 }
 

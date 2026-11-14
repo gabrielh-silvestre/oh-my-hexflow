@@ -10,7 +10,6 @@ use serde_json::Value;
 
 pub use self::source::HexlogSource;
 use crate::error::{OmhlError, RuleCode};
-use crate::guidance::Guidance;
 
 pub const SUPPORTS: &str = "supports";
 pub const CONTRADICTS: &str = "contradicts";
@@ -72,7 +71,7 @@ pub struct GateQuestion {
     pub label: String,
     pub question: Question,
     /// Só aparece no relatório quando a pergunta reprova.
-    pub next_step: Option<Guidance>,
+    pub next_step: Option<&'static str>,
 }
 
 impl GateQuestion {
@@ -81,13 +80,6 @@ impl GateQuestion {
             label: label.into(),
             question,
             next_step: None,
-        }
-    }
-
-    pub fn with_next_step(self, next_step: Guidance) -> GateQuestion {
-        GateQuestion {
-            next_step: Some(next_step),
-            ..self
         }
     }
 }
@@ -200,10 +192,8 @@ fn evaluate_question<S: GateSource>(
     Ok(with_next_step(report, entry.next_step))
 }
 
-fn with_next_step(report: QuestionReport, guidance: Option<Guidance>) -> QuestionReport {
-    let next_step = guidance
-        .filter(|_| !report.passed)
-        .map(|guidance| guidance.next_step.to_owned());
+fn with_next_step(report: QuestionReport, next_step: Option<&'static str>) -> QuestionReport {
+    let next_step = next_step.filter(|_| !report.passed).map(str::to_owned);
 
     QuestionReport {
         next_step,

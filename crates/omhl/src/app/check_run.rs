@@ -16,7 +16,7 @@ use super::retry::with_retry;
 use super::work_item::{WorkItemRoute, head_branch, resolve_work_item};
 use crate::byproduct::{self, ByproductHash};
 use crate::error::{OmhlError, RuleCode};
-use crate::extensions::collect::{check_file_exists, collect};
+use crate::extensions::collect::{collect, extension_file_exists};
 use crate::extensions::model::ExtensionKind;
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
 use crate::mechanical::evaluate::{Observation, evaluate_with_reason};
@@ -125,9 +125,9 @@ impl Engine<'_> {
         let runner = self.runner.ok_or_else(AppError::runner_unavailable)?;
         let (event, planned) = self.plan_target(target)?;
         let checks_planned = planned.len();
-        let (planned, orphans): (Vec<_>, Vec<_>) = planned
-            .into_iter()
-            .partition(|check| check_file_exists(&root, check.id.as_str()));
+        let (planned, orphans): (Vec<_>, Vec<_>) = planned.into_iter().partition(|check| {
+            extension_file_exists(ExtensionKind::Check, &root, check.id.as_str())
+        });
         let facts = self
             .probe
             .head_facts()

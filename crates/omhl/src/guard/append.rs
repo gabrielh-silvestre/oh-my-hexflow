@@ -284,7 +284,7 @@ impl Guard<'_, '_> {
             .map(|node| (node.type_name.as_str(), node.kind.as_deref()));
 
         rests_on_allowed(&source.type_name, target)
-            .map_err(|refusal| OmhlError::rule(refusal.code(), &format!("/items/{index}/body/to")))
+            .map_err(|code| OmhlError::rule(code, &format!("/items/{index}/body/to")))
     }
 
     fn endpoint_of(&mut self, id: &SemanticId) -> Result<Option<Endpoint>, OmhlError> {
