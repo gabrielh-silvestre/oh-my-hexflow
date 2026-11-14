@@ -22,6 +22,9 @@ const DIVERGENCE: &str = "divergences.login-cmp-001";
 const GAP: &str = "gaps.session-storage";
 const GAP_ANSWER: &str = "premises.session-in-cookie";
 const DECISION: &str = "decisions.cookie-session";
+const BUSINESS_GUIDELINE: &str = "guidelines.pay-upfront";
+const ARCHITECTURE_GUIDELINE: &str = "guidelines.hexagonal";
+const NEW_BUSINESS_GUIDELINE: &str = "guidelines.pay-monthly";
 
 // Repositório git temporário; o `PATH` do filho tem só o `omhl` do teste e o `git`.
 // Sem `node` nem servidor MCP: é a prova do AC 15.
@@ -169,6 +172,56 @@ impl Flow {
     /// Apoia a decisão na premissa de negócio confirmada.
     fn rest_the_decision_on_the_business_premise(&self) {
         self.append(&[relation("rests-on", DECISION, BUSINESS_PREMISE)]);
+    }
+
+    fn write_guideline(&self, slug: &str, kind: &str) {
+        let dir = self.repo.join(".omhl/guidelines");
+        fs::create_dir_all(&dir).expect("the guidelines folder is created");
+        let toml = format!("kind = \"{kind}\"\ntext = \"rule {slug}\"\n");
+        fs::write(dir.join(format!("{slug}.toml")), toml).expect("the guideline is written");
+    }
+
+    /// O gate do PR exige a árvore limpa.
+    fn commit_everything(&self) {
+        for args in [&["add", "-A"][..], &["commit", "-m", "add guidelines"]] {
+            let output = git_in(&self.repo, args);
+            assert!(output.status.success(), "git {args:?} failed");
+        }
+    }
+
+    fn rest_on(&self, from: &str, to: &str) {
+        self.append(&[relation("rests-on", from, to)]);
+    }
+
+    /// Diretrizes de negócio e de arquitetura carregadas, a segunda apoiada na primeira.
+    fn with_guideline_chain() -> Flow {
+        let flow = Flow::with_frozen_spec();
+        flow.write_guideline("pay-upfront", "negocio");
+        flow.write_guideline("hexagonal", "arquitetura");
+        flow.run_ok(&["load"]);
+        flow.commit_everything();
+        flow.attest_the_required_checks();
+        flow.rest_on(ARCHITECTURE_GUIDELINE, BUSINESS_GUIDELINE);
+
+        flow
+    }
+
+    /// Carrega a nova diretriz de negócio e apaga o arquivo da antiga, que fica órfã.
+    fn orphan_the_business_guideline(&self) {
+        self.write_guideline("pay-monthly", "negocio");
+        self.run_ok(&["load"]);
+        fs::remove_file(self.repo.join(".omhl/guidelines/pay-upfront.toml"))
+            .expect("the guideline file is removed");
+    }
+
+    fn retire_the_business_guideline(&self) -> Value {
+        self.run_ok(&[
+            "guideline",
+            "retire",
+            BUSINESS_GUIDELINE,
+            "--by",
+            NEW_BUSINESS_GUIDELINE,
+        ])
     }
 
     fn open_a_divergence(&self) {
@@ -512,6 +565,77 @@ fn it_should_serialize_the_next_step_only_on_a_failing_question() {
         )
     );
     assert_eq!(passing.get("next_step"), None);
+}
+
+#[test]
+fn it_should_fail_the_unanchored_decision_with_a_next_step_when_guidelines_exist() {
+    let flow = Flow::with_guideline_chain();
+    flow.record_a_decision();
+
+    let gate = flow.run_ok(&["gate-pr", W1]);
+
+    let question = gate_question(&gate, "decisions-anchored");
+    assert_eq!(question["passed"], json!(false));
+    assert!(
+        question["next_step"]
+            .as_str()
+            .is_some_and(|step| !step.is_empty()),
+        "question: {question}"
+    );
+}
+
+#[test]
+fn it_should_pass_the_anchor_questions_once_the_decision_rests_on_the_architecture_guideline() {
+    let flow = Flow::with_guideline_chain();
+    flow.record_a_decision();
+    flow.rest_on(DECISION, ARCHITECTURE_GUIDELINE);
+
+    let gate = flow.run_ok(&["gate-pr", W1]);
+
+    assert_eq!(
+        (
+            gate_question(&gate, "decisions-anchored")["passed"].clone(),
+            gate_question(&gate, "anchors-confirmed")["passed"].clone()
+        ),
+        (json!(true), json!(true))
+    );
+}
+
+#[test]
+fn it_should_report_the_retired_guideline_and_its_successor() {
+    let flow = Flow::with_guideline_chain();
+    flow.orphan_the_business_guideline();
+
+    let report = flow.retire_the_business_guideline();
+
+    assert_eq!(
+        report,
+        json!({ "retired": BUSINESS_GUIDELINE, "superseded_by": NEW_BUSINESS_GUIDELINE })
+    );
+}
+
+#[test]
+fn it_should_drop_the_retired_guideline_from_the_session_context() {
+    let flow = Flow::with_guideline_chain();
+    flow.orphan_the_business_guideline();
+    flow.retire_the_business_guideline();
+
+    let context = flow.run_ok(&["render"]);
+
+    let text = context["text"].as_str().expect("the render has a text");
+    assert!(!text.contains(BUSINESS_GUIDELINE), "context: {text}");
+    assert!(text.contains(NEW_BUSINESS_GUIDELINE), "context: {text}");
+}
+
+#[test]
+fn it_should_keep_the_hash_chain_valid_after_retiring_a_guideline() {
+    let flow = Flow::with_guideline_chain();
+    flow.orphan_the_business_guideline();
+    flow.retire_the_business_guideline();
+
+    let verified = flow.run_ok(&["verify"]);
+
+    assert_eq!(verified["ok"], json!(true));
 }
 
 #[test]
