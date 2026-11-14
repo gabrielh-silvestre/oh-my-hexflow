@@ -3,11 +3,13 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::io::{self, ErrorKind};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const SAMPLE_SUFFIX: &str = ".sample";
+#[cfg(unix)]
 const SCRIPT_MODE: u32 = 0o755;
 
 /// O que a instalação pede ao git e ao sistema de arquivos; os erros do git saem com o stderr aparado.
@@ -120,6 +122,7 @@ impl HookInstaller for GitHooks {
         for (name, content) in scripts {
             let path = dir.join(name);
             fs::write(&path, content)?;
+            #[cfg(unix)]
             fs::set_permissions(&path, fs::Permissions::from_mode(SCRIPT_MODE))?;
         }
 

@@ -1,6 +1,7 @@
 use std::fmt::Write as _;
 use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::{self, Write as _};
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
@@ -32,9 +33,11 @@ impl ByproductStore for BlobStore {
         let hash = sha256_hash(bytes)?;
         let dir = self.blob_dir(&hash);
         // Modo 0700 em `blobs/` e `blobs/<xx>`: a saída pode ter segredos (R8).
-        DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
+        let mut builder = DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        builder.mode(0o700);
+        builder
             .create(&dir)
             .map_err(|error| io_error(&error))?;
         let target = dir.join(hash.as_str());
@@ -51,12 +54,11 @@ impl ByproductStore for BlobStore {
                 hash.as_str(),
                 std::process::id()
             ));
-            let mut file = match OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .mode(0o600)
-                .open(&temp)
-            {
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            options.mode(0o600);
+            let mut file = match options.open(&temp) {
                 Ok(file) => file,
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
                 Err(error) => return Err(io_error(&error)),

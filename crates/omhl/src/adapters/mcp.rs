@@ -174,6 +174,13 @@ impl Server<'_> {
         let name = params["name"]
             .as_str()
             .ok_or_else(|| RpcError::new(INVALID_PARAMS, "missing tool name"))?;
+        if let Some(outcome) = self.host_tool(name, &arguments) {
+            let mut result = tool_result(outcome);
+            if era == Era::Modern {
+                result["resultType"] = json!("complete");
+            }
+            return Ok(result);
+        }
         let outcome = parse_tool_call(name, arguments);
         if outcome
             .as_ref()
@@ -188,6 +195,91 @@ impl Server<'_> {
         }
 
         Ok(result)
+    }
+
+    /// Port Cowork (protótipo): no Cowork o shell do agente roda na nuvem, então o que a skill fazia
+    /// pela CLI e pelo git passa por estas duas tools, que rodam no host. `None` = não é tool de host.
+    fn host_tool(&self, name: &str, arguments: &Value) -> Option<Result<Value, AppError>> {
+        match name {
+            "cli" => Some(self.host_cli(arguments)),
+            "git" => Some(self.host_git(arguments)),
+            _ => None,
+        }
+    }
+
+    fn host_cli(&self, arguments: &Value) -> Result<Value, AppError> {
+        let args: Vec<String> = arguments["args"]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let allowed = matches!(
+            args.first().map(String::as_str),
+            Some("spec" | "load" | "check" | "gate-worktree" | "gate-pr" | "report" | "close" | "verify")
+        );
+        if !allowed {
+            return Err(AppError::host_tool(
+                "cli-refused",
+                "cli runs only spec, load, check, gate-worktree, gate-pr, report, close or verify; record nodes with the append tool",
+            ));
+        }
+        let exe = std::env::current_exe()
+            .map_err(|e| AppError::host_tool("cli-failed", &format!("current_exe: {e}")))?;
+        let mut command = std::process::Command::new(exe);
+        command.arg("--project-dir").arg(self.start);
+        if let Some(db) = self.db {
+            command.arg("--db").arg(db);
+        }
+        command
+            .args(&args)
+            .current_dir(self.start)
+            .env("CLAUDECODE", "1")
+            .stdin(std::process::Stdio::null());
+        host_output(command)
+    }
+
+    fn host_git(&self, arguments: &Value) -> Result<Value, AppError> {
+        let op = arguments["op"].as_str().unwrap_or("");
+        let text = |key: &str| arguments[key].as_str().unwrap_or("").to_owned();
+        let steps: Vec<Vec<String>> = match op {
+            "status" => vec![vec!["status".into(), "--porcelain=v1".into(), "-b".into()]],
+            "log" => vec![vec!["log".into(), "--oneline".into(), "-n".into(), "20".into()]],
+            "diff" => vec![vec!["diff".into(), "--stat".into(), "HEAD".into()]],
+            "branch_create" if !text("name").is_empty() => {
+                vec![vec!["switch".into(), "-c".into(), text("name")]]
+            }
+            "switch" if !text("name").is_empty() => vec![vec!["switch".into(), text("name")]],
+            "commit" if !text("message").is_empty() => vec![
+                vec!["add".into(), "-A".into()],
+                vec!["commit".into(), "-m".into(), text("message")],
+            ],
+            _ => {
+                return Err(AppError::host_tool(
+                    "git-refused",
+                    "op must be status, log, diff, branch_create (name), switch (name) or commit (message)",
+                ));
+            }
+        };
+        let mut results = Vec::new();
+        for step in steps {
+            let mut command = std::process::Command::new("git");
+            command
+                .arg("-C")
+                .arg(self.start)
+                .args(&step)
+                .stdin(std::process::Stdio::null());
+            let output = host_output(command)?;
+            let failed = output["exit_code"] != json!(0);
+            results.push(json!({ "args": step, "result": output }));
+            if failed {
+                break;
+            }
+        }
+        Ok(json!({ "op": op, "steps": results }))
     }
 
     /// O projeto é redescoberto a cada chamada: o marcador pode nascer depois do início da sessão.
@@ -246,6 +338,40 @@ fn initialize(params: &Value) -> Value {
     })
 }
 
+fn host_output(mut command: std::process::Command) -> Result<Value, AppError> {
+    let output = command
+        .output()
+        .map_err(|e| AppError::host_tool("host-spawn-failed", &e.to_string()))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let parsed = serde_json::from_str::<Value>(stdout.trim()).unwrap_or(Value::String(stdout));
+    Ok(json!({
+        "exit_code": output.status.code(),
+        "stdout": parsed,
+        "stderr": String::from_utf8_lossy(&output.stderr),
+    }))
+}
+
+fn host_tools() -> Vec<Value> {
+    vec![
+        tool(
+            "cli",
+            "Run an omhl CLI subcommand on the host, in the project of this server: spec init/validate, load, check run, gate-worktree, gate-pr, report, close, verify. Pass the words after `omhl` in args, e.g. [\"spec\",\"validate\",\"work-items.42\"] or [\"check\",\"run\",\"--event\",\"before-pr\"]. Never append through it: use the append tool.",
+            &json!({ "args": { "type": "array", "items": { "type": "string" }, "description": "Subcommand and arguments, without `omhl`." } }),
+            &["args"],
+        ),
+        tool(
+            "git",
+            "Run git on the host (Git for Windows) in the project repository: status, log, diff, branch_create (name), switch (name), commit (message; stages everything with add -A first). No push.",
+            &json!({
+                "op": { "type": "string", "enum": ["status", "log", "diff", "branch_create", "switch", "commit"] },
+                "name": { "type": "string", "description": "Branch name for branch_create and switch." },
+                "message": { "type": "string", "description": "Commit message for commit." },
+            }),
+            &["op"],
+        ),
+    ]
+}
+
 /// O texto e o `structuredContent` levam o mesmo JSON, de sucesso ou de erro.
 fn tool_result(outcome: Result<Value, AppError>) -> Value {
     let (payload, failed) = match outcome {
@@ -279,6 +405,7 @@ fn tools() -> Value {
     all.extend(write_tools());
     all.extend(plain_tools());
     all.extend(extension_tools());
+    all.extend(host_tools());
 
     Value::Array(all)
 }

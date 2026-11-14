@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "omhl": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/server/omhl.exe",
+      "args": ["mcp", "--project-dir", "C:\\Users\\gabri\\omhl-teste"]
+    }
+  }
+}

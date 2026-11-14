@@ -137,6 +137,11 @@ impl AppError {
         )
     }
 
+    /// Port Cowork (protótipo): erros das tools de host `cli` e `git` do adapter MCP.
+    pub(crate) fn host_tool(code: &str, message: &str) -> AppError {
+        AppError::plain(code, message)
+    }
+
     pub(crate) fn invalid_project_dir() -> AppError {
         AppError::plain(
             "invalid-project-dir",

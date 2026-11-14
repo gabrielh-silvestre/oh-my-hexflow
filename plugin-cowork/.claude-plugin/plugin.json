@@ -1,0 +1,7 @@
+{
+  "name": "oh-my-hexflow-cowork",
+  "displayName": "oh-my-hexflow (Cowork, Windows)",
+  "version": "0.1.0",
+  "description": "Protótipo do oh-my-hexflow para conversas Cowork no Claude desktop (Windows): o omhl.exe roda como servidor MCP local e a skill directives-flow conduz o fluxo por tools MCP, sem hooks.",
+  "author": { "name": "Gabriel Silvestre" }
+}

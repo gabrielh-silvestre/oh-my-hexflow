@@ -505,7 +505,174 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+mod platform {
+    //! Port para o Claude desktop no Windows: um Job Object por execução, com
+    //! KILL_ON_JOB_CLOSE. Fechar o handle do job (drop) mata o comando e tudo o que
+    //! ele abriu, inclusive se o `omhl` morrer. Sem guardião, sem sweep e sem `ParentGone`.
+    use std::io::{self, ErrorKind};
+    use std::os::windows::io::AsRawHandle;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc::{self, RecvTimeoutError};
+    use std::thread;
+    use std::time::Instant;
+
+    use win32job::{ExtendedLimitInfo, Job};
+
+    use super::SweepReport;
+    use crate::ports::pipes::{self, PIPE_GRACE};
+    use crate::runner::{RunError, RunErrorKind, RunReport, RunSpec};
+
+    const DEFAULT_PATHEXT: &str = ".COM;.EXE;.BAT;.CMD";
+
+    fn error(kind: RunErrorKind, message: String) -> RunError {
+        RunError { kind, message }
+    }
+
+    fn spawn_error(program: &str, e: &io::Error) -> RunError {
+        let kind = match e.kind() {
+            ErrorKind::NotFound => RunErrorKind::NotFound,
+            ErrorKind::PermissionDenied => RunErrorKind::PermissionDenied,
+            _ => RunErrorKind::Spawn,
+        };
+        error(kind, format!("{program} did not start: {e}"))
+    }
+
+    fn env_value(spec: &RunSpec, key: &str) -> Option<std::ffi::OsString> {
+        spec.env_set
+            .iter()
+            .rev()
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .map(|(_, v)| std::ffi::OsString::from(v))
+            .or_else(|| std::env::var_os(key))
+    }
+
+    fn with_extensions(base: &Path, exts: &[String]) -> Option<PathBuf> {
+        if base.extension().is_some() && base.is_file() {
+            return Some(base.to_path_buf());
+        }
+        exts.iter().find_map(|ext| {
+            let mut name = base.as_os_str().to_os_string();
+            name.push(ext);
+            let candidate = PathBuf::from(name);
+            candidate.is_file().then_some(candidate)
+        })
+    }
+
+    pub fn resolve_program(spec: &RunSpec) -> Option<PathBuf> {
+        let program = spec.argv.first()?;
+        let exts: Vec<String> = env_value(spec, "PATHEXT")
+            .and_then(|v| v.into_string().ok())
+            .unwrap_or_else(|| DEFAULT_PATHEXT.to_owned())
+            .split(';')
+            .filter(|e| !e.is_empty())
+            .map(str::to_owned)
+            .collect();
+        if program.contains('/') || program.contains('\\') {
+            return with_extensions(&spec.cwd.join(program), &exts);
+        }
+        let path_var = env_value(spec, "PATH")?;
+        std::env::split_paths(&path_var)
+            .find_map(|dir| with_extensions(&spec.cwd.join(dir).join(program), &exts))
+    }
+
+    pub fn run(_parent_pid: Option<u32>, spec: &RunSpec) -> Result<RunReport, RunError> {
+        let Some((program, args)) = spec.argv.split_first() else {
+            return Err(error(RunErrorKind::Spawn, "the argv is empty".to_owned()));
+        };
+        let resolved = resolve_program(spec).unwrap_or_else(|| PathBuf::from(program));
+
+        let mut info = ExtendedLimitInfo::new();
+        info.limit_kill_on_job_close();
+        let job = Job::create_with_limit_info(&mut info).map_err(|e| {
+            error(
+                RunErrorKind::Spawn,
+                format!("the job object was not created: {e}"),
+            )
+        })?;
+
+        let mut command = Command::new(&resolved);
+        command
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .current_dir(&spec.cwd);
+        for (key, value) in &spec.env_set {
+            command.env(key, value);
+        }
+        for key in &spec.env_remove {
+            command.env_remove(key);
+        }
+        command.env("NO_COLOR", "1").env("LC_ALL", "C");
+
+        let started = Instant::now();
+        let mut child = command.spawn().map_err(|e| spawn_error(program, &e))?;
+        // A janela entre o spawn e o assign é aceita no protótipo.
+        let handle = child.as_raw_handle() as isize;
+        if let Err(e) = job.assign_process(handle) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error(
+                RunErrorKind::Spawn,
+                format!("the command could not join the job object: {e}"),
+            ));
+        }
+
+        let stdout = pipes::spawn_reader(
+            child.stdout.take().expect("the stdout of the command is piped"),
+            spec.max_stream_bytes,
+        );
+        let stderr = pipes::spawn_reader(
+            child.stderr.take().expect("the stderr of the command is piped"),
+            spec.max_stream_bytes,
+        );
+        let (sender, statuses) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = sender.send(child.wait());
+        });
+
+        let first = statuses.recv_timeout(spec.timeout);
+        let timed_out = matches!(first, Err(RecvTimeoutError::Timeout));
+        // Fecha o job: no timeout mata o líder; nos dois casos mata o que sobrou na árvore.
+        drop(job);
+        let status = match first {
+            Ok(status) => status,
+            Err(_) => statuses.recv().map_err(|_| {
+                error(
+                    RunErrorKind::Io,
+                    "the command was not reaped".to_owned(),
+                )
+            })?,
+        };
+        let duration = started.elapsed();
+        let status = status
+            .map_err(|e| error(RunErrorKind::Io, format!("the command was not reaped: {e}")))?;
+
+        let deadline = Instant::now() + PIPE_GRACE;
+        let (stdout, stdout_truncated) = pipes::collect(&stdout, deadline);
+        let (stderr, stderr_truncated) = pipes::collect(&stderr, deadline);
+        Ok(RunReport {
+            exit_code: status.code(),
+            stdout,
+            stderr,
+            timed_out,
+            truncated: stdout_truncated || stderr_truncated,
+            duration,
+        })
+    }
+
+    pub fn sweep_in(_root: &Path, _project_root: Option<&Path>) -> Result<SweepReport, RunError> {
+        Ok(SweepReport {
+            swept: Vec::new(),
+            unreadable: 0,
+            scan_timed_out: false,
+        })
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 mod platform {
     use std::path::{Path, PathBuf};
 

@@ -1,0 +1,80 @@
+# Port Cowork (protótipo): compila o omhl.exe no Windows, faz um smoke test e empacota o plugin.
+name: windows-cowork
+
+on:
+  push:
+    branches: [port/windows-cowork]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain (rust-toolchain.toml)
+        shell: bash
+        run: rustup show && cargo --version
+
+      - name: Build omhl.exe
+        shell: bash
+        run: cargo build --release --locked -p omhl
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          B="$PWD/target/release/omhl.exe"
+          P="$RUNNER_TEMP/proj"
+          mkdir -p "$P/.omhl/checks"
+          cd "$P"
+          git init -q -b main
+          git config user.email ci@example.com
+          git config user.name ci
+          printf 'version = 1\ntenant = "smoke"\n' > .omhl.toml
+          printf 'concern = "test"\nvariant = "suite"\nblocking = true\nrun = ["git", "--version"]\ntimeout_secs = 30\nexpect = [{ exit = 0, outcome = "passed" }]\nwhen = { event = "before-commit" }\n' > .omhl/checks/smoke.toml
+          echo "Runs git --version." > .omhl/checks/smoke.md
+          printf 'concern = "compile"\nvariant = "build"\nblocking = false\nrun = ["powershell", "-NoProfile", "-Command", "Start-Sleep -Seconds 60"]\ntimeout_secs = 3\nexpect = [{ exit = 0, outcome = "passed" }]\nwhen = { event = "before-pr" }\n' > .omhl/checks/slow.toml
+          echo "Sleeps past its timeout." > .omhl/checks/slow.md
+          git add -A && git commit -qm init && git switch -qc chore/wi-1__smoke
+          echo "== load";       "$B" load
+          echo '{"items":[{"body":{"kind":"node","id":"work-items.1","type":"work-item","data":{"title":"smoke","status":"open"}}}]}' | "$B" append
+          echo "== check run before-commit"
+          OUT=$("$B" check run --event before-commit); echo "$OUT"
+          echo "$OUT" | grep -q '"outcome":"passed"'
+          echo "== check run before-pr (timeout via Job Object)"
+          START=$(date +%s); "$B" check run --event before-pr || true; END=$(date +%s)
+          echo "before-pr took $((END-START))s"; test $((END-START)) -lt 30
+          echo "== verify"; "$B" verify
+          echo "== mcp"
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci"}}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"render","arguments":{}}}' \
+            '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"cli","arguments":{"args":["load","--dry-run"]}}}' \
+            '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"git","arguments":{"op":"status"}}}' \
+            > "$RUNNER_TEMP/req.jsonl"
+          (cd / && "$B" mcp --project-dir "$P" < "$RUNNER_TEMP/req.jsonl") > "$RUNNER_TEMP/resp.jsonl"
+          cat "$RUNNER_TEMP/resp.jsonl"
+          grep -q '"name":"cli"' "$RUNNER_TEMP/resp.jsonl"
+          test "$(grep -c '"isError":true' "$RUNNER_TEMP/resp.jsonl" || true)" = "0"
+          echo "== database under LOCALAPPDATA"; ls "$LOCALAPPDATA/omhl"
+
+      - name: Package plugin
+        shell: pwsh
+        run: |
+          $dist = Join-Path $env:RUNNER_TEMP "plugin"
+          Copy-Item -Recurse plugin-cowork $dist
+          New-Item -ItemType Directory -Force (Join-Path $dist "server") | Out-Null
+          Copy-Item target/release/omhl.exe (Join-Path $dist "server/omhl.exe")
+          Remove-Item -ErrorAction SilentlyContinue (Join-Path $dist "server/.gitkeep")
+          Compress-Archive -Path (Join-Path $dist "*") -DestinationPath oh-my-hexflow-cowork-plugin.zip -Force
+          Get-ChildItem oh-my-hexflow-cowork-plugin.zip, target/release/omhl.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oh-my-hexflow-cowork
+          path: |
+            oh-my-hexflow-cowork-plugin.zip
+            target/release/omhl.exe
