@@ -10,7 +10,7 @@ Setas apontam de quem depende para quem é dependido. Setas pontilhadas são uso
 flowchart LR
   subgraph ext["Atores externos"]
     term["Terminal"]
-    ccmcp["Claude Code via MCP"]
+    ccmcp["Cliente MCP (o plugin não o inicia)"]
     cchook["Claude Code hook SessionStart"]
     git["git"]
     sqlite[("SQLite")]

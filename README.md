@@ -8,8 +8,7 @@ contexto no Claude Code. O workspace tem dois crates:
   WAL, valida cada escrita contra um catálogo de tipos e verifica a cadeia de
   hash.
 - `omhl`: o plugin. Monta os grafos de decisões, checks e work items, avalia o
-  gate de pull request e expõe tudo por CLI, por servidor MCP e pelo hook
-  `SessionStart`.
+  gate de pull request e expõe tudo por CLI e pelo hook `SessionStart`.
 
 O vocabulário (record, tenant, node, gate, extension, projection) está em
 [GLOSSARY.md](GLOSSARY.md).
@@ -31,7 +30,7 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    ```
 
 2. Instale esse binário no `PATH`, fora de qualquer worktree. É o único `omhl`:
-   o plugin (hooks e servidor MCP) e o hook `pre-switch` do `wt`
+   o plugin (hooks) e o hook `pre-switch` do `wt`
    (`.config/wt.toml`) chamam o `omhl` do `PATH`, sem cópia por worktree.
 
    ```bash
@@ -47,7 +46,8 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    ```
 
 O plugin liga os hooks `SessionStart` e `PreToolUse` (`hook spec-lock`, em
-`plugin/hooks/hooks.json`) e o servidor MCP `omhl` (`plugin/.mcp.json`).
+`plugin/hooks/hooks.json`). Ele não inicia o servidor MCP: o agente grava e
+consulta pela CLI.
 
 ## Marcar um projeto
 
@@ -113,7 +113,7 @@ JSON.
 | `verify` | Verifica a cadeia de hash |
 | `load [--dry-run]` | Carrega as extensions de `.omhl/` no tenant |
 | `project` | Gera a projeção em Markdown em `.omhl/projection/` |
-| `mcp` | Serve as ferramentas MCP por stdio |
+| `mcp` | Serve as ferramentas MCP por stdio. O plugin não o inicia |
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
 | `hook spec-lock` | Roda o hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de uma spec congelada |
 | `spec init <work-item> <slug>` | Cria a pasta da spec de um work item aberto, com a primeira parte, no diretório principal |
@@ -131,12 +131,8 @@ JSON.
 `attest` e `close` exigem a árvore git limpa. Um erro sai no stderr como JSON,
 com o código de saída 1.
 
-O servidor MCP expõe catorze ferramentas com a mesma saída da CLI: `list`, `get`,
-`append`, `attest`, `render`, `gate_pr`, `gate_worktree`, `close`, `verify`,
-`byproduct`, `project`, `report_answers`, `report_recurrences` e
-`report_retro`. O `load`, o `check run`, o `check sweep`, o `check retire`, o
-`spec init`, o `spec validate`, o `hook spec-lock` e os comandos `hooks`
-existem só na CLI.
+A interface do agente é a CLI. O adapter MCP (`omhl mcp`) segue no código, mas
+o plugin não o inicia e nenhum fluxo depende dele.
 
 ## Extensions e projeção
 

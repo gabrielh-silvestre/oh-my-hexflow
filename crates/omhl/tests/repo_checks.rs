@@ -108,19 +108,20 @@ const DIRECTIVES_FLOW_CODES: [&str; 39] = [
     "amendment-work-item-mismatch",
 ];
 /// Âncoras da skill, sempre entre crases no texto; origem: bloco S13 do plano e decisões (e), (i) e (j).
-const SKILL_ANCHORS: [&str; 19] = [
+const SKILL_ANCHORS: [&str; 20] = [
     // as quatro categorias de proposta da retro
     "guideline",
     "premise",
     "spec-section",
     "check",
     // retro e novo check
-    "report_retro",
+    "omhl report retro",
     ".omhl/checks/",
     "omhl load",
-    // gravar pelo MCP, nunca pela CLI (decisão i)
+    // gravar pela CLI (`omhl append`, `omhl attest`), sem o servidor MCP
     "append",
     "omhl append",
+    "omhl attest",
     // aprovação do hook do `wt`
     "wt config approvals add",
     "Cannot prompt for approval",
@@ -391,6 +392,18 @@ fn it_should_link_the_directives_flow_page_from_agents_md() {
     let agents = read_repo_file("AGENTS.md");
 
     assert!(agents.contains("](docs/directives-flow.md)"));
+}
+
+#[test]
+fn it_should_tell_agents_md_to_write_through_the_cli() {
+    let agents = read_repo_file("AGENTS.md");
+
+    let append_line = agents
+        .lines()
+        .find(|line| line.contains("omhl append"))
+        .expect("AGENTS.md mentions omhl append");
+
+    assert!(!append_line.contains("nunca"));
 }
 
 #[test]
