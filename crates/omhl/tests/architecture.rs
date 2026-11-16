@@ -53,6 +53,16 @@ const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super:
 const SPEC_GRAMMAR_LITERALS: &[&str] = &["wi-", "parte-", "emenda-"];
 const SPEC_GRAMMAR_MODULE: &str = "workflow/names.rs";
 const REMOVED_PORT_TERMS: &[&str] = &["mcp", "tool_call", "json-rpc"];
+const NUMERIC_CUT_NEEDLES: &[&str] = &[".min(", ".max(", ".clamp(", ".take(", "saturating_"];
+/// Cortes numéricos de `src/app` por arquivo, os únicos justificados; um corte novo entra aqui junto
+/// da sua entrada no inventário do plano (2.2 ou 2.4), nunca sozinho.
+const NUMERIC_CUTS_IN_APP: &[(&str, usize)] = &[
+    ("byproduct_tail.rs", 1),
+    ("check_run.rs", 2),
+    ("error.rs", 4),
+    ("input.rs", 1),
+    ("load.rs", 1),
+];
 const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
 
 fn src_dir() -> PathBuf {
@@ -346,6 +356,50 @@ fn spec_grammar_refs(source: &str) -> Result<usize, String> {
                 .any(|prefix| text.starts_with(prefix))
         })
         .count())
+}
+
+/// Cortes numéricos (`.min(`, `.max(`, `.clamp(`, `.take(`, `saturating_`) fora de comentário e de string.
+fn numeric_cut_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+
+    Ok(NUMERIC_CUT_NEEDLES
+        .iter()
+        .map(|needle| code.matches(needle).count())
+        .sum())
+}
+
+/// Arquivos de `dir` cuja contagem de cortes numéricos difere da lista fechada.
+fn numeric_cut_mismatches(dir: &Path, allowed: &[(&str, usize)]) -> Vec<String> {
+    let mut failures = Vec::new();
+    for file in rust_files(dir) {
+        let relative = file
+            .strip_prefix(dir)
+            .unwrap_or(&file)
+            .to_string_lossy()
+            .into_owned();
+        let found = match numeric_cut_refs(&read(&file)) {
+            Ok(found) => found,
+            Err(error) => {
+                failures.push(format!("{relative}: {error}"));
+                continue;
+            }
+        };
+        let expected = allowed
+            .iter()
+            .find(|(name, _)| *name == relative)
+            .map_or(0, |(_, count)| *count);
+        if found > expected {
+            failures.push(format!(
+                "{relative}: {found} numeric cut(s), the closed list allows {expected}; justify the new cut in the plan inventory (2.2 or 2.4) before raising the list"
+            ));
+        } else if found < expected {
+            failures.push(format!(
+                "{relative}: {found} numeric cut(s), the closed list expects {expected}; lower the list"
+            ));
+        }
+    }
+
+    failures
 }
 
 // ------------------------------------------------------ prova dos dois lados
@@ -1422,6 +1476,50 @@ fn it_should_keep_the_removed_mcp_port_out_of_the_src_layers() {
     failures.extend(prove_synthetic_dir_is_flagged());
 
     assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_not_grow_the_numeric_cuts_in_src_app_without_an_inventory_entry() {
+    let mut failures = prove_both_sides(
+        numeric_cut_refs,
+        &[
+            "fn f(v: &[u8]) -> usize { v.len().min(3) }",
+            "fn f(v: &[u8]) -> usize { v.len().saturating_sub(3) }",
+            "fn f(v: Vec<u8>) { v.into_iter().take(3); }",
+        ],
+        &[
+            "fn f() {}",
+            "// v.len().min(3)",
+            "const NOTE: &str = \".take(3)\";",
+        ],
+    );
+    failures.extend(numeric_cut_mismatches(
+        &src_dir().join("app"),
+        NUMERIC_CUTS_IN_APP,
+    ));
+    failures.extend(prove_extra_numeric_cut_is_flagged());
+
+    assert_no_failures(&failures);
+}
+
+/// A lista exata passa; um corte além dela reprova.
+fn prove_extra_numeric_cut_is_flagged() -> Vec<String> {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    fs::write(
+        dir.path().join("cut.rs"),
+        "fn f() { 1u8.min(2); 3u8.max(4); }\n",
+    )
+    .expect("write the synthetic source");
+    let mut failures = Vec::new();
+
+    if !numeric_cut_mismatches(dir.path(), &[("cut.rs", 2)]).is_empty() {
+        failures.push("synthetic directory at its allowed count was flagged".to_owned());
+    }
+    if numeric_cut_mismatches(dir.path(), &[("cut.rs", 1)]).is_empty() {
+        failures.push("synthetic directory with an extra numeric cut was not flagged".to_owned());
+    }
+
+    failures
 }
 
 /// O varredor de diretório reprova um fonte que traz o termo.

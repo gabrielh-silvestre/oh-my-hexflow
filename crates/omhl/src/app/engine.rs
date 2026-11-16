@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use hexlog::{HexlogError, PageRequest, SemanticId, Snapshot, TenantId};
+use hexlog::{HexlogError, Limits, PageRequest, SemanticId, Snapshot, TenantId};
 use serde_json::{Value, json};
 
 use super::action::{Action, Caller};
@@ -121,8 +121,12 @@ impl Engine<'_> {
         after_seq: Option<u64>,
         where_eq: &[(String, String)],
     ) -> Result<Value, AppError> {
-        if limit == Some(0) {
-            return Err(AppError::invalid_arguments("/limit", "unknown value"));
+        let page_max = Limits::default().page_max;
+        if limit.is_some_and(|limit| limit == 0 || limit > page_max) {
+            return Err(AppError::invalid_arguments(
+                "/limit",
+                &format!("limit must be between 1 and {page_max}"),
+            ));
         }
         let filter = validate_list_filter(type_name, id_prefix, where_eq)?;
         let request = PageRequest {

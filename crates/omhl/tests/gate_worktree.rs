@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
 use support::git::git_in;
 use support::legacy::seed_legacy_confirmed_premise;
-use support::omhl::work_item_data;
+use support::omhl::{project_dir_refusal, work_item_data};
 use support::project::Project;
 use tempfile::TempDir;
 
@@ -657,6 +657,43 @@ fn it_should_exit_zero_in_silence_when_there_is_no_marker_above_the_directory() 
         "feat/wi-w1__x",
     ])
     .cwd(dir.path())
+    .run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert!(output.stderr.is_empty(), "stderr stays empty");
+}
+
+#[test]
+fn it_should_refuse_a_project_dir_that_does_not_exist() {
+    let dir = TempDir::new().expect("directory is created");
+    let missing = dir.path().join("missing");
+
+    let output = omhl(&[
+        "--project-dir",
+        &missing.to_string_lossy(),
+        "gate-worktree",
+        "--branch",
+        "feat/wi-w1__x",
+    ])
+    .run();
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert_eq!(json_line(&output.stderr), project_dir_refusal());
+}
+
+#[test]
+fn it_should_stay_silent_for_an_existing_dir_without_marker() {
+    let dir = TempDir::new().expect("directory is created");
+
+    let output = omhl(&[
+        "--project-dir",
+        &dir.path().to_string_lossy(),
+        "gate-worktree",
+        "--branch",
+        "feat/wi-w1__x",
+    ])
     .run();
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);

@@ -255,7 +255,22 @@ pub const FIELD_NOT_TEXT_ANY: &str = "field is not a text field of any type the 
 pub const NO_TYPE_DECLARES_ALL: &str = "no type declares every where field";
 pub const VALUE_OUTSIDE_ENUM: &str = "value is not one of the values the field allows";
 pub const FIELD_REPEATED: &str = "field repeated in where with different values";
+pub const LIMIT_RULE: &str = "limit must be between 1 and 200";
+pub const WHERE_RULE: &str = "where must be FIELD=VALUE with a non-empty FIELD";
+pub const OUTCOME_RULE: &str = "outcome must be passed, passed_with_warning or failed";
+pub const PROJECT_DIR_MISSING: &str = "the project directory does not exist";
 pub const DIVERGENCE_TEXT: &str = "the spec asks for a report the code does not have";
+
+/// O erro de uma opção global recusada: sem ponteiro, logo sem detalhes.
+pub fn project_dir_refusal() -> Value {
+    json!({
+        "error": {
+            "code": "invalid-project-dir",
+            "message": PROJECT_DIR_MISSING,
+            "details": [],
+        }
+    })
+}
 
 /// O erro que o `list` devolve para uma opção recusada: a regra na `message` do topo e em `details[0]`.
 pub fn list_refusal(pointer: &str, message: &str) -> Value {

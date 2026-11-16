@@ -1,5 +1,5 @@
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 use hexlog::{Clock, TenantId};
@@ -172,6 +172,9 @@ pub fn run_action(
     caller: &Caller,
     action: &Action,
 ) -> Result<Value, AppError> {
+    if matches!(std::fs::metadata(start), Err(error) if error.kind() == ErrorKind::NotFound) {
+        return Err(AppError::project_dir_missing());
+    }
     if let Action::GateWorktree { branch } = action {
         return run_gate_worktree(start, db, env, branch);
     }
