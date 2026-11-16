@@ -220,11 +220,15 @@ pub fn check(skills: &Path, leaves: &[String], sources: &str) -> Findings {
     let mut findings = Findings::default();
 
     for leaf in leaves {
-        let cited = docs.iter().any(|doc| {
-            citations(&doc.text)
-                .iter()
-                .any(|(_, words)| starts_with_path(words, leaf))
-        });
+        // Só o SKILL.md cita: todo references/<folha>.md traz `$ omhl <folha>` no exemplo e se citaria sozinho.
+        let cited = docs
+            .iter()
+            .filter(|doc| doc.path.ends_with("/SKILL.md"))
+            .any(|doc| {
+                citations(&doc.text)
+                    .iter()
+                    .any(|(_, words)| starts_with_path(words, leaf))
+            });
         if !cited {
             findings.uncited.push(leaf.clone());
         }
@@ -279,9 +283,9 @@ pub fn check(skills: &Path, leaves: &[String], sources: &str) -> Findings {
 const SYNTHETIC_LEAVES: [&str; 2] = ["list", "check run"];
 const SYNTHETIC_SOURCES: &str = r#"fn code() -> &'static str { "known-code" }"#;
 
-fn reference(errors: &str) -> String {
+fn reference(leaf: &str, errors: &str) -> String {
     format!(
-        "# t\n\n## Quando usar\n\n## Entradas\n\n## Saída\n\n## Erros\n\n{errors}\n\n## Exemplos\n"
+        "# t\n\n## Quando usar\n\n## Entradas\n\n## Saída\n\n## Erros\n\n{errors}\n\n## Exemplos\n\n$ omhl {leaf}\n"
     )
 }
 
@@ -294,8 +298,11 @@ fn tree(changes: &[(&str, Option<String>)]) -> String {
             "s/SKILL.md".to_owned(),
             "# s\n\nRun `omhl list` and `omhl check run`.\n".to_owned(),
         ),
-        ("s/references/list.md".to_owned(), reference(known)),
-        ("s/references/check-run.md".to_owned(), reference(known)),
+        ("s/references/list.md".to_owned(), reference("list", known)),
+        (
+            "s/references/check-run.md".to_owned(),
+            reference("check run", known),
+        ),
     ]);
     for (path, content) in changes {
         match content {
@@ -366,16 +373,19 @@ pub fn prove_checks() -> Vec<String> {
     let no_file = tree(&[("s/references/check-run.md", None)]);
     let no_title = tree(&[(
         "s/references/list.md",
-        Some(reference("- `known-code` (saída 1): x.").replace("## Saída\n\n", "")),
+        Some(reference("list", "- `known-code` (saída 1): x.").replace("## Saída\n\n", "")),
     )]);
     let ghost = tree(&[(
         "s/references/list.md",
-        Some(reference("- `ghost-code` (saída 1): x.")),
+        Some(reference("list", "- `ghost-code` (saída 1): x.")),
     )]);
     let group_only = tree(&[("s/SKILL.md", Some(format!("{both}See `omhl check`.\n")))]);
     let clap_usage = tree(&[(
         "s/references/list.md",
-        Some(reference("- Saída 2: erro de uso do clap, sem código.")),
+        Some(reference(
+            "list",
+            "- Saída 2: erro de uso do clap, sem código.",
+        )),
     )]);
     let hook_group = tree(&[(
         "s/SKILL.md",
