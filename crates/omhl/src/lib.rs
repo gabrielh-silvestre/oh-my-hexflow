@@ -7,6 +7,7 @@ pub mod facade;
 pub mod gate;
 pub mod graphs;
 pub mod guard;
+pub mod guidance;
 pub mod mechanical;
 pub mod native;
 pub mod ports;

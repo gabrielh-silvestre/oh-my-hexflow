@@ -4,6 +4,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 use super::model::{Extension, ExtensionIssue, ExtensionKind, RawExtension};
+use crate::guidance::Guidance;
 use crate::mechanical::RUNNABLE_EVENTS;
 use crate::mechanical::spec::{CheckSpec, SpecError};
 use crate::project::text::{
@@ -15,6 +16,7 @@ const TEXT_MAX_CHARS: usize = 2_000;
 const EVENT_MAX_CHARS: usize = 100;
 const MATCHER_MAX_CHARS: usize = 200;
 const AFTER_MAX_ITEMS: usize = 16;
+pub(crate) const GUIDELINE_KINDS: [&str; 2] = ["business", "architecture"];
 const CONCERN_VARIANTS: [(&str, [&str; 2]); 3] = [
     ("style", ["format", "lint"]),
     ("test", ["suite", "coverage"]),
@@ -57,6 +59,7 @@ struct WhenToml {
 #[serde(deny_unknown_fields)]
 struct GuidelineToml {
     text: Option<String>,
+    kind: Option<String>,
 }
 
 pub fn parse(raw: &RawExtension) -> Result<Extension, Vec<ExtensionIssue>> {
@@ -236,15 +239,44 @@ fn when_data(path: &str, when: WhenToml, issues: &mut Vec<ExtensionIssue>) -> Op
 
 fn parse_guideline(raw: &RawExtension) -> Result<Extension, Vec<ExtensionIssue>> {
     let parsed: GuidelineToml = parse_toml(raw)?;
+    let kind = guideline_kind(&raw.toml_path, parsed.kind).map_err(|found| vec![found])?;
     let text = text_field(raw, parsed.text, "text", TEXT_MAX_CHARS).map_err(|found| vec![found])?;
 
     Ok(Extension {
         kind: raw.kind,
         id: format!("{}{}", raw.kind.id_prefix(), raw.slug),
         path: raw.toml_path.clone(),
-        data: Value::Object(Map::from_iter([("text".to_owned(), Value::String(text))])),
+        data: Value::Object(Map::from_iter([
+            ("text".to_owned(), Value::String(text)),
+            ("kind".to_owned(), Value::String(kind)),
+        ])),
         after: Vec::new(),
     })
+}
+
+/// Nunca ecoa o valor lido: o issue cita só os dois valores aceitos.
+fn guideline_kind(path: &str, kind: Option<String>) -> Result<String, ExtensionIssue> {
+    match kind {
+        None => Err(issue_with_next_step(
+            path,
+            "kind-missing",
+            "the guideline file has no kind",
+            Guidance {
+                cause: "a guideline needs a kind to say what it governs",
+                next_step: "add kind = \"business\" or kind = \"architecture\" to the file and run omhl load again",
+            },
+        )),
+        Some(kind) if GUIDELINE_KINDS.contains(&kind.as_str()) => Ok(kind),
+        Some(_) => Err(issue_with_next_step(
+            path,
+            "kind-invalid",
+            "`kind` is not one of business, architecture",
+            Guidance {
+                cause: "a guideline kind must be business or architecture",
+                next_step: "set kind = \"business\" or kind = \"architecture\" in the file and run omhl load again",
+            },
+        )),
+    }
 }
 
 fn issue(path: &str, code: &'static str, message: String) -> ExtensionIssue {
@@ -252,6 +284,19 @@ fn issue(path: &str, code: &'static str, message: String) -> ExtensionIssue {
         path: path.to_owned(),
         code,
         message,
+        next_step: None,
+    }
+}
+
+fn issue_with_next_step(
+    path: &str,
+    code: &'static str,
+    message: &str,
+    next_step: Guidance,
+) -> ExtensionIssue {
+    ExtensionIssue {
+        next_step: Some(next_step),
+        ..issue(path, code, message.to_owned())
     }
 }
 

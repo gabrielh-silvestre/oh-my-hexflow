@@ -1,11 +1,12 @@
 mod source;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use hexlog::{
-    ChainHead, EndpointStatus, ListFilter, NodeView, RelationTypeName, RelationView, SemanticId,
-    TenantId,
+    ChainHead, EndpointStatus, ListFilter, NodeView, Origin, RelationTypeName, RelationView,
+    SemanticId, TenantId,
 };
+use serde_json::Value;
 
 pub use self::source::HexlogSource;
 use crate::error::{OmhlError, RuleCode};
@@ -30,12 +31,57 @@ pub enum Question {
     NoOpenContradiction {
         of: Option<ListFilter>,
     },
+    /// Sem `target`: cada node de `select` precisa de uma relation `by` vigente como origem.
+    /// Com `target`: nenhuma relation `by` vigente do node pode apontar para um destino que o predicado recuse.
+    Anchored {
+        select: ListFilter,
+        by: RelationTypeName,
+        target: Option<TargetCheck>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetCheck {
+    /// Onde buscar os destinos tenant; um destino nativo dispensa a busca.
+    pub scope: Vec<ListFilter>,
+    pub confirmed: Predicate,
+}
+
+/// O destino de uma relation como o predicado o vê; o gate não sabe o tipo de um destino nativo.
+#[derive(Debug, Clone, Copy)]
+pub struct TargetFact<'a> {
+    pub type_name: Option<&'a str>,
+    pub native: bool,
+    pub author_client: &'a str,
+    pub data: &'a Value,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Predicate(pub fn(&TargetFact<'_>) -> bool);
+
+// A derivação por ponteiro de função dispara `unpredictable_function_pointer_comparisons`.
+impl PartialEq for Predicate {
+    fn eq(&self, other: &Predicate) -> bool {
+        std::ptr::fn_addr_eq(self.0, other.0)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GateQuestion {
     pub label: String,
     pub question: Question,
+    /// Só aparece no relatório quando a pergunta reprova.
+    pub next_step: Option<&'static str>,
+}
+
+impl GateQuestion {
+    pub fn new(label: impl Into<String>, question: Question) -> GateQuestion {
+        GateQuestion {
+            label: label.into(),
+            question,
+            next_step: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +90,7 @@ pub enum QuestionKind {
     Occurred,
     NoPending,
     NoOpenContradiction,
+    Anchored,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +101,7 @@ pub struct QuestionReport {
     pub matched: usize,
     pub failing: Vec<SemanticId>,
     pub omitted: usize,
+    pub next_step: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,7 +174,7 @@ fn evaluate_question<S: GateSource>(
     entry: &GateQuestion,
 ) -> Result<QuestionReport, OmhlError> {
     let label = entry.label.as_str();
-    match &entry.question {
+    let report = match &entry.question {
         Question::Approved { of } => approved(source, tenant, label, of),
         Question::Occurred { select, min } => occurred(source, tenant, label, select, *min),
         Question::NoPending {
@@ -136,6 +184,20 @@ fn evaluate_question<S: GateSource>(
         Question::NoOpenContradiction { of } => {
             no_open_contradiction(source, tenant, label, of.as_ref())
         }
+        Question::Anchored { select, by, target } => {
+            anchored(source, tenant, label, select, by, target.as_ref())
+        }
+    }?;
+
+    Ok(with_next_step(report, entry.next_step))
+}
+
+fn with_next_step(report: QuestionReport, next_step: Option<&'static str>) -> QuestionReport {
+    let next_step = next_step.filter(|_| !report.passed).map(str::to_owned);
+
+    QuestionReport {
+        next_step,
+        ..report
     }
 }
 
@@ -240,6 +302,86 @@ fn no_open_contradiction<S: GateSource>(
     ))
 }
 
+fn anchored<S: GateSource>(
+    source: &mut S,
+    tenant: &TenantId,
+    label: &str,
+    select: &ListFilter,
+    by: &RelationTypeName,
+    target: Option<&TargetCheck>,
+) -> Result<QuestionReport, OmhlError> {
+    let nodes = source.nodes(tenant, select)?;
+    let relations = source.relations(tenant, by)?;
+    let current: Vec<&RelationView> = relations.iter().filter(|r| is_current(r)).collect();
+    let matched = nodes.len();
+    let failing = match target {
+        None => ids_where(nodes, |id| current.iter().all(|r| r.from != *id)),
+        Some(check) => {
+            let scope = scope_nodes(source, tenant, &check.scope)?;
+            ids_where(nodes, |id| {
+                current
+                    .iter()
+                    .filter(|r| r.from == *id)
+                    .any(|r| !target_confirmed(r, &scope, &check.confirmed))
+            })
+        }
+    };
+
+    Ok(report(
+        label,
+        QuestionKind::Anchored,
+        failing.is_empty(),
+        matched,
+        failing,
+    ))
+}
+
+fn is_current(relation: &RelationView) -> bool {
+    !relation.retired
+        && relation.from_status == EndpointStatus::Current
+        && relation.to_status == EndpointStatus::Current
+}
+
+fn scope_nodes<S: GateSource>(
+    source: &mut S,
+    tenant: &TenantId,
+    scope: &[ListFilter],
+) -> Result<HashMap<SemanticId, NodeView>, OmhlError> {
+    let mut nodes = HashMap::new();
+    for filter in scope {
+        for node in source.nodes(tenant, filter)? {
+            nodes.insert(node.id.clone(), node);
+        }
+    }
+
+    Ok(nodes)
+}
+
+/// Um destino tenant fora do `scope` não está confirmado.
+fn target_confirmed(
+    relation: &RelationView,
+    scope: &HashMap<SemanticId, NodeView>,
+    confirmed: &Predicate,
+) -> bool {
+    if relation.to_origin == Origin::Native {
+        return (confirmed.0)(&TargetFact {
+            type_name: None,
+            native: true,
+            author_client: "",
+            data: &Value::Null,
+        });
+    }
+
+    scope.get(&relation.to).is_some_and(|node| {
+        (confirmed.0)(&TargetFact {
+            type_name: Some(node.type_name.as_str()),
+            native: false,
+            author_client: &node.author.client,
+            data: &node.data,
+        })
+    })
+}
+
 fn named_relations<S: GateSource>(
     source: &mut S,
     tenant: &TenantId,
@@ -286,5 +428,6 @@ fn report(
         matched,
         failing,
         omitted,
+        next_step: None,
     }
 }

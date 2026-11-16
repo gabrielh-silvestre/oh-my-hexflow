@@ -2,6 +2,7 @@ use hexlog::Author;
 use serde_json::{Map, Value};
 
 use super::error::AppError;
+use crate::guard::GUIDELINE_RETIRE_CLIENT;
 
 const DEFAULT_TAIL: u32 = 50;
 
@@ -50,6 +51,11 @@ pub enum Action {
     /// Aposenta o node de um check órfão.
     CheckRetire {
         check: String,
+    },
+    /// Aposenta o node de uma diretiva órfã; `by` é a diretiva que a substitui.
+    GuidelineRetire {
+        id: String,
+        by: Option<String>,
     },
     ConsumeDevelopMark,
     Byproduct {
@@ -129,6 +135,14 @@ impl Caller {
         Caller {
             client: "loader",
             agent: "loader",
+        }
+    }
+
+    /// Só o `guideline retire` grava com ele; o `agent` é o real, não o `loader`.
+    pub fn guideline_retirer(agent: &'static str) -> Caller {
+        Caller {
+            client: GUIDELINE_RETIRE_CLIENT,
+            agent,
         }
     }
 

@@ -41,7 +41,7 @@ A ligação gravada entre dois nodes, de um relation type dado (por exemplo `aft
 _Avoid_: edge, link, aresta (na conversa, use o termo em inglês)
 
 **Relation type**:
-O nome do tipo de uma relation (`after`, `supports`, `contradicts`), definido como dado e não no código.
+O nome do tipo de uma relation (`after`, `supports`, `contradicts`, `rests-on`, `supersedes`), definido como dado e não no código.
 _Avoid_: edge type, link type, kind
 
 **Check**:
@@ -85,7 +85,7 @@ Um node do graph de decisões que afirma algo tomado como verdadeiro para poder 
 _Avoid_: assumption, fact
 
 **Guideline**:
-Um node do graph de decisões que orienta como agir em um contexto, de forma atemporal, sem ser uma escolha pontual. Em pt-BR, diretiva: é o mesmo node, não um conceito novo.
+Um node do graph de decisões que orienta como agir em um contexto, de forma atemporal, sem ser uma escolha pontual. Em pt-BR, diretiva: é o mesmo node, não um conceito novo. Tem um `kind` opcional: `business` ou `architecture`.
 _Avoid_: rule, policy
 
 **Decision**:
@@ -103,6 +103,18 @@ _Avoid_: deviation
 **Confirmação**:
 A aprovação humana de uma premise, de uma guideline ou da emenda de uma divergence, dada dentro da sessão e registrada em `confirmed_by`, com a pergunta e a resposta literais como evidência. É autodeclarada: o `Author` do record continua sendo quem o digitou, não quem confirmou.
 _Avoid_: approval
+
+**Supports**:
+Relation type em que uma guideline ou premise serve de critério da resposta de uma premise ou decision. Sozinha, não ancora uma decision: a decision ligada só por `supports` reprova no anchor gate.
+_Avoid_: rests-on (são relation types distintos, em direções opostas)
+
+**Rests-on**:
+Relation type em que um node se apoia em uma guideline ou premise (direção inversa de `supports`). É a única relation que o anchor gate lê.
+_Avoid_: supports, depends-on
+
+**Anchor gate**:
+Condição do gate do pull request: toda decision do work item tem um `rests-on`, e todo alvo `rests-on` dela está confirmado.
+_Avoid_: anchor check
 
 **Catalog**:
 O conjunto das definições dos graphs, isto é, os tipos de node e os relation types de cada um, definido como dado e não no código.
@@ -135,6 +147,10 @@ _Avoid_: delete, revocation, tombstone
 **Revision**:
 Um record que muda o conteúdo de um node ou de uma relation, apontando para a revision anterior e mantendo-a no histórico. Aproxima-se da ligação `prov:wasRevisionOf` do PROV-O, como referência e não como equivalência formal.
 _Avoid_: version, amendment, update
+
+**Supersedes**:
+Relation type da guideline nova para a antiga, gravada por `omhl guideline retire --by`. Difere de uma revision (mesmo id) e de uma retirement (tira de vigência sem apontar substituta). Não distingue substituição total de parcial: a guideline dividida em duas grava um segundo `supersedes` por `omhl append`.
+_Avoid_: replaces, overrides
 
 **Origin**:
 De onde vem um node: native (de fábrica, embutido no binário) ou do tenant (gravado ou carregado de uma extension).

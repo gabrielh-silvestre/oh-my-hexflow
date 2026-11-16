@@ -1,10 +1,11 @@
 use std::fmt;
 
-use hexlog::{ErrorCode, HexlogError};
+use hexlog::{AppendItem, ErrorCode, HexlogError, ItemBody};
 use serde_json::{Value, json};
 
 use crate::error::{OmhlError, RuleCode};
 use crate::extensions::model::ExtensionIssue;
+use crate::guidance::Guidance;
 use crate::project::ProjectError;
 use crate::project::layout::ISSUES_MAX;
 use crate::projection::ProjectionError;
@@ -14,6 +15,17 @@ const BUSY_MESSAGE: &str =
     "database is busy: another omhl process is writing; run the command again";
 const STORE_ERROR_MESSAGE: &str = "storage error; run the command again";
 
+const CYCLE_GUIDANCE: Guidance = Guidance {
+    cause: "the relation would close a cycle: its target already leads back to its source",
+    next_step: "drop this relation, or retire the existing link that closes the loop",
+};
+const ENDPOINT_GUIDANCE: Guidance = Guidance {
+    cause: "a relation endpoint is not a current node",
+    next_step: "append the missing node before the relation, in the same batch or an earlier one, or fix the id",
+};
+/// Tipos de relação cujas recusas do motor ganham causa e próximo passo.
+const GUIDED_RELATION_TYPES: [&str; 2] = ["rests-on", "supersedes"];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Detail {
     path: String,
@@ -22,6 +34,7 @@ struct Detail {
     current: Option<String>,
     retired: Option<bool>,
     context: Option<Value>,
+    next_step: Option<String>,
 }
 
 impl Detail {
@@ -33,6 +46,7 @@ impl Detail {
             current: None,
             retired: None,
             context: None,
+            next_step: None,
         }
     }
 
@@ -46,6 +60,9 @@ impl Detail {
         }
         if let Some(context) = &self.context {
             detail["context"] = context.clone();
+        }
+        if let Some(next_step) = &self.next_step {
+            detail["next_step"] = json!(next_step);
         }
         detail
     }
@@ -205,7 +222,12 @@ impl AppError {
         let details: Vec<Detail> = issues
             .iter()
             .take(ISSUES_MAX)
-            .map(|issue| Detail::new(&issue.path, issue.code, &issue.message))
+            .map(|issue| Detail {
+                next_step: issue
+                    .next_step
+                    .map(|guidance| guidance.next_step.to_owned()),
+                ..Detail::new(&issue.path, issue.code, &issue.message)
+            })
             .collect();
         let message = format!(
             "extensions are invalid: {} error(s) shown, {omitted} omitted; nothing was loaded",
@@ -226,6 +248,34 @@ impl AppError {
             message: "the projection could not be written".to_owned(),
             details: vec![Detail::new(&error.path, error.code, &error.message)],
         }
+    }
+
+    /// Recusa do motor (`cycle` ou `endpoint-not-found`) num `rests-on` ou `supersedes`: ganha causa e próximo passo; as demais ficam como vieram.
+    pub(crate) fn guide_relation_refusal(mut self, items: &[AppendItem]) -> AppError {
+        let Some(detail) = self.details.first_mut() else {
+            return self;
+        };
+        let guidance = match detail.code.as_str() {
+            "cycle" => CYCLE_GUIDANCE,
+            "endpoint-not-found" => ENDPOINT_GUIDANCE,
+            _ => return self,
+        };
+        let guided = item_index(&detail.path)
+            .and_then(|index| items.get(index))
+            .is_some_and(|item| match &item.body {
+                ItemBody::Relation { relation_type, .. } => {
+                    GUIDED_RELATION_TYPES.contains(&relation_type.as_str())
+                }
+                _ => false,
+            });
+        if !guided {
+            return self;
+        }
+        detail.message = guidance.cause.to_owned();
+        detail.next_step = Some(guidance.next_step.to_owned());
+        self.message = guidance.cause.to_owned();
+
+        self
     }
 
     /// Troca o ponteiro `/items/<i>/...` de cada detalhe pelo arquivo `files[i]`.
@@ -318,6 +368,93 @@ impl AppError {
             path,
             "the check file still exists in the working tree",
         )
+    }
+
+    pub(crate) fn guideline_not_found(pointer: &str) -> AppError {
+        AppError::refusal(
+            "guideline-not-found",
+            pointer,
+            Guidance {
+                cause: "the id is not a current guideline stored in the repository",
+                next_step: "pass the id of a current guideline that is not native",
+            },
+        )
+    }
+
+    pub(crate) fn guideline_not_orphaned(pointer: &str) -> AppError {
+        AppError::refusal(
+            "guideline-not-orphaned",
+            pointer,
+            Guidance {
+                cause: "the guideline file still exists in the working tree",
+                next_step: "delete the guideline file, then run omhl guideline retire again",
+            },
+        )
+    }
+
+    pub(crate) fn successor_not_current(pointer: &str) -> AppError {
+        AppError::refusal(
+            "successor-not-current",
+            pointer,
+            Guidance {
+                cause: "the successor is not a current guideline",
+                next_step: "pass the id of a current guideline in --by, or retire without --by",
+            },
+        )
+    }
+
+    pub(crate) fn successor_is_self(pointer: &str) -> AppError {
+        AppError::refusal(
+            "successor-is-self",
+            pointer,
+            Guidance {
+                cause: "a guideline cannot be its own successor",
+                next_step: "pass a different guideline in --by, or retire without --by",
+            },
+        )
+    }
+
+    /// Troca a recusa `cycle` do motor pela do comando; as demais ficam como vieram.
+    pub(crate) fn into_supersedes_cycle(self, pointer: &str) -> AppError {
+        match self.details.first() {
+            Some(detail) if detail.code == "cycle" => AppError::refusal(
+                "supersedes-cycle",
+                pointer,
+                Guidance {
+                    cause: "the successor is already superseded by the retired guideline, directly or through others",
+                    next_step: "pass a different guideline in --by, or retire without --by",
+                },
+            ),
+            _ => self,
+        }
+    }
+
+    /// Recusa da camada `app` com causa e próximo passo; o ponteiro é o único dado de entrada que aparece.
+    pub(crate) fn refusal(code: &str, pointer: &str, guidance: Guidance) -> AppError {
+        AppError {
+            code: code.to_owned(),
+            message: guidance.cause.to_owned(),
+            details: vec![Detail {
+                next_step: Some(guidance.next_step.to_owned()),
+                ..Detail::new(pointer, code, guidance.cause)
+            }],
+        }
+    }
+
+    fn unguided_rule(code: &str, pointer: &str) -> AppError {
+        let (message, details) = match pointer.is_empty() {
+            true => (code.to_owned(), Vec::new()),
+            false => (
+                format!("{code} at {pointer}"),
+                vec![Detail::new(pointer, code, code)],
+            ),
+        };
+
+        AppError {
+            code: code.to_owned(),
+            message,
+            details,
+        }
     }
 
     pub(crate) fn branch_name_invalid(path: &str) -> AppError {
@@ -583,6 +720,7 @@ impl From<HexlogError> for AppError {
                 current: detail.current.map(|id| id.as_str().to_owned()),
                 retired: detail.retired,
                 context: None,
+                next_step: None,
             })
             .collect();
 
@@ -598,22 +736,10 @@ impl From<OmhlError> for AppError {
     fn from(error: OmhlError) -> AppError {
         match error {
             OmhlError::Hexlog(error) => AppError::from(error),
-            OmhlError::Rule { code, pointer } => {
-                let code = code.as_str();
-                let (message, details) = match pointer.is_empty() {
-                    true => (code.to_owned(), Vec::new()),
-                    false => (
-                        format!("{code} at {pointer}"),
-                        vec![Detail::new(&pointer, code, code)],
-                    ),
-                };
-
-                AppError {
-                    code: code.to_owned(),
-                    message,
-                    details,
-                }
-            }
+            OmhlError::Rule { code, pointer } => match code.guidance() {
+                Some(guidance) => AppError::refusal(code.as_str(), &pointer, guidance),
+                None => AppError::unguided_rule(code.as_str(), &pointer),
+            },
         }
     }
 }

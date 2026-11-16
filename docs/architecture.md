@@ -10,7 +10,7 @@ Setas apontam de quem depende para quem é dependido. Setas pontilhadas são uso
 flowchart LR
   subgraph ext["Atores externos"]
     term["Terminal"]
-    ccmcp["Claude Code via MCP"]
+    ccmcp["Cliente MCP (o plugin não o inicia)"]
     cchook["Claude Code hook SessionStart"]
     git["git"]
     sqlite[("SQLite")]
@@ -35,6 +35,7 @@ flowchart LR
       graphs["graphs"]
       native["native"]
       probe["probe"]
+      guidance["guidance"]
     end
 
     subgraph pipes["Pipelines"]
@@ -78,6 +79,10 @@ flowchart LR
   app --> native
   app --> guard
   app --> ports
+  app --> guidance
+  gate --> guidance
+  prgate --> guidance
+  extensions --> guidance
   app --> project
   app -.-> hxfacade
 
@@ -96,6 +101,7 @@ flowchart LR
   guard --> probe
   prgate --> gate
   prgate --> native
+  prgate --> extensions
   gate --> hxfacade
   graphs -.-> hxfacade
   native -.-> hxfacade
@@ -148,7 +154,7 @@ As decisões estruturais dos gates mecânicos, com o porquê de cada uma:
 
 - [0002](adr/0002-pasta-de-hooks-unica-por-usuario.md): a pasta de hooks do git é única por usuário (3.22, `ports/hooks`).
 - [0003](adr/0003-evento-do-check-fechado-em-tres-eventos-do-git.md): o evento do check é fechado em `before-commit`, `before-pr` e `before-merge` (3.17).
-- [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor` e `loader` são a fronteira da guarda (3.23, `guard`).
+- [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor`, `loader` e `guideline-retire` são a fronteira da guarda (3.23, `guard`).
 - [0005](adr/0005-saida-dos-checks-em-blobs-fora-do-banco.md): a saída dos checks fica em blobs fora do banco (3.21, `ports/blob`).
 
 ## 3. Caixas cinzas
@@ -402,7 +408,7 @@ Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/`
 - **`GitProbe::with_index_file(index_file, base)`.** Faz a sonda ler o índice temporário que o git passa ao hook em `GIT_INDEX_FILE`. Um caminho relativo vale contra `base`. Um índice que não existe é erro, nunca árvore vazia.
 - **`Env`** (`project/mod.rs`). Ganha `git_index_file: Option<&OsStr>` e `parent_pid: u32`. O `main.rs` lê `parent_id()` na primeira linha, antes do clap e do banco (travado: `it_should_read_the_parent_pid_before_anything_else_in_main`).
 - **`guard`.** Três regras novas de atestado. `snapshot-tree-mismatch`: uma attestation `git-tree` confere contra a árvore do índice. `check-run-author`: só o autor `loader` grava, revisa ou retira um check com `run`, e só o autor `executor` grava a attestation de um check com `run`. `attestation-incomplete`: a attestation de um check com `run` precisa de `byproduct`, de `command`, de `spec_digest` e, para `passed` e `passed_with_warning`, de `exit_code`.
-- **`app`.** Novos arquivos `check_run`, `check_retire`, `work_item`, `byproduct_tail` e `hooks`; novas ações `CheckRun`, `CheckRetire`, `CheckSweep`, `ConsumeDevelopMark`, `Byproduct` e `HooksInstall`; novo `Caller::executor`. A ação `CheckRun` roda fora do `with_retry` do `dispatch`. O `Runtime` monta o `ProcessRunner`, o `BlobStore` e a sonda, e varre os processos fugidos antes de despachar um `check run`. `check_run` e `check_retire` dependem de `extensions::collect::check_file_exists`: um check do banco cujo `.omhl/checks/<slug>.toml` sumiu da árvore é órfão, o `check run` o ignora e avisa, e `check retire` grava a retirement dele como `loader`. Só a CLI expõe `check retire` (como `load` e `check run`, sem ferramenta MCP).
+- **`app`.** Novos arquivos `check_run`, `check_retire`, `work_item`, `byproduct_tail` e `hooks`; novas ações `CheckRun`, `CheckRetire`, `CheckSweep`, `ConsumeDevelopMark`, `Byproduct` e `HooksInstall`; novo `Caller::executor`. A ação `CheckRun` roda fora do `with_retry` do `dispatch`. O `Runtime` monta o `ProcessRunner`, o `BlobStore` e a sonda, e varre os processos fugidos antes de despachar um `check run`. `check_run` e `check_retire` dependem de `extensions::collect::extension_file_exists`: um check do banco cujo `.omhl/checks/<slug>.toml` sumiu da árvore é órfão, o `check run` o ignora e avisa, e `check retire` grava a retirement dele como `loader`. Só a CLI expõe `check retire` (como `load` e `check run`, sem ferramenta MCP).
 - **`pr_gate`.** Cobra o snapshot que `snapshot_for` indica para cada check e dispensa o check nativo de um evento quando um check mecânico bloqueante cobre o mesmo evento. Para cada check com `run`, pergunta também `spec-digest-match:<check>` (`spec_digests`, `pr_gate_questions`): só vale a attestation com o `spec_digest` da definição vigente, calculado por `mechanical::spec::spec_digest`.
 
 ### 3.24 Fluxo de diretivas e premissas: `omhl::workflow` e as ports novas

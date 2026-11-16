@@ -40,6 +40,7 @@ pub fn collect(root: &Path) -> Collected {
                 path: extension.path,
                 code: "reserved-id",
                 message: "id is reserved for a native check or guideline".to_owned(),
+                next_step: None,
             }),
             Ok(extension) => extensions.push(extension),
             Err(issues) => errors.extend(issues),
@@ -64,6 +65,7 @@ fn invalid_workflow_warning(error: &ProjectError) -> ExtensionIssue {
         path: format!("{OMHL_DIR}/{WORKFLOW_FILE}"),
         code: error.code,
         message: error.message.clone(),
+        next_step: None,
     }
 }
 
@@ -78,16 +80,15 @@ fn configured_specs_name(config: &WorkflowConfig) -> Option<String> {
     }
 }
 
-/// O arquivo TOML que declara o check `id` ainda está na working tree, válido ou não.
-pub fn check_file_exists(root: &Path, id: &str) -> bool {
-    id.strip_prefix(ExtensionKind::Check.id_prefix())
-        .is_some_and(|slug| {
-            let file = Path::new(OMHL_DIR)
-                .join(ExtensionKind::Check.dir())
-                .join(format!("{slug}.toml"));
+/// O arquivo TOML que declara a extensão `id` ainda está na working tree, válido ou não.
+pub fn extension_file_exists(kind: ExtensionKind, root: &Path, id: &str) -> bool {
+    id.strip_prefix(kind.id_prefix()).is_some_and(|slug| {
+        let file = Path::new(OMHL_DIR)
+            .join(kind.dir())
+            .join(format!("{slug}.toml"));
 
-            fs::symlink_metadata(root.join(file)).is_ok()
-        })
+        fs::symlink_metadata(root.join(file)).is_ok()
+    })
 }
 
 fn is_native_id(id: &str) -> bool {

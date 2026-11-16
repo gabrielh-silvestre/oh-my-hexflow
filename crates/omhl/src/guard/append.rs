@@ -1,17 +1,25 @@
+use std::collections::HashMap;
+
 use hexlog::{
-    AppendItem, AppendRequest, Author, Hexlog, ItemBody, Lineage, NodeView, RecordId, SemanticId,
-    Snapshot, TenantId,
+    AppendItem, AppendRequest, Author, Hexlog, ItemBody, Lineage, NativeNodes, NodeView, RecordId,
+    SemanticId, Snapshot, TenantId,
 };
 use serde_json::Value;
 
 use super::confirmation::check_confirmation;
+use super::rests_on::rests_on_allowed;
 use crate::error::{OmhlError, RuleCode};
+use crate::extensions::parse::GUIDELINE_KINDS;
 use crate::graphs::{WORK_ITEM_TYPES, namespace_of};
 use crate::mechanical::is_mechanical;
+use crate::native::NativeBase;
 use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
 /// Único client que grava node `check` com `run`; também fica isento da guarda da confirmação.
 const LOADER_CLIENT: &str = "loader";
+
+/// Único client que retira um node `guideline`; só o `omhl guideline retire` o usa, depois das conferências do comando.
+pub(crate) const GUIDELINE_RETIRE_CLIENT: &str = "guideline-retire";
 
 /// Um item `Node` do lote, com o índice para montar o ponteiro dos erros.
 pub(super) struct NodeItem<'i> {
@@ -59,6 +67,13 @@ impl<'i> NodeItem<'i> {
     }
 }
 
+/// Tipo e `kind` de um node, lidos do lote ou do banco.
+#[derive(Clone)]
+struct Endpoint {
+    type_name: String,
+    kind: Option<String>,
+}
+
 pub(super) struct Guard<'a, 'd> {
     pub(super) hexlog: &'a mut Hexlog<'d>,
     pub(super) tenant: &'a TenantId,
@@ -66,6 +81,8 @@ pub(super) struct Guard<'a, 'd> {
     probe: &'a dyn SnapshotProbe,
     probed: Option<Result<ProbeOutcome, ProbeError>>,
     probed_index_tree: Option<Result<ProbeOutcome, ProbeError>>,
+    /// Nodes já vistos no lote, na ordem dos itens; prevalecem sobre o banco.
+    batch: HashMap<SemanticId, Endpoint>,
 }
 
 /// Valida o lote inteiro, lendo só o banco; o primeiro achado encerra com erro.
@@ -81,6 +98,7 @@ pub(crate) fn check_append(
         probe,
         probed: None,
         probed_index_tree: None,
+        batch: HashMap::new(),
     };
     for (index, item) in req.items.iter().enumerate() {
         if let Some(node) = NodeItem::from_item(index, item) {
@@ -90,6 +108,14 @@ pub(crate) fn check_append(
         } = &item.body
         {
             guard.check_retirement(index, id)?;
+        } else if let ItemBody::Relation {
+            relation_type,
+            from,
+            to,
+        } = &item.body
+            && relation_type.as_str() == "rests-on"
+        {
+            guard.check_rests_on(index, from, to)?;
         }
     }
 
@@ -115,9 +141,34 @@ fn check_namespace(node: &NodeItem<'_>) -> Result<(), OmhlError> {
     }
 }
 
+/// Diretriz nativa vale como diretriz sem `kind`; check nativo segue para o motor.
+fn native_guideline_endpoint(id: &SemanticId) -> Option<Endpoint> {
+    let native = NativeBase.lookup(id)?;
+
+    (native.type_name.as_str() == "guideline").then(|| Endpoint {
+        type_name: "guideline".to_owned(),
+        kind: None,
+    })
+}
+
+fn check_guideline_kind(node: &NodeItem<'_>) -> Result<(), OmhlError> {
+    match node.field("kind") {
+        Some(kind) if GUIDELINE_KINDS.contains(&kind) => Ok(()),
+        _ if node.has_field("kind") => Err(node.error(RuleCode::KindInvalid, "body/data/kind")),
+        _ => Err(node.error(RuleCode::KindMissing, "body/data/kind")),
+    }
+}
+
 impl Guard<'_, '_> {
     fn check_node(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         check_namespace(node)?;
+        self.batch.insert(
+            node.id.clone(),
+            Endpoint {
+                type_name: node.type_name.to_owned(),
+                kind: node.field("kind").map(str::to_owned),
+            },
+        );
         match node.type_name {
             name if WORK_ITEM_TYPES.contains(&name) => {
                 self.check_work_item_status(node)?;
@@ -128,7 +179,11 @@ impl Guard<'_, '_> {
                 self.check_reactivation(node)?;
                 self.check_human_confirmation(node)
             }
-            "guideline" => self.check_human_confirmation(node),
+            "guideline" => {
+                check_guideline_kind(node)?;
+                self.check_reactivation(node)?;
+                self.check_human_confirmation(node)
+            }
             "check" => {
                 self.check_reactivation(node)?;
                 self.check_run_author(node)
@@ -214,12 +269,60 @@ impl Guard<'_, '_> {
         Ok(())
     }
 
+    /// Extremo ausente do lote e do banco fica para o motor: nativo é aceito, inexistente é `endpoint-not-found`.
+    fn check_rests_on(
+        &mut self,
+        index: usize,
+        from: &SemanticId,
+        to: &SemanticId,
+    ) -> Result<(), OmhlError> {
+        let (Some(source), target) = (self.endpoint_of(from)?, self.endpoint_of(to)?) else {
+            return Ok(());
+        };
+        let target = target
+            .as_ref()
+            .map(|node| (node.type_name.as_str(), node.kind.as_deref()));
+
+        rests_on_allowed(&source.type_name, target)
+            .map_err(|code| OmhlError::rule(code, &format!("/items/{index}/body/to")))
+    }
+
+    fn endpoint_of(&mut self, id: &SemanticId) -> Result<Option<Endpoint>, OmhlError> {
+        if let Some(node) = self.batch.get(id) {
+            return Ok(Some(node.clone()));
+        }
+        let Some(view) = self.hexlog.get(self.tenant, id)? else {
+            return Ok(native_guideline_endpoint(id));
+        };
+
+        Ok(Some(Endpoint {
+            type_name: view.type_name.as_str().to_owned(),
+            kind: view
+                .data
+                .get("kind")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        }))
+    }
+
     fn check_retirement(&mut self, index: usize, id: &SemanticId) -> Result<(), OmhlError> {
-        if self.author.client != LOADER_CLIENT && self.current_check_has_run(id)? {
+        let Some(current) = self.hexlog.get(self.tenant, id)? else {
+            return Ok(());
+        };
+        let pointer = format!("/items/{index}/base");
+        if current.type_name.as_str() == "guideline"
+            && self.author.client != GUIDELINE_RETIRE_CLIENT
+        {
             return Err(OmhlError::rule(
-                RuleCode::CheckRunAuthor,
-                &format!("/items/{index}/base"),
+                RuleCode::GuidelineRetireByCommand,
+                &pointer,
             ));
+        }
+        if self.author.client != LOADER_CLIENT
+            && current.type_name.as_str() == "check"
+            && is_mechanical(&current.data)
+        {
+            return Err(OmhlError::rule(RuleCode::CheckRunAuthor, &pointer));
         }
 
         Ok(())

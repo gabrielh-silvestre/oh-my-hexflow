@@ -32,6 +32,7 @@
         "required": ["text"],
         "properties": {
           "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "kind": {"enum": ["business", "architecture"]},
           "confirmed_by": {
             "type": "object",
             "additionalProperties": false,
@@ -128,6 +129,8 @@
   "relations": [
     {"name": "supports", "from": ["premise", "guideline", "decision"], "to": ["decision", "premise"]},
     {"name": "contradicts", "from": ["premise", "guideline", "decision"], "to": ["premise", "guideline", "decision"]},
-    {"name": "answers", "from": ["decision", "premise"], "to": ["premise", "gap"]}
+    {"name": "answers", "from": ["decision", "premise"], "to": ["premise", "gap"]},
+    {"name": "rests-on", "from": ["decision", "premise", "guideline"], "to": ["guideline", "premise"], "acyclic": true},
+    {"name": "supersedes", "from": ["guideline"], "to": ["guideline"], "acyclic": true}
   ]
 }

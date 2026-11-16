@@ -5,6 +5,7 @@ mod check_run;
 mod context;
 mod engine;
 mod gate_worktree;
+mod guideline_retire;
 mod hooks;
 mod load;
 mod read;

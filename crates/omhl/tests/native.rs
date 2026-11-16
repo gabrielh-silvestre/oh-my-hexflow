@@ -479,6 +479,8 @@ fn it_should_keep_the_native_checks_on_git_commit_snapshots() {
             (RUN_TESTS, false),
             (CI_GREEN, false),
             ("no-open-contradiction", true),
+            ("decisions-anchored", true),
+            ("anchors-confirmed", true),
         ])
     );
     assert_eq!(
@@ -487,6 +489,8 @@ fn it_should_keep_the_native_checks_on_git_commit_snapshots() {
             (RUN_TESTS, true),
             (CI_GREEN, true),
             ("no-open-contradiction", true),
+            ("decisions-anchored", true),
+            ("anchors-confirmed", true),
         ])
     );
 }

@@ -110,6 +110,7 @@ fn it_should_generate_ids_the_engine_accepts_as_record_ids() {
         "guideline",
         json!({
             "text": "be kind",
+            "kind": "business",
             "confirmed_by": { "by": "person:tester", "question": "Adopt it?", "answer": "Yes." },
         }),
     );

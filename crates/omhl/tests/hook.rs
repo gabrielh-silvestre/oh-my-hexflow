@@ -868,7 +868,7 @@ fn it_should_keep_a_premise_without_work_item_in_the_context_after_any_work_item
 #[test]
 fn it_should_mark_a_directive_with_confirmed_by_as_confirmed() {
     let project = Project::new("acme");
-    let data = json!({ "text": "be brief", "confirmed_by": confirmation() });
+    let data = json!({ "text": "be brief", "kind": "business", "confirmed_by": confirmation() });
     append_nodes(
         &project,
         vec![node_item("guidelines.brief", "guideline", data)],
@@ -881,6 +881,7 @@ fn it_should_mark_a_directive_with_confirmed_by_as_confirmed() {
         [
             "### guidelines.brief",
             "- confirmed: true",
+            "- kind: business",
             "- text: be brief"
         ]
     );
@@ -889,7 +890,7 @@ fn it_should_mark_a_directive_with_confirmed_by_as_confirmed() {
 #[test]
 fn it_should_mark_a_loaded_extension_directive_as_confirmed() {
     let project = Project::new("acme");
-    ExtTree::at(project.dir()).guideline("tone", "text = \"Be brief\"\n");
+    ExtTree::at(project.dir()).guideline("tone", "kind = \"business\"\ntext = \"Be brief\"\n");
     let loaded = in_project(&project, &["load"]);
 
     let context = context_of(&hook_for(&project));
@@ -904,7 +905,7 @@ fn it_should_keep_the_context_within_10000_characters_with_60_marked_directives(
     let text = "y".repeat(400);
     let directives: Vec<Value> = (0..60)
         .map(|n| {
-            let data = json!({ "text": text, "confirmed_by": confirmation() });
+            let data = json!({ "text": text, "kind": "business", "confirmed_by": confirmation() });
             node_item(&format!("guidelines.d{n:02}"), "guideline", data)
         })
         .collect();

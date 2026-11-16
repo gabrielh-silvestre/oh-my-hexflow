@@ -97,6 +97,11 @@ pub enum ActionCommand {
         #[command(subcommand)]
         command: CheckCommand,
     },
+    /// Manage the guidelines of the repository.
+    Guideline {
+        #[command(subcommand)]
+        command: GuidelineCommand,
+    },
     /// Print the last lines of the stored output of a check for a work item.
     Byproduct {
         check: String,
@@ -129,6 +134,17 @@ pub enum CheckCommand {
     Sweep,
     /// Retire the stored check whose file was deleted from the working tree.
     Retire { check: String },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GuidelineCommand {
+    /// Retire the stored guideline whose file was deleted from the working tree.
+    Retire {
+        id: String,
+        /// The guideline that supersedes the retired one.
+        #[arg(long)]
+        by: Option<String>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -388,6 +404,9 @@ fn to_action(
         ActionCommand::Check {
             command: CheckCommand::Retire { check },
         } => Action::CheckRetire { check },
+        ActionCommand::Guideline {
+            command: GuidelineCommand::Retire { id, by },
+        } => Action::GuidelineRetire { id, by },
         ActionCommand::Byproduct {
             check,
             work_item,

@@ -104,6 +104,7 @@ impl Engine<'_> {
             Action::Project => self.project(),
             Action::CheckRun { target, pre_push } => self.check_run(target, pre_push.as_deref()),
             Action::CheckRetire { check } => self.check_retire(check),
+            Action::GuidelineRetire { id, by } => self.guideline_retire(caller, id, by.as_deref()),
             Action::Byproduct {
                 check,
                 work_item,
@@ -171,7 +172,12 @@ impl Engine<'_> {
         let parsed = append_request(request, &self.tenant, caller)?;
         self.check_amendment_approvals(request)?;
 
-        Ok(output::appended(&self.omhl.append(&parsed)?))
+        let outcome = self
+            .omhl
+            .append(&parsed)
+            .map_err(|error| AppError::from(error).guide_relation_refusal(&parsed.items))?;
+
+        Ok(output::appended(&outcome))
     }
 
     fn gate_pr(&mut self, work_item: &str) -> Result<Value, AppError> {

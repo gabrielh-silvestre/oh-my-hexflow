@@ -2,6 +2,8 @@ use std::fmt;
 
 use hexlog::HexlogError;
 
+use crate::guidance::Guidance;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OmhlError {
     Hexlog(HexlogError),
@@ -64,6 +66,11 @@ pub enum RuleCode {
     AttestationIncomplete,
     ConfirmationRequired,
     ConfirmationInvalid,
+    KindMissing,
+    KindInvalid,
+    RestsOnArchitecture,
+    RestsOnTargetType,
+    GuidelineRetireByCommand,
 }
 
 impl RuleCode {
@@ -90,6 +97,37 @@ impl RuleCode {
             RuleCode::AttestationIncomplete => "attestation-incomplete",
             RuleCode::ConfirmationRequired => "confirmation-required",
             RuleCode::ConfirmationInvalid => "confirmation-invalid",
+            RuleCode::KindMissing => "kind-missing",
+            RuleCode::KindInvalid => "kind-invalid",
+            RuleCode::RestsOnArchitecture => "rests-on-architecture",
+            RuleCode::RestsOnTargetType => "rests-on-target-type",
+            RuleCode::GuidelineRetireByCommand => "guideline-retire-by-command",
+        }
+    }
+
+    pub fn guidance(self) -> Option<Guidance> {
+        match self {
+            RuleCode::KindMissing => Some(Guidance {
+                cause: "the guideline has no kind",
+                next_step: "set kind to business or architecture in the item data and append again",
+            }),
+            RuleCode::KindInvalid => Some(Guidance {
+                cause: "the guideline kind must be business or architecture",
+                next_step: "set kind to business or architecture in the item data and append again",
+            }),
+            RuleCode::RestsOnArchitecture => Some(Guidance {
+                cause: "a guideline cannot rest on an architecture guideline; only a decision or a premise can",
+                next_step: "rest it on a business guideline, or record the link from a decision",
+            }),
+            RuleCode::RestsOnTargetType => Some(Guidance {
+                cause: "a guideline can only rest on another guideline",
+                next_step: "rest the guideline on a business guideline, or move the premise under a decision",
+            }),
+            RuleCode::GuidelineRetireByCommand => Some(Guidance {
+                cause: "a guideline can only be retired by the retire command",
+                next_step: "retire a guideline with omhl guideline retire",
+            }),
+            _ => None,
         }
     }
 }

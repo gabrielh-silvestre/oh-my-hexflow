@@ -14,6 +14,7 @@ const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495
 const OLD_CHECKS_CATALOG: &str = include_str!("fixtures/checks_catalog_free_events.json");
 const OLD_VOCABULARY: &str = "free";
 const OLD_DECISIONS_CATALOG: &str = include_str!("fixtures/decisions_catalog_v1.json");
+const PREVIOUS_DECISIONS_CATALOG: &str = include_str!("fixtures/decisions_catalog_v2.json");
 
 const NODE_TYPES: [&str; 9] = [
     "premise",
@@ -26,7 +27,14 @@ const NODE_TYPES: [&str; 9] = [
     "gap",
     "divergence",
 ];
-const RELATION_TYPES: [&str; 4] = ["after", "supports", "contradicts", "answers"];
+const RELATION_TYPES: [&str; 6] = [
+    "after",
+    "supports",
+    "contradicts",
+    "answers",
+    "rests-on",
+    "supersedes",
+];
 
 fn catalog() -> Catalog {
     graphs::catalog().expect("the embedded catalogs build")
@@ -96,6 +104,10 @@ fn old_catalog() -> Catalog {
 
 fn old_decisions_catalog() -> Catalog {
     catalog_from(OLD_DECISIONS_CATALOG)
+}
+
+fn previous_decisions_catalog() -> Catalog {
+    catalog_from(PREVIOUS_DECISIONS_CATALOG)
 }
 
 fn catalog_from(source: &str) -> Catalog {
@@ -179,7 +191,7 @@ fn names(listed: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn it_should_build_the_catalog_with_nine_node_types_and_four_relation_types() {
+fn it_should_build_the_catalog_with_nine_node_types_and_six_relation_types() {
     let built = graphs::catalog();
 
     let catalog = built.expect("the embedded catalogs build");
@@ -191,7 +203,7 @@ fn it_should_build_the_catalog_with_nine_node_types_and_four_relation_types() {
         .iter()
         .map(|name| catalog.relation_type_def(&rty(name)).is_some())
         .collect();
-    assert_eq!((node_types, relation_types), (vec![true; 9], vec![true; 4]));
+    assert_eq!((node_types, relation_types), (vec![true; 9], vec![true; 6]));
 }
 
 #[test]
@@ -232,6 +244,8 @@ fn it_should_declare_the_endpoints_of_each_relation_type() {
                 names(&["premise", "gap"]),
                 false
             ),
+            (names(&sources), names(&["guideline", "premise"]), true),
+            (names(&["guideline"]), names(&["guideline"]), true),
         ]
     );
 }
@@ -859,12 +873,25 @@ fn it_should_reject_a_premise_kind_outside_technical_and_business() {
 }
 
 #[test]
-fn it_should_reject_a_kind_on_a_guideline() {
+fn it_should_accept_a_guideline_with_each_valid_kind() {
+    let business = with(plain("guideline"), "kind", json!("business"));
+    let architecture = with(plain("guideline"), "kind", json!("architecture"));
+
+    let accepted = (
+        is_accepted("guideline", &business),
+        is_accepted("guideline", &architecture),
+    );
+
+    assert_eq!(accepted, (true, true));
+}
+
+#[test]
+fn it_should_reject_a_guideline_kind_outside_business_and_architecture() {
     let guideline = with(plain("guideline"), "kind", json!("technical"));
 
     let found = violations_of("guideline", &guideline);
 
-    assert_eq!(found, vec![violation("/kind", "additional-properties")]);
+    assert_eq!(found, vec![violation("/kind", "enum")]);
 }
 
 #[test]
@@ -1264,6 +1291,51 @@ fn it_should_append_a_confirmed_premise_to_a_chain_written_with_the_previous_cat
     )]));
 
     assert!(appended.is_ok(), "{appended:?}");
+}
+
+#[test]
+fn it_should_still_verify_a_decisions_chain_written_with_the_previous_catalog_v2() {
+    let raw = RawHarness::new();
+    let acme = acme();
+    {
+        let mut previous = raw.hexlog(previous_decisions_catalog(), &EmptyNative);
+        previous
+            .ensure_tenant(&acme)
+            .expect("the tenant is created");
+        previous
+            .append(&request(vec![
+                node_item(
+                    "premises.p-1",
+                    "premise",
+                    confirmed("premise", confirmation()),
+                ),
+                node_item(
+                    "guidelines.g-1",
+                    "guideline",
+                    confirmed("guideline", confirmation()),
+                ),
+            ]))
+            .expect("the previous catalog accepts the records");
+    }
+
+    let mut reopened = raw.hexlog(catalog(), &EmptyNative);
+    let report = reopened
+        .verify_chain(&acme, None)
+        .expect("the chain verifies");
+
+    assert_eq!(
+        (report.ok, report.total_records, report.total_breaks),
+        (true, 2, 0)
+    );
+}
+
+#[test]
+fn it_should_still_accept_a_guideline_without_kind() {
+    let guideline = confirmed("guideline", confirmation());
+
+    let accepted = is_accepted("guideline", &guideline);
+
+    assert!(accepted);
 }
 
 fn old_decisions_premise() -> Value {

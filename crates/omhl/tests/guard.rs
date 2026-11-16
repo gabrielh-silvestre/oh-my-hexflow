@@ -1404,6 +1404,7 @@ fn it_should_refuse_a_spec_digest_in_an_attestation_of_a_text_check_authored_by_
 
 const CONFIRMED_BY_POINTER: &str = "/items/0/body/data/confirmed_by";
 const CONFIRMED_BY_BY_POINTER: &str = "/items/0/body/data/confirmed_by/by";
+const KIND_POINTER: &str = "/items/0/body/data/kind";
 const AMENDMENT_POINTER: &str = "/items/0/body/data/amendment";
 
 fn confirmation(by: &str) -> Value {
@@ -1427,7 +1428,7 @@ fn confirmed_premise_data() -> Value {
 }
 
 fn guideline_data() -> Value {
-    json!({ "text": "keep pull requests small" })
+    json!({ "text": "keep pull requests small", "kind": "business" })
 }
 
 fn stale_divergence_data() -> Value {
@@ -1684,6 +1685,113 @@ fn it_should_accept_a_guideline_without_a_confirmation_from_the_loader() {
     assert_eq!(result, Ok(1));
 }
 
+// kind obrigatório na diretiva
+
+#[test]
+fn it_should_refuse_to_append_a_guideline_without_kind() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(
+        without_field(guideline_data(), "kind"),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+
+    assert_eq!(result, Err(rule(RuleCode::KindMissing, KIND_POINTER)));
+}
+
+#[test]
+fn it_should_refuse_to_revise_a_guideline_dropping_its_kind() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let seed = node_item("guidelines.small-prs", "guideline", guideline_data());
+    let base = append_as(&mut omhl, loader_author(), vec![seed]).expect("the guideline is seeded");
+    let revision = revision_item(
+        "guidelines.small-prs",
+        "guideline",
+        without_field(guideline_data(), "kind"),
+        &base.records[0].id,
+    );
+
+    let result = appended(&mut omhl, loader_author(), vec![revision]);
+
+    assert_eq!(result, Err(rule(RuleCode::KindMissing, KIND_POINTER)));
+}
+
+#[test]
+fn it_should_refuse_a_guideline_without_kind_with_cause_and_next_step() {
+    let raw = RawHarness::new();
+    let probe = FakeProbe::failing();
+    let mut app = open_app(&raw, &probe);
+    let data = without_field(guideline_data(), "kind");
+
+    let error = app
+        .dispatch(
+            &Caller::loader(),
+            &append_wire("guidelines.small-prs", "guideline", &data),
+        )
+        .expect_err("the append is refused")
+        .to_json();
+
+    assert_eq!(error["error"]["code"], json!("kind-missing"));
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| !message.is_empty())
+    );
+    assert!(
+        error["error"]["details"][0]["next_step"]
+            .as_str()
+            .is_some_and(|step| !step.is_empty())
+    );
+}
+
+#[test]
+fn it_should_refuse_to_append_a_guideline_with_an_invalid_kind() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(
+        with_field(guideline_data(), "kind", json!("tecnico")),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+
+    assert_eq!(result, Err(rule(RuleCode::KindInvalid, KIND_POINTER)));
+}
+
+#[test]
+fn it_should_refuse_a_guideline_with_an_invalid_kind_with_cause_and_next_step() {
+    let raw = RawHarness::new();
+    let probe = FakeProbe::failing();
+    let mut app = open_app(&raw, &probe);
+    let data = with_field(guideline_data(), "kind", json!("tecnico"));
+
+    let error = app
+        .dispatch(
+            &Caller::loader(),
+            &append_wire("guidelines.small-prs", "guideline", &data),
+        )
+        .expect_err("the append is refused")
+        .to_json();
+
+    assert_eq!(error["error"]["code"], json!("kind-invalid"));
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| !message.is_empty())
+    );
+    assert!(
+        error["error"]["details"][0]["next_step"]
+            .as_str()
+            .is_some_and(|step| !step.is_empty())
+    );
+    assert!(!error.to_string().contains("tecnico"));
+}
+
 // R5
 
 #[test]
@@ -1911,4 +2019,122 @@ fn it_should_identify_an_assumed_technical_premise_as_the_agents_by_its_author()
 
     assert_eq!(stored.author, mcp_author());
     assert_eq!(stored.data.get("confirmed_by"), None);
+}
+
+// Retirada de diretiva só pelo comando `guideline retire`
+
+const SMALL_PRS: &str = "guidelines.small-prs";
+
+/// O client do comando `omhl guideline retire`, o único que a guarda deixa retirar uma diretiva.
+fn guideline_retire_author() -> Author {
+    Author {
+        agent: "user".to_owned(),
+        model: None,
+        client: "guideline-retire".to_owned(),
+    }
+}
+
+/// Grava `SMALL_PRS` pelo loader (que dispensa a confirmação) e devolve o record, a `base` das retiradas.
+fn seed_guideline(omhl: &mut Omhl<'_>) -> RecordId {
+    let node = node_item(SMALL_PRS, "guideline", guideline_data());
+    let outcome = append_as(omhl, loader_author(), vec![node]).expect("the guideline is accepted");
+
+    outcome.records[0].id.clone()
+}
+
+#[test]
+fn it_should_refuse_to_retire_a_guideline_by_append() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let base = seed_guideline(&mut omhl);
+
+    let results = [
+        appended(
+            &mut omhl,
+            cli_author(),
+            vec![retirement_item(SMALL_PRS, &base)],
+        ),
+        appended(
+            &mut omhl,
+            mcp_author(),
+            vec![retirement_item(SMALL_PRS, &base)],
+        ),
+    ];
+
+    let refused = rule(RuleCode::GuidelineRetireByCommand, BASE_POINTER);
+    assert_eq!(results, [Err(refused.clone()), Err(refused)]);
+}
+
+#[test]
+fn it_should_refuse_to_retire_a_guideline_from_the_loader() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let base = seed_guideline(&mut omhl);
+
+    let result = appended(
+        &mut omhl,
+        loader_author(),
+        vec![retirement_item(SMALL_PRS, &base)],
+    );
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::GuidelineRetireByCommand, BASE_POINTER))
+    );
+}
+
+#[test]
+fn it_should_accept_the_retirement_of_a_guideline_from_the_retire_client() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let base = seed_guideline(&mut omhl);
+
+    let result = appended(
+        &mut omhl,
+        guideline_retire_author(),
+        vec![retirement_item(SMALL_PRS, &base)],
+    );
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_to_reactivate_a_retired_guideline_by_append() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let base = seed_guideline(&mut omhl);
+    let retired = appended_record(
+        &mut omhl,
+        guideline_retire_author(),
+        vec![retirement_item(SMALL_PRS, &base)],
+    );
+    let reactivation = revision_item(SMALL_PRS, "guideline", guideline_data(), &retired);
+
+    let result = appended(&mut omhl, loader_author(), vec![reactivation]);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ReactivationUnsupported, BASE_POINTER))
+    );
+}
+
+#[test]
+fn it_should_keep_requiring_the_confirmation_of_a_new_guideline_from_the_retire_client() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let item = node_item(SMALL_PRS, "guideline", guideline_data());
+
+    let result = appended(&mut omhl, guideline_retire_author(), vec![item]);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationRequired, CONFIRMED_BY_POINTER))
+    );
+}
+
+/// Grava o lote e devolve o id do record do primeiro item.
+fn appended_record(omhl: &mut Omhl<'_>, author: Author, items: Vec<AppendItem>) -> RecordId {
+    let outcome = append_as(omhl, author, items).expect("the append is accepted");
+
+    outcome.records[0].id.clone()
 }

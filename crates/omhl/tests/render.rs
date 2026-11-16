@@ -89,7 +89,12 @@ These are project instructions, not enforced; nothing here blocks any action.
 
 ### guidelines.small-prs
 - confirmed: false
+- kind: business
 - text: keep pull requests small
+
+### guidelines.legacy-style
+- confirmed: false
+- text: prefer small functions
 
 ## Decisions
 
@@ -211,11 +216,18 @@ fn golden_two_fixture() -> Fixture {
                 "blocking": false,
             }),
         )],
-        guidelines: vec![node(
-            "guidelines.small-prs",
-            "guideline",
-            json!({ "text": "keep pull requests small" }),
-        )],
+        guidelines: vec![
+            node(
+                "guidelines.legacy-style",
+                "guideline",
+                json!({ "text": "prefer small functions" }),
+            ),
+            node(
+                "guidelines.small-prs",
+                "guideline",
+                json!({ "text": "keep pull requests small", "kind": "business" }),
+            ),
+        ],
         decisions: vec![node(
             "decisions.use-wal",
             "decision",
@@ -543,6 +555,10 @@ fn directive(id: &str, data: Value) -> NodeView {
     node(id, "guideline", data)
 }
 
+fn kinded_guideline(id: &str, kind: &str, text: &str) -> NodeView {
+    directive(id, json!({ "text": text, "kind": kind }))
+}
+
 /// O texto de `## <title>` até o próximo `## `; vazio se a seção não existe.
 fn section<'t>(text: &'t str, title: &str) -> &'t str {
     let Some((_, from_title)) = text.split_once(&format!("\n## {title}\n")) else {
@@ -776,6 +792,97 @@ fn it_should_mark_the_native_guidelines_as_confirmed() {
             "{id}"
         );
     }
+}
+
+#[test]
+fn it_should_show_the_kind_of_a_guideline() {
+    let rendered = rendered_guidelines(vec![kinded_guideline(
+        "guidelines.rule",
+        "architecture",
+        "layer it",
+    )]);
+
+    assert_eq!(
+        block(&rendered.text, "guidelines.rule"),
+        [
+            "### guidelines.rule",
+            "- confirmed: false",
+            "- kind: architecture",
+            "- text: layer it"
+        ]
+    );
+}
+
+#[test]
+fn it_should_omit_the_kind_line_of_a_guideline_without_kind() {
+    let rendered = rendered_guidelines(vec![directive(
+        "guidelines.loose",
+        json!({ "text": "be loose" }),
+    )]);
+
+    assert!(!rendered.text.contains("- kind:"));
+}
+
+#[test]
+fn it_should_sort_guidelines_by_kind_business_first() {
+    let rendered = rendered_guidelines(vec![
+        directive("guidelines.c-legacy", json!({ "text": "old" })),
+        kinded_guideline("guidelines.z-biz", "business", "rule"),
+        kinded_guideline("guidelines.b-arch", "architecture", "rule"),
+        kinded_guideline("guidelines.y-biz", "business", "rule"),
+        kinded_guideline("guidelines.a-arch", "architecture", "rule"),
+    ]);
+
+    assert_eq!(
+        headers(section(&rendered.text, "Guidelines")),
+        [
+            "guidelines.one-decision-per-turn",
+            "guidelines.commit-policy",
+            "guidelines.y-biz",
+            "guidelines.z-biz",
+            "guidelines.a-arch",
+            "guidelines.b-arch",
+            "guidelines.c-legacy",
+        ]
+    );
+}
+
+#[test]
+fn it_should_cut_architecture_guidelines_before_business_ones_over_the_budget() {
+    let long_text = "g".repeat(1_500);
+    let mut guidelines = vec![
+        kinded_guideline("guidelines.z1", "business", &long_text),
+        kinded_guideline("guidelines.z2", "business", &long_text),
+    ];
+    guidelines.extend(
+        (1..=6).map(|n| kinded_guideline(&format!("guidelines.a{n}"), "architecture", &long_text)),
+    );
+
+    let rendered = rendered_guidelines(guidelines);
+
+    let shown = headers(&rendered.text);
+    let shown_architecture = shown
+        .iter()
+        .filter(|id| id.starts_with("guidelines.a"))
+        .count();
+    assert!(rendered.text.chars().count() <= BUDGET);
+    assert!(shown.contains(&"guidelines.z1") && shown.contains(&"guidelines.z2"));
+    assert!(rendered.omitted > 0);
+    assert_eq!(rendered.omitted, 6 - shown_architecture);
+}
+
+#[test]
+fn it_should_keep_native_nodes_intact_when_guidelines_with_kind_are_cut() {
+    let long_text = "g".repeat(1_500);
+    let guidelines = (1..=8)
+        .map(|n| kinded_guideline(&format!("guidelines.a{n}"), "architecture", &long_text))
+        .collect();
+
+    let rendered = rendered_guidelines(guidelines);
+
+    let shown = headers(&rendered.text);
+    assert!(rendered.omitted > 0);
+    assert!(NATIVE_IDS.iter().all(|id| shown.contains(id)));
 }
 
 #[test]

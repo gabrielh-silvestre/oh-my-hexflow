@@ -18,7 +18,10 @@ pub const CI_GREEN: &str = "checks.ci-green-before-merge";
 pub const FEATURE_1: &str = "work-items.feature-1";
 pub const PREMISE: &str = "premises.sqlite-is-fast";
 pub const DECISION: &str = "decisions.use-sqlite";
+pub const ANCHOR: &str = "premises.users-pay-monthly";
 pub const NO_OPEN_CONTRADICTION: &str = "no-open-contradiction";
+pub const DECISIONS_ANCHORED: &str = "decisions-anchored";
+pub const ANCHORS_CONFIRMED: &str = "anchors-confirmed";
 
 const RECORD_ID: &str = "acme:0192a000-0000-7000-8000-000000000001";
 
@@ -149,7 +152,36 @@ pub fn attest_required(omhl: &mut Omhl<'_>, snapshot: &Snapshot) {
     attest(omhl, snapshot, CI_GREEN, "passed", true);
 }
 
-/// Decision de `work-items.pr-7` contradita por uma premise. Devolve o record da relation `contradicts`.
+/// Premissa confirmada por uma pessoa, com `confirmed_by`.
+pub fn confirmed_premise_data(text: &str) -> Value {
+    let mut data = premise_data(text, None);
+    data["status"] = json!("confirmed");
+    data["confirmed_by"] = json!({
+        "by": "person:ana",
+        "question": "Is this premise right?",
+        "answer": "Yes, it is.",
+    });
+
+    data
+}
+
+/// Apoia `DECISION` em `ANCHOR`, uma premissa confirmada com `confirmed_by`. Devolve o record da relation `rests-on`.
+pub fn anchor_decision(omhl: &mut Omhl<'_>) -> RecordId {
+    append_ok(
+        omhl,
+        vec![node_item(
+            ANCHOR,
+            "premise",
+            confirmed_premise_data("Users pay monthly"),
+        )],
+    );
+
+    append_ok(omhl, vec![relation_item("rests-on", DECISION, ANCHOR)]).records[0]
+        .id
+        .clone()
+}
+
+/// Decision de `work-items.pr-7` contradita por uma premise, e ancorada em `ANCHOR`. Devolve o record da relation `contradicts`.
 pub fn seed_contradicted_decision(omhl: &mut Omhl<'_>) -> RecordId {
     append_ok(
         omhl,
@@ -162,6 +194,7 @@ pub fn seed_contradicted_decision(omhl: &mut Omhl<'_>) -> RecordId {
             ),
         ],
     );
+    anchor_decision(omhl);
 
     append_ok(omhl, vec![relation_item("contradicts", PREMISE, DECISION)]).records[0]
         .id

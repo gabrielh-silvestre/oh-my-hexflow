@@ -576,6 +576,21 @@ fn it_should_reject_a_relation_to_a_node_retired_earlier_in_the_same_batch() {
 }
 
 #[test]
+fn it_should_accept_a_relation_followed_by_the_retirement_of_its_target_in_one_batch() {
+    let harness = Harness::new();
+    let mut hexlog = harness.open_acme_with(&harness.config(), loose_catalog());
+    let ids = write_notes(&mut hexlog, &["a.one", "a.two"]);
+    let items = vec![
+        relation("loose", "a.one", "a.two"),
+        retire("a.two", &ids[1]),
+    ];
+
+    let outcome = hexlog.append(&request("acme", None, items));
+
+    assert!(outcome.is_ok(), "{outcome:?}");
+}
+
+#[test]
 fn it_should_prefer_the_native_origin_when_a_tenant_node_shadows_a_native_id() {
     let mut harness = Harness::with_native_other();
     let mut hexlog = harness.open_acme();

@@ -5,7 +5,7 @@ use super::action::Caller;
 use super::engine::{Engine, parse_at, require_project_root};
 use super::error::AppError;
 use crate::error::{OmhlError, RuleCode};
-use crate::extensions::collect::check_file_exists;
+use crate::extensions::collect::extension_file_exists;
 use crate::extensions::model::ExtensionKind;
 
 impl Engine<'_> {
@@ -21,7 +21,7 @@ impl Engine<'_> {
                     && id.as_str().starts_with(ExtensionKind::Check.id_prefix())
             })
             .ok_or_else(|| OmhlError::rule(RuleCode::CheckNotFound, "/check"))?;
-        if check_file_exists(&root, id.as_str()) {
+        if extension_file_exists(ExtensionKind::Check, &root, id.as_str()) {
             return Err(AppError::check_not_orphaned("/check"));
         }
         let item = AppendItem {

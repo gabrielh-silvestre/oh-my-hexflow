@@ -143,6 +143,14 @@ pub fn node_view(id: &str) -> NodeView {
     }
 }
 
+/// Node com o `data` dado.
+pub fn node_view_with(id: &str, data: Value) -> NodeView {
+    NodeView {
+        data,
+        ..node_view(id)
+    }
+}
+
 pub fn node_views(ids: &[&str]) -> Vec<NodeView> {
     ids.iter().map(|id| node_view(id)).collect()
 }
@@ -171,10 +179,7 @@ pub fn relation_view(relation_type: &str, from: &str, to: &str) -> RelationView 
 
 /// Avalia uma pergunta só, com o rótulo `LABEL`, e devolve o relatório dela.
 pub fn evaluate_one(source: &mut FakeSource, question: Question) -> QuestionReport {
-    let questions = [GateQuestion {
-        label: LABEL.to_owned(),
-        question,
-    }];
+    let questions = [GateQuestion::new(LABEL, question)];
 
     evaluate(source, &tenant("acme"), &questions)
         .expect("the evaluation succeeds")
@@ -196,6 +201,7 @@ pub fn expected_report(
         matched,
         failing: failing.iter().map(|id| sid(id)).collect(),
         omitted: 0,
+        next_step: None,
     }
 }
 
@@ -323,10 +329,7 @@ pub fn evaluate_on_hexlog(
     page_size: u32,
     question: Question,
 ) -> QuestionReport {
-    let questions = [GateQuestion {
-        label: LABEL.to_owned(),
-        question,
-    }];
+    let questions = [GateQuestion::new(LABEL, question)];
     let mut source = HexlogSource::new(hexlog, page_size);
 
     evaluate(&mut source, &tenant("acme"), &questions)

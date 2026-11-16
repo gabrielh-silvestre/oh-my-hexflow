@@ -138,14 +138,19 @@ pub fn author(author: &Author) -> Value {
 }
 
 fn question(report: &QuestionReport) -> Value {
-    json!({
+    let mut value = json!({
         "label": report.label,
         "kind": question_kind(report.kind),
         "passed": report.passed,
         "matched": report.matched,
         "failing": report.failing,
         "omitted": report.omitted,
-    })
+    });
+    if let Some(next_step) = &report.next_step {
+        value["next_step"] = json!(next_step);
+    }
+
+    value
 }
 
 fn question_kind(kind: QuestionKind) -> &'static str {
@@ -154,6 +159,7 @@ fn question_kind(kind: QuestionKind) -> &'static str {
         QuestionKind::Occurred => "occurred",
         QuestionKind::NoPending => "no-pending",
         QuestionKind::NoOpenContradiction => "no-open-contradiction",
+        QuestionKind::Anchored => "anchored",
     }
 }
 

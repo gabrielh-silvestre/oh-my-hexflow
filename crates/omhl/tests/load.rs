@@ -28,7 +28,7 @@ fn check_toml(how: &str, after: &[&str]) -> String {
 }
 
 fn guideline_toml(text: &str) -> String {
-    format!("text = \"{text}\"\n")
+    format!("kind = \"business\"\ntext = \"{text}\"\n")
 }
 
 fn check_data(how: &str) -> Value {
@@ -116,16 +116,25 @@ fn total_records(fx: &AppFixture) -> u64 {
         .expect("verify counts the records")
 }
 
-fn retire(fx: &AppFixture, id: &str) {
+fn retirement_request(fx: &AppFixture, id: &str) -> Value {
     let base = fx.get(id)["record_id"].clone();
-    let request = json!({
+
+    json!({
         "items": [{
             "body": {"kind": "retirement", "lineage": {"kind": "node", "id": id}},
             "base": base,
         }]
-    });
+    })
+}
 
-    fx.append_as_user(request)
+fn retire(fx: &AppFixture, id: &str) {
+    fx.append_as_user(retirement_request(fx, id))
+        .expect("the retirement is accepted");
+}
+
+/// A guarda só deixa o client do comando retirar uma diretiva; o arquivo segue na árvore, então o comando recusaria.
+fn retire_guideline(fx: &AppFixture, id: &str) {
+    fx.append_as_guideline_retirer(retirement_request(fx, id))
         .expect("the retirement is accepted");
 }
 
@@ -146,7 +155,7 @@ fn it_should_create_checks_and_guidelines() {
     assert_eq!(fx.get("checks.a")["data"], check_data("Run A"));
     assert_eq!(
         fx.get("guidelines.tone")["data"],
-        json!({"text": "Be brief"})
+        json!({"text": "Be brief", "kind": "business"})
     );
 }
 
@@ -282,7 +291,7 @@ fn it_should_skip_a_retired_guideline() {
     let fx = AppFixture::new();
     fx.ext().guideline("tone", &guideline_toml("Be brief"));
     loaded(&fx, false);
-    retire(&fx, "guidelines.tone");
+    retire_guideline(&fx, "guidelines.tone");
 
     let report = loaded(&fx, false);
 
@@ -364,6 +373,48 @@ fn it_should_refuse_invalid_extensions_and_write_nothing() {
         vec![key(".omhl/checks/x.toml", "invalid-toml")]
     );
     assert_eq!(fx.list("check"), json!([]));
+}
+
+#[test]
+fn it_should_refuse_a_guideline_without_kind_and_write_nothing() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .guideline("tone", "text = \"Be brief\"\n");
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("extensions-invalid"));
+    assert_eq!(
+        detail_keys(&error),
+        vec![key(".omhl/guidelines/tone.toml", "kind-missing")]
+    );
+    assert!(
+        error["error"]["details"][0]["next_step"]
+            .as_str()
+            .is_some_and(|step| !step.is_empty()),
+        "the detail has no next_step: {error}"
+    );
+    assert_eq!(fx.list("check"), json!([]));
+    assert_eq!(fx.list("guideline"), json!([]));
+}
+
+#[test]
+fn it_should_refuse_a_guideline_with_an_invalid_kind_and_write_nothing() {
+    let fx = AppFixture::new();
+    fx.ext()
+        .check("a", &check_toml("Run A", &[]))
+        .guideline("tone", "kind = \"tecnico\"\ntext = \"Be brief\"\n");
+
+    let error = refused(&fx);
+
+    assert_eq!(error["error"]["code"], json!("extensions-invalid"));
+    assert_eq!(
+        detail_keys(&error),
+        vec![key(".omhl/guidelines/tone.toml", "kind-invalid")]
+    );
+    assert_eq!(fx.list("check"), json!([]));
+    assert_eq!(fx.list("guideline"), json!([]));
 }
 
 #[test]

@@ -387,7 +387,7 @@ fn directive(id: &str) -> Value {
     node(
         id,
         "guideline",
-        json!({ "text": "t", "confirmed_by": confirmed_by() }),
+        json!({ "text": "t", "kind": "business", "confirmed_by": confirmed_by() }),
     )
 }
 
