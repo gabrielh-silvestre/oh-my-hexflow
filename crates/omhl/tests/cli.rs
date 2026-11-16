@@ -204,6 +204,19 @@ fn it_should_refuse_a_malformed_id_prefix_from_the_cli() {
 }
 
 #[test]
+fn it_should_refuse_a_malformed_node_id_in_get_from_the_cli() {
+    let project = Project::new("acme");
+
+    let output = in_project(&project, &["get", "Bad Id"]).run();
+
+    assert_eq!(output.code, Some(1));
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    let error = &json_line(&output.stderr)["error"];
+    assert_eq!(error["code"], json!("INVALID_INPUT"));
+    assert_eq!(error["details"][0]["path"], json!("/id"));
+}
+
+#[test]
 fn it_should_find_the_project_by_the_project_dir_flag() {
     let project = Project::new("acme");
     let elsewhere = TempDir::new().expect("other directory is created");
