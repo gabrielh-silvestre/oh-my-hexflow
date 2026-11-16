@@ -10,7 +10,6 @@ Setas apontam de quem depende para quem é dependido. Setas pontilhadas são uso
 flowchart LR
   subgraph ext["Atores externos"]
     term["Terminal"]
-    ccmcp["Cliente MCP (o plugin não o inicia)"]
     cchook["Claude Code hook SessionStart"]
     git["git"]
     sqlite[("SQLite")]
@@ -21,7 +20,6 @@ flowchart LR
 
     subgraph gw["Gateways de consumo"]
       cli["cli"]
-      mcp["mcp"]
       hook["hook"]
     end
 
@@ -62,14 +60,11 @@ flowchart LR
   end
 
   term --> main
-  ccmcp --> main
   cchook --> main
   main --> cli
   cli --> hook
-  cli --> mcp
   cli --> app
   hook --> app
-  mcp --> app
   cli --> project
 
   app --> facade
@@ -148,14 +143,15 @@ Notas de leitura:
 
 ## 2. Contexto em um parágrafo
 
-O workspace tem dois crates. O `hexlog` é o motor agnóstico: guarda a chain de records por tenant num SQLite, valida contra um catalog dado por quem o abre e não conhece decisão, check, gate nem PRD. O `omhl` é o plugin opinativo: monta o catalog dos graphs, embute o native, guarda as regras de domínio na escrita, avalia gates, renderiza o contexto, carrega extensions e gera a projection, e expõe tudo por três gateways (CLI, MCP, hook) que dividem uma única camada de casos de uso (`app`). A separação não é só convenção: oito testes de arquitetura a travam (seção 4).
+O workspace tem dois crates. O `hexlog` é o motor agnóstico: guarda a chain de records por tenant num SQLite, valida contra um catalog dado por quem o abre e não conhece decisão, check, gate nem PRD. O `omhl` é o plugin opinativo: monta o catalog dos graphs, embute o native, guarda as regras de domínio na escrita, avalia gates, renderiza o contexto, carrega extensions e gera a projection, e expõe tudo por dois gateways (CLI e hook) que dividem uma única camada de casos de uso (`app`). A separação não é só convenção: 27 testes de arquitetura no `omhl` e 11 no `hexlog` a travam (seção 4).
 
-As decisões estruturais dos gates mecânicos, com o porquê de cada uma:
+As decisões estruturais, com o porquê de cada uma:
 
 - [0002](adr/0002-pasta-de-hooks-unica-por-usuario.md): a pasta de hooks do git é única por usuário (3.22, `ports/hooks`).
 - [0003](adr/0003-evento-do-check-fechado-em-tres-eventos-do-git.md): o evento do check é fechado em `before-commit`, `before-pr` e `before-merge` (3.17).
 - [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor`, `loader` e `guideline-retire` são a fronteira da guarda (3.23, `guard`).
 - [0005](adr/0005-saida-dos-checks-em-blobs-fora-do-banco.md): a saída dos checks fica em blobs fora do banco (3.21, `ports/blob`).
+- [0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md): a CLI é a única interface do agente e o UTCP foi descartado (3.12, seção 5).
 
 ## 3. Caixas cinzas
 
@@ -174,7 +170,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |
 | `omhl::app` | 3.559 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
-| `omhl::adapters` | 863 | `cli::run`, `mcp::serve`, `hook::session_start` | funda por adapter |
+| `omhl::adapters` | 645 | `cli::run`, `hook::session_start` | funda por adapter |
 | `omhl::extensions` | 1.015 | `collect`, `plan` | funda |
 | `omhl::projection` | 569 | `build`, `write` | funda |
 | `omhl::render` | 297 | `render` | funda |
@@ -290,23 +286,23 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** É o caso de uso: transforma uma `Action` de qualquer gateway numa chamada ao `Omhl` e devolve JSON, com repetição de `Busy`.
 
-**Interface.** `App::open`, `App::with_project_root`, `App::dispatch(&Caller, &Action) -> Result<Value, AppError>` (`app/mod.rs`); `Runtime::discover`, `Runtime::app`, `run_action` (`app/runtime.rs`); `Action` (22 variantes), `Caller::{cli, cli_under_claude_code, mcp, hook, loader, executor}`, `parse_tool_call` (`app/action.rs`); `read_json_input`, `parse_json_text`, `INPUT_MAX_BYTES` (`app/input.rs`); `RetryPolicy` (`app/retry.rs`); `AppError::{code, message, to_json}` (`app/error.rs`); `output::{node, page, appended, gate, closed, verify}`. Invariantes: `load` e `project` respondem `no-project-root` sem `with_project_root`; só `Busy` é repetido (nada foi gravado nesse caso).
+**Interface.** `App::open`, `App::with_project_root`, `App::dispatch(&Caller, &Action) -> Result<Value, AppError>` (`app/mod.rs`); `Runtime::discover`, `Runtime::app`, `run_action` (`app/runtime.rs`); `Action` (23 variantes), `Caller::{cli, cli_under_claude_code, hook, loader, executor}` (`app/action.rs`); `read_json_input`, `parse_json_text`, `INPUT_MAX_BYTES` (`app/input.rs`); `RetryPolicy` (`app/retry.rs`); `AppError::{code, message, to_json}` (`app/error.rs`); `output::{node, page, appended, gate, closed, verify}`. Invariantes: `load` e `project` respondem `no-project-root` sem `with_project_root`; só `Busy` é repetido (nada foi gravado nesse caso).
 
 **Escondido.** `Engine` (`app/engine.rs`) que despacha cada ação; `attest` (`app/attest.rs`), `load` (`app/load.rs`), `context` (`app/context.rs`), `wire` (`app/wire.rs`: JSON para `AppendRequest`), `read` (`app/read.rs`), a tradução de erros do motor, do domínio e do projeto para um `AppError`.
 
-**Catálogo de erros.** `app/error.rs` é o catálogo de códigos de erro; todo código estável ganha construtor nomeado, mesmo com 1 uso (os códigos são contrato externo: JSON da CLI, MCP e hook).
+**Catálogo de erros.** `app/error.rs` é o catálogo de códigos de erro; todo código estável ganha construtor nomeado, mesmo com 1 uso (os códigos são contrato externo: JSON da CLI e do hook).
 
 **Aninhadas.** `extensions`, `projection`, `render` (3.13 a 3.15) são orquestradas por `Engine`.
 
-**Profundidade.** Funda no uso (3 adapters passam por 3 funções), com a fuga de contrato descrita nos itens 2, 5 e 6 da seção 5. É onde o contexto mais cresceu em `omhl`: 3.559 linhas, o maior módulo.
+**Profundidade.** Funda no uso (2 adapters), com a fuga de contrato descrita nos itens 2, 5 e 6 da seção 5. É onde o contexto mais cresceu em `omhl`: 3.559 linhas, o maior módulo.
 
 ### 3.12 Gateway de consumo: `omhl::adapters`
 
-**Papel.** Traduz um protocolo externo (linha de comando, JSON-RPC por stdio, evento de hook) em `Action` e imprime o resultado; não conhece o domínio.
+**Papel.** Traduz um protocolo externo (linha de comando, evento de hook) em `Action` e imprime o resultado; não conhece o domínio.
 
-**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `mcp::serve(input, out, start, db, env) -> ExitCode`, `hook::session_start(stdin, out, err, env) -> ExitCode`. `main.rs` (20 linhas) só monta o `Env` e chama `cli::run`.
+**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`. `main.rs` (20 linhas) só monta o `Env` e chama `cli::run`.
 
-**Escondido.** Em `mcp.rs` (370 linhas): framing por linha com teto de 1 MiB, duas gerações do protocolo (`Era::Modern`, `Era::Legacy`), schemas das ferramentas (`read_tools`, `write_tools`, `plain_tools`, `extension_tools`), cache. Em `hook.rs`: a saída `hookSpecificOutput` e o aviso de extensions (só códigos e contagens).
+**Escondido.** Em `hook.rs`: a saída `hookSpecificOutput` e o aviso de extensions (só códigos e contagens).
 
 **Profundidade.** Funda por adapter: uma função cada. Importam só `app` e `project::Env` (verificado), e o teste `it_should_keep_adapters_free_of_hexlog_imports` impede o resto.
 
@@ -408,7 +404,7 @@ Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/`
 - **`GitProbe::with_index_file(index_file, base)`.** Faz a sonda ler o índice temporário que o git passa ao hook em `GIT_INDEX_FILE`. Um caminho relativo vale contra `base`. Um índice que não existe é erro, nunca árvore vazia.
 - **`Env`** (`project/mod.rs`). Ganha `git_index_file: Option<&OsStr>` e `parent_pid: u32`. O `main.rs` lê `parent_id()` na primeira linha, antes do clap e do banco (travado: `it_should_read_the_parent_pid_before_anything_else_in_main`).
 - **`guard`.** Três regras novas de atestado. `snapshot-tree-mismatch`: uma attestation `git-tree` confere contra a árvore do índice. `check-run-author`: só o autor `loader` grava, revisa ou retira um check com `run`, e só o autor `executor` grava a attestation de um check com `run`. `attestation-incomplete`: a attestation de um check com `run` precisa de `byproduct`, de `command`, de `spec_digest` e, para `passed` e `passed_with_warning`, de `exit_code`.
-- **`app`.** Novos arquivos `check_run`, `check_retire`, `work_item`, `byproduct_tail` e `hooks`; novas ações `CheckRun`, `CheckRetire`, `CheckSweep`, `ConsumeDevelopMark`, `Byproduct` e `HooksInstall`; novo `Caller::executor`. A ação `CheckRun` roda fora do `with_retry` do `dispatch`. O `Runtime` monta o `ProcessRunner`, o `BlobStore` e a sonda, e varre os processos fugidos antes de despachar um `check run`. `check_run` e `check_retire` dependem de `extensions::collect::extension_file_exists`: um check do banco cujo `.omhl/checks/<slug>.toml` sumiu da árvore é órfão, o `check run` o ignora e avisa, e `check retire` grava a retirement dele como `loader`. Só a CLI expõe `check retire` (como `load` e `check run`, sem ferramenta MCP).
+- **`app`.** Novos arquivos `check_run`, `check_retire`, `work_item`, `byproduct_tail` e `hooks`; novas ações `CheckRun`, `CheckRetire`, `CheckSweep`, `ConsumeDevelopMark`, `Byproduct` e `HooksInstall`; novo `Caller::executor`. A ação `CheckRun` roda fora do `with_retry` do `dispatch`. O `Runtime` monta o `ProcessRunner`, o `BlobStore` e a sonda, e varre os processos fugidos antes de despachar um `check run`. `check_run` e `check_retire` dependem de `extensions::collect::extension_file_exists`: um check do banco cujo `.omhl/checks/<slug>.toml` sumiu da árvore é órfão, o `check run` o ignora e avisa, e `check retire` grava a retirement dele como `loader`. Só a CLI expõe `check retire`.
 - **`pr_gate`.** Cobra o snapshot que `snapshot_for` indica para cada check e dispensa o check nativo de um evento quando um check mecânico bloqueante cobre o mesmo evento. Para cada check com `run`, pergunta também `spec-digest-match:<check>` (`spec_digests`, `pr_gate_questions`): só vale a attestation com o `spec_digest` da definição vigente, calculado por `mechanical::spec::spec_digest`.
 
 ### 3.24 Fluxo de diretivas e premissas: `omhl::workflow` e as ports novas
@@ -478,9 +474,9 @@ Oito itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 
 4. **A sonda do git vive em duas camadas (dívida).** `Engine` guarda o `probe` (`app/mod.rs`, campo `probe: deps.probe`; `app/engine.rs:probe_snapshot`) e `Omhl` guarda outro (`facade.rs:46-50`, usado em `:75` e `:215`). Em `close`, `Engine::close` sonda e `close_work_item` sonda de novo (`facade.rs:215`): dois `git` por fechamento, e a segunda leitura é a que vale. Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito, o que o `tests/pr_gate.rs` aproveita. Vira corte se aparecer um caso em que as duas leituras discordem.
 
-5. **Vocabulário do MCP dentro de `app` (corte).** `parse_tool_call` (`app/action.rs:86`) conhece os nomes das ferramentas MCP, e só `adapters/mcp.rs:7,177` o usa (nenhum teste). Os schemas das ferramentas estão em `mcp.rs` (`tools()`). Acrescentar uma ação toca 6 pontos: `Action` (`action.rs`), `parse_tool_call`, `Engine::run`, `ActionCommand` e `to_action` (`cli.rs`), `tools()` (`mcp.rs`). Corte: mover `parse_tool_call` para `adapters/mcp.rs`; a direção `adapters -> app` se mantém. Trade-off: nenhum relevante; é só mover.
+5. **Nome e formato de porta dentro de `app` (corte).** `app` ainda conhece o nome de quem o chama e o formato de uma porta: `Caller::{cli, cli_under_claude_code, hook}` (`app/action.rs:100`), `spec_lock` com o payload do `PreToolUse` (`app/spec.rs:289`) e `invalid_hook_input` (`app/error.rs:150`). Acrescentar uma ação toca 4 pontos: `Action` (`action.rs`), `Engine::run`, `ActionCommand` e `to_action` (`cli.rs`). Corte: o adapter traduz o payload para um struct neutro e passa o `Caller` pronto; `app` deixa de nomear a porta. Trade-off: não medido além de mover os três nomes e o parse do payload.
 
-6. **Contrato de saída sem tipo (dívida).** `App::dispatch` devolve `Result<Value, AppError>` e o hook decodifica por chave de string: `pending_note` lê `created`, `revised`, `relations_created`, `tenant`; `orphan_note` lê `orphans` (e usa `app::ExtensionKind`, reexportado, para ficar só nos checks); `context_for_session` compara com `"no-marker"`; `warning` compara com `"extensions-invalid"` (`adapters/hook.rs`). As chaves nascem em `app/load.rs`. Hoje só o teste `tests/hook.rs` pega uma divergência. Aceitável porque CLI, MCP e hook compartilham um único formato JSON de propósito; vira corte (um `LoadReport` tipado em `app`) quando um segundo consumidor ler o mesmo relatório.
+6. **Contrato de saída sem tipo (dívida).** `App::dispatch` devolve `Result<Value, AppError>` e o hook decodifica por chave de string: `pending_note` lê `created`, `revised`, `relations_created`, `tenant`; `orphan_note` lê `orphans` (e usa `app::ExtensionKind`, reexportado, para ficar só nos checks); `context_for_session` compara com `"no-marker"`; `warning` compara com `"extensions-invalid"` (`adapters/hook.rs`). As chaves nascem em `app/load.rs`. Hoje só o teste `tests/hook.rs` pega uma divergência. Aceitável porque CLI e hook compartilham um único formato JSON de propósito; vira corte (um `LoadReport` tipado em `app`) quando um segundo consumidor ler o mesmo relatório.
 
 7. **Helpers no lugar errado (corte pequeno, em parte feito).** `list_sorted_capped` saiu de `extensions/files.rs` para `ports/files.rs` no fluxo de diretivas, e `projection/write.rs` o importa de lá. Falta o resto: `projection/build.rs` importa `render::sort_by_id`, e `project/layout.rs` mistura constantes de `extensions` (`EXT_FILE_MAX_BYTES`, `CHECKS_DIR`), de `projection` (`PROJECTION_*`) e de arquivo temporário (`TMP_*`). Corte: `render::sort_by_id` vai para `project` (que já hospeda `text.rs`).
 

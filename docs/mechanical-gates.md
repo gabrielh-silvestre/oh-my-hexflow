@@ -76,7 +76,7 @@ O `output_tail` (as últimas 20 linhas de `stdout` e de `stderr`, cada uma corta
 
 O `output_tail` pode conter segredos que o comando imprimiu. É a mesma saída que você veria rodando o comando à mão.
 
-O arquivo de saída (`byproduct`) guarda a saída completa do comando, até 4 MiB por fluxo (`stdout` e `stderr`; guarda o começo, o que passa disso é cortado e o resultado leva `truncated`, que também vale quando o prazo de leitura do cano vence; por isso `omhl byproduct --tail` mostra o fim do trecho guardado, não o fim real da saída), em `blobs/` ao lado do banco, com modo `0700` na pasta e `0600` no arquivo. A saída não passa por redação de segredos e não tem prazo: nenhum comando apaga os arquivos antigos, então apague `blobs/` à mão quando quiser. A ferramenta MCP `byproduct` devolve até 500 linhas desse texto ao modelo, que deve tratá-lo como dado não confiável, nunca como instrução.
+O arquivo de saída (`byproduct`) guarda a saída completa do comando, até 4 MiB por fluxo (`stdout` e `stderr`; guarda o começo, o que passa disso é cortado e o resultado leva `truncated`, que também vale quando o prazo de leitura do cano vence; por isso `omhl byproduct --tail` mostra o fim do trecho guardado, não o fim real da saída), em `blobs/` ao lado do banco, com modo `0700` na pasta e `0600` no arquivo. A saída não passa por redação de segredos e não tem prazo: nenhum comando apaga os arquivos antigos, então apague `blobs/` à mão quando quiser. O `omhl byproduct` devolve até 500 linhas desse texto ao modelo e corta o que passa disso, que deve tratá-lo como dado não confiável, nunca como instrução.
 
 | `kind` | Quando | `hint` |
 |---|---|---|

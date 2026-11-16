@@ -46,8 +46,7 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    ```
 
 O plugin liga os hooks `SessionStart` e `PreToolUse` (`hook spec-lock`, em
-`plugin/hooks/hooks.json`). Ele não inicia o servidor MCP: o agente grava e
-consulta pela CLI.
+`plugin/hooks/hooks.json`). O agente grava e consulta pela CLI.
 
 ## Marcar um projeto
 
@@ -113,7 +112,6 @@ JSON.
 | `verify` | Verifica a cadeia de hash |
 | `load [--dry-run]` | Carrega as extensions de `.omhl/` no tenant |
 | `project` | Gera a projeção em Markdown em `.omhl/projection/` |
-| `mcp` | Serve as ferramentas MCP por stdio. O plugin não o inicia |
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
 | `hook spec-lock` | Roda o hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de uma spec congelada |
 | `spec init <work-item> <slug>` | Cria a pasta da spec de um work item aberto, com a primeira parte, no diretório principal |
@@ -132,8 +130,7 @@ JSON.
 `attest` e `close` exigem a árvore git limpa. Um erro sai no stderr como JSON,
 com o código de saída 1.
 
-A interface do agente é a CLI. O adapter MCP (`omhl mcp`) segue no código, mas
-o plugin não o inicia e nenhum fluxo depende dele.
+A interface do agente é a CLI.
 
 ## Extensions e projeção
 

@@ -2,7 +2,7 @@
 
 Vocabulário em [GLOSSARY.md](../GLOSSARY.md). Visão geral e primeiros passos no [README](../README.md). A branch, a marca da `develop` e os checks mecânicos estão em [mechanical-gates.md](mechanical-gates.md).
 
-O humano define diretivas e premissas. O agente escolhe os comportamentos e escreve a spec a partir delas. Este fluxo roda no binário `omhl`, sem o MCP hexlog em TypeScript. O núcleo `crates/hexlog` não muda: tipos, relações, gates, hooks e comandos deste fluxo são do `omhl`.
+O humano define diretivas e premissas. O agente escolhe os comportamentos e escreve a spec a partir delas. Este fluxo roda no binário `omhl`, sem o hexlog em TypeScript. O núcleo `crates/hexlog` não muda: tipos, relações, gates, hooks e comandos deste fluxo são do `omhl`.
 
 **Estado de ativação.** O gate de criação da worktree (`.config/wt.toml`) e o hook de congelamento (`PreToolUse` em `plugin/hooks/hooks.json`) estão ativos: o `wt` chama o `omhl gate-worktree` antes de criar uma worktree, e o Claude Code chama o `omhl hook spec-lock` antes de cada `Edit`, `Write` e `MultiEdit`. A ordem da ativação e o que o dono faz a cada mudança estão na seção 10.
 
@@ -64,7 +64,7 @@ Um erro sai no stderr, numa linha JSON, com código de saída 1. Uma saída de s
 | `omhl list --where <campo>=<valor>` | Filtra os nodes por igualdade de campo |
 | `omhl close <work-item>` | Passa a devolver o campo `retro` (seção 8) |
 
-A interface do agente é a CLI. O plugin não inicia o servidor MCP; o adapter (`omhl mcp`) segue no código e ninguém o chama.
+A interface do agente é a CLI.
 
 **`list --where`.** O filtro `--where campo=valor` repete: todos os pares precisam bater. O valor é texto, e o `omhl` divide no primeiro `=`, então o valor pode conter `=`. Um par sem `=` ou com o campo vazio responde `invalid-arguments` em `/where/<índice>`. Os tetos de pares e de tamanho do valor vêm do núcleo (`where-eq-value-too-long`, por exemplo, para um valor acima de 256 caracteres). Para consultar divergências de um work item:
 
