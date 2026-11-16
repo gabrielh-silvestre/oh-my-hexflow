@@ -429,7 +429,7 @@ fn leaves_without_example(blocks: &[Block]) -> Vec<String> {
         .collect()
 }
 
-// Execução dos exemplos reais: a fatia 10 escreve as skills; até lá este teste falha na cobertura.
+// Execução dos exemplos reais de plugin/skills contra a CLI, em fixtures isoladas.
 #[test]
 fn skill_examples() {
     let blocks = real_blocks();

@@ -447,7 +447,7 @@ fn it_should_prove_each_coverage_failure_on_a_synthetic_skills_folder() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-// Cobertura das skills reais: a fatia 10 as escreve; até lá este teste falha.
+// Cobertura das skills reais em plugin/skills: reprova subcomando sem citação ou sem references.
 #[test]
 fn skill_coverage() {
     let mut failures = prove_checks();
