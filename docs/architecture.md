@@ -143,7 +143,7 @@ Notas de leitura:
 
 ## 2. Contexto em um parágrafo
 
-O workspace tem dois crates. O `hexlog` é o motor agnóstico: guarda a chain de records por tenant num SQLite, valida contra um catalog dado por quem o abre e não conhece decisão, check, gate nem PRD. O `omhl` é o plugin opinativo: monta o catalog dos graphs, embute o native, guarda as regras de domínio na escrita, avalia gates, renderiza o contexto, carrega extensions e gera a projection, e expõe tudo por dois gateways (CLI e hook) que dividem uma única camada de casos de uso (`app`). A separação não é só convenção: 27 testes de arquitetura no `omhl` e 11 no `hexlog` a travam (seção 4).
+O workspace tem dois crates. O `hexlog` é o motor agnóstico: guarda a chain de records por tenant num SQLite, valida contra um catalog dado por quem o abre e não conhece decisão, check, gate nem PRD. O `omhl` é o plugin opinativo: monta o catalog dos graphs, embute o native, guarda as regras de domínio na escrita, avalia gates, renderiza o contexto, carrega extensions e gera a projection, e expõe tudo por dois gateways (CLI e hook) que dividem uma única camada de casos de uso (`app`). A separação não é só convenção: 28 testes de arquitetura no `omhl` e 11 no `hexlog` a travam (seção 4).
 
 As decisões estruturais, com o porquê de cada uma:
 
@@ -152,6 +152,7 @@ As decisões estruturais, com o porquê de cada uma:
 - [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor`, `loader` e `guideline-retire` são a fronteira da guarda (3.23, `guard`).
 - [0005](adr/0005-saida-dos-checks-em-blobs-fora-do-banco.md): a saída dos checks fica em blobs fora do banco (3.21, `ports/blob`).
 - [0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md): a CLI é a única interface do agente e o UTCP foi descartado (3.12, seção 5).
+- [0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md): uma opção da CLI é respeitada ou recusada com a regra, nunca cortada ou ignorada em silêncio (3.11, `app`).
 
 ## 3. Caixas cinzas
 
@@ -457,6 +458,7 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 | Os adapters só importam `app` e `project::Env` | `it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_the_project_env` |
 | O `main.rs` lê o pid do pai antes de qualquer outra coisa | `it_should_read_the_parent_pid_before_anything_else_in_main` |
 | Sem `mcp`, `tool_call` nem `json-rpc` em `src/` fora de `adapters/` e `main.rs` (ADR 0006) | `it_should_keep_the_removed_mcp_port_out_of_the_src_layers` |
+| `src/app` só tem os cortes numéricos (`.min(`, `.max(`, `.clamp(`, `.take(`, `saturating_`) da lista fechada, 9 ao todo; um corte novo reprova até ser justificado (ver [ADR 0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md)) | `it_should_not_grow_the_numeric_cuts_in_src_app_without_an_inventory_entry` |
 
 ### Regras que valem hoje no código mas sem teste
 

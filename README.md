@@ -101,13 +101,13 @@ JSON.
 
 | Comando | O que faz |
 |---|---|
-| `list` | Lista os nodes vigentes, com filtros `--type`, `--id-prefix`, `--limit`, `--after-seq` e `--where <campo>=<valor>` (repetível, igualdade de campo) |
+| `list` | Lista os nodes vigentes, com filtros `--type`, `--id-prefix`, `--limit`, `--after-seq` e `--where <campo>=<valor>` (repetível, igualdade de campo). Recusa a opção que violaria uma regra (`--limit` fora de 1 a 200, `--type` ou prefixo inexistente, `--where` em campo que não é de texto) em vez de devolver `[]` |
 | `get <id>` | Imprime um node, ou `null` quando ele não existe |
 | `append` | Grava os records de um pedido JSON lido do stdin |
 | `attest <check> <work-item> --outcome <outcome>` | Registra o resultado de um check no commit atual |
 | `render` | Imprime o contexto da sessão |
 | `gate-pr <work-item>` | Avalia o gate de pull request |
-| `gate-worktree --branch <nome>` | Decide se a worktree da branch pode ser criada. Fica em silêncio fora de um projeto com marcador |
+| `gate-worktree --branch <nome>` | Decide se a worktree da branch pode ser criada. Fica em silêncio fora de um projeto com marcador; recusa um `--project-dir` que não existe |
 | `close <work-item>` | Fecha um work item e grava o resultado do gate. Devolve também o campo `retro` |
 | `verify` | Verifica a cadeia de hash |
 | `load [--dry-run]` | Carrega as extensions de `.omhl/` no tenant |
@@ -116,14 +116,14 @@ JSON.
 | `hook spec-lock` | Roda o hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de uma spec congelada |
 | `spec init <work-item> <slug>` | Cria a pasta da spec de um work item aberto, com a primeira parte, no diretório principal |
 | `spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
-| `report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta |
+| `report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |
 | `report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção a guideline |
 | `report retro <work-item>` | A retro de um work item, aberto ou fechado: divergências, emendas e gaps sem resposta |
 | `check run --event <evento>` ou `check run --check <id>` | Roda os checks mecânicos de um evento (ou um só) e grava as attestations do work item da branch atual. `--pre-push` é do hook `pre-push` |
 | `check sweep` | Encerra os processos que fugiram de um `check run` anterior |
 | `check retire <check-id>` | Aposenta o check órfão, cujo arquivo `.omhl/checks/<slug>.toml` não existe na árvore, e some o aviso `check-orphaned`. É definitivo e vale para todos os clones e branches: o id não volta. Se a branch ou a worktree é anterior ao check, faça rebase sobre a `main` (ou restaure o arquivo) em vez de aposentar |
 | `guideline retire <id> [--by <id-novo>]` | Retira a diretiva órfã, cujo arquivo `.omhl/guidelines/<slug>.toml` não existe na árvore. Com `--by`, grava também que a diretiva nova a supera. É definitivo e vale para todos os clones e branches |
-| `byproduct <check> <work-item> [--tail <n>]` | Imprime as últimas linhas da saída guardada de um check |
+| `byproduct <check> <work-item> [--tail <n>]` | Imprime as últimas linhas da saída guardada de um check. Recusa `--tail` fora de 1 a 500 |
 | `hooks install [--force]` | Instala os hooks do git deste clone |
 | `hooks post-commit` | Apaga a marca da `develop` depois de um commit (o hook `post-commit` o chama) |
 
