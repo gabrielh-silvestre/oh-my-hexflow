@@ -56,3 +56,16 @@ Quando o `close` imprimir o campo `retro` (ou quando você rodar `omhl report re
 - `check`: um novo check, quando o padrão é mecânico.
 
 Cada proposta só vira registro com a confirmação do humano, com o `confirmed_by` de sempre. Um novo check vira um arquivo em `.omhl/checks/`, num work item próprio, e você roda `omhl load` antes de qualquer `check run`.
+
+## Comando para referência
+
+Abra a referência do comando antes de usá-lo: ela traz as entradas, a saída, os erros e exemplos reais.
+
+| Comando | Referência |
+|---|---|
+| `omhl append` | [references/append.md](references/append.md) |
+| `omhl attest` (work item e check) | [references/attest.md](references/attest.md) |
+| `omhl spec init` | [references/spec-init.md](references/spec-init.md) |
+| `omhl spec validate` | [references/spec-validate.md](references/spec-validate.md) |
+| `omhl gate-worktree` | [references/gate-worktree.md](references/gate-worktree.md) |
+| `omhl guideline retire` | [references/guideline-retire.md](references/guideline-retire.md) |
