@@ -150,7 +150,7 @@ fn citations(text: &str) -> Vec<(usize, Vec<String>)> {
     found
 }
 
-fn starts_with_path(words: &[String], leaf: &str) -> bool {
+pub fn starts_with_path(words: &[String], leaf: &str) -> bool {
     let leaf: Vec<&str> = leaf.split(' ').collect();
 
     words.len() >= leaf.len() && words.iter().zip(&leaf).all(|(word, part)| word == part)
@@ -457,7 +457,6 @@ fn it_should_prove_each_coverage_failure_on_a_synthetic_skills_folder() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-// Cobertura das skills reais em plugin/skills: reprova subcomando sem citação ou sem references.
 #[test]
 fn skill_coverage() {
     let mut failures = prove_checks();

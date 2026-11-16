@@ -25,7 +25,7 @@ Um erro sai no stderr, numa linha JSON, com saída 1. A falta do `--branch` é e
 - `main-dir-unknown` (saída 1): o git não achou o diretório principal (repositório bare, por exemplo). Rode num checkout comum.
 - `spec-store-unusable` (saída 1): o prefixo pede spec e a pasta da spec do work item não pode ser lida, ou há mais de uma pasta `wi-<id>__*`. Corrija a pasta no diretório principal.
 - `invalid-workflow-config` (saída 1): o `.omhl/workflow.toml` é inválido. Corrija o arquivo.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho. Antes dessa regra, o comando saía 0 mudo nesse caso.
+- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
 
 ## Exemplos
 

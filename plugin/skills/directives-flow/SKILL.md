@@ -41,7 +41,7 @@ A spec congelada nunca é editada. Não existe comando nem marca para descongela
 1. Registre uma `divergence` com `resolution` `open` (`omhl append`), com `source_ref`, `kind`, `text`, `evidence` e `work_item`.
 2. Pergunte ao humano se a spec estava errada. Se não estava, não há emenda.
 3. Se estava, crie `emenda-NN.md` na pasta da spec do work item, com `Write` de um arquivo novo. O hook libera só o próximo número. A emenda tem as seções `Divergência` (o id `divergences.<nome>`), `Correções` (itens `- EMD-001 CMP-003: <novo valor>`) e `Motivo`.
-4. Valide com `omhl spec validate` (`omhl spec validate work-items.<id>`).
+4. Valide com `omhl spec validate work-items.<id>`.
 5. Se a emenda saiu inválida, abandone-a e crie a seguinte (`emenda-(NN+1).md`): ela também fica congelada assim que existe. Os `EMD-###` da emenda abandonada continuam contados, então continue a numeração (`EMD-002` depois de `EMD-001`).
 6. Mostre a emenda ao humano e peça a aprovação, copiando a pergunta e a resposta literais.
 7. Grave uma nova revisão da mesma `divergence` (com `base`) com `resolution` `spec-stale`, `amendment` (`emenda-NN`, sem `.md`) e `confirmed_by`. O `append` recusa a revisão se faltar um dos dois campos ou se a emenda não valida.

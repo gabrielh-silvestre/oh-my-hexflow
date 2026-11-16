@@ -11,7 +11,7 @@ Quando sobrou processo de um check cujo `omhl` já saiu (Ctrl+C, `kill`, queda d
 
 ## Saída
 
-Uma linha JSON no stdout, saída 0, também quando não há alvo: `swept` (uma lista; cada item tem `pid`, `comm` e `owner_pid`), `unreadable` (quantos processos não puderam ser lidos) e `scan_timed_out` (a leitura de `/proc` espera no máximo 1 segundo). Por varrer a máquina inteira, **`swept` e `unreadable` não são determinísticos**: dependem dos processos vivos naquele momento. Não leia um `swept` vazio como prova de que nada vazou em outro projeto, e não conte com o mesmo número em duas chamadas. Quando acha alvo, a varredura encerra o processo (`TERM`, 2 segundos de carência, `KILL`) e acrescenta uma linha a `$XDG_DATA_HOME/omhl/sweep.jsonl`. O exemplo abaixo mostra o caso vazio; o teste normaliza `swept` e `unreadable`.
+Uma linha JSON no stdout, saída 0, também quando não há alvo: `swept` (uma lista; cada item tem `pid`, `comm` e `owner_pid`), `unreadable` (quantos processos não puderam ser lidos) e `scan_timed_out` (a leitura de `/proc` espera no máximo 1 segundo). Por varrer a máquina inteira, **`swept` e `unreadable` não são determinísticos**: dependem dos processos vivos naquele momento. Não leia um `swept` vazio como prova de que nada vazou em outro projeto, e não conte com o mesmo número em duas chamadas. Quando acha alvo, a varredura encerra o processo (`TERM`, 2 segundos de carência, `KILL`) e acrescenta uma linha a `$XDG_DATA_HOME/omhl/sweep.jsonl`.
 
 ## Erros
 

@@ -52,7 +52,7 @@ $ omhl attest checks.ok work-items.w1 --outcome passed
 # exit 1
 ```
 
-Recusa: `--outcome` fora dos três valores (B3: a opção é recusada com a regra, não ajustada):
+Recusa: `--outcome` fora dos três valores:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.review work-items.w1 --outcome maybe

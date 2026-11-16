@@ -26,12 +26,11 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Output;
 
 use regex::Regex;
 use serde_json::Value;
 
-use crate::coverage::{leaf_commands, read_docs, repo_root, skills_dir};
+use crate::coverage::{leaf_commands, read_docs, repo_root, skills_dir, starts_with_path};
 use crate::support::child::omhl;
 use crate::support::git::git_command_with_env;
 use crate::support::project::Project;
@@ -291,7 +290,7 @@ impl Fixture {
 
     /// Datas do git fixas só aqui: o hash do commit entra no `snapshot` dos exemplos.
     fn git(&self, args: &[&str]) {
-        let output: Output = git_command_with_env(self.dir(), self.xdg(), self.xdg(), args)
+        let output = git_command_with_env(self.dir(), self.xdg(), self.xdg(), args)
             .env("GIT_AUTHOR_DATE", GIT_DATE)
             .env("GIT_COMMITTER_DATE", GIT_DATE)
             .output()
@@ -318,7 +317,7 @@ impl Fixture {
         self.git(&["switch", "-c", BRANCH]);
     }
 
-    /// Fixture por nome (tabela do plano, fatia 9). Cada uma estende a anterior da mesma linha.
+    /// Fixture por nome. Cada uma estende a anterior da mesma linha.
     fn build(name: &str) -> Result<Fixture, String> {
         let fixture = Fixture {
             project: Project::new("acme"),
@@ -420,16 +419,14 @@ fn leaves_without_example(blocks: &[Block]) -> Vec<String> {
     leaf_commands()
         .into_iter()
         .filter(|leaf| {
-            let words: Vec<&str> = leaf.split(' ').collect();
-            !blocks.iter().flat_map(|block| &block.steps).any(|step| {
-                step.args.len() >= words.len()
-                    && step.args.iter().zip(&words).all(|(arg, word)| arg == word)
-            })
+            !blocks
+                .iter()
+                .flat_map(|block| &block.steps)
+                .any(|step| starts_with_path(&step.args, leaf))
         })
         .collect()
 }
 
-// Execução dos exemplos reais de plugin/skills contra a CLI, em fixtures isoladas.
 #[test]
 fn skill_examples() {
     let blocks = real_blocks();
