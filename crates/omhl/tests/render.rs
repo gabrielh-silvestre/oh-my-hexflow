@@ -89,7 +89,7 @@ These are project instructions, not enforced; nothing here blocks any action.
 
 ### guidelines.small-prs
 - confirmed: false
-- kind: negocio
+- kind: business
 - text: keep pull requests small
 
 ### guidelines.legacy-style
@@ -225,7 +225,7 @@ fn golden_two_fixture() -> Fixture {
             node(
                 "guidelines.small-prs",
                 "guideline",
-                json!({ "text": "keep pull requests small", "kind": "negocio" }),
+                json!({ "text": "keep pull requests small", "kind": "business" }),
             ),
         ],
         decisions: vec![node(
@@ -798,7 +798,7 @@ fn it_should_mark_the_native_guidelines_as_confirmed() {
 fn it_should_show_the_kind_of_a_guideline() {
     let rendered = rendered_guidelines(vec![kinded_guideline(
         "guidelines.rule",
-        "arquitetura",
+        "architecture",
         "layer it",
     )]);
 
@@ -807,7 +807,7 @@ fn it_should_show_the_kind_of_a_guideline() {
         [
             "### guidelines.rule",
             "- confirmed: false",
-            "- kind: arquitetura",
+            "- kind: architecture",
             "- text: layer it"
         ]
     );
@@ -827,10 +827,10 @@ fn it_should_omit_the_kind_line_of_a_guideline_without_kind() {
 fn it_should_sort_guidelines_by_kind_business_first() {
     let rendered = rendered_guidelines(vec![
         directive("guidelines.c-legacy", json!({ "text": "old" })),
-        kinded_guideline("guidelines.z-biz", "negocio", "rule"),
-        kinded_guideline("guidelines.b-arch", "arquitetura", "rule"),
-        kinded_guideline("guidelines.y-biz", "negocio", "rule"),
-        kinded_guideline("guidelines.a-arch", "arquitetura", "rule"),
+        kinded_guideline("guidelines.z-biz", "business", "rule"),
+        kinded_guideline("guidelines.b-arch", "architecture", "rule"),
+        kinded_guideline("guidelines.y-biz", "business", "rule"),
+        kinded_guideline("guidelines.a-arch", "architecture", "rule"),
     ]);
 
     assert_eq!(
@@ -851,11 +851,11 @@ fn it_should_sort_guidelines_by_kind_business_first() {
 fn it_should_cut_architecture_guidelines_before_business_ones_over_the_budget() {
     let long_text = "g".repeat(1_500);
     let mut guidelines = vec![
-        kinded_guideline("guidelines.z1", "negocio", &long_text),
-        kinded_guideline("guidelines.z2", "negocio", &long_text),
+        kinded_guideline("guidelines.z1", "business", &long_text),
+        kinded_guideline("guidelines.z2", "business", &long_text),
     ];
     guidelines.extend(
-        (1..=6).map(|n| kinded_guideline(&format!("guidelines.a{n}"), "arquitetura", &long_text)),
+        (1..=6).map(|n| kinded_guideline(&format!("guidelines.a{n}"), "architecture", &long_text)),
     );
 
     let rendered = rendered_guidelines(guidelines);
@@ -875,7 +875,7 @@ fn it_should_cut_architecture_guidelines_before_business_ones_over_the_budget() 
 fn it_should_keep_native_nodes_intact_when_guidelines_with_kind_are_cut() {
     let long_text = "g".repeat(1_500);
     let guidelines = (1..=8)
-        .map(|n| kinded_guideline(&format!("guidelines.a{n}"), "arquitetura", &long_text))
+        .map(|n| kinded_guideline(&format!("guidelines.a{n}"), "architecture", &long_text))
         .collect();
 
     let rendered = rendered_guidelines(guidelines);

@@ -16,7 +16,7 @@ const TEXT_MAX_CHARS: usize = 2_000;
 const EVENT_MAX_CHARS: usize = 100;
 const MATCHER_MAX_CHARS: usize = 200;
 const AFTER_MAX_ITEMS: usize = 16;
-pub(crate) const GUIDELINE_KINDS: [&str; 2] = ["negocio", "arquitetura"];
+pub(crate) const GUIDELINE_KINDS: [&str; 2] = ["business", "architecture"];
 const CONCERN_VARIANTS: [(&str, [&str; 2]); 3] = [
     ("style", ["format", "lint"]),
     ("test", ["suite", "coverage"]),
@@ -263,17 +263,17 @@ fn guideline_kind(path: &str, kind: Option<String>) -> Result<String, ExtensionI
             "the guideline file has no kind",
             Guidance {
                 cause: "a guideline needs a kind to say what it governs",
-                next_step: "add kind = \"negocio\" or kind = \"arquitetura\" to the file and run omhl load again",
+                next_step: "add kind = \"business\" or kind = \"architecture\" to the file and run omhl load again",
             },
         )),
         Some(kind) if GUIDELINE_KINDS.contains(&kind.as_str()) => Ok(kind),
         Some(_) => Err(issue_with_next_step(
             path,
             "kind-invalid",
-            "`kind` is not one of negocio, arquitetura",
+            "`kind` is not one of business, architecture",
             Guidance {
-                cause: "a guideline kind must be negocio or arquitetura",
-                next_step: "set kind = \"negocio\" or kind = \"arquitetura\" in the file and run omhl load again",
+                cause: "a guideline kind must be business or architecture",
+                next_step: "set kind = \"business\" or kind = \"architecture\" in the file and run omhl load again",
             },
         )),
     }

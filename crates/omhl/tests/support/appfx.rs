@@ -81,9 +81,9 @@ impl AppFixture {
         )
     }
 
-    /// Escreve o arquivo `.omhl/guidelines/<slug>.toml` de uma diretiva `negocio`.
+    /// Escreve o arquivo `.omhl/guidelines/<slug>.toml` de uma diretiva `business`.
     pub fn write_guideline_file(&self, slug: &str) {
-        let toml = format!("kind = \"negocio\"\ntext = \"Be brief ({slug})\"\n");
+        let toml = format!("kind = \"business\"\ntext = \"Be brief ({slug})\"\n");
         self.tree.guideline(slug, &toml);
     }
 

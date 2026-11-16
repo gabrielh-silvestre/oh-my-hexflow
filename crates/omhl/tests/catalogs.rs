@@ -874,8 +874,8 @@ fn it_should_reject_a_premise_kind_outside_technical_and_business() {
 
 #[test]
 fn it_should_accept_a_guideline_with_each_valid_kind() {
-    let business = with(plain("guideline"), "kind", json!("negocio"));
-    let architecture = with(plain("guideline"), "kind", json!("arquitetura"));
+    let business = with(plain("guideline"), "kind", json!("business"));
+    let architecture = with(plain("guideline"), "kind", json!("architecture"));
 
     let accepted = (
         is_accepted("guideline", &business),
@@ -886,7 +886,7 @@ fn it_should_accept_a_guideline_with_each_valid_kind() {
 }
 
 #[test]
-fn it_should_reject_a_guideline_kind_outside_negocio_and_arquitetura() {
+fn it_should_reject_a_guideline_kind_outside_business_and_architecture() {
     let guideline = with(plain("guideline"), "kind", json!("technical"));
 
     let found = violations_of("guideline", &guideline);

@@ -435,7 +435,7 @@ fn directive_node(id: &str) -> Value {
     node(
         id,
         "guideline",
-        json!({ "text": "t", "kind": "negocio", "confirmed_by": confirmed_by() }),
+        json!({ "text": "t", "kind": "business", "confirmed_by": confirmed_by() }),
     )
 }
 
@@ -611,7 +611,7 @@ fn it_should_not_mark_no_criterion_when_a_confirmed_directive_supports_the_answe
 #[test]
 fn it_should_not_mark_no_criterion_when_a_loaded_extension_directive_supports_the_answer() {
     let project = Project::new("acme");
-    ExtTree::at(project.dir()).guideline("tone", "kind = \"negocio\"\ntext = \"t\"\n");
+    ExtTree::at(project.dir()).guideline("tone", "kind = \"business\"\ntext = \"t\"\n");
     let loaded = in_project(&project, &["load"]);
     assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
     seed_answered(

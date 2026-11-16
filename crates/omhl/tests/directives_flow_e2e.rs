@@ -196,8 +196,8 @@ impl Flow {
     /// Diretrizes de negócio e de arquitetura carregadas, a segunda apoiada na primeira.
     fn with_guideline_chain() -> Flow {
         let flow = Flow::with_frozen_spec();
-        flow.write_guideline("pay-upfront", "negocio");
-        flow.write_guideline("hexagonal", "arquitetura");
+        flow.write_guideline("pay-upfront", "business");
+        flow.write_guideline("hexagonal", "architecture");
         flow.run_ok(&["load"]);
         flow.commit_everything();
         flow.attest_the_required_checks();
@@ -208,7 +208,7 @@ impl Flow {
 
     /// Carrega a nova diretriz de negócio e apaga o arquivo da antiga, que fica órfã.
     fn orphan_the_business_guideline(&self) {
-        self.write_guideline("pay-monthly", "negocio");
+        self.write_guideline("pay-monthly", "business");
         self.run_ok(&["load"]);
         fs::remove_file(self.repo.join(".omhl/guidelines/pay-upfront.toml"))
             .expect("the guideline file is removed");

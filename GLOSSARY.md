@@ -85,7 +85,7 @@ Um node do graph de decisões que afirma algo tomado como verdadeiro para poder 
 _Avoid_: assumption, fact
 
 **Guideline**:
-Um node do graph de decisões que orienta como agir em um contexto, de forma atemporal, sem ser uma escolha pontual. Em pt-BR, diretiva: é o mesmo node, não um conceito novo. Tem um `kind` opcional: `negocio` ou `arquitetura`. Por decisão da spec, os valores do `kind` da guideline são em português e os do `kind` da premise são em inglês.
+Um node do graph de decisões que orienta como agir em um contexto, de forma atemporal, sem ser uma escolha pontual. Em pt-BR, diretiva: é o mesmo node, não um conceito novo. Tem um `kind` opcional: `business` ou `architecture`.
 _Avoid_: rule, policy
 
 **Decision**:

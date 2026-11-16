@@ -428,8 +428,8 @@ fn it_should_retire_a_guideline_that_decisions_rest_on_and_then_fail_the_anchor(
 
 // Linha de comando
 
-const TONE_TOML: &str = "kind = \"negocio\"\ntext = \"Keep every answer brief\"\n";
-const BRIEF_TOML: &str = "kind = \"negocio\"\ntext = \"Be concise\"\n";
+const TONE_TOML: &str = "kind = \"business\"\ntext = \"Keep every answer brief\"\n";
+const BRIEF_TOML: &str = "kind = \"business\"\ntext = \"Be concise\"\n";
 
 fn omhl_in(project: &Project, args: &[&str]) -> Cmd {
     omhl(args).cwd(project.dir()).xdg(project.xdg())

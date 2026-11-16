@@ -1428,7 +1428,7 @@ fn confirmed_premise_data() -> Value {
 }
 
 fn guideline_data() -> Value {
-    json!({ "text": "keep pull requests small", "kind": "negocio" })
+    json!({ "text": "keep pull requests small", "kind": "business" })
 }
 
 fn stale_divergence_data() -> Value {

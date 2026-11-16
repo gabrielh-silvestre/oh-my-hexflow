@@ -1088,7 +1088,7 @@ fn it_should_pass_both_anchor_questions_for_a_decision_resting_on_a_guideline_wr
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     seed_decision(&mut omhl);
-    let guideline = json!({ "text": "keep it simple", "kind": "negocio" });
+    let guideline = json!({ "text": "keep it simple", "kind": "business" });
     append_as(
         &mut omhl,
         loader_author(),
@@ -1114,7 +1114,7 @@ fn it_should_pass_both_anchor_questions_for_a_decision_resting_on_a_guideline_wr
 fn it_should_fail_a_decision_resting_on_a_guideline_without_confirmation_written_by_another_client()
 {
     let raw = RawHarness::new();
-    seed_unconfirmed_guideline(&raw, KEPT_GUIDELINE, "negocio");
+    seed_unconfirmed_guideline(&raw, KEPT_GUIDELINE, "business");
     let probe = FakeProbe::clean(snap('a'));
     let deps = OmhlDeps {
         clock: &raw.clock,

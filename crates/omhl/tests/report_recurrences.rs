@@ -274,12 +274,12 @@ fn directive_node(id: &str, text: &str) -> Value {
     node(
         id,
         "guideline",
-        json!({ "text": text, "kind": "negocio", "confirmed_by": confirmed_by() }),
+        json!({ "text": text, "kind": "business", "confirmed_by": confirmed_by() }),
     )
 }
 
 fn unconfirmed_directive_node(id: &str, text: &str) -> Value {
-    node(id, "guideline", json!({ "text": text, "kind": "negocio" }))
+    node(id, "guideline", json!({ "text": text, "kind": "business" }))
 }
 
 fn open_work_item(id: &str) -> Value {

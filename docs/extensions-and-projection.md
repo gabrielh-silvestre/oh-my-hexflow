@@ -32,7 +32,7 @@ matcher = "*.rs"         # opcional
 Guideline:
 
 ```toml
-kind = "arquitetura"      # obrigatório e fechado: negocio ou arquitetura
+kind = "architecture"      # obrigatório e fechado: business ou architecture
 text = "Write commit subjects in English, Conventional Commits, at most 80 characters."
 ```
 

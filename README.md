@@ -76,7 +76,7 @@ JSON.
 1. Grave uma guideline:
 
    ```bash
-   echo '{"items":[{"body":{"kind":"node","id":"guidelines.tone","type":"guideline","data":{"kind":"arquitetura","text":"Write short commit subjects.","confirmed_by":{"by":"person:me","question":"Adopt short commit subjects?","answer":"yes"}}}}]}' \
+   echo '{"items":[{"body":{"kind":"node","id":"guidelines.tone","type":"guideline","data":{"kind":"architecture","text":"Write short commit subjects.","confirmed_by":{"by":"person:me","question":"Adopt short commit subjects?","answer":"yes"}}}}]}' \
      | omhl append
    ```
 

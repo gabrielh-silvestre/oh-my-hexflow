@@ -28,7 +28,7 @@ fn check_toml(how: &str, after: &[&str]) -> String {
 }
 
 fn guideline_toml(text: &str) -> String {
-    format!("kind = \"negocio\"\ntext = \"{text}\"\n")
+    format!("kind = \"business\"\ntext = \"{text}\"\n")
 }
 
 fn check_data(how: &str) -> Value {
@@ -155,7 +155,7 @@ fn it_should_create_checks_and_guidelines() {
     assert_eq!(fx.get("checks.a")["data"], check_data("Run A"));
     assert_eq!(
         fx.get("guidelines.tone")["data"],
-        json!({"text": "Be brief", "kind": "negocio"})
+        json!({"text": "Be brief", "kind": "business"})
     );
 }
 

@@ -109,11 +109,11 @@ impl RuleCode {
         match self {
             RuleCode::KindMissing => Some(Guidance {
                 cause: "the guideline has no kind",
-                next_step: "set kind to negocio or arquitetura in the item data and append again",
+                next_step: "set kind to business or architecture in the item data and append again",
             }),
             RuleCode::KindInvalid => Some(Guidance {
-                cause: "the guideline kind must be negocio or arquitetura",
-                next_step: "set kind to negocio or arquitetura in the item data and append again",
+                cause: "the guideline kind must be business or architecture",
+                next_step: "set kind to business or architecture in the item data and append again",
             }),
             RuleCode::RestsOnArchitecture => Some(Guidance {
                 cause: "a guideline cannot rest on an architecture guideline; only a decision or a premise can",

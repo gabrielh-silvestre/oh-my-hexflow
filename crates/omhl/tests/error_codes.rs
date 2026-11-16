@@ -116,7 +116,7 @@ fn it_should_expose_next_step_only_when_guidance_exists() {
         ),
         (
             &json!("the guideline has no kind"),
-            &json!("set kind to negocio or arquitetura in the item data and append again"),
+            &json!("set kind to business or architecture in the item data and append again"),
             None,
         )
     );

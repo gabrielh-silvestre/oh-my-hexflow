@@ -32,7 +32,7 @@
         "required": ["text"],
         "properties": {
           "text": {"type": "string", "minLength": 1, "maxLength": 2000},
-          "kind": {"enum": ["negocio", "arquitetura"]},
+          "kind": {"enum": ["business", "architecture"]},
           "confirmed_by": {
             "type": "object",
             "additionalProperties": false,

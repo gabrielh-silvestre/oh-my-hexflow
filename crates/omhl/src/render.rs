@@ -115,8 +115,8 @@ fn push_guidelines(text: &mut String, cuts: &mut Vec<usize>, input: &RenderInput
 /// Negócio antes de arquitetura, as sem `kind` (legadas) por último: o corte do orçamento vem do fim.
 fn kind_rank(data: &Value) -> u8 {
     match data["kind"].as_str() {
-        Some("negocio") => 0,
-        Some("arquitetura") => 1,
+        Some("business") => 0,
+        Some("architecture") => 1,
         _ => 2,
     }
 }

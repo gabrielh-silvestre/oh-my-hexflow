@@ -547,13 +547,13 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 ### O `kind` da diretiva
 
-Toda diretiva nova ou revisada traz `kind`: `negocio` ou `arquitetura`. Uma diretiva antiga, gravada sem `kind`, continua válida no banco.
+Toda diretiva nova ou revisada traz `kind`: `business` ou `architecture`. Uma diretiva antiga, gravada sem `kind`, continua válida no banco.
 
 - O `omhl load` recusa o TOML sem `kind` (`kind-missing`) ou com outro valor (`kind-invalid`) e não grava nada.
 - O `omhl append` recusa a diretiva nova ou revisada sem `kind` (`kind-missing`) ou com outro valor (`kind-invalid`), em `/items/<i>/body/data/kind`.
-- O contexto da sessão lista as diretivas na ordem `negocio`, `arquitetura` e sem `kind`, com uma linha `kind` em cada uma. Acima do teto de caracteres, o corte começa pelo fim da lista; as nativas nunca são cortadas.
+- O contexto da sessão lista as diretivas na ordem `business`, `architecture` e sem `kind`, com uma linha `kind` em cada uma. Acima do teto de caracteres, o corte começa pelo fim da lista; as nativas nunca são cortadas.
 
-**Migração.** Quem tem um arquivo em `.omhl/guidelines/` sem `kind` vê o `omhl load` recusar com `kind-missing`. Acrescente `kind = "negocio"` ou `kind = "arquitetura"` ao arquivo e rode o `omhl load` de novo. O node que já estava no banco segue vigente enquanto isso.
+**Migração.** Quem tem um arquivo em `.omhl/guidelines/` sem `kind` vê o `omhl load` recusar com `kind-missing`. Acrescente `kind = "business"` ou `kind = "architecture"` ao arquivo e rode o `omhl load` de novo. O node que já estava no banco segue vigente enquanto isso.
 
 ### A relação `rests-on`
 
@@ -562,8 +562,8 @@ Toda diretiva nova ou revisada traz `kind`: `negocio` ou `arquitetura`. Uma dire
 | De | Para | Resultado |
 |---|---|---|
 | `decision` ou `premise` | `guideline` ou `premise` | Aceita |
-| `guideline` (a nativa conta como sem `kind`) | `guideline` de `kind` `negocio` ou sem `kind` | Aceita |
-| `guideline` | `guideline` de `kind` `arquitetura` | Recusa com `rests-on-architecture` |
+| `guideline` (a nativa conta como sem `kind`) | `guideline` de `kind` `business` ou sem `kind` | Aceita |
+| `guideline` | `guideline` de `kind` `architecture` | Recusa com `rests-on-architecture` |
 | `guideline` | `premise` | Recusa com `rests-on-target-type` |
 
 A relação é acíclica. A guarda não revê a relação depois: mudar o `kind` de uma diretiva em que outra já se apoia não é recusado.

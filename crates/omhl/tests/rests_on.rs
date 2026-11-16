@@ -108,7 +108,7 @@ fn it_should_accept_a_decision_resting_on_a_guideline() {
     let mut omhl = harness.open();
     seed(
         &mut omhl,
-        vec![decision(DECISION), guideline(TARGET, "negocio")],
+        vec![decision(DECISION), guideline(TARGET, "business")],
     );
 
     let result = appended(&mut omhl, vec![rests_on(DECISION, TARGET)]);
@@ -133,7 +133,7 @@ fn it_should_accept_a_premise_resting_on_a_guideline() {
     let mut omhl = harness.open();
     seed(
         &mut omhl,
-        vec![premise(PREMISE), guideline(TARGET, "negocio")],
+        vec![premise(PREMISE), guideline(TARGET, "business")],
     );
 
     let result = appended(&mut omhl, vec![rests_on(PREMISE, TARGET)]);
@@ -158,7 +158,7 @@ fn it_should_accept_a_decision_resting_on_an_architecture_guideline() {
     let mut omhl = harness.open();
     seed(
         &mut omhl,
-        vec![decision(DECISION), guideline(TARGET, "arquitetura")],
+        vec![decision(DECISION), guideline(TARGET, "architecture")],
     );
 
     let result = appended(&mut omhl, vec![rests_on(DECISION, TARGET)]);
@@ -174,7 +174,7 @@ fn it_should_accept_a_business_guideline_resting_on_a_business_guideline() {
     let mut omhl = harness.open();
     seed(
         &mut omhl,
-        vec![guideline(SOURCE, "negocio"), guideline(TARGET, "negocio")],
+        vec![guideline(SOURCE, "business"), guideline(TARGET, "business")],
     );
 
     let result = appended(&mut omhl, vec![rests_on(SOURCE, TARGET)]);
@@ -189,8 +189,8 @@ fn it_should_accept_an_architecture_guideline_resting_on_a_business_guideline() 
     seed(
         &mut omhl,
         vec![
-            guideline(SOURCE, "arquitetura"),
-            guideline(TARGET, "negocio"),
+            guideline(SOURCE, "architecture"),
+            guideline(TARGET, "business"),
         ],
     );
 
@@ -203,7 +203,7 @@ fn it_should_accept_an_architecture_guideline_resting_on_a_business_guideline() 
 fn it_should_accept_a_guideline_resting_on_a_native_guideline() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![guideline(SOURCE, "negocio")]);
+    seed(&mut omhl, vec![guideline(SOURCE, "business")]);
 
     let result = appended(&mut omhl, vec![rests_on(SOURCE, NATIVE_GUIDELINE)]);
 
@@ -214,7 +214,7 @@ fn it_should_accept_a_guideline_resting_on_a_native_guideline() {
 fn it_should_accept_a_native_guideline_resting_on_a_business_guideline() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![guideline(TARGET, "negocio")]);
+    seed(&mut omhl, vec![guideline(TARGET, "business")]);
 
     let result = appended(&mut omhl, vec![rests_on(NATIVE_GUIDELINE, TARGET)]);
 
@@ -232,7 +232,7 @@ fn it_should_accept_a_guideline_resting_on_a_legacy_guideline_without_kind() {
         probe: &probe,
     };
     let mut omhl = Omhl::open(&raw.config(), deps).expect("omhl opens");
-    seed(&mut omhl, vec![guideline(SOURCE, "negocio")]);
+    seed(&mut omhl, vec![guideline(SOURCE, "business")]);
 
     let result = appended(&mut omhl, vec![rests_on(SOURCE, TARGET)]);
 
@@ -243,11 +243,11 @@ fn it_should_accept_a_guideline_resting_on_a_legacy_guideline_without_kind() {
 fn it_should_accept_a_guideline_and_the_relation_that_rests_on_it_in_the_same_batch() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![guideline(SOURCE, "negocio")]);
+    seed(&mut omhl, vec![guideline(SOURCE, "business")]);
 
     let result = appended(
         &mut omhl,
-        vec![guideline(TARGET, "negocio"), rests_on(SOURCE, TARGET)],
+        vec![guideline(TARGET, "business"), rests_on(SOURCE, TARGET)],
     );
 
     assert_eq!(result, Ok(2));
@@ -262,8 +262,8 @@ fn it_should_refuse_an_architecture_guideline_resting_on_an_architecture_guideli
     seed(
         &mut omhl,
         vec![
-            guideline(SOURCE, "arquitetura"),
-            guideline(TARGET, "arquitetura"),
+            guideline(SOURCE, "architecture"),
+            guideline(TARGET, "architecture"),
         ],
     );
 
@@ -282,8 +282,8 @@ fn it_should_refuse_a_business_guideline_resting_on_an_architecture_guideline() 
     seed(
         &mut omhl,
         vec![
-            guideline(SOURCE, "negocio"),
-            guideline(TARGET, "arquitetura"),
+            guideline(SOURCE, "business"),
+            guideline(TARGET, "architecture"),
         ],
     );
 
@@ -301,7 +301,7 @@ fn it_should_refuse_a_guideline_resting_on_a_premise() {
     let mut omhl = harness.open();
     seed(
         &mut omhl,
-        vec![guideline(SOURCE, "negocio"), premise(PREMISE)],
+        vec![guideline(SOURCE, "business"), premise(PREMISE)],
     );
 
     let result = appended(&mut omhl, vec![rests_on(SOURCE, PREMISE)]);
@@ -316,7 +316,7 @@ fn it_should_refuse_a_guideline_resting_on_a_premise() {
 fn it_should_refuse_a_native_guideline_resting_on_an_architecture_guideline() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![guideline(TARGET, "arquitetura")]);
+    seed(&mut omhl, vec![guideline(TARGET, "architecture")]);
 
     let result = appended(&mut omhl, vec![rests_on(NATIVE_GUIDELINE, TARGET)]);
 
@@ -344,11 +344,11 @@ fn it_should_refuse_a_native_guideline_resting_on_a_premise() {
 fn it_should_refuse_a_guideline_resting_on_an_architecture_guideline_created_in_the_same_batch() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![guideline(SOURCE, "negocio")]);
+    seed(&mut omhl, vec![guideline(SOURCE, "business")]);
 
     let result = appended(
         &mut omhl,
-        vec![guideline(TARGET, "arquitetura"), rests_on(SOURCE, TARGET)],
+        vec![guideline(TARGET, "architecture"), rests_on(SOURCE, TARGET)],
     );
 
     assert_eq!(
@@ -363,11 +363,11 @@ fn it_should_refuse_a_guideline_resting_on_an_architecture_guideline_created_in_
 fn it_should_leave_a_relation_placed_before_its_target_in_the_same_batch_to_the_engine() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![guideline(SOURCE, "negocio")]);
+    seed(&mut omhl, vec![guideline(SOURCE, "business")]);
 
     let result = appended(
         &mut omhl,
-        vec![rests_on(SOURCE, TARGET), guideline(TARGET, "negocio")],
+        vec![rests_on(SOURCE, TARGET), guideline(TARGET, "business")],
     );
 
     assert_eq!(
@@ -382,7 +382,7 @@ fn it_should_leave_a_rests_on_cycle_to_the_engine() {
     let mut omhl = harness.open();
     seed(
         &mut omhl,
-        vec![guideline(SOURCE, "negocio"), guideline(TARGET, "negocio")],
+        vec![guideline(SOURCE, "business"), guideline(TARGET, "business")],
     );
     appended(&mut omhl, vec![rests_on(SOURCE, TARGET)]).expect("the first relation is accepted");
 
@@ -403,14 +403,14 @@ fn it_should_accept_a_relation_when_the_target_kind_is_revised_to_business_earli
     let seeded = seed(
         &mut omhl,
         vec![
-            guideline(SOURCE, "negocio"),
-            guideline(TARGET, "arquitetura"),
+            guideline(SOURCE, "business"),
+            guideline(TARGET, "architecture"),
         ],
     );
     let revision = revision_item(
         TARGET,
         "guideline",
-        json!({ "text": "keep it simple", "kind": "negocio" }),
+        json!({ "text": "keep it simple", "kind": "business" }),
         &seeded[1],
     );
 
@@ -426,12 +426,12 @@ fn it_should_refuse_a_relation_when_the_target_kind_is_revised_to_architecture_e
     let mut omhl = harness.open();
     let seeded = seed(
         &mut omhl,
-        vec![guideline(SOURCE, "negocio"), guideline(TARGET, "negocio")],
+        vec![guideline(SOURCE, "business"), guideline(TARGET, "business")],
     );
     let revision = revision_item(
         TARGET,
         "guideline",
-        json!({ "text": "keep it simple", "kind": "arquitetura" }),
+        json!({ "text": "keep it simple", "kind": "architecture" }),
         &seeded[1],
     );
 
@@ -449,13 +449,13 @@ fn it_should_accept_a_kind_revision_of_an_already_targeted_guideline() {
     let mut omhl = harness.open();
     let seeded = seed(
         &mut omhl,
-        vec![guideline(SOURCE, "negocio"), guideline(TARGET, "negocio")],
+        vec![guideline(SOURCE, "business"), guideline(TARGET, "business")],
     );
     appended(&mut omhl, vec![rests_on(SOURCE, TARGET)]).expect("the relation is accepted");
     let revision = revision_item(
         TARGET,
         "guideline",
-        json!({ "text": "keep it simple", "kind": "arquitetura" }),
+        json!({ "text": "keep it simple", "kind": "architecture" }),
         &seeded[1],
     );
 
@@ -528,8 +528,8 @@ fn it_should_refuse_a_rests_on_architecture_with_cause_and_next_step() {
     dispatch_ok(
         &mut app,
         &[
-            guideline_wire(SOURCE, "negocio"),
-            guideline_wire(TARGET, "arquitetura"),
+            guideline_wire(SOURCE, "business"),
+            guideline_wire(TARGET, "architecture"),
         ],
     );
 
@@ -547,8 +547,8 @@ fn it_should_refuse_a_rests_on_cycle_with_cause_and_next_step() {
     dispatch_ok(
         &mut app,
         &[
-            guideline_wire(SOURCE, "negocio"),
-            guideline_wire(TARGET, "negocio"),
+            guideline_wire(SOURCE, "business"),
+            guideline_wire(TARGET, "business"),
             relation_wire("rests-on", SOURCE, TARGET),
         ],
     );
@@ -567,8 +567,8 @@ fn it_should_refuse_a_supersedes_cycle_with_cause_and_next_step() {
     dispatch_ok(
         &mut app,
         &[
-            guideline_wire(SOURCE, "negocio"),
-            guideline_wire(TARGET, "negocio"),
+            guideline_wire(SOURCE, "business"),
+            guideline_wire(TARGET, "business"),
             relation_wire("supersedes", SOURCE, TARGET),
         ],
     );
@@ -583,7 +583,7 @@ fn it_should_refuse_a_rests_on_to_a_missing_node_with_cause_and_next_step() {
     let raw = RawHarness::new();
     let probe = FakeProbe::failing();
     let mut app = open_app(&raw, &probe);
-    dispatch_ok(&mut app, &[guideline_wire(SOURCE, "negocio")]);
+    dispatch_ok(&mut app, &[guideline_wire(SOURCE, "business")]);
 
     let error = dispatch_refused(&mut app, &[relation_wire("rests-on", SOURCE, TARGET)]);
 

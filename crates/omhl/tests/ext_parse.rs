@@ -256,7 +256,7 @@ fn it_should_reject_a_check_depending_on_itself() {
 #[test]
 fn it_should_parse_a_guideline() {
     let extension = parsed(&raw_guideline(
-        "kind = \"negocio\"\ntext = \"Be brief\"\n",
+        "kind = \"business\"\ntext = \"Be brief\"\n",
         None,
     ));
 
@@ -264,21 +264,21 @@ fn it_should_parse_a_guideline() {
     assert_eq!(extension.id, "guidelines.tone");
     assert_eq!(
         extension.data,
-        json!({"text": "Be brief", "kind": "negocio"})
+        json!({"text": "Be brief", "kind": "business"})
     );
     assert!(extension.after.is_empty());
 }
 
 #[test]
 fn it_should_take_guideline_text_from_the_markdown() {
-    let extension = parsed(&raw_guideline("kind = \"negocio\"\n", Some("Long")));
+    let extension = parsed(&raw_guideline("kind = \"business\"\n", Some("Long")));
 
-    assert_eq!(extension.data, json!({"text": "Long", "kind": "negocio"}));
+    assert_eq!(extension.data, json!({"text": "Long", "kind": "business"}));
 }
 
 #[test]
 fn it_should_parse_a_guideline_with_each_kind() {
-    let kinds: Vec<Value> = ["negocio", "arquitetura"]
+    let kinds: Vec<Value> = ["business", "architecture"]
         .iter()
         .map(|kind| {
             let toml = format!("kind = \"{kind}\"\ntext = \"x\"\n");
@@ -287,7 +287,7 @@ fn it_should_parse_a_guideline_with_each_kind() {
         })
         .collect();
 
-    assert_eq!(kinds, vec![json!("negocio"), json!("arquitetura")]);
+    assert_eq!(kinds, vec![json!("business"), json!("architecture")]);
 }
 
 #[test]
@@ -335,7 +335,7 @@ fn it_should_not_echo_the_unknown_kind_in_the_issue() {
 
 #[test]
 fn it_should_reject_a_guideline_without_text() {
-    let found = codes(&raw_guideline("kind = \"negocio\"\n", None));
+    let found = codes(&raw_guideline("kind = \"business\"\n", None));
 
     assert_eq!(found, vec!["text-missing"]);
 }
@@ -343,7 +343,7 @@ fn it_should_reject_a_guideline_without_text() {
 #[test]
 fn it_should_reject_after_in_a_guideline() {
     let found = codes(&raw_guideline(
-        "kind = \"negocio\"\ntext = \"x\"\nafter = [\"checks.a\"]\n",
+        "kind = \"business\"\ntext = \"x\"\nafter = [\"checks.a\"]\n",
         None,
     ));
 
@@ -353,7 +353,7 @@ fn it_should_reject_after_in_a_guideline() {
 #[test]
 fn it_should_reject_blocking_in_a_guideline() {
     let found = codes(&raw_guideline(
-        "kind = \"negocio\"\ntext = \"x\"\nblocking = true\n",
+        "kind = \"business\"\ntext = \"x\"\nblocking = true\n",
         None,
     ));
 
@@ -524,7 +524,7 @@ fn it_should_reject_text_over_the_schema_limits() {
             "x".repeat(201)
         ),
     );
-    let long_text = format!("kind = \"negocio\"\ntext = \"{}\"\n", "x".repeat(2_001));
+    let long_text = format!("kind = \"business\"\ntext = \"{}\"\n", "x".repeat(2_001));
     let at_limit_how = check_toml(
         &format!("blocking = true\nhow = \"{}\"\n", "é".repeat(8_000)),
         CHECK_WHEN,
@@ -537,7 +537,7 @@ fn it_should_reject_text_over_the_schema_limits() {
             "é".repeat(200)
         ),
     );
-    let at_limit_text = format!("kind = \"negocio\"\ntext = \"{}\"\n", "é".repeat(2_000));
+    let at_limit_text = format!("kind = \"business\"\ntext = \"{}\"\n", "é".repeat(2_000));
 
     let over = [
         issues(&raw_check(&long_how, None)),
@@ -572,7 +572,7 @@ fn it_should_reject_text_over_the_schema_limits() {
 #[test]
 fn it_should_derive_ids_from_kind_and_slug() {
     let check_raw = raw_check(&check_toml(CHECK_TOP, CHECK_WHEN), None);
-    let guideline_raw = raw_guideline("kind = \"negocio\"\ntext = \"Be brief\"\n", None);
+    let guideline_raw = raw_guideline("kind = \"business\"\ntext = \"Be brief\"\n", None);
 
     let check = parsed(&check_raw);
     let guideline = parsed(&guideline_raw);
@@ -650,7 +650,7 @@ fn it_should_reject_invisible_format_characters() {
             CHECK_TOP,
             &format!("event = \"before-commit\"\nmatcher = \"a{escaped}b\"\n"),
         );
-        let text = format!("kind = \"negocio\"\ntext = \"a{escaped}b\"\n");
+        let text = format!("kind = \"business\"\ntext = \"a{escaped}b\"\n");
         let outcomes = [
             ("how", issues(&raw_check(&how, None))),
             ("event", issues(&raw_check(&event, None))),
