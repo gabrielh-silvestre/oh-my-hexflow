@@ -1,13 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use hexlog::{
-    FieldName, HexlogError, ListFilter, PageRequest, Scalar, SemanticId, Snapshot, TenantId,
-    TypeName,
-};
+use hexlog::{HexlogError, PageRequest, SemanticId, Snapshot, TenantId};
 use serde_json::{Value, json};
 
 use super::action::{Action, Caller};
 use super::error::AppError;
+use super::list_filter::validate_list_filter;
 use super::retry::RetryPolicy;
 use super::wire::append_request;
 use super::{context, output, work_item};
@@ -23,8 +21,6 @@ use crate::workflow::retro::retro;
 
 /// Tamanho de página quando o pedido não traz `limit` (o padrão do motor).
 const DEFAULT_PAGE_LIMIT: u32 = 50;
-/// Teto de um `SemanticId` no `hexlog`; um prefixo maior nunca casa.
-const ID_PREFIX_MAX: usize = 200;
 
 /// Estado que as ações compartilham; as tentativas ficam por conta do `App`.
 pub(super) struct Engine<'d> {
@@ -49,13 +45,6 @@ pub(super) fn parse_at<T>(
     pointer: &str,
 ) -> Result<T, AppError> {
     parse(text).map_err(|error| AppError::from(error.at(pointer)))
-}
-
-fn is_id_prefix(prefix: &str) -> bool {
-    prefix.len() <= ID_PREFIX_MAX
-        && prefix
-            .bytes()
-            .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.'))
 }
 
 fn reproducible(probed: Result<ProbeOutcome, ProbeError>) -> Result<Snapshot, AppError> {
@@ -135,23 +124,7 @@ impl Engine<'_> {
         if limit == Some(0) {
             return Err(AppError::invalid_arguments("/limit", "unknown value"));
         }
-        if id_prefix.is_some_and(|prefix| !is_id_prefix(prefix)) {
-            return Err(AppError::invalid_arguments("/id_prefix", "unknown value"));
-        }
-        let filter = ListFilter {
-            type_name: type_name
-                .map(|name| parse_at(TypeName::parse, name, "/type"))
-                .transpose()?,
-            id_prefix: id_prefix.map(str::to_owned),
-            snapshot: None,
-            where_eq: where_eq
-                .iter()
-                .map(|(field, value)| {
-                    let name = parse_at(FieldName::parse, field, &format!("/where/{field}"))?;
-                    Ok((name, Scalar::Str(value.clone())))
-                })
-                .collect::<Result<_, AppError>>()?,
-        };
+        let filter = validate_list_filter(type_name, id_prefix, where_eq)?;
         let request = PageRequest {
             limit: limit.unwrap_or(DEFAULT_PAGE_LIMIT),
             after_seq,

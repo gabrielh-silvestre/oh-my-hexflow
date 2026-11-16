@@ -30,8 +30,8 @@ const SOURCES: [&str; 3] = [
     include_str!("work_items/catalog.json"),
 ];
 
-/// Junta os catálogos dos três grafos; o `Catalog` é montado a cada chamada.
-pub fn catalog() -> Result<Catalog, HexlogError> {
+/// Os tipos e as relações dos três grafos, na ordem das fontes.
+fn definitions() -> Result<(Vec<TypeDef>, Vec<RelationTypeDef>), HexlogError> {
     let mut types = Vec::new();
     let mut relations = Vec::new();
     for source in SOURCES {
@@ -43,7 +43,20 @@ pub fn catalog() -> Result<Catalog, HexlogError> {
             serde_json::from_value::<Vec<RelationTypeDef>>(take_section(&mut file, "relations"));
         relations.extend(listed_relations.map_err(|error| invalid_schema(&error))?);
     }
+
+    Ok((types, relations))
+}
+
+/// Junta os catálogos dos três grafos; o `Catalog` é montado a cada chamada.
+pub fn catalog() -> Result<Catalog, HexlogError> {
+    let (types, relations) = definitions()?;
+
     Catalog::new(types, relations)
+}
+
+/// Os tipos dos três grafos, para quem precisa percorrê-los (o `Catalog` não os lista).
+pub fn type_defs() -> Result<Vec<TypeDef>, HexlogError> {
+    Ok(definitions()?.0)
 }
 
 fn take_section(file: &mut Value, key: &str) -> Value {

@@ -212,7 +212,7 @@ pub fn divergence_wires() -> Vec<Value> {
             let data = json!({
                 "source_ref": "spec#ac-3",
                 "kind": kind,
-                "text": "the spec asks for a report the code does not have",
+                "text": DIVERGENCE_TEXT,
                 "evidence": [{ "source": "docs", "summary": "the docs say so" }],
                 "resolution": resolution,
                 "work_item": work_item,
@@ -241,4 +241,33 @@ pub fn seed_pull_request(omhl: &mut Omhl<'_>) -> RecordId {
     let item = node_item(PR_7, "pull-request", pull_request_data("Add gate"));
 
     append_ok(omhl, vec![item]).records[0].id.clone()
+}
+
+// Mensagens das recusas do `list` (a regra, nunca o valor recebido)
+
+pub const ID_PREFIX_RULE: &str = "id prefix must be dot-separated names of up to 63 characters, each starting with a letter or a digit, up to 200 characters in total";
+pub const PREFIX_NAMESPACE_ANY: &str = "id prefix must start with the namespace of a type";
+pub const PREFIX_NAMESPACE_TYPE: &str = "id prefix is outside the namespace of the type";
+pub const TYPE_NOT_DEFINED: &str = "type is not defined in the catalog";
+pub const FIELD_UNDECLARED: &str = "field is not declared by the type";
+pub const FIELD_NOT_TEXT: &str = "field is not a text field; where compares text only";
+pub const FIELD_NOT_TEXT_ANY: &str = "field is not a text field of any type the filter allows";
+pub const NO_TYPE_DECLARES_ALL: &str = "no type declares every where field";
+pub const VALUE_OUTSIDE_ENUM: &str = "value is not one of the values the field allows";
+pub const FIELD_REPEATED: &str = "field repeated in where with different values";
+pub const DIVERGENCE_TEXT: &str = "the spec asks for a report the code does not have";
+
+/// O erro que o `list` devolve para uma opção recusada: a regra na `message` do topo e em `details[0]`.
+pub fn list_refusal(pointer: &str, message: &str) -> Value {
+    json!({
+        "error": {
+            "code": "invalid-arguments",
+            "message": message,
+            "details": [{
+                "path": pointer,
+                "code": "invalid-arguments",
+                "message": message,
+            }],
+        }
+    })
 }
