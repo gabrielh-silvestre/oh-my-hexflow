@@ -7,7 +7,6 @@ use omhl::gate::{GateQuestion, Question};
 use serde_json::{Value, json};
 use support::child::{Cmd, omhl};
 use support::git::git_in;
-use support::mcp_session::McpSession;
 use support::omhl::{
     LINT_DOCS, OmhlHarness, acme, append_ok, check_data, decision_data, node_item, premise_data,
     work_item_data,
@@ -136,17 +135,6 @@ fn append_decision(dir: &Path, xdg: &Path, id: &str) {
     append_node(dir, xdg, id, "decision", &decision_data("Use WAL", None));
 }
 
-fn mcp_call(session: &McpSession, name: &str, arguments: &Value) -> Value {
-    session.send(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": { "name": name, "arguments": arguments },
-    }));
-
-    session.recv()["result"].clone()
-}
-
 /// O `additionalContext` que o hook `SessionStart` injeta para o projeto em `dir`.
 fn hook_context(dir: &Path, xdg: &Path) -> String {
     let stdin = json!({ "hook_event_name": "SessionStart", "session_id": "s1", "cwd": dir, "source": "startup" });
@@ -161,33 +149,25 @@ fn hook_context(dir: &Path, xdg: &Path) -> String {
         .to_owned()
 }
 
-fn keys_of(value: &Value) -> Vec<String> {
-    value
-        .as_object()
-        .expect("the value is an object")
-        .keys()
-        .cloned()
-        .collect()
-}
-
-// CLI e MCP devolvem o mesmo resultado
+// Resultado da CLI
 
 #[test]
-fn it_should_return_the_same_list_from_the_cli_and_the_mcp() {
+fn it_should_list_the_current_nodes_from_the_cli() {
     let project = Project::new("acme");
     append_decision(project.dir(), project.xdg(), "decisions.first");
     append_decision(project.dir(), project.xdg(), "decisions.second");
-    let session = McpSession::start(project.dir(), project.xdg());
 
     let cli = at(project.dir(), project.xdg(), &["list"]).run();
-    let mcp = mcp_call(&session, "list", &json!({}));
 
     assert_eq!(cli.code, Some(0), "stderr: {}", cli.stderr);
-    assert_eq!(json_line(&cli.stdout), mcp["structuredContent"]);
+    assert_eq!(
+        json_line(&cli.stdout)["items"].as_array().map(Vec::len),
+        Some(2)
+    );
 }
 
 #[test]
-fn it_should_return_the_same_attestation_from_the_cli_and_the_mcp() {
+fn it_should_return_the_attestation_from_the_cli() {
     let project = Project::new("acme");
     commit_marker(&project);
     append_node(
@@ -197,7 +177,6 @@ fn it_should_return_the_same_attestation_from_the_cli_and_the_mcp() {
         "work-item",
         &work_item_data("t"),
     );
-    let session = McpSession::start(project.dir(), project.xdg());
 
     let cli = at(
         project.dir(),
@@ -205,58 +184,38 @@ fn it_should_return_the_same_attestation_from_the_cli_and_the_mcp() {
         &["attest", RUN_TESTS, W1, "--outcome", "passed"],
     )
     .run();
-    let mcp = mcp_call(
-        &session,
-        "attest",
-        &json!({ "check": RUN_TESTS, "work_item": W1, "outcome": "passed" }),
-    );
 
-    let cli_value = json_line(&cli.stdout);
+    let value = json_line(&cli.stdout);
     assert_eq!(cli.code, Some(0), "stderr: {}", cli.stderr);
-    assert!(mcp.get("isError").is_none(), "the MCP call succeeds");
-    assert_eq!(
-        cli_value["attestation"],
-        mcp["structuredContent"]["attestation"]
-    );
-    assert_eq!(keys_of(&cli_value), keys_of(&mcp["structuredContent"]));
+    assert!(value["attestation"].is_object(), "value: {value}");
 }
 
 #[test]
-fn it_should_return_the_same_render_from_the_cli_and_the_mcp() {
+fn it_should_render_the_decisions_from_the_cli() {
     let project = Project::new("acme");
     append_decision(project.dir(), project.xdg(), USE_WAL);
-    let session = McpSession::start(project.dir(), project.xdg());
 
     let cli = at(project.dir(), project.xdg(), &["render"]).run();
-    let mcp = mcp_call(&session, "render", &json!({}));
 
     assert_eq!(cli.code, Some(0), "stderr: {}", cli.stderr);
-    assert_eq!(json_line(&cli.stdout), mcp["structuredContent"]);
+    assert!(json_line(&cli.stdout).to_string().contains(USE_WAL));
 }
 
 #[test]
-fn it_should_return_the_same_error_from_the_cli_and_the_mcp() {
+fn it_should_report_an_invalid_id_from_the_cli() {
     let project = Project::new("acme");
-    let session = McpSession::start(project.dir(), project.xdg());
 
     let cli = at(project.dir(), project.xdg(), &["get", "Bad Id"]).run();
-    let mcp = mcp_call(&session, "get", &json!({ "id": "Bad Id" }));
 
     assert_eq!(cli.code, Some(1));
-    assert_eq!(mcp["isError"], json!(true));
-    assert_eq!(
-        json_line(&cli.stderr)["error"],
-        mcp["structuredContent"]["error"]
-    );
+    assert!(json_line(&cli.stderr)["error"].is_object());
 }
 
 #[test]
-fn it_should_return_the_same_limit_error_from_the_cli_and_the_mcp() {
+fn it_should_report_the_limit_error_from_the_cli() {
     let project = Project::new("acme");
-    let session = McpSession::start(project.dir(), project.xdg());
 
     let cli = at(project.dir(), project.xdg(), &["list", "--limit", "0"]).run();
-    let mcp = mcp_call(&session, "list", &json!({ "limit": 0 }));
 
     let expected = json!({
         "code": "invalid-arguments",
@@ -268,25 +227,24 @@ fn it_should_return_the_same_limit_error_from_the_cli_and_the_mcp() {
         }],
     });
     assert_eq!(cli.code, Some(1));
-    assert_eq!(mcp["isError"], json!(true));
     assert_eq!(json_line(&cli.stderr)["error"], expected);
-    assert_eq!(mcp["structuredContent"]["error"], expected);
 }
 
 // Sessão completa e isolamento
 
 #[test]
-fn it_should_run_a_full_session_across_hook_mcp_and_cli() {
+fn it_should_run_a_full_session_across_hook_and_cli() {
     let project = Project::new("acme");
     commit_marker(&project);
     let (dir, xdg) = (project.dir(), project.xdg());
-    let session = McpSession::start(dir, xdg);
 
     let before = hook_context(dir, xdg);
-    let appended = mcp_call(
-        &session,
-        "append",
-        &node_request(USE_WAL, "decision", &decision_data("Use WAL", None)),
+    append_node(
+        dir,
+        xdg,
+        USE_WAL,
+        "decision",
+        &decision_data("Use WAL", None),
     );
     let after = hook_context(dir, xdg);
     append_node(dir, xdg, W1, "work-item", &work_item_data("t"));
@@ -296,7 +254,6 @@ fn it_should_run_a_full_session_across_hook_mcp_and_cli() {
 
     assert!(before.contains(RUN_TESTS), "the native base is injected");
     assert!(!before.contains(USE_WAL), "the decision is not there yet");
-    assert!(appended.get("isError").is_none(), "the MCP append succeeds");
     assert!(after.contains(&format!("### {USE_WAL}")));
     assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
     assert_eq!(json_line(&verified.stdout)["ok"], json!(true));

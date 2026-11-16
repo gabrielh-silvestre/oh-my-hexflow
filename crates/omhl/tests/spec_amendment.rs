@@ -9,7 +9,6 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use support::child::{Output as Child, omhl};
 use support::git::git_in;
-use support::mcp_session::McpSession;
 use support::omhl::{acme, work_item_data};
 use support::project::Project;
 use support::{EmptyNative, FixedClock, SeqIds, sid};
@@ -645,30 +644,15 @@ fn it_should_not_create_the_valid_node_of_a_refused_batch() {
     assert_eq!(json_line(&found.stdout)["node"], Value::Null);
 }
 
-// CLI e MCP: o mesmo veredito
-
-fn mcp_append(session: &McpSession, items: Vec<Value>) -> Value {
-    let mut arguments = json!({});
-    arguments["items"] = Value::Array(items);
-    session.send(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": { "name": "append", "arguments": arguments },
-    }));
-
-    session.recv()["result"].clone()
-}
+// CLI: o veredito e a cadeia intacta na recusa
 
 #[test]
-fn it_should_accept_the_approval_through_the_mcp_append_tool() {
+fn it_should_accept_the_approval_through_the_cli_append() {
     let fixture = Fixture::with_spec();
-    let session = McpSession::start(fixture.project.dir(), fixture.project.xdg());
     let before = fixture.chain();
 
-    let result = mcp_append(&session, vec![fixture.approval("emenda-01")]);
+    fixture.append(vec![fixture.approval("emenda-01")]);
 
-    assert!(result.get("isError").is_none(), "result: {result}");
     assert_eq!(
         fixture.divergence_revisions().len(),
         2,
@@ -681,48 +665,39 @@ fn it_should_accept_the_approval_through_the_mcp_append_tool() {
 }
 
 #[test]
-fn it_should_give_the_mcp_tool_and_the_cli_the_same_refusal_for_a_missing_amendment() {
+fn it_should_leave_the_chain_intact_when_the_cli_refuses_a_missing_amendment() {
     let fixture = Fixture::with_spec();
-    let session = McpSession::start(fixture.project.dir(), fixture.project.xdg());
-    let item = fixture.approval("emenda-02");
     let before = fixture.chain();
 
-    let cli = fixture.try_append(vec![item.clone()]);
-    let mcp = mcp_append(&session, vec![item]);
+    let cli = fixture.try_append(vec![fixture.approval("emenda-02")]);
 
-    assert_eq!(mcp["isError"], json!(true), "result: {mcp}");
-    assert_eq!(mcp["structuredContent"]["error"], error_of(&cli));
+    assert_eq!(error_of(&cli)["code"], json!("amendment-invalid"));
     assert_eq!(fixture.chain(), before);
 }
 
 #[test]
-fn it_should_give_the_mcp_tool_and_the_cli_the_same_refusal_for_a_divergence_that_is_not_open() {
+fn it_should_leave_the_chain_intact_when_the_cli_refuses_a_divergence_that_is_not_open() {
     let fixture = Fixture::with_spec();
     fixture.append(vec![fixture.approval("emenda-01")]);
-    let session = McpSession::start(fixture.project.dir(), fixture.project.xdg());
-    let item = fixture.approval("emenda-01");
     let before = fixture.chain();
 
-    let cli = fixture.try_append(vec![item.clone()]);
-    let mcp = mcp_append(&session, vec![item]);
+    let cli = fixture.try_append(vec![fixture.approval("emenda-01")]);
 
-    assert_eq!(mcp["isError"], json!(true), "result: {mcp}");
-    assert_eq!(mcp["structuredContent"]["error"], error_of(&cli));
+    assert_eq!(
+        error_of(&cli)["code"],
+        json!("amendment-divergence-not-open")
+    );
     assert_eq!(fixture.chain(), before);
 }
 
 #[test]
-fn it_should_give_the_mcp_tool_and_the_cli_the_same_refusal_for_an_invalid_amendment() {
+fn it_should_leave_the_chain_intact_when_the_cli_refuses_an_invalid_amendment() {
     let fixture = Fixture::with_spec();
     fixture.write("emenda-01.md", &amendment_for(DIVERGENCE, "CMP-999"));
-    let session = McpSession::start(fixture.project.dir(), fixture.project.xdg());
-    let item = fixture.approval("emenda-01");
     let before = fixture.chain();
 
-    let cli = fixture.try_append(vec![item.clone()]);
-    let mcp = mcp_append(&session, vec![item]);
+    let cli = fixture.try_append(vec![fixture.approval("emenda-01")]);
 
-    assert_eq!(mcp["isError"], json!(true), "result: {mcp}");
-    assert_eq!(mcp["structuredContent"]["error"], error_of(&cli));
+    assert_eq!(error_of(&cli)["code"], json!("amendment-invalid"));
     assert_eq!(fixture.chain(), before);
 }

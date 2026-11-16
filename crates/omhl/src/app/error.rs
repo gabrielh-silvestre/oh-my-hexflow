@@ -183,10 +183,6 @@ impl AppError {
         AppError::plain("render-failed", "the render result has no text")
     }
 
-    pub(crate) fn unknown_tool() -> AppError {
-        AppError::plain("unknown-tool", "unknown tool")
-    }
-
     pub(crate) fn runner_unavailable() -> AppError {
         AppError::plain("runner-unavailable", "no command runner is configured")
     }

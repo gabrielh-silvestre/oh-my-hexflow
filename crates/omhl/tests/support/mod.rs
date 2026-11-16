@@ -7,12 +7,12 @@ pub mod ext;
 pub mod gate;
 pub mod git;
 pub mod legacy;
-pub mod mcp_session;
 pub mod omhl;
 pub mod pr_gate;
 pub mod project;
 pub mod raw;
 pub mod runner;
+pub mod scan;
 pub mod views;
 
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -17,8 +17,8 @@ const LINT_TOML: &str =
     "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
-const COMMANDS: [&str; 10] = [
-    "list", "get", "append", "attest", "render", "gate-pr", "close", "verify", "mcp", "hook",
+const COMMANDS: [&str; 9] = [
+    "list", "get", "append", "attest", "render", "gate-pr", "close", "verify", "hook",
 ];
 
 fn run(args: &[&str]) -> Output {
@@ -122,11 +122,20 @@ fn it_should_list_the_commands_in_help() {
         assert!(words.contains(&command), "help lists {command}");
     }
     assert!(!output.stdout.contains("sync"), "help does not cite sync");
+    assert!(!output.stdout.contains("mcp"), "help does not cite mcp");
 }
 
 #[test]
 fn it_should_exit_two_for_an_unknown_subcommand() {
     let output = omhl(&["bogus"]).run();
+
+    assert_eq!(output.code, Some(2));
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+}
+
+#[test]
+fn it_should_refuse_mcp_as_an_unknown_subcommand() {
+    let output = omhl(&["mcp"]).run();
 
     assert_eq!(output.code, Some(2));
     assert!(output.stdout.is_empty(), "stdout stays empty");

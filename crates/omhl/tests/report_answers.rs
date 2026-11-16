@@ -4,7 +4,6 @@ use ::omhl::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_b
 use serde_json::{Value, json};
 use support::child::{Output, omhl};
 use support::ext::ExtTree;
-use support::mcp_session::McpSession;
 use support::omhl::decision_data;
 use support::project::Project;
 
@@ -736,88 +735,5 @@ fn it_should_refuse_a_malformed_work_item_at_the_work_item_pointer() {
     assert_eq!(
         json_line(&output.stderr)["error"]["details"][0]["path"],
         json!("/work_item")
-    );
-}
-
-// Relatório: tool MCP `report_answers`
-
-fn rpc(id: i64, method: &str, params: Value) -> Value {
-    let mut request = json!({ "jsonrpc": "2.0", "id": id, "method": method });
-    request["params"] = params;
-
-    request
-}
-
-fn tool_call(name: &str, arguments: Value) -> Value {
-    let mut params = json!({ "name": name });
-    params["arguments"] = arguments;
-
-    rpc(1, "tools/call", params)
-}
-
-fn mcp_call(session: &McpSession, name: &str, arguments: Value) -> Value {
-    session.send(&tool_call(name, arguments));
-
-    session.recv()["result"].clone()
-}
-
-/// Grava pela própria sessão MCP, para o `author` do node ser o do MCP.
-fn mcp_append(session: &McpSession, items: Vec<Value>) {
-    let mut arguments = json!({});
-    arguments["items"] = Value::Array(items);
-    let result = mcp_call(session, "append", arguments);
-
-    assert_ne!(result["isError"], json!(true), "result: {result}");
-}
-
-fn session_with_gaps() -> (Project, McpSession) {
-    let project = Project::new("acme");
-    let session = McpSession::start(project.dir(), project.xdg());
-    mcp_append(&session, work_item_nodes());
-    mcp_append(
-        &session,
-        vec![gap(GAP, W1), gap(OTHER_GAP, W2), agent_premise_node(ANSWER)],
-    );
-    mcp_append(&session, vec![relation("answers", ANSWER, GAP)]);
-
-    (project, session)
-}
-
-#[test]
-fn it_should_report_the_answer_and_its_mcp_author_through_the_report_answers_tool() {
-    let (_project, session) = session_with_gaps();
-
-    let result = mcp_call(&session, "report_answers", json!({}));
-
-    assert_ne!(result["isError"], json!(true), "result: {result}");
-    assert_eq!(
-        entry(&result["structuredContent"], GAP),
-        json!({
-            "id": GAP, "work_item": W1, "state": "answered", "answered_by": ANSWER,
-            "answerer": "autonomous", "no_criterion": true,
-            "author": { "agent": "claude", "client": "mcp" },
-        })
-    );
-}
-
-#[test]
-fn it_should_filter_the_report_answers_tool_by_work_item() {
-    let (_project, session) = session_with_gaps();
-
-    let result = mcp_call(&session, "report_answers", json!({ "work_item": W2 }));
-
-    assert_eq!(gap_ids(&result["structuredContent"]), [OTHER_GAP]);
-}
-
-#[test]
-fn it_should_refuse_an_unknown_argument_in_the_report_answers_tool() {
-    let (_project, session) = session_with_gaps();
-
-    let result = mcp_call(&session, "report_answers", json!({ "foo": "bar" }));
-
-    assert_eq!(result["isError"], json!(true), "result: {result}");
-    assert_eq!(
-        result["structuredContent"]["error"]["details"][0]["path"],
-        json!("/foo")
     );
 }

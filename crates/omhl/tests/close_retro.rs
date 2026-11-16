@@ -11,7 +11,6 @@ use ::omhl::workflow::retro::{
 use serde_json::{Value, json};
 use support::child::{Output, omhl};
 use support::git::git_in;
-use support::mcp_session::McpSession;
 use support::omhl::work_item_data;
 use support::project::Project;
 
@@ -289,7 +288,7 @@ fn it_should_not_list_a_gap_that_needs_a_human_as_an_answer_without_criterion() 
     assert_eq!(result.no_criterion, vec![]);
 }
 
-// Repositório git real: `omhl close`, `omhl report retro` e as tools MCP
+// Repositório git real: `omhl close` e `omhl report retro`
 
 fn text(lines: &[impl AsRef<str>]) -> String {
     let lines: Vec<&str> = lines.iter().map(AsRef::as_ref).collect();
@@ -1090,147 +1089,5 @@ fn it_should_refuse_report_retro_without_a_work_item() {
         output.stderr.contains("<WORK_ITEM>"),
         "stderr: {}",
         output.stderr
-    );
-}
-
-// Tools MCP: `close` e `report_retro`
-
-fn rpc(id: i64, method: &str, params: Value) -> Value {
-    let mut request = json!({ "jsonrpc": "2.0", "id": id, "method": method });
-    request["params"] = params;
-
-    request
-}
-
-fn mcp_call(session: &McpSession, name: &str, arguments: Value) -> Value {
-    let mut params = json!({ "name": name });
-    params["arguments"] = arguments;
-    session.send(&rpc(1, "tools/call", params));
-
-    session.recv()["result"].clone()
-}
-
-/// A sessão MCP sobe depois da preparação pela CLI e do commit: o `close` pede árvore limpa.
-fn serve(fixture: &Fixture) -> McpSession {
-    fixture.commit_all();
-
-    McpSession::start(fixture.project.dir(), fixture.project.xdg())
-}
-
-fn structured(result: &Value) -> Value {
-    assert_ne!(result["isError"], json!(true), "result: {result}");
-
-    result["structuredContent"].clone()
-}
-
-#[test]
-fn it_should_return_the_retro_in_the_close_tool_result() {
-    let fixture = Fixture::with_divergences(&[DIVERGENCE]);
-    let session = serve(&fixture);
-
-    let result = mcp_call(&session, "close", json!({ "work_item": W1 }));
-
-    assert_eq!(
-        retro_of(&structured(&result))["divergences"],
-        json!([{ "kind": "partial", "resolution": "open", "ids": [DIVERGENCE] }])
-    );
-}
-
-#[test]
-fn it_should_return_a_null_retro_in_the_close_tool_result_when_there_is_nothing_to_report() {
-    let fixture = Fixture::new();
-    let session = serve(&fixture);
-
-    let result = mcp_call(&session, "close", json!({ "work_item": W1 }));
-
-    assert_eq!(retro_of(&structured(&result)), Value::Null);
-}
-
-#[test]
-fn it_should_return_the_retro_through_the_report_retro_tool() {
-    let fixture = Fixture::with_approved_and_pending_amendments();
-    let session = serve(&fixture);
-
-    let result = mcp_call(&session, "report_retro", json!({ "work_item": W1 }));
-
-    assert_eq!(
-        retro_of(&structured(&result))["amendments"],
-        json!({
-            "approved": [{ "name": "emenda-01.md", "divergence": DIVERGENCE }],
-            "pending": ["emenda-02.md"],
-        })
-    );
-}
-
-#[test]
-fn it_should_return_a_null_retro_through_the_report_retro_tool_when_there_is_nothing_to_report() {
-    let fixture = Fixture::new();
-    let session = serve(&fixture);
-
-    let result = mcp_call(&session, "report_retro", json!({ "work_item": W1 }));
-
-    assert_eq!(retro_of(&structured(&result)), Value::Null);
-}
-
-#[test]
-fn it_should_write_nothing_when_the_report_retro_tool_runs() {
-    let fixture = Fixture::with_divergences(&[DIVERGENCE]);
-    let session = serve(&fixture);
-    let before = structured(&mcp_call(&session, "verify", json!({})));
-
-    let result = mcp_call(&session, "report_retro", json!({ "work_item": W1 }));
-
-    let after = structured(&mcp_call(&session, "verify", json!({})));
-    assert_ne!(retro_of(&structured(&result)), Value::Null);
-    assert_eq!(after, before);
-}
-
-#[test]
-fn it_should_refuse_the_report_retro_tool_for_a_work_item_that_does_not_exist() {
-    let fixture = Fixture::new();
-    let session = serve(&fixture);
-
-    let result = mcp_call(
-        &session,
-        "report_retro",
-        json!({ "work_item": "work-items.ghost" }),
-    );
-
-    assert_eq!(result["isError"], json!(true), "result: {result}");
-    assert_eq!(
-        result["structuredContent"]["error"]["code"],
-        json!("work-item-not-found")
-    );
-}
-
-#[test]
-fn it_should_refuse_the_report_retro_tool_without_a_work_item() {
-    let fixture = Fixture::new();
-    let session = serve(&fixture);
-
-    let result = mcp_call(&session, "report_retro", json!({}));
-
-    assert_eq!(result["isError"], json!(true), "result: {result}");
-    assert_eq!(
-        result["structuredContent"]["error"]["details"][0]["path"],
-        json!("/work_item")
-    );
-}
-
-#[test]
-fn it_should_refuse_an_unknown_argument_in_the_report_retro_tool() {
-    let fixture = Fixture::new();
-    let session = serve(&fixture);
-
-    let result = mcp_call(
-        &session,
-        "report_retro",
-        json!({ "work_item": W1, "foo": "bar" }),
-    );
-
-    assert_eq!(result["isError"], json!(true), "result: {result}");
-    assert_eq!(
-        result["structuredContent"]["error"]["details"][0]["path"],
-        json!("/foo")
     );
 }

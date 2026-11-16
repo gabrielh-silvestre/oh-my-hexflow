@@ -6,7 +6,6 @@ use ::omhl::workflow::recurrence::{Premise, Recurrence, normalize, recurrences};
 use serde_json::{Value, json};
 use support::child::{Output, omhl};
 use support::git::git_in;
-use support::mcp_session::McpSession;
 use support::omhl::work_item_data;
 use support::project::Project;
 
@@ -709,76 +708,4 @@ fn it_should_keep_the_group_when_the_guideline_without_confirmed_by_is_refused()
     let report = report(&project);
 
     assert_eq!(group_texts(&report), ["use tls for every external call"]);
-}
-
-// Relatório: tool MCP `report_recurrences`
-
-fn tool_call(name: &str, arguments: Value) -> Value {
-    let mut params = json!({ "name": name });
-    params["arguments"] = arguments;
-
-    json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params })
-}
-
-fn mcp_call(session: &McpSession, name: &str, arguments: Value) -> Value {
-    session.send(&tool_call(name, arguments));
-
-    session.recv()["result"].clone()
-}
-
-fn session_with_two_occurrences() -> (Project, McpSession) {
-    let project = Project::new("acme");
-    seed(
-        &project,
-        vec![tls_node("premises.p1", W1), tls_node("premises.p2", W2)],
-    );
-    let session = McpSession::start(project.dir(), project.xdg());
-
-    (project, session)
-}
-
-#[test]
-fn it_should_report_the_group_through_the_report_recurrences_tool() {
-    let (_project, session) = session_with_two_occurrences();
-
-    let result = mcp_call(&session, "report_recurrences", json!({ "min": 2 }));
-
-    assert_ne!(result["isError"], json!(true), "result: {result}");
-    assert_eq!(
-        result["structuredContent"],
-        json!({
-            "min": 2,
-            "recurrences": [{
-                "kind": "technical",
-                "text": "use tls for every external call",
-                "work_items": [W1, W2],
-                "premises": ["premises.p1", "premises.p2"],
-            }],
-        })
-    );
-}
-
-#[test]
-fn it_should_apply_the_default_minimum_in_the_report_recurrences_tool() {
-    let (_project, session) = session_with_two_occurrences();
-
-    let result = mcp_call(&session, "report_recurrences", json!({}));
-
-    assert_eq!(
-        result["structuredContent"],
-        json!({ "min": 3, "recurrences": [] })
-    );
-}
-
-#[test]
-fn it_should_refuse_an_unknown_argument_in_the_report_recurrences_tool() {
-    let (_project, session) = session_with_two_occurrences();
-
-    let result = mcp_call(&session, "report_recurrences", json!({ "foo": "bar" }));
-
-    assert_eq!(result["isError"], json!(true), "result: {result}");
-    assert_eq!(
-        result["structuredContent"]["error"]["details"][0]["path"],
-        json!("/foo")
-    );
 }

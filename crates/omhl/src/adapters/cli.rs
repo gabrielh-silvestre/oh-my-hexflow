@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -8,7 +8,7 @@ use clap::error::ErrorKind;
 use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 
-use super::{hook, mcp};
+use super::hook;
 use crate::app::RUNNABLE_EVENTS;
 use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
@@ -33,8 +33,6 @@ pub struct Cli {
 pub enum Command {
     #[command(flatten)]
     Action(ActionCommand),
-    /// Serve the MCP tools over stdio.
-    Mcp,
     /// Run a Claude Code hook.
     Hook {
         #[command(subcommand)]
@@ -242,10 +240,6 @@ pub fn run(
         Command::Hook {
             event: HookEvent::SpecLock,
         } => hook::spec_lock(stdin, out, err),
-        Command::Mcp => match start_dir(project_dir.as_deref()) {
-            Ok(dir) => mcp::serve(BufReader::new(stdin), out, &dir, db, env),
-            Err(error) => report(Err(error), out, err),
-        },
         Command::Action(command) => {
             // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
             let silent_without_marker = matches!(command, ActionCommand::GateWorktree { .. });
