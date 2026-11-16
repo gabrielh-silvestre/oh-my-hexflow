@@ -19,9 +19,15 @@ impl Engine<'_> {
         work_item: &str,
         tail: u32,
     ) -> Result<Value, AppError> {
-        if tail == 0 {
-            return Err(AppError::invalid_arguments("/tail", "unknown value"));
-        }
+        let wanted = usize::try_from(tail)
+            .ok()
+            .filter(|wanted| (1..=TAIL_MAX).contains(wanted))
+            .ok_or_else(|| {
+                AppError::invalid_arguments(
+                    "/tail",
+                    &format!("tail must be between 1 and {TAIL_MAX}"),
+                )
+            })?;
         let check_id = parse_at(SemanticId::parse, check, "/check")?;
         if self.omhl.get(&self.tenant, &check_id)?.is_none() {
             return Err(OmhlError::rule(RuleCode::CheckNotFound, "/check").into());
@@ -41,15 +47,19 @@ impl Engine<'_> {
             .get(&hash)
             .map_err(|_| AppError::byproduct_corrupt("/work_item"))?
             .ok_or_else(missing)?;
-        let lines = tail_lines(&blob, tail).ok_or_else(missing)?;
-
-        Ok(json!({
+        let (lines, truncated_lines) = tail_lines(&blob, wanted).ok_or_else(missing)?;
+        let mut result = json!({
             "check": check,
             "work_item": work_item,
             "outcome": attestation.data["outcome"],
             "byproduct": hash.as_str(),
             "lines": lines,
-        }))
+        });
+        if truncated_lines > 0 {
+            result["truncated_lines"] = json!(truncated_lines);
+        }
+
+        Ok(result)
     }
 
     /// A de maior `seq` entre as attestations do par; o id não ordena nada.
@@ -71,18 +81,29 @@ impl Engine<'_> {
     }
 }
 
-fn tail_lines(blob: &[u8], tail: u32) -> Option<Vec<String>> {
+/// As últimas `wanted` linhas e quantas delas passaram de `LINE_MAX_CHARS` e foram cortadas.
+fn tail_lines(blob: &[u8], wanted: usize) -> Option<(Vec<String>, usize)> {
     let (stdout, stderr) = byproduct::decode(blob)?;
     let lines: Vec<String> = [stdout, stderr]
         .into_iter()
         .flat_map(|stream| {
             String::from_utf8_lossy(stream)
                 .split_terminator('\n')
-                .map(|line| line.chars().take(LINE_MAX_CHARS).collect::<String>())
+                .map(str::to_owned)
                 .collect::<Vec<_>>()
         })
         .collect();
-    let wanted = usize::try_from(tail).map_or(TAIL_MAX, |tail| tail.min(TAIL_MAX));
+    let mut truncated = 0;
+    let window = lines[lines.len().saturating_sub(wanted)..]
+        .iter()
+        .map(|line| match line.char_indices().nth(LINE_MAX_CHARS) {
+            Some((cut, _)) => {
+                truncated += 1;
+                line[..cut].to_owned()
+            }
+            None => line.clone(),
+        })
+        .collect();
 
-    Some(lines[lines.len().saturating_sub(wanted)..].to_vec())
+    Some((window, truncated))
 }

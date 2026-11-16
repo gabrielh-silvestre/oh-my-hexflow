@@ -725,6 +725,23 @@ fn it_should_report_no_gaps_for_a_work_item_without_gaps() {
 }
 
 #[test]
+fn it_should_refuse_a_work_item_that_does_not_exist() {
+    let project = Project::new("acme");
+    seed(&project, vec![gap(GAP, W1)], vec![]);
+
+    let output = in_project(
+        &project,
+        &["report", "answers", "--work-item", "work-items.naoexiste"],
+    );
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    let error = json_line(&output.stderr)["error"].clone();
+    assert_eq!(error["code"], json!("work-item-not-found"));
+    assert_eq!(error["details"][0]["path"], json!("/work_item"));
+}
+
+#[test]
 fn it_should_refuse_a_malformed_work_item_at_the_work_item_pointer() {
     let project = Project::new("acme");
 
