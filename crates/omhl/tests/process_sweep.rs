@@ -16,6 +16,7 @@ use ::omhl::ports::process::{
 };
 use ::omhl::runner::{CommandRunner, RunError, RunSpec};
 use nix::errno::Errno;
+use nix::fcntl::{Flock, FlockArg};
 use nix::sys::signal::{Signal, kill};
 use nix::sys::stat::Mode;
 use nix::unistd::{Pid, mkfifo};
@@ -27,6 +28,18 @@ use tempfile::TempDir;
 
 const TWENTY_SECS: Duration = Duration::from_secs(20);
 const DEATH: Duration = Duration::from_secs(4);
+
+/// `sweep_strays()` varre o `/proc` inteiro: em paralelo, um teste mataria o neto de outro.
+fn serialize_sweeps() -> Flock<fs::File> {
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(std::env::temp_dir().join("omhl-process-sweep.lock"))
+        .expect("the sweep lock file opens");
+    Flock::lock(file, FlockArg::LockExclusive)
+        .unwrap_or_else(|(_, errno)| panic!("the sweep lock is taken: {errno}"))
+}
 
 fn pid(raw: u32) -> Pid {
     Pid::from_raw(i32::try_from(raw).expect("a pid fits in i32"))
@@ -155,6 +168,7 @@ fn it_should_hash_the_same_root_through_a_symlink_or_a_trailing_slash() {
 
 #[test]
 fn it_should_sweep_the_stray_when_the_given_root_is_a_symlink_to_the_project() {
+    let _serial = serialize_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let links = TempDir::new().expect("links directory is created");
     let link = links.path().join("project-link");
@@ -220,6 +234,7 @@ fn it_should_leave_the_run_marker_out_of_the_guardian_environment() {
 
 #[test]
 fn it_should_sweep_a_detached_descendant_whose_runner_is_gone() {
+    let _serial = serialize_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let n = stray_of_a_gone_runner(dir.path(), "detached");
 
@@ -232,6 +247,7 @@ fn it_should_sweep_a_detached_descendant_whose_runner_is_gone() {
 
 #[test]
 fn it_should_sweep_the_stray_of_the_project_whose_root_is_given() {
+    let _serial = serialize_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let n = stray_of_a_gone_runner(dir.path(), "detached");
 
@@ -244,6 +260,7 @@ fn it_should_sweep_the_stray_of_the_project_whose_root_is_given() {
 
 #[test]
 fn it_should_not_sweep_the_detached_descendant_of_a_live_runner() {
+    let _serial = serialize_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut runner = spawn_role(
         "runner",
@@ -277,6 +294,7 @@ fn it_should_not_sweep_the_detached_descendant_of_a_live_runner() {
 
 #[test]
 fn it_should_sweep_a_process_that_ignores_sigterm_by_killing_it_after_the_grace_period() {
+    let _serial = serialize_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let n = stray_of_a_gone_runner(dir.path(), "detached-ignore-term");
 
@@ -289,6 +307,7 @@ fn it_should_sweep_a_process_that_ignores_sigterm_by_killing_it_after_the_grace_
 
 #[test]
 fn it_should_not_sweep_the_command_of_a_gone_runner_while_its_guardian_is_alive() {
+    let _serial = serialize_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut runner = spawn_role("runner", dir.path(), "ignore-term", &[], Stdio::null());
     let r = runner.id();
@@ -318,6 +337,7 @@ fn it_should_not_sweep_the_command_of_a_gone_runner_while_its_guardian_is_alive(
 
 #[test]
 fn it_should_sweep_a_stray_whose_runner_is_a_zombie() {
+    let _serial = serialize_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut runner = spawn_role("runner", dir.path(), "detached", &[], Stdio::null());
     let r = runner.id();
