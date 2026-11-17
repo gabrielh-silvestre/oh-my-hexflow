@@ -369,7 +369,7 @@ O subcomando `hook spec-lock` nunca sai com `2`. Qualquer erro interno (git, lei
 
 ### Gap e a cadeira do dono
 
-Uma dúvida aberta é um `gap` (`question` e `context`, mais o `work_item` opcional). Um gap fecha quando uma premissa o responde, pela relation `answers` de premissa para gap. Uma diretiva que serve de critério da resposta é uma relation `supports` de diretiva para premissa. Uma resposta que contraria uma diretiva confirmada é uma `contradicts` de premissa para diretiva.
+Uma dúvida aberta é um `gap` (`question` e `context`, mais o `work_item` e o `kind` opcionais; o `kind` é `technical` ou `business`, e um gap sem `kind` vai para o humano). Um gap fecha quando uma premissa o responde, pela relation `answers` de premissa para gap. Uma diretiva que serve de critério da resposta é uma relation `supports` de diretiva para premissa. Uma resposta que contraria uma diretiva confirmada é uma `contradicts` de premissa para diretiva.
 
 ```json
 {"items":[{"body":{"kind":"relation","relation_type":"answers","from":"premises.row-limit","to":"gaps.row-limit"}}]}

@@ -16,6 +16,7 @@ const OLD_CHECKS_CATALOG: &str = include_str!("fixtures/checks_catalog_free_even
 const OLD_VOCABULARY: &str = "free";
 const OLD_DECISIONS_CATALOG: &str = include_str!("fixtures/decisions_catalog_v1.json");
 const PREVIOUS_DECISIONS_CATALOG: &str = include_str!("fixtures/decisions_catalog_v2.json");
+const PREVIOUS_DECISIONS_CATALOG_V3: &str = include_str!("fixtures/decisions_catalog_v3.json");
 
 const NODE_TYPES: [&str; 9] = [
     "premise",
@@ -1018,11 +1019,61 @@ fn it_should_reject_a_gap_missing_question_or_context() {
 
 #[test]
 fn it_should_reject_a_gap_with_an_extra_property() {
-    let gap = with(gap(), "kind", json!("technical"));
+    let gap = with(gap(), "owner", json!("person:gabriel"));
 
     let found = violations_of("gap", &gap);
 
-    assert_eq!(found, vec![violation("/kind", "additional-properties")]);
+    assert_eq!(found, vec![violation("/owner", "additional-properties")]);
+}
+
+#[test]
+fn it_should_accept_a_gap_with_kind_technical() {
+    let gap = with(gap(), "kind", json!("technical"));
+
+    let accepted = is_accepted("gap", &gap);
+
+    assert!(accepted);
+}
+
+#[test]
+fn it_should_accept_a_gap_with_kind_business() {
+    let gap = with(gap(), "kind", json!("business"));
+
+    let accepted = is_accepted("gap", &gap);
+
+    assert!(accepted);
+}
+
+#[test]
+fn it_should_reject_a_gap_with_a_kind_outside_technical_and_business() {
+    let gap = with(gap(), "kind", json!("legal"));
+
+    let found = violations_of("gap", &gap);
+
+    assert_eq!(found, vec![violation("/kind", "enum")]);
+}
+
+#[test]
+fn it_should_keep_a_gap_without_kind_valid() {
+    let accepted = is_accepted("gap", &gap());
+
+    assert!(accepted);
+}
+
+// O motor não expõe `major.minor` da definition; o que se observa é o hash da definition
+// (mudou) e a regra da minor: todo gap válido na definition anterior segue válido (mesma major).
+#[test]
+fn it_should_raise_the_gap_definition_by_one_minor_and_keep_its_major() {
+    let previous = catalog_from(PREVIOUS_DECISIONS_CATALOG_V3);
+    let linked = with(gap(), "work_item", json!("work-items.dir0"));
+
+    let compatible_change = (
+        previous.type_hash(&tname("gap")) != catalog().type_hash(&tname("gap")),
+        previous.validate_data(&tname("gap"), &linked).is_ok() && is_accepted("gap", &linked),
+        previous.validate_data(&tname("gap"), &gap()).is_ok() && is_accepted("gap", &gap()),
+    );
+
+    assert_eq!(compatible_change, (true, true, true));
 }
 
 #[test]
@@ -1331,6 +1382,38 @@ fn it_should_still_verify_a_decisions_chain_written_with_the_previous_catalog_v2
 }
 
 #[test]
+fn it_should_still_verify_a_decisions_chain_written_with_the_previous_catalog_v3() {
+    let raw = RawHarness::new();
+    let acme = acme();
+    {
+        let mut previous = raw.hexlog(catalog_from(PREVIOUS_DECISIONS_CATALOG_V3), &EmptyNative);
+        previous
+            .ensure_tenant(&acme)
+            .expect("the tenant is created");
+        previous
+            .append(&request(vec![
+                node_item("gaps.q-1", "gap", gap()),
+                node_item(
+                    "premises.p-1",
+                    "premise",
+                    confirmed("premise", confirmation()),
+                ),
+            ]))
+            .expect("the previous catalog accepts the records");
+    }
+
+    let mut reopened = raw.hexlog(catalog(), &EmptyNative);
+    let report = reopened
+        .verify_chain(&acme, None)
+        .expect("the chain verifies");
+
+    assert_eq!(
+        (report.ok, report.total_records, report.total_breaks),
+        (true, 2, 0)
+    );
+}
+
+#[test]
 fn it_should_still_accept_a_guideline_without_kind() {
     let guideline = confirmed("guideline", confirmation());
 
@@ -1407,7 +1490,7 @@ fn it_should_classify_every_catalog_field_for_where() {
         ),
         ("guideline", &["text", "kind"], &["confirmed_by"]),
         ("decision", &["text", "work_item"], &["evidence"]),
-        ("gap", &["question", "context", "work_item"], &[]),
+        ("gap", &["question", "context", "work_item", "kind"], &[]),
         (
             "divergence",
             &[
