@@ -461,6 +461,19 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 | Sem `mcp`, `tool_call` nem `json-rpc` em `src/` fora de `adapters/` e `main.rs` (ADR 0006) | `it_should_keep_the_removed_mcp_port_out_of_the_src_layers` |
 | `src/app` só tem os cortes numéricos (`.min(`, `.max(`, `.clamp(`, `.take(`, `saturating_`) da lista fechada, 9 ao todo; um corte novo reprova até ser justificado (ver [ADR 0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md)) | `it_should_not_grow_the_numeric_cuts_in_src_app_without_an_inventory_entry` |
 
+### As skills do plugin (`crates/omhl/tests/skills.rs`)
+
+As quatro skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `work-item-closing`, `query-and-integrity`) não são código, mas um binário de teste as trava. O `skills.rs` é um só (os módulos `coverage` e `examples` entram por `#[path]`, para o cargo não criar dois binários) e roda dentro do `checks.test-suite`, que executa `cargo test --workspace --locked`. Não há check mecânico dedicado (decisão do [ADR 0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md)).
+
+| Teste | O que reprova |
+|---|---|
+| `skill_coverage` | Subcomando folha da CLI sem citação numa skill (as 23 folhas, sem o grupo `hook` e sem o `help` do clap); citação de subcomando que não existe; `SKILL.md` com mais de 80 linhas; `references/<folha>.md` ausente ou sem os cinco títulos (`Quando usar`, `Entradas`, `Saída`, `Erros`, `Exemplos`); opção da CLI (as da folha e as globais) que não aparece em `## Entradas` da página da folha; link ou caminho `.md` (`[x](a.md)` ou `` `references/a.md` ``) que não resolve para um arquivo dentro de `plugin/`; código de erro da seção `Erros` que não é literal em `crates/*/src`. |
+| `skill_examples` | Folha sem nenhum bloco `omhl-example` na própria `references/<folha>.md` (um bloco em outra página não vale); cerca mal formada que parece exemplo e não executa (`omhl-example` recuada, com quatro crases ou til, sem `fixture=` ou sem passo `$ omhl`; tag `omhl*` desconhecida; comando `omhl` em bloco que não é `omhl-example`; `$ omhl` fora de cerca), em toda página; bloco cujo stdout, stderr ou código de saída difere do que o binário real devolve (a mensagem traz arquivo, linha, comando e as duas saídas). Só roda no Linux. |
+
+Cada bloco `omhl-example` ganha uma fixture nova (`project`, `git`, `spec`, `checks` e outras, montadas em Rust) e roda sem shell. Datas, ids, hashes, durações, pids e caminhos temporários são normalizados dos dois lados antes da comparação.
+
+O `skill_examples` executa `check sweep`, que varre o `/proc` inteiro e vale para qualquer raiz da máquina; por isso os campos `swept` e `unreadable` da saída entram na normalização. Pelo mesmo motivo ele pega o flock `omhl-process-sweep.lock` (em `std::env::temp_dir()`, `support/sweep_lock.rs`), o mesmo do `process_sweep`: sem ele, a varredura de um teste poderia matar o processo de outro. O flock só protege contra outro `cargo` concorrente; os binários de um mesmo `cargo test` já rodam em sequência.
+
 ### Regras que valem hoje no código mas sem teste
 
 - No `hexlog`: `store` e `catalog` não importam um ao outro, e só a facade os compõe. É verdade hoje (verificado nos imports), mas só a regra `engine -> store/catalog` está travada.

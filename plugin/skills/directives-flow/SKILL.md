@@ -1,27 +1,29 @@
 ---
 name: directives-flow
-description: Protocolo do fluxo por diretivas e premissas do omhl. Use antes de começar um work item novo, ao registrar premissa, diretiva, gap ou divergência, ao escrever ou corrigir uma spec em .omhl/specs/, ao criar uma worktree com wt switch -c, e depois de um close que imprimiu a retro.
+description: Protocolo do fluxo por diretivas e premissas do omhl. Use antes de começar um work item novo, ao registrar premissa, diretiva, gap ou divergência, ao escrever ou corrigir uma spec em .omhl/specs/, ao criar uma worktree com wt switch -c.
 ---
 
 # Fluxo por diretivas e premissas
 
-O humano define diretivas (`guideline`) e premissas (`premise`). Você escolhe os comportamentos e escreve a spec a partir delas. A referência completa, com todos os códigos de erro, está em `docs/directives-flow.md` do repositório do oh-my-hexflow.
+O humano define diretivas (`guideline`) e premissas (`premise`). Você escolhe os comportamentos e escreve a spec a partir delas. A referência de cada comando e os detalhes do fluxo estão em `references/`: a matriz de prefixos em [matrix.md](references/matrix.md) e a divergência e seus desfechos em [divergence.md](references/divergence.md).
 
 ## Regras que valem o tempo todo
 
-- **Grave pela CLI.** Rode `omhl append` no Bash, com o JSON no stdin, e `omhl attest` para a attestation. Sob o Claude Code a CLI grava `agent: "claude"`. Nenhum canal prova a confirmação: o `confirmed_by` vale pelo que você grava, então grave-o só com a resposta real do humano. Isso vale para work item, premissa, gap, divergência e relation.
+- **Grave pela CLI.** Rode `omhl append` no Bash, com o JSON no stdin, e [`omhl attest`](../mechanical-checks/references/attest.md) para a attestation. Sob o Claude Code a CLI grava `agent: "claude"`. Nenhum canal prova a confirmação: o `confirmed_by` vale pelo que você grava, então grave-o só com a resposta real do humano. Isso vale para work item, premissa, gap, divergência e relation.
 - **Só o humano confirma.** Uma diretiva ou uma premissa de negócio sugerida por você fica pendente e não vincula. Para confirmar, pergunte ao humano dentro da sessão e grave o campo `confirmed_by` com `by` no formato `person:<nome>`, em que `<nome>` identifica o humano que confirmou na sessão. Se não souber o nome, pergunte ao humano; não invente. Grave também a pergunta e a resposta literais, copiadas exatamente como foram ditas. Nunca resuma, traduza nem corrija o texto. Nunca invente uma confirmação.
 - **Premissa técnica pode ser autônoma.** Registre-a com `status` `assumed`, sem `confirmed_by`. O humano a confirma depois, se quiser.
-- **Reaproveite o texto de uma premissa.** Antes de registrar uma premissa, rode `omhl report recurrences --min 2` e, se uma premissa anterior significa a mesma coisa, copie o texto exato dela. Assim a promoção na 3ª ocorrência agrupa as duas.
+- **Decisão técnica se apoia numa âncora.** Registre-a como `decision` (com `work_item`, `text` e `evidence`) e ligue-a por `rests-on` a uma diretiva ou premissa confirmada. Sem isso o `omhl gate-pr` reprova `decisions-anchored`.
+- **Reaproveite o texto de uma premissa.** Antes de registrar uma premissa, rode [omhl report recurrences](../query-and-integrity/references/report-recurrences.md) `--min 2` e, se uma premissa anterior significa a mesma coisa, copie o texto exato dela. Assim a promoção na 3ª ocorrência agrupa as duas.
 
 ## A ordem do protocolo
 
 1. Escolha o prefixo (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` ou `docs`), o id e o slug. A branch será `tipo/wi-<id>__<slug>`.
-2. Grave o work item com `omhl append`: `work-items.<id>`, tipo `work-item`, `status` `open`. A guarda recusa premissa sem um work item aberto.
+2. Grave o work item com `omhl append`: `work-items.<id>`, tipo `work-item`, `title` e `status` `open`. A guarda recusa premissa sem um work item aberto.
 3. Sugira as premissas (`kind` `business` ou `technical`, com o `work_item`).
 4. Peça a confirmação do humano e grave a premissa `confirmed` com `confirmed_by`.
 5. Para `feat/` e `fix/`, rode `omhl spec init work-items.<id> <slug>`, escreva a spec e rode `omhl spec validate work-items.<id>` até passar.
 6. Confira o gate com `omhl gate-worktree --branch <nome>`. Só então rode `wt switch -c <branch>`.
+7. Com a worktree criada, o commit e o push rodam os checks (skill `mechanical-checks`). Ao terminar, confira e feche com a skill `work-item-closing`.
 
 ## Se o `wt switch` falhar com `Cannot prompt for approval`
 
@@ -38,21 +40,27 @@ Pare. Peça ao dono que rode `wt config approvals add`. **Nunca** tente `--no-ho
 
 A spec congelada nunca é editada. Não existe comando nem marca para descongelar, e você nunca deve tentar editá-la nem procurar como descongelá-la. O caminho é a emenda:
 
-1. Registre uma `divergence` com `resolution` `open` (`omhl append`), com `source_ref`, `kind`, `text`, `evidence` e `work_item`.
-2. Pergunte ao humano se a spec estava errada. Se não estava, não há emenda.
+1. Registre uma `divergence` com `resolution` `open` (`omhl append`), com `source_ref`, `kind` (`missing`, `partial`, `contradicts` ou `unrequested`), `text`, `evidence` (lista de `{source, summary}`) e `work_item`. Os demais campos e erros estão em [references/append.md](references/append.md).
+2. Pergunte ao humano se a spec estava errada. Se não estava, não há emenda: feche a divergência com uma nova revisão dela (com `base`, o `node.record_id` de `omhl get divergences.<nome>`) em `resolution` `code-fixed` (você corrigiu o código para seguir a spec) ou `accepted` (o humano aceita o desvio). Pergunte ao humano qual dos dois e grave `accepted` só com a resposta dele. Não leve `confirmed_by` nem `amendment`: a guarda os recusa nesses dois desfechos (`confirmation-invalid`). Os passos 3 a 7 não se aplicam.
 3. Se estava, crie `emenda-NN.md` na pasta da spec do work item, com `Write` de um arquivo novo. O hook libera só o próximo número. A emenda tem as seções `Divergência` (o id `divergences.<nome>`), `Correções` (itens `- EMD-001 CMP-003: <novo valor>`) e `Motivo`.
-4. Valide com `omhl spec validate` (`omhl spec validate work-items.<id>`).
+4. Valide com `omhl spec validate work-items.<id>`.
 5. Se a emenda saiu inválida, abandone-a e crie a seguinte (`emenda-(NN+1).md`): ela também fica congelada assim que existe. Os `EMD-###` da emenda abandonada continuam contados, então continue a numeração (`EMD-002` depois de `EMD-001`).
 6. Mostre a emenda ao humano e peça a aprovação, copiando a pergunta e a resposta literais.
 7. Grave uma nova revisão da mesma `divergence` (com `base`) com `resolution` `spec-stale`, `amendment` (`emenda-NN`, sem `.md`) e `confirmed_by`. O `append` recusa a revisão se faltar um dos dois campos ou se a emenda não valida.
 
 ## Depois do `close`
 
-Quando o `close` imprimir o campo `retro` (ou quando você rodar `omhl report retro` com o id do work item), proponha uma melhoria por item do relatório, numa destas quatro categorias:
+A retro (`omhl report retro`) e a proposta de melhorias são da [work-item-closing](../work-item-closing/SKILL.md): as categorias são `guideline`, `premise`, `spec-section` e `check`. Cada proposta vira registro pelas regras de cima (`omhl append`, `confirmed_by`); um novo check vira um arquivo em `.omhl/checks/`, num work item próprio, e você roda `omhl load` antes de qualquer `omhl check run`.
 
-- `guideline`: uma nova diretiva.
-- `premise`: uma nova premissa.
-- `spec-section`: um ajuste de seção da spec (o que as próximas specs devem trazer).
-- `check`: um novo check, quando o padrão é mecânico.
+## Comando para referência
 
-Cada proposta só vira registro com a confirmação do humano, com o `confirmed_by` de sempre. Um novo check vira um arquivo em `.omhl/checks/`, num work item próprio, e você roda `omhl load` antes de qualquer `check run`.
+Abra a referência do comando antes de usá-lo: ela traz as entradas, a saída, os erros e exemplos reais.
+
+| Comando | Referência |
+|---|---|
+| `omhl append` | [references/append.md](references/append.md) |
+| `omhl spec init` | [references/spec-init.md](references/spec-init.md) |
+| `omhl spec validate` | [references/spec-validate.md](references/spec-validate.md) |
+| `omhl gate-worktree` | [references/gate-worktree.md](references/gate-worktree.md) |
+| `omhl guideline retire` | [references/guideline-retire.md](references/guideline-retire.md) |
+| Erros comuns | [references/errors.md](references/errors.md) |

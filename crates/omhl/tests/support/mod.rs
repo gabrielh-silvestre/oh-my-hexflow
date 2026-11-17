@@ -13,6 +13,8 @@ pub mod project;
 pub mod raw;
 pub mod runner;
 pub mod scan;
+#[cfg(target_os = "linux")]
+pub mod sweep_lock;
 pub mod views;
 
 use std::sync::atomic::{AtomicU64, Ordering};

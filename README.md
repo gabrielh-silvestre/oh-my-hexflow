@@ -46,7 +46,23 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    ```
 
 O plugin liga os hooks `SessionStart` e `PreToolUse` (`hook spec-lock`, em
-`plugin/hooks/hooks.json`). O agente grava e consulta pela CLI.
+`plugin/hooks/hooks.json`). O agente grava e consulta pela CLI, guiado por
+quatro skills em `plugin/skills/`:
+
+| Skill | O que cobre |
+|---|---|
+| `directives-flow` | O fluxo por diretivas e premissas: `append`, `attest`, `spec init`, `spec validate`, `gate-worktree` e `guideline retire`. |
+| `mechanical-checks` | Os checks mecânicos: `load`, `check run`, `check retire`, `check sweep`, `byproduct`, `hooks install` e `hooks post-commit`. |
+| `work-item-closing` | O fechamento do work item: `gate-pr`, `close` e `report retro`. |
+| `query-and-integrity` | A consulta e a integridade do banco: `get`, `list`, `verify`, `project`, `render`, `report answers` e `report recurrences`. |
+
+Cada skill tem um `SKILL.md` curto e, por subcomando, um
+`references/<subcomando>.md` com cinco títulos fixos (`Quando usar`, `Entradas`,
+`Saída`, `Erros`, `Exemplos`). Um teste de cobertura exige que todo subcomando
+folha da CLI, exceto o grupo `hook`, seja citado por uma skill e tenha a sua
+`references/`. Outro teste roda os exemplos (`omhl-example`) contra o binário
+real e reprova a skill que descreve uma saída que o `omhl` não dá. Os detalhes
+estão em [docs/architecture.md](docs/architecture.md).
 
 ## Marcar um projeto
 

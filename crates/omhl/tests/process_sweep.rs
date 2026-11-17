@@ -1,6 +1,7 @@
 #![cfg(target_os = "linux")]
 
 mod proc_roles;
+mod support;
 
 use std::fs::{self, OpenOptions};
 use std::os::unix::fs::{OpenOptionsExt, symlink};
@@ -16,7 +17,6 @@ use ::omhl::ports::process::{
 };
 use ::omhl::runner::{CommandRunner, RunError, RunSpec};
 use nix::errno::Errno;
-use nix::fcntl::{Flock, FlockArg};
 use nix::sys::signal::{Signal, kill};
 use nix::sys::stat::Mode;
 use nix::unistd::{Pid, mkfifo};
@@ -24,22 +24,11 @@ use proc_roles::{
     GUARDIAN_PREFIX, assert_dead_since, guardian_of, is_dead, kind_name, pid_file, proc_state,
     run_ok, spawn_role, spec, stat_field, wait_child_exit, wait_file, wait_until,
 };
+use support::sweep_lock::serialize_sweeps;
 use tempfile::TempDir;
 
 const TWENTY_SECS: Duration = Duration::from_secs(20);
 const DEATH: Duration = Duration::from_secs(4);
-
-/// `sweep_strays()` varre o `/proc` inteiro: em paralelo, um teste mataria o neto de outro.
-fn serialize_sweeps() -> Flock<fs::File> {
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(std::env::temp_dir().join("omhl-process-sweep.lock"))
-        .expect("the sweep lock file opens");
-    Flock::lock(file, FlockArg::LockExclusive)
-        .unwrap_or_else(|(_, errno)| panic!("the sweep lock is taken: {errno}"))
-}
 
 fn pid(raw: u32) -> Pid {
     Pid::from_raw(i32::try_from(raw).expect("a pid fits in i32"))

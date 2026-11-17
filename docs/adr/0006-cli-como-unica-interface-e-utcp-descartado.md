@@ -12,7 +12,7 @@ O `omhl` tinha duas portas para o agente: a CLI e o adapter MCP (`omhl mcp`, `ad
 
 O `omhl` tem uma única interface para o agente: a CLI. O adapter MCP é removido junto com o que só ele usava (`parse_tool_call`, `Caller::mcp`, `AppError::unknown_tool`). **CLI direto, UTCP descartado.**
 
-O Claude Code passará a usar a CLI por quatro skills do plugin, com instruções em `references/` verificadas por um teste de cobertura e por um teste que executa os exemplos, ambos num binário de teste (`tests/skills.rs`) rodado pelo `checks.test-suite`. Essas skills e esses testes (`skill_coverage` e `skill_examples`) ainda não existem: chegam num PR empilhado do mesmo work item, e este ADR registra a decisão, não a entrega. O hook `session-start` e o `spec-lock` ficam fora das skills.
+O Claude Code usa a CLI por quatro skills do plugin, com instruções em `references/` verificadas por um teste de cobertura (`skill_coverage`) e por um teste que executa os exemplos (`skill_examples`), ambos num binário de teste (`tests/skills.rs`) rodado pelo `checks.test-suite`. As skills e os testes chegaram no PR #16, do mesmo work item; o primeiro PR deste ADR registrou só a decisão. O hook `session-start` e o `spec-lock` ficam fora das skills.
 
 ## Drivers
 
@@ -44,17 +44,20 @@ Nenhuma superfície de protocolo a manter, a saída da CLI preservada no primeir
 
 - Sem o MCP, o autor gravado pelo agente é `claude/cli` só quando `CLAUDECODE=1`; sem a variável, a CLI grava `user/cli` (ver [directives-flow.md](../directives-flow.md)). O MCP gravava `claude` sem depender do ambiente; agora o rótulo do agente depende da variável e é só rótulo de auditoria, não prova de autoria. Records antigos com `client: "mcp"` continuam na chain (append-only), e nenhuma leitura os trata de forma especial: a guarda não distingue o autor `mcp`.
 - `omhl --help` perde a linha `mcp`.
-- Quando as skills chegarem, um subcomando novo passará a exigir citação nas skills, `references/` com os cinco títulos e um exemplo.
+- Um subcomando novo exige citação nas skills e `references/` com os cinco títulos e um exemplo; o `skill_coverage` e o `skill_examples` reprovam sem eles.
 - **A T3 fica cumprida só na parte do MCP.** `app` ainda carrega `Caller::{cli, cli_under_claude_code, hook}` e o payload do `PreToolUse` (débito 5 de [architecture.md](../architecture.md)). O que as duas portas usavam em comum já mora em `app`.
-- Quando o teste dos exemplos existir, o `check sweep` dele varrerá qualquer raiz da máquina (efeito documentado).
+- O `check sweep` do `skill_examples` varre qualquer raiz da máquina (efeito documentado em [architecture.md](../architecture.md), seção 4).
 - O ADR 0004 foi editado no lugar para tirar o MCP da lista de clientes da guarda.
 - Um segundo cliente de agente exigirá nova decisão.
+
+## Entrega
+
+- As quatro skills e os testes `skill_coverage` e `skill_examples` chegaram no PR #16.
+- O teto de `SKILL.md` ficou como constante do teste, `MAX_SKILL_LINES = 80` (`crates/omhl/tests/skills/coverage.rs`), e não como configuração.
 
 ## Follow-ups
 
 - Cortar o débito 5: o adapter traduz o payload e passa o `Caller` pronto.
-- Entregar as quatro skills e os testes `skill_coverage` e `skill_examples` (PR empilhado).
-- Decidir se o teto de `SKILL.md` vira configuração.
 - Reavaliar a igualdade exata dos exemplos se a manutenção pesar.
 - Avisar o work item de performance de que a linha de base dele deve ser tirada depois do merge do PR das skills: o work item troca um binário de teste por outro e soma a execução dos exemplos.
 - Apagar `blobs/` antigos continua manual.
