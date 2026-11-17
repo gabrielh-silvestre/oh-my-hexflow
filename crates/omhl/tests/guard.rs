@@ -104,11 +104,11 @@ fn seed_pull_request_and_check(omhl: &mut Omhl<'_>, check: &str, event: &str) {
     append_as(omhl, loader_author(), vec![node]).expect("the check is accepted");
 }
 
-fn mcp_author() -> Author {
+fn agent_author() -> Author {
     Author {
         agent: "claude".to_owned(),
         model: None,
-        client: "mcp".to_owned(),
+        client: "cli".to_owned(),
     }
 }
 
@@ -1072,12 +1072,12 @@ fn it_should_accept_a_mechanical_check_authored_by_the_loader() {
 }
 
 #[test]
-fn it_should_refuse_a_mechanical_check_appended_by_the_mcp() {
+fn it_should_refuse_a_mechanical_check_appended_by_the_agent() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
     let node = node_item(SUITE, "check", mechanical_check_data());
 
-    let result = appended(&mut omhl, mcp_author(), vec![node]);
+    let result = appended(&mut omhl, agent_author(), vec![node]);
 
     assert_eq!(result, Err(rule(RuleCode::CheckRunAuthor, RUN_POINTER)));
 }
@@ -1094,7 +1094,7 @@ fn it_should_refuse_a_mechanical_check_appended_through_the_cli() {
 }
 
 #[test]
-fn it_should_refuse_a_mechanical_check_revised_by_the_mcp() {
+fn it_should_refuse_a_mechanical_check_revised_by_the_agent() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
     let base = seed_suite(&mut omhl);
@@ -1103,7 +1103,7 @@ fn it_should_refuse_a_mechanical_check_revised_by_the_mcp() {
 
     let result = appended(
         &mut omhl,
-        mcp_author(),
+        agent_author(),
         vec![revision_item(SUITE, "check", data, &base)],
     );
 
@@ -1118,7 +1118,7 @@ fn it_should_still_accept_a_text_only_check_from_any_author() {
         |id: &str| node_item(id, "check", check_data("before-pr", "Read the diff", false));
 
     let results = vec![
-        appended(&mut omhl, mcp_author(), vec![text_only(READ_DIFF)]),
+        appended(&mut omhl, agent_author(), vec![text_only(READ_DIFF)]),
         appended(&mut omhl, cli_author(), vec![text_only("checks.read-docs")]),
         appended(
             &mut omhl,
@@ -1288,13 +1288,13 @@ fn it_should_refuse_the_manual_attest_command_for_a_mechanical_check() {
 }
 
 #[test]
-fn it_should_refuse_the_attest_through_the_mcp_for_a_mechanical_check() {
+fn it_should_refuse_the_attest_through_the_agent_for_a_mechanical_check() {
     let raw = RawHarness::new();
     let probe = FakeProbe::clean(snap('a'));
     let mut app = open_app(&raw, &probe);
     seed_app(&mut app, SUITE, &mechanical_check_data(), &Caller::loader());
 
-    let result = app.dispatch(&Caller::mcp(), &attest_action(SUITE));
+    let result = app.dispatch(&Caller::cli_under_claude_code(), &attest_action(SUITE));
 
     assert_eq!(
         result.map_err(|error| error.to_json()),
@@ -1310,7 +1310,7 @@ fn it_should_refuse_a_mechanical_attestation_authored_by_anyone_but_the_executor
     let authors = vec![
         loader_author(),
         cli_author(),
-        mcp_author(),
+        agent_author(),
         hook_author(),
         support::author(),
     ];
@@ -1331,7 +1331,7 @@ fn it_should_refuse_a_mechanical_attestation_authored_by_anyone_but_the_executor
 }
 
 #[test]
-fn it_should_refuse_to_drop_run_from_a_mechanical_check_revised_by_the_mcp() {
+fn it_should_refuse_to_drop_run_from_a_mechanical_check_revised_by_the_agent() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
     let base = seed_suite(&mut omhl);
@@ -1339,7 +1339,7 @@ fn it_should_refuse_to_drop_run_from_a_mechanical_check_revised_by_the_mcp() {
 
     let result = appended(
         &mut omhl,
-        mcp_author(),
+        agent_author(),
         vec![revision_item(SUITE, "check", without_run, &base)],
     );
 
@@ -1347,12 +1347,16 @@ fn it_should_refuse_to_drop_run_from_a_mechanical_check_revised_by_the_mcp() {
 }
 
 #[test]
-fn it_should_refuse_to_retire_a_mechanical_check_by_the_mcp() {
+fn it_should_refuse_to_retire_a_mechanical_check_by_the_agent() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
     let base = seed_suite(&mut omhl);
 
-    let result = appended(&mut omhl, mcp_author(), vec![retirement_item(SUITE, &base)]);
+    let result = appended(
+        &mut omhl,
+        agent_author(),
+        vec![retirement_item(SUITE, &base)],
+    );
 
     assert_eq!(result, Err(rule(RuleCode::CheckRunAuthor, BASE_POINTER)));
 }
@@ -1444,14 +1448,14 @@ fn without_field(mut data: Value, key: &str) -> Value {
     data
 }
 
-/// Grava um node pelo client `mcp`, o do agente.
-fn appended_by_mcp(
+/// Grava um node pelo client `cli` sob o Claude Code, o do agente.
+fn appended_by_agent(
     omhl: &mut Omhl<'_>,
     id: &str,
     type_name: &str,
     data: Value,
 ) -> Result<usize, OmhlError> {
-    appended(omhl, mcp_author(), vec![node_item(id, type_name, data)])
+    appended(omhl, agent_author(), vec![node_item(id, type_name, data)])
 }
 
 /// Harness cujo `PR_7`, uma vez gravado, pode ser fechado.
@@ -1479,7 +1483,7 @@ fn it_should_accept_a_confirmed_premise_with_a_confirmation() {
         confirmation("person:gabriel"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+    let result = appended_by_agent(&mut omhl, "premises.p-1", "premise", data);
 
     assert_eq!(result, Ok(1));
 }
@@ -1490,7 +1494,7 @@ fn it_should_refuse_a_confirmed_premise_without_a_confirmation() {
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
 
-    let result = appended_by_mcp(
+    let result = appended_by_agent(
         &mut omhl,
         "premises.p-1",
         "premise",
@@ -1513,7 +1517,7 @@ fn it_should_refuse_a_confirmed_premise_without_kind_and_without_a_confirmation(
         json!("confirmed"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+    let result = appended_by_agent(&mut omhl, "premises.p-1", "premise", data);
 
     assert_eq!(
         result,
@@ -1549,7 +1553,7 @@ fn it_should_refuse_a_confirmation_whose_author_is_not_a_person() {
         confirmation("agent:claude"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+    let result = appended_by_agent(&mut omhl, "premises.p-1", "premise", data);
 
     assert_eq!(
         result,
@@ -1563,7 +1567,7 @@ fn it_should_refuse_a_guideline_confirmation_whose_author_is_not_a_person() {
     let mut omhl = harness.open();
     let data = with_field(guideline_data(), "confirmed_by", confirmation("gabriel"));
 
-    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+    let result = appended_by_agent(&mut omhl, "guidelines.small-prs", "guideline", data);
 
     assert_eq!(
         result,
@@ -1577,7 +1581,7 @@ fn it_should_refuse_a_confirmation_whose_author_has_only_the_person_prefix() {
     let mut omhl = harness.open();
     let data = with_field(guideline_data(), "confirmed_by", confirmation("person:"));
 
-    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+    let result = appended_by_agent(&mut omhl, "guidelines.small-prs", "guideline", data);
 
     assert_eq!(
         result,
@@ -1598,7 +1602,7 @@ fn it_should_refuse_a_confirmation_on_an_assumed_premise() {
         confirmation("person:gabriel"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+    let result = appended_by_agent(&mut omhl, "premises.p-1", "premise", data);
 
     assert_eq!(
         result,
@@ -1617,7 +1621,7 @@ fn it_should_refuse_a_confirmation_on_a_divergence_that_is_not_spec_stale() {
         confirmation("person:gabriel"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "divergences.v-1", "divergence", data);
+    let result = appended_by_agent(&mut omhl, "divergences.v-1", "divergence", data);
 
     assert_eq!(
         result,
@@ -1637,17 +1641,17 @@ fn it_should_accept_a_guideline_with_a_confirmation() {
         confirmation("person:gabriel"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+    let result = appended_by_agent(&mut omhl, "guidelines.small-prs", "guideline", data);
 
     assert_eq!(result, Ok(1));
 }
 
 #[test]
-fn it_should_refuse_a_guideline_from_the_mcp_without_a_confirmation() {
+fn it_should_refuse_a_guideline_from_the_agent_without_a_confirmation() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
 
-    let result = appended_by_mcp(
+    let result = appended_by_agent(
         &mut omhl,
         "guidelines.small-prs",
         "guideline",
@@ -1697,7 +1701,7 @@ fn it_should_refuse_to_append_a_guideline_without_kind() {
         confirmation("person:gabriel"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+    let result = appended_by_agent(&mut omhl, "guidelines.small-prs", "guideline", data);
 
     assert_eq!(result, Err(rule(RuleCode::KindMissing, KIND_POINTER)));
 }
@@ -1758,7 +1762,7 @@ fn it_should_refuse_to_append_a_guideline_with_an_invalid_kind() {
         confirmation("person:gabriel"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "guidelines.small-prs", "guideline", data);
+    let result = appended_by_agent(&mut omhl, "guidelines.small-prs", "guideline", data);
 
     assert_eq!(result, Err(rule(RuleCode::KindInvalid, KIND_POINTER)));
 }
@@ -1804,7 +1808,7 @@ fn it_should_refuse_a_premise_with_a_kind_and_without_a_work_item() {
         json!("technical"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+    let result = appended_by_agent(&mut omhl, "premises.p-1", "premise", data);
 
     assert_eq!(
         result,
@@ -1821,7 +1825,7 @@ fn it_should_refuse_a_new_premise_for_a_closed_work_item() {
     seed_pull_request(&mut omhl);
     close_pull_request(&mut omhl);
 
-    let result = appended_by_mcp(
+    let result = appended_by_agent(
         &mut omhl,
         "premises.p-1",
         "premise",
@@ -1841,7 +1845,7 @@ fn it_should_refuse_a_new_gap_for_a_closed_work_item() {
     seed_pull_request(&mut omhl);
     close_pull_request(&mut omhl);
 
-    let result = appended_by_mcp(&mut omhl, "gaps.g-1", "gap", gap_data(Some(PR_7)));
+    let result = appended_by_agent(&mut omhl, "gaps.g-1", "gap", gap_data(Some(PR_7)));
 
     assert_eq!(
         result,
@@ -1856,7 +1860,7 @@ fn it_should_refuse_a_new_divergence_for_a_closed_work_item() {
     seed_pull_request(&mut omhl);
     close_pull_request(&mut omhl);
 
-    let result = appended_by_mcp(
+    let result = appended_by_agent(
         &mut omhl,
         "divergences.v-1",
         "divergence",
@@ -1890,7 +1894,7 @@ fn it_should_accept_the_revision_of_an_existing_divergence_after_its_work_item_c
         &created.records[0].id,
     );
 
-    let result = appended(&mut omhl, mcp_author(), vec![revision]);
+    let result = appended(&mut omhl, agent_author(), vec![revision]);
 
     assert_eq!(result, Ok(1));
 }
@@ -1903,7 +1907,7 @@ fn it_should_accept_a_spec_stale_divergence_with_a_confirmation_and_an_amendment
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
 
-    let result = appended_by_mcp(
+    let result = appended_by_agent(
         &mut omhl,
         "divergences.v-1",
         "divergence",
@@ -1920,7 +1924,7 @@ fn it_should_refuse_a_spec_stale_divergence_without_a_confirmation() {
     seed_pull_request(&mut omhl);
     let data = without_field(stale_divergence_data(), "confirmed_by");
 
-    let result = appended_by_mcp(&mut omhl, "divergences.v-1", "divergence", data);
+    let result = appended_by_agent(&mut omhl, "divergences.v-1", "divergence", data);
 
     assert_eq!(
         result,
@@ -1935,7 +1939,7 @@ fn it_should_refuse_a_spec_stale_divergence_without_an_amendment() {
     seed_pull_request(&mut omhl);
     let data = without_field(stale_divergence_data(), "amendment");
 
-    let result = appended_by_mcp(&mut omhl, "divergences.v-1", "divergence", data);
+    let result = appended_by_agent(&mut omhl, "divergences.v-1", "divergence", data);
 
     assert_eq!(
         result,
@@ -1952,7 +1956,7 @@ fn it_should_refuse_an_amendment_outside_the_two_digit_emenda_form() {
         |amendment: &str| with_field(stale_divergence_data(), "amendment", json!(amendment));
 
     let results = ["emenda-1", "emenda-001", "amendment-01"].map(|amendment| {
-        appended_by_mcp(
+        appended_by_agent(
             &mut omhl,
             "divergences.v-1",
             "divergence",
@@ -1974,7 +1978,7 @@ fn it_should_refuse_an_amendment_on_a_divergence_that_is_not_spec_stale() {
     seed_pull_request(&mut omhl);
     let data = with_field(divergence_data(PR_7), "amendment", json!("emenda-01"));
 
-    let result = appended_by_mcp(&mut omhl, "divergences.v-1", "divergence", data);
+    let result = appended_by_agent(&mut omhl, "divergences.v-1", "divergence", data);
 
     assert_eq!(
         result,
@@ -1995,7 +1999,7 @@ fn it_should_accept_an_assumed_technical_premise_without_a_confirmation() {
         json!("technical"),
     );
 
-    let result = appended_by_mcp(&mut omhl, "premises.p-1", "premise", data);
+    let result = appended_by_agent(&mut omhl, "premises.p-1", "premise", data);
 
     assert_eq!(result, Ok(1));
 }
@@ -2010,14 +2014,14 @@ fn it_should_identify_an_assumed_technical_premise_as_the_agents_by_its_author()
         "kind",
         json!("technical"),
     );
-    appended_by_mcp(&mut omhl, "premises.p-1", "premise", data).expect("the premise is accepted");
+    appended_by_agent(&mut omhl, "premises.p-1", "premise", data).expect("the premise is accepted");
 
     let stored = omhl
         .get(&acme(), &sid("premises.p-1"))
         .expect("the premise is read")
         .expect("the premise exists");
 
-    assert_eq!(stored.author, mcp_author());
+    assert_eq!(stored.author, agent_author());
     assert_eq!(stored.data.get("confirmed_by"), None);
 }
 
@@ -2056,7 +2060,7 @@ fn it_should_refuse_to_retire_a_guideline_by_append() {
         ),
         appended(
             &mut omhl,
-            mcp_author(),
+            agent_author(),
             vec![retirement_item(SMALL_PRS, &base)],
         ),
     ];

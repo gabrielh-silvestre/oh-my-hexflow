@@ -5,6 +5,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod support;
+
+use support::scan::prove_both_sides;
+
 const MAIN_LINES_MAX: usize = 30;
 const NATIVE_FORBIDDEN_MODULES: &[&str] = &["gate", "facade", "guard", "pr_gate"];
 const NATIVE_FORBIDDEN_PATHS: &[&str] = &["omhl::"];
@@ -48,6 +52,7 @@ const SERVICE_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super::"];
 const SPEC_GRAMMAR_LITERALS: &[&str] = &["wi-", "parte-", "emenda-"];
 const SPEC_GRAMMAR_MODULE: &str = "workflow/names.rs";
+const REMOVED_PORT_TERMS: &[&str] = &["mcp", "tool_call", "json-rpc"];
 const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
 
 fn src_dir() -> PathBuf {
@@ -345,34 +350,6 @@ fn spec_grammar_refs(source: &str) -> Result<usize, String> {
 
 // ------------------------------------------------------ prova dos dois lados
 
-fn prove_both_sides(
-    count: impl Fn(&str) -> Result<usize, String>,
-    flagged: &[&str],
-    accepted: &[&str],
-) -> Vec<String> {
-    let mut failures = Vec::new();
-    for snippet in flagged {
-        match count(snippet) {
-            Ok(0) => failures.push(format!("embedded snippet was not flagged: {snippet}")),
-            Ok(_) => {}
-            Err(error) => {
-                failures.push(format!("embedded snippet did not lex ({error}): {snippet}"))
-            }
-        }
-    }
-    for snippet in accepted {
-        match count(snippet) {
-            Ok(0) => {}
-            Ok(_) => failures.push(format!("embedded snippet was flagged: {snippet}")),
-            Err(error) => {
-                failures.push(format!("embedded snippet did not lex ({error}): {snippet}"))
-            }
-        }
-    }
-
-    failures
-}
-
 fn scan_dir(dir: &Path, count: impl Fn(&str) -> Result<usize, String>) -> Vec<String> {
     let files = rust_files(dir);
     let mut failures = Vec::new();
@@ -413,6 +390,16 @@ fn scan_paths(paths: &[PathBuf], count: impl Fn(&str) -> Result<usize, String>) 
     }
 
     failures
+}
+
+/// Termos da porta removida em qualquer parte do fonte, comentário e string inclusos, sem diferenciar maiúsculas.
+fn removed_port_refs(source: &str) -> Result<usize, String> {
+    let lowered = source.to_lowercase();
+
+    Ok(REMOVED_PORT_TERMS
+        .iter()
+        .map(|term| lowered.matches(term).count())
+        .sum())
 }
 
 /// Referências a `hexlog` fora de comentário e de string: o caminho `hexlog::` e as formas de
@@ -598,7 +585,6 @@ fn it_should_not_import_adapters_from_the_inner_layers() {
             "use crate::adapters;",
             "use crate::{app::App, adapters::cli};",
             "use omhl::adapters::cli::run;",
-            "use super::adapters::mcp;",
         ],
         &[
             "// use crate::adapters::cli;",
@@ -1292,8 +1278,8 @@ fn it_should_not_flag_the_exit_code_type_or_the_clap_command_enum_outside_the_po
         &[],
         &[
             "use std::process::ExitCode;",
-            "pub enum Command { Mcp }",
-            "Command::Mcp",
+            "pub enum Command { Hook }",
+            "Command::Hook",
             "ActionCommand",
             "use clap::Command;",
         ],
@@ -1301,7 +1287,6 @@ fn it_should_not_flag_the_exit_code_type_or_the_clap_command_enum_outside_the_po
     let entry_points = [
         src_dir().join("main.rs"),
         src_dir().join("adapters/cli.rs"),
-        src_dir().join("adapters/mcp.rs"),
         src_dir().join("adapters/hook.rs"),
     ];
 
@@ -1351,7 +1336,7 @@ fn it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_t
             "use crate::app::RUNNABLE_EVENTS;",
             "use crate::app::action::{Action, Caller};",
             "use crate::project::Env;",
-            "use super::{hook, mcp};",
+            "use super::hook;",
             "// use crate::render::x;",
             "use crate::{app::Action, project::Env};",
         ],
@@ -1359,7 +1344,6 @@ fn it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_t
     let adapters = [
         src_dir().join("adapters/cli.rs"),
         src_dir().join("adapters/hook.rs"),
-        src_dir().join("adapters/mcp.rs"),
     ];
 
     failures.extend(scan_paths(&adapters, adapters_inner_refs));
@@ -1413,4 +1397,41 @@ fn it_should_keep_the_spec_grammar_literals_inside_the_names_module() {
     failures.extend(scan_paths(&outside_names, spec_grammar_refs));
 
     assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_the_removed_mcp_port_out_of_the_src_layers() {
+    let mut failures = prove_both_sides(
+        removed_port_refs,
+        &[
+            "// serves the MCP tools",
+            "fn parse_tool_call() {}",
+            "const PROTOCOL: &str = \"JSON-RPC\";",
+        ],
+        &["fn run() {}", "// serves the CLI actions"],
+    );
+    let layers: Vec<PathBuf> = rust_files(&src_dir())
+        .into_iter()
+        .filter(|file| {
+            let relative = relative_to_src(file);
+            !relative.starts_with("adapters/") && relative != "main.rs"
+        })
+        .collect();
+
+    failures.extend(scan_paths(&layers, removed_port_refs));
+    failures.extend(prove_synthetic_dir_is_flagged());
+
+    assert_no_failures(&failures);
+}
+
+/// O varredor de diretório reprova um fonte que traz o termo.
+fn prove_synthetic_dir_is_flagged() -> Vec<String> {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    fs::write(dir.path().join("leak.rs"), "// MCP stdio\n").expect("write the synthetic source");
+
+    if scan_dir(dir.path(), removed_port_refs).is_empty() {
+        return vec!["synthetic directory with a port term was not flagged".to_owned()];
+    }
+
+    Vec::new()
 }

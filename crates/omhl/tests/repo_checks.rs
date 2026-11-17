@@ -130,7 +130,7 @@ const SKILL_ANCHORS: [&str; 20] = [
     "omhl report retro",
     ".omhl/checks/",
     "omhl load",
-    // gravar pela CLI (`omhl append`, `omhl attest`), sem o servidor MCP
+    // gravar pela CLI (`omhl append`, `omhl attest`)
     "append",
     "omhl append",
     "omhl attest",

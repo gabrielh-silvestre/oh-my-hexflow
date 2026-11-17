@@ -470,7 +470,7 @@ fn it_should_set_the_author_from_the_caller() {
     let mut app = fixture.open();
     run_as(
         &mut app,
-        &Caller::mcp(),
+        &Caller::cli_under_claude_code(),
         &append_action(vec![decision_wire(USE_WAL)]),
     );
 
@@ -478,7 +478,7 @@ fn it_should_set_the_author_from_the_caller() {
 
     assert_eq!(
         node["author"],
-        json!({ "agent": "claude", "client": "mcp" })
+        json!({ "agent": "claude", "client": "cli" })
     );
 }
 

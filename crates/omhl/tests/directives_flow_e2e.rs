@@ -27,7 +27,7 @@ const ARCHITECTURE_GUIDELINE: &str = "guidelines.hexagonal";
 const NEW_BUSINESS_GUIDELINE: &str = "guidelines.pay-monthly";
 
 // Repositório git temporário; o `PATH` do filho tem só o `omhl` do teste e o `git`.
-// Sem `node` nem servidor MCP: é a prova do AC 15.
+// Sem `node`: é a prova do AC 15.
 
 struct Flow {
     project: Project,
