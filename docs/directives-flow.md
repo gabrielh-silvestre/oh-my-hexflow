@@ -58,10 +58,10 @@ Um erro sai no stderr, numa linha JSON, com código de saída 1. Uma saída de s
 | `omhl spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
 | `omhl gate-worktree --branch <nome>` | Decide se a worktree da branch pode ser criada |
 | `omhl hook spec-lock` | Hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de spec congelada |
-| `omhl report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta |
+| `omhl report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |
 | `omhl report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção |
 | `omhl report retro <work-item>` | A retro de um work item, aberto ou fechado |
-| `omhl list --where <campo>=<valor>` | Filtra os nodes por igualdade de campo |
+| `omhl list --where <campo>=<valor>` | Filtra os nodes por igualdade de campo de texto; as regras de recusa estão no [ADR 0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md) |
 | `omhl close <work-item>` | Passa a devolver o campo `retro` (seção 8) |
 
 A interface do agente é a CLI.
