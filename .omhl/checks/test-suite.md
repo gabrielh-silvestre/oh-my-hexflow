@@ -1,1 +1,1 @@
-Runs `cargo test --workspace --locked`; it passes when every test passes. If chain_properties fails, restore crates/hexlog/tests/chain_properties.proptest-regressions with `git checkout --` before running again.
+Runs `cargo test --workspace --lib --locked`; it passes when every unit test under `crates/*/src` passes. The tests under `crates/*/tests` and the doctests run only in CI (`.github/workflows/ci.yml`), which blocks the merge.

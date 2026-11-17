@@ -251,14 +251,11 @@ O `check run` descobre o work item pelo nome da branch, que segue o padrão
   o stage, o commit, ponha no `.gitignore` ou apague.
 - **Arquivo rastreado alterado pelo hook.** Se um check altera um arquivo
   rastreado, a execução se perde: o `omhl` não grava nada e sai com
-  `check-not-run`. Um exemplo é o `chain_properties.proptest-regressions`, que o
-  `proptest` reescreve quando um teste falha. Restaure e repita:
-
-  ```bash
-  git checkout -- crates/hexlog/tests/chain_properties.proptest-regressions
-  ```
-
-  Ou faça commit da semente nova, se quiser mantê-la.
+  `check-not-run`. Restaure o arquivo com `git checkout -- <arquivo>` e repita,
+  ou faça commit da mudança, se quiser mantê-la. O
+  `chain_properties.proptest-regressions`, que o `proptest` reescreve quando um
+  teste falha, só muda numa rodada manual de `crates/hexlog/tests`: o gate
+  local não roda esse arquivo.
 
 ### Recuperar uma attestation
 
@@ -290,13 +287,22 @@ bloquear o commit. Detalhes em
 
 ## Desenvolvimento
 
-Rode as três checagens antes de abrir um pull request:
+O `pre-commit` roda fmt e clippy; o `pre-push` roda a validação e a compilação
+do workspace e os testes unitários (`cargo test --workspace --lib --locked`).
+Os testes de `crates/*/tests` e os
+doctests rodam no CI (`.github/workflows/ci.yml`), que bloqueia o merge com:
 
 ```bash
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo build --workspace --locked
+cargo test --workspace --locked --no-fail-fast
 ```
+
+`cargo test` sem filtro roda a suíte inteira, que é pesada. Ao mexer em área
+coberta por `tests/`, rode só o arquivo afetado
+(`cargo test -p <crate> --test <nome>`). Detalhes em
+[docs/mechanical-gates.md](docs/mechanical-gates.md).
 
 O workspace proíbe `unsafe` e os tipos de memória compartilhada listados em
 `clippy.toml`. Os testes de arquitetura em `crates/*/tests/architecture.rs`

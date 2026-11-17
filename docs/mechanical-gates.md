@@ -239,7 +239,7 @@ Regras:
 - **Sem `.omhl.toml`.** O hook recusa com `no-marker` (saída 1) em qualquer commit feito num diretório sem `.omhl.toml` acima dele, como uma branch ou worktree anterior ao marcador. Rebaseie a branch sobre a `main`, ou use `--no-verify`. O hook `session-start` do Claude Code trata o mesmo caso em silêncio.
 - **`--no-verify`** pula `pre-commit`, `pre-merge-commit` e `pre-push`. O gate de pull request continua reprovando um commit sem attestation.
 - **`wt merge`.** O `wt merge` faz o commit de squash na branch da frente e depois um `git push` para o destino. Com os hooks instalados, o `pre-push` roda na worktree da frente. Para um destino que não é a `main`, ele roda o `before-pr` inteiro, e a branch da frente precisa seguir `tipo/wi-<id>__<slug>` com work item aberto. Para a `main`, o `pre-push` barra o push.
-- **`before-merge`** não tem hook. Rode `omhl check run --event before-merge` quando quiser registrar o status do CI.
+- **`before-merge`** não tem hook. Rode `omhl check run --event before-merge` quando quiser registrar o status do CI. Neste repositório o `before-merge` não tem check mecânico: o CI se registra pela attestation de `checks.ci-green-before-merge` (ver [Testes unitários no gate, integração no CI](#testes-unitários-no-gate-integração-no-ci)).
 
 Os hooks do git não têm relação com o hook `omhl hook session-start` do Claude Code.
 
@@ -274,9 +274,9 @@ O hook `pre-merge-commit` instalado roda `omhl check run --event before-commit`:
 
 Passam sem hook que barre: o merge fast-forward, `cherry-pick`, `revert`, `rebase`, `git am`, `rebase --apply`, o `wt merge --no-ff` e qualquer comando com `--no-verify`.
 
-### A `main` sem proteção do GitHub
+### A `main` com proteção do GitHub
 
-Enquanto o repositório for privado, o projeto não usa a proteção de branch do GitHub. A `main` fica protegida pelos hooks locais (`pre-push`, `pre-commit` e `pre-merge-commit`) e pelo `gate-pr`. Reveja essa escolha quando o repositório ficar público.
+O repositório é público desde 2026-11-17, e a `main` tem proteção de branch exigindo o check `ci` (configurada no work item `perf2`; ver [Testes unitários no gate, integração no CI](#testes-unitários-no-gate-integração-no-ci)). Os hooks locais (`pre-push`, `pre-commit` e `pre-merge-commit`) e o `gate-pr` seguem como a outra camada.
 
 ### A varredura de processos fugidos
 
@@ -303,28 +303,30 @@ Limites:
 
 Os valores ficam fixos no TOML de cada check. O `omhl` não os calcula nem os reajusta. Os atuais, medidos em execução fria (`CARGO_TARGET_DIR` novo e vazio, quatro rodadas por check, máquina com outros processos ativos):
 
-| Check | Pior rodada fria | `timeout_secs` |
+| Check | Pior rodada | `timeout_secs` |
 |---|---|---|
 | `checks.fmt` | 1,3 s | 10 (piso) |
 | `checks.lint` | 114,3 s | 149 |
 | `checks.compile-validate` | 68,2 s | 89 |
 | `checks.compile-build` | 153,6 s | 200 |
-| `checks.test-suite` | não remedido | 660 |
+| `checks.test-suite` | 7,8 s incremental (ver abaixo) | 120 (piso) |
 
-Sem carga, as mesmas rodadas ficam entre 17 s e 25 s (22 s no `lint`, 23 s no `build`). A pior rodada vem da disputa por disco e CPU, e é ela que dita o prazo. O `test-suite` ficou longo demais para remedir a frio; vale o valor já gravado.
+Sem carga, as mesmas rodadas ficam entre 17 s e 25 s (22 s no `lint`, 23 s no `build`). A pior rodada vem da disputa por disco e CPU, e é ela que dita o prazo.
 
-Para reajustar:
+O `test-suite` é exceção à regra fria (decisão `perf2-timeout-secs-incremental`): com o build frio proibido na máquina do dono, o prazo é `max(120, 2 x parede)` de uma rodada logo depois de `touch crates/hexlog/src/lib.rs`, que recompila `hexlog` e `omhl`, o pior caso incremental. Em 2026-11-17 essa rodada levou 7,8 s (470 MB, 1,9 núcleo); vale o piso de 120 s.
+
+Para reajustar os demais:
 
 1. Rode o comando do `run` pelo menos duas vezes, cada uma com o `target/` limpo (por exemplo, um `CARGO_TARGET_DIR` novo). Anote o tempo de parede da rodada mais lenta.
 2. Multiplique por 1,3 e arredonde para cima.
 3. Aplique o piso de 10 segundos.
 4. Grave o número no `timeout_secs` do TOML do check e rode `omhl load`.
 
-Se o timeout estourar muitas vezes, revise o valor. Um `timed_out` grava `failed`, imutável para aquela árvore naquele banco (linha 2 da tabela). Só uma árvore nova libera um novo veredito. A imutabilidade do `failed` por `timed_out` é mantida de propósito; uma issue futura pode permitir a substituição. Um `cargo test` travado segura o hook por cerca de 11 minutos antes de virar `timed_out`.
+Se o timeout estourar muitas vezes, revise o valor. Um `timed_out` grava `failed`, imutável para aquela árvore naquele banco (linha 2 da tabela). Só uma árvore nova libera um novo veredito. A imutabilidade do `failed` por `timed_out` é mantida de propósito; uma issue futura pode permitir a substituição. Um `cargo test` travado segura o hook por cerca de 2 minutos antes de virar `timed_out`.
 
 ### O custo do `pre-push`
 
-Cada `wt merge` para um destino que não é a `main` roda o `before-pr` inteiro. Medido neste repositório: cerca de 6 minutos a frio isolado (`cargo check`, `cargo build` e `cargo test` em sequência), 7 a 9 minutos sob carga, e menos de 1 minuto a quente.
+Cada `wt merge` para um destino que não é a `main` roda o `before-pr` inteiro. Medido neste repositório até o work item `perf2`, com a suíte inteira no `test-suite`: cerca de 6 minutos a frio isolado (`cargo check`, `cargo build` e `cargo test` em sequência), 7 a 9 minutos sob carga, e menos de 1 minuto a quente. Com o `test-suite` em `--lib`, a rodada quente do `before-pr` ficou em cerca de 4 s em 2026-11-17.
 
 Uma worktree nova nasce com o `target/` vazio, então o primeiro `before-commit` e o primeiro `before-pr` dela são frios. Antes do primeiro `git push` numa worktree nova, rode:
 
@@ -332,12 +334,23 @@ Uma worktree nova nasce com o `target/` vazio, então o primeiro `before-commit`
 cargo check --workspace --all-targets --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --workspace --locked
-cargo test --workspace --locked --no-run
+cargo test --workspace --lib --locked --no-run
 ```
 
 Cada comando aquece um check com prazo: `compile-validate`, `lint`, `compile-build` e a compilação do `test-suite`. O `cargo test --no-run` sozinho não aquece os três primeiros.
 
-Se um teste falhar por flaky e o `proptest` gravar uma semente nova em `crates/hexlog/tests/chain_properties.proptest-regressions` (arquivo rastreado), o `test-suite` termina em `check-not-run` com `command-changed-tree`. Restaure o arquivo e repita, como descreve o [README](../README.md).
+### Testes unitários no gate, integração no CI
+
+O `checks.test-suite` roda `cargo test --workspace --lib --locked`: só os testes unitários de `crates/*/src` (45 em 2026-11-17, nos binários de lib de `hexlog` e `omhl`). Os testes de `crates/*/tests` (integração, e2e, arquitetura, a trava das skills em `tests/skills.rs`) e os doctests rodam só no CI, em `.github/workflows/ci.yml` (decisões `perf2-pre-push-so-unitarios` e `perf2-doctest-roda-no-ci`). O `compile-validate` local ainda checa o tipo de todos os alvos.
+
+O job `ci` roda, a cada PR (qualquer base) e a cada push na `main`, `cargo fmt`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --workspace --locked` e `cargo test --workspace --locked --no-fail-fast`, cada passo independente dos outros. O último passo prova a cobertura: a contagem de `cargo test --workspace --locked -- --list` tem de ser igual à soma dos `passed` do passo de teste, com 0 `failed` e 0 `ignored`.
+
+O merge é bloqueado em duas camadas (decisão `perf2-bloqueio-camada-dupla`):
+
+1. A proteção de branch da `main` exige o check `ci` do app do GitHub Actions, com `enforce_admins`.
+2. A attestation manual de `checks.ci-green-before-merge` cita a execução do CI do mesmo commit. Selecione a execução com `gh run list --workflow ci.yml --branch <branch> --event pull_request --limit 1 --json databaseId,headSha,conclusion,url`. Exija `conclusion` igual a `success` e `headSha` igual a `git rev-parse HEAD`, e grave os dois na nota: `omhl attest checks.ci-green-before-merge work-items.<id> --outcome passed --note "<url> <headSha>"`. Depois de um rebase (por exemplo, no merge de pilha do `gh stack`), o SHA muda: espere o CI novo e ateste de novo.
+
+Ao mexer em área coberta por `tests/`, rode na máquina local só o arquivo afetado (`cargo test -p <crate> --test <nome>`). Se o `proptest` gravar uma semente nova em `crates/hexlog/tests/chain_properties.proptest-regressions` (arquivo rastreado) numa rodada local, restaure o arquivo antes do commit, como descreve o [README](../README.md).
 
 ## 10. Modelo de ameaça do veredito
 
