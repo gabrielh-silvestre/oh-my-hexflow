@@ -1,0 +1,69 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A execução da main nunca é cancelada: é ela que semeia o cache.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: fmt
+        if: ${{ !cancelled() }}
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        if: ${{ !cancelled() }}
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: build
+        if: ${{ !cancelled() }}
+        run: cargo build --workspace --locked
+
+      - name: test
+        id: test
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: cargo test --workspace --locked --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/test.log"
+
+      # Prova que todo teste listado rodou e passou: a contagem vem da listagem, nunca de grep no código.
+      - name: coverage
+        if: ${{ !cancelled() && steps.test.outcome == 'success' }}
+        shell: bash
+        run: |
+          cargo test --workspace --locked -- --list > "$RUNNER_TEMP/list.txt"
+          listed=$(grep -c ': test$' "$RUNNER_TEMP/list.txt" || true)
+          read -r passed failed ignored < <(awk '/^test result:/ {
+            for (i = 1; i < NF; i++) {
+              if ($(i + 1) ~ /^passed/) p += $i
+              if ($(i + 1) ~ /^failed/) f += $i
+              if ($(i + 1) ~ /^ignored/) g += $i
+            }
+          } END { print p + 0, f + 0, g + 0 }' "$RUNNER_TEMP/test.log")
+          echo "listed=$listed passed=$passed failed=$failed ignored=$ignored"
+          if [ "$listed" -eq 0 ] || [ "$listed" -ne "$passed" ] || [ "$failed" -ne 0 ] || [ "$ignored" -ne 0 ]; then
+            echo "::error::coverage mismatch: listed=$listed passed=$passed failed=$failed ignored=$ignored"
+            exit 1
+          fi

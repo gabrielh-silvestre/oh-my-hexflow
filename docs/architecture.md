@@ -463,7 +463,7 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 
 ### As skills do plugin (`crates/omhl/tests/skills.rs`)
 
-As quatro skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `work-item-closing`, `query-and-integrity`) não são código, mas um binário de teste as trava. O `skills.rs` é um só (os módulos `coverage` e `examples` entram por `#[path]`, para o cargo não criar dois binários) e roda dentro do `checks.test-suite`, que executa `cargo test --workspace --locked`. Não há check mecânico dedicado (decisão do [ADR 0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md)).
+As quatro skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `work-item-closing`, `query-and-integrity`) não são código, mas um binário de teste as trava. O `skills.rs` é um só (os módulos `coverage` e `examples` entram por `#[path]`, para o cargo não criar dois binários) e roda no CI (`.github/workflows/ci.yml`), que bloqueia o merge; desde o work item `perf2`, o `checks.test-suite` local executa só `cargo test --workspace --lib --locked` e não roda os arquivos de `tests/`. Não há check mecânico dedicado (decisão do [ADR 0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md)).
 
 | Teste | O que reprova |
 |---|---|
