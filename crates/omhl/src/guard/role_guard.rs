@@ -6,12 +6,13 @@ use serde_json::Value;
 
 use super::append::Guard;
 use super::role::{
-    CLAUDE, Revision, contradicts_retirement_allowed, known_role, node_allowed, relation_allowed,
-    retirement_allowed, revision_allowed,
+    CLAUDE, CRITIC, Revision, contradicts_retirement_allowed, known_role, node_allowed,
+    relation_allowed, retirement_allowed, revision_allowed,
 };
 use crate::error::{OmhlError, RuleCode};
 
 const CONTRADICTS: &str = "contradicts";
+const ANSWERS: &str = "answers";
 
 fn refusal(code: RuleCode, index: usize, suffix: &str) -> OmhlError {
     OmhlError::rule(code, &format!("/items/{index}/{suffix}"))
@@ -29,8 +30,8 @@ impl Guard<'_, '_> {
             ItemBody::Relation {
                 relation_type,
                 from,
-                ..
-            } => self.check_role_relation(index, relation_type.as_str(), from),
+                to,
+            } => self.check_role_relation(index, relation_type.as_str(), from, to),
             ItemBody::Retirement {
                 lineage: Lineage::Node(id),
             } => self.check_role_node_retirement(index, id),
@@ -89,6 +90,7 @@ impl Guard<'_, '_> {
         index: usize,
         relation_type: &str,
         from: &SemanticId,
+        to: &SemanticId,
     ) -> Result<(), OmhlError> {
         let Some(role) = known_role(&self.author.agent) else {
             return Ok(());
@@ -104,10 +106,26 @@ impl Guard<'_, '_> {
                 .get(self.tenant, from)?
                 .is_some_and(|view| view.author.agent == role);
 
-        if own {
+        if !own {
+            return Err(refusal(RuleCode::RoleRecordForbidden, index, "body/from"));
+        }
+        if role == CRITIC && relation_type == ANSWERS {
+            return self.check_critic_answer(index, to);
+        }
+
+        Ok(())
+    }
+
+    /// O critic só responde gap técnico; destino ausente fica para o motor (`endpoint-not-found`).
+    fn check_critic_answer(&mut self, index: usize, to: &SemanticId) -> Result<(), OmhlError> {
+        let Some(target) = self.endpoint_of(to)? else {
+            return Ok(());
+        };
+
+        if target.type_name == "gap" && target.kind.as_deref() == Some("technical") {
             Ok(())
         } else {
-            Err(refusal(RuleCode::RoleRecordForbidden, index, "body/from"))
+            Err(refusal(RuleCode::RoleAnswerForbidden, index, "body/to"))
         }
     }
 

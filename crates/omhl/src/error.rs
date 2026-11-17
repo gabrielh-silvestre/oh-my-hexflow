@@ -74,6 +74,7 @@ pub enum RuleCode {
     RoleUnknown,
     RoleRecordForbidden,
     RoleRevisionForbidden,
+    RoleAnswerForbidden,
     RoleRetirementForbidden,
 }
 
@@ -109,6 +110,7 @@ impl RuleCode {
             RuleCode::RoleUnknown => "role-unknown",
             RuleCode::RoleRecordForbidden => "role-record-forbidden",
             RuleCode::RoleRevisionForbidden => "role-revision-forbidden",
+            RuleCode::RoleAnswerForbidden => "role-answer-forbidden",
             RuleCode::RoleRetirementForbidden => "role-retirement-forbidden",
         }
     }
@@ -146,6 +148,10 @@ impl RuleCode {
             RuleCode::RoleRevisionForbidden => Some(Guidance {
                 cause: "the role may only revise nodes it recorded, and never change a premise or gap kind, accept a divergence, or move a contradicted node out of its work item",
                 next_step: "append a new node of your own instead, or ask the owner to make the change",
+            }),
+            RuleCode::RoleAnswerForbidden => Some(Guidance {
+                cause: "the critic answers only a gap whose kind is technical; a business gap, a gap without kind or a node that is not a gap is not its to answer",
+                next_step: "leave the gap to the owner, or point the answers relation at a technical gap",
             }),
             RuleCode::RoleRetirementForbidden => Some(Guidance {
                 cause: "this caller may not retire this node or relation",

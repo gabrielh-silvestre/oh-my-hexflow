@@ -2,8 +2,11 @@ use std::collections::HashMap;
 
 use serde_json::{Map, Value};
 
+use crate::workflow::gap::{CRITIC_CONFIRMATION, confirmer, is_confirmed_premise};
+
 pub(super) const CLAUDE: &str = "claude";
 pub(super) const USER: &str = "user";
+pub(super) const CRITIC: &str = "omhl:critic";
 const ANALYST: &str = "omhl:analyst";
 const VERIFIER: &str = "omhl:verifier";
 
@@ -36,7 +39,7 @@ const MATRICES: [Matrix; 7] = [
         retire: &[],
     },
     Matrix {
-        role: "omhl:critic",
+        role: CRITIC,
         nodes: &["decision", "premise"],
         relations: &["supports", "contradicts", "answers", "rests-on"],
         retire: &[],
@@ -78,7 +81,7 @@ pub const ROLE_REFERENCE_COMMANDS: [(&str, &[&str]); 7] = [
     (ANALYST, commands!["append"]),
     ("omhl:planner", commands!["spec init", "spec validate"]),
     ("omhl:architect", commands!["append"]),
-    ("omhl:critic", commands!["append", "spec validate"]),
+    (CRITIC, commands!["append", "spec validate"]),
     ("omhl:code-reviewer", commands!["append"]),
     ("omhl:security-reviewer", commands!["append"]),
     (VERIFIER, commands!["append", "spec validate"]),
@@ -102,10 +105,16 @@ pub(super) fn node_allowed(role: &str, type_name: &str, data: &Value) -> bool {
     let content_ok = match (role, type_name) {
         (ANALYST, "premise") => data.get("status").and_then(Value::as_str) == Some("assumed"),
         (ANALYST, "gap") => data.get("kind").is_some(),
+        // O `kind: technical` fica com a guarda da confirmação, que responde `confirmation-invalid`.
+        (CRITIC, "premise") => confirmed_by_critic(data),
         _ => true,
     };
 
     listed && content_ok
+}
+
+fn confirmed_by_critic(data: &Value) -> bool {
+    is_confirmed_premise(data) && confirmer(data) == Some(CRITIC_CONFIRMATION)
 }
 
 pub(super) fn relation_allowed(role: &str, relation_type: &str) -> bool {
@@ -131,7 +140,9 @@ pub(super) fn revision_allowed(revision: &Revision<'_>) -> bool {
         return false;
     }
 
-    revision.current_author == revision.role || verifier_closes_divergence(revision)
+    revision.current_author == revision.role
+        || verifier_closes_divergence(revision)
+        || critic_confirms_premise(revision)
 }
 
 fn changes_kind(revision: &Revision<'_>) -> bool {
@@ -160,7 +171,26 @@ fn verifier_closes_divergence(revision: &Revision<'_>) -> bool {
         && resolution_of(revision.current) == Some("open")
         && resolution_of(revision.revised) == Some("code-fixed")
         && evidence_of(revised).starts_with(evidence_of(current))
-        && other_fields(current) == other_fields(revised)
+        && fields_except(current, &["resolution", "evidence"])
+            == fields_except(revised, &["resolution", "evidence"])
+}
+
+/// O critic confirma premissa técnica de qualquer autor ainda não confirmada; só `status` e `confirmed_by` mudam.
+fn critic_confirms_premise(revision: &Revision<'_>) -> bool {
+    let (Some(current), Some(revised)) =
+        (revision.current.as_object(), revision.revised.as_object())
+    else {
+        return false;
+    };
+    let confirmation_fields = ["status", "confirmed_by"];
+
+    revision.role == CRITIC
+        && revision.type_name == "premise"
+        && current.get("kind").and_then(Value::as_str) == Some("technical")
+        && !is_confirmed_premise(revision.current)
+        && confirmed_by_critic(revision.revised)
+        && fields_except(current, &confirmation_fields)
+            == fields_except(revised, &confirmation_fields)
 }
 
 fn evidence_of(data: &Map<String, Value>) -> &[Value] {
@@ -169,10 +199,13 @@ fn evidence_of(data: &Map<String, Value>) -> &[Value] {
         .map_or(&[], Vec::as_slice)
 }
 
-/// Tudo menos `resolution` e `evidence`, os dois campos que o verifier pode mexer.
-fn other_fields(data: &Map<String, Value>) -> HashMap<&String, &Value> {
+/// Os campos que o papel não pode mexer: tudo menos os de `ignored`.
+fn fields_except<'a>(
+    data: &'a Map<String, Value>,
+    ignored: &[&str],
+) -> HashMap<&'a String, &'a Value> {
     data.iter()
-        .filter(|(key, _)| !matches!(key.as_str(), "resolution" | "evidence"))
+        .filter(|(key, _)| !ignored.contains(&key.as_str()))
         .collect()
 }
 

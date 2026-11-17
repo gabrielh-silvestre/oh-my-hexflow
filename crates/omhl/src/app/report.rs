@@ -223,6 +223,7 @@ fn gap_entry(facts: &GapFacts, premises: &[NodeView], gap: &NodeView) -> Value {
     if let GapState::Answered { by, criterion } = state {
         entry["answerer"] = json!(match by {
             Answerer::Human => "human",
+            Answerer::Critic => "critic",
             Answerer::Autonomous => "autonomous",
         });
         entry["no_criterion"] = json!(!criterion);

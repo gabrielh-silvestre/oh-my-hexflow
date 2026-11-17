@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use ::omhl::workflow::config::{SpecsConfig, WorkflowConfig};
 use ::omhl::workflow::spec::{SpecFile, amendment_divergence_mismatch, validate_spec};
 use serde_json::{Value, json};
-use support::child::{Output as Child, omhl};
+use support::child::{Cmd as ChildCmd, Output as Child, omhl};
 use support::git::git_in;
 use support::legacy::seed_legacy_confirmed_premise;
 use support::omhl::work_item_data;
@@ -918,9 +918,22 @@ impl Fixture {
     }
 
     fn append(&self, items: Vec<Value>) {
+        self.append_with(items, omhl(&["append"]));
+    }
+
+    /// `append` sob o Claude Code com `OMHL_ROLE=omhl:critic`: o autor gravado é o critic.
+    fn append_as_critic(&self, items: Vec<Value>) {
+        let critic = omhl(&["append"])
+            .env("CLAUDECODE", "1")
+            .env("OMHL_ROLE", "omhl:critic");
+
+        self.append_with(items, critic);
+    }
+
+    fn append_with(&self, items: Vec<Value>, command: ChildCmd) {
         let mut request = json!({});
         request["items"] = Value::Array(items);
-        let appended = omhl(&["append"])
+        let appended = command
             .cwd(self.project.dir())
             .xdg(self.project.xdg())
             .stdin(request.to_string())
@@ -965,6 +978,12 @@ fn node(id: &str, type_name: &str, data: Value) -> Value {
     item["body"]["data"] = data;
 
     item
+}
+
+fn relation(relation_type: &str, from: &str, to: &str) -> Value {
+    json!({ "body": {
+        "kind": "relation", "relation_type": relation_type, "from": from, "to": to,
+    } })
 }
 
 /// A premissa que `valid_part` cita, confirmada e do próprio work item.
@@ -1387,6 +1406,46 @@ fn it_should_pass_the_whole_multi_segment_gap_id_of_a_pending_marker_to_the_grap
         valid_part(),
         PART_OBJECTIVE_LINE,
         "Depende de [PENDENTE: gaps.login.timeout].",
+    );
+    fixture.write("parte-01.md", &lines);
+
+    let output = fixture.validate_from_linked();
+
+    assert_eq!(output.code, Some(1));
+    assert_eq!(
+        error_details(&output),
+        vec!["parte-01.md:3 pending-gap-unresolved"]
+    );
+}
+
+#[test]
+fn it_should_keep_a_pending_gap_marker_unresolved_when_the_critic_answer_contradicts_a_confirmed_directive()
+ {
+    let fixture = Fixture::new();
+    let gap = json!({
+        "question": "q", "context": "c", "work_item": WORK_ITEM, "kind": "technical",
+    });
+    let directive = json!({
+        "text": "t", "kind": "business",
+        "confirmed_by": { "by": "person:ana", "question": "q", "answer": "a" },
+    });
+    let answer = json!({
+        "text": "t", "kind": "technical", "status": "confirmed", "work_item": WORK_ITEM,
+        "confirmed_by": { "by": "critic", "question": "q", "answer": "a" },
+    });
+    fixture.append(vec![
+        node("gaps.pay-day", "gap", gap),
+        node("guidelines.tone", "guideline", directive),
+    ]);
+    fixture.append_as_critic(vec![node("premises.pay-day", "premise", answer)]);
+    fixture.append_as_critic(vec![
+        relation("answers", "premises.pay-day", "gaps.pay-day"),
+        relation("contradicts", "premises.pay-day", "guidelines.tone"),
+    ]);
+    let lines = with_line(
+        valid_part(),
+        PART_OBJECTIVE_LINE,
+        "Depende de [PENDENTE: gaps.pay-day].",
     );
     fixture.write("parte-01.md", &lines);
 

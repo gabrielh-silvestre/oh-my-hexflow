@@ -926,3 +926,384 @@ fn it_should_keep_guideline_retire_working_from_claude_on_a_guideline_contradict
 
     assert_eq!(result, Ok(1));
 }
+
+// Cadeira do critic: `confirmed_by.by = "critic"` e premissa técnica
+
+const CONFIRMATION_INVALID: &str = "confirmation-invalid";
+const ANSWER_FORBIDDEN: &str = "role-answer-forbidden";
+
+fn confirmation(by: &str) -> Value {
+    json!({ "by": by, "question": "Is the queue durable?", "answer": "Yes, it is." })
+}
+
+fn confirmed_technical_premise_data(by: &str) -> Value {
+    let data = with_field(technical_premise_data(), "status", json!("confirmed"));
+
+    with_field(data, "confirmed_by", confirmation(by))
+}
+
+fn confirmed_business_premise_data(by: &str) -> Value {
+    with_field(
+        confirmed_technical_premise_data(by),
+        "kind",
+        json!("business"),
+    )
+}
+
+/// O critic revisa `PREMISE` para confirmada por ele; devolve o veredito da guarda.
+fn confirm_as_critic(omhl: &mut Omhl<'_>) -> Result<usize, OmhlError> {
+    let base = record_id_of(omhl, PREMISE);
+    let confirmed = revision_item(
+        PREMISE,
+        "premise",
+        confirmed_technical_premise_data("critic"),
+        &base,
+    );
+
+    appended_count(omhl, role_author(CRITIC), vec![confirmed])
+}
+
+/// `PR_7` aberto e `PREMISE`, premissa técnica confirmada pelo critic, pronta para responder um gap.
+fn seed_critic_premise(omhl: &mut Omhl<'_>) {
+    seed_pull_request(omhl);
+    seed(
+        omhl,
+        CRITIC,
+        node_item(
+            PREMISE,
+            "premise",
+            confirmed_technical_premise_data("critic"),
+        ),
+    );
+}
+
+#[test]
+fn it_should_accept_a_technical_premise_confirmed_by_critic_when_the_author_is_omhl_critic() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let premise = node_item(
+        PREMISE,
+        "premise",
+        confirmed_technical_premise_data("critic"),
+    );
+
+    let result = appended_count(&mut omhl, role_author(CRITIC), vec![premise]);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_confirmed_by_critic_when_the_author_is_not_omhl_critic() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let premise = || {
+        vec![node_item(
+            PREMISE,
+            "premise",
+            confirmed_technical_premise_data("critic"),
+        )]
+    };
+
+    let codes: Vec<&str> = [agent_author(), cli_author(), author()]
+        .into_iter()
+        .map(|refused| refused_code(&mut omhl, refused, premise()))
+        .collect();
+
+    assert_eq!(codes, vec![CONFIRMATION_INVALID; 3]);
+}
+
+#[test]
+fn it_should_refuse_confirmed_by_critic_on_a_business_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let premise = node_item(
+        PREMISE,
+        "premise",
+        confirmed_business_premise_data("critic"),
+    );
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![premise]);
+
+    assert_eq!(code, CONFIRMATION_INVALID);
+}
+
+#[test]
+fn it_should_refuse_confirmed_by_critic_without_literal_question_and_answer() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(
+        confirmed_technical_premise_data("critic"),
+        "confirmed_by",
+        json!({ "by": "critic" }),
+    );
+
+    let code = refused_code(
+        &mut omhl,
+        role_author(CRITIC),
+        vec![node_item(PREMISE, "premise", data)],
+    );
+
+    assert_eq!(code, CONFIRMATION_INVALID);
+}
+
+#[test]
+fn it_should_keep_refusing_a_confirmed_premise_whose_by_is_neither_person_nor_critic() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let premise = node_item(
+        PREMISE,
+        "premise",
+        confirmed_technical_premise_data("robot"),
+    );
+
+    let code = refused_code(&mut omhl, agent_author(), vec![premise]);
+
+    assert_eq!(code, CONFIRMATION_INVALID);
+}
+
+#[test]
+fn it_should_refuse_confirmed_by_critic_on_a_guideline() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = json!({
+        "text": "Keep pull requests small",
+        "kind": "business",
+        "confirmed_by": confirmation("critic"),
+    });
+
+    let code = refused_code(
+        &mut omhl,
+        role_author(CRITIC),
+        vec![node_item(GUIDELINE, "guideline", data)],
+    );
+
+    assert_eq!(code, RECORD_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_confirmed_by_critic_on_a_spec_stale_divergence() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(
+        spec_stale_divergence_data(),
+        "confirmed_by",
+        confirmation("critic"),
+    );
+
+    let code = refused_code(
+        &mut omhl,
+        role_author(CRITIC),
+        vec![node_item(DIVERGENCE, "divergence", data)],
+    );
+
+    assert_eq!(code, RECORD_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_a_premise_appended_by_omhl_critic_that_is_only_assumed() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let premise = node_item(PREMISE, "premise", technical_premise_data());
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![premise]);
+
+    assert_eq!(code, RECORD_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_a_premise_appended_by_omhl_critic_that_is_confirmed_by_a_person() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let premise = node_item(
+        PREMISE,
+        "premise",
+        confirmed_technical_premise_data("person:ana"),
+    );
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![premise]);
+
+    assert_eq!(code, RECORD_FORBIDDEN);
+}
+
+// Revisão de premissa técnica pelo critic
+
+#[test]
+fn it_should_accept_omhl_critic_confirming_a_technical_premise_authored_by_another_role() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        ANALYST,
+        node_item(PREMISE, "premise", technical_premise_data()),
+    );
+
+    let result = confirm_as_critic(&mut omhl);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_accept_omhl_critic_confirming_a_technical_premise_authored_by_claude() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    append_ok_as(
+        &mut omhl,
+        agent_author(),
+        vec![node_item(PREMISE, "premise", technical_premise_data())],
+    );
+
+    let result = confirm_as_critic(&mut omhl);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_omhl_critic_confirming_a_business_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let business = with_field(technical_premise_data(), "kind", json!("business"));
+    seed(&mut omhl, ANALYST, node_item(PREMISE, "premise", business));
+    let base = record_id_of(&mut omhl, PREMISE);
+    let confirmed = revision_item(
+        PREMISE,
+        "premise",
+        confirmed_business_premise_data("critic"),
+        &base,
+    );
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![confirmed]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
+fn it_should_take_the_author_of_the_current_revision_as_the_author_for_the_own_role_checks() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        ANALYST,
+        node_item(PREMISE, "premise", technical_premise_data()),
+    );
+    seed(
+        &mut omhl,
+        ANALYST,
+        node_item(GAP, "gap", gap_data(Some("technical"))),
+    );
+    confirm_as_critic(&mut omhl).expect("the critic confirms the premise of the analyst");
+    let answers = relation_item("answers", PREMISE, GAP);
+
+    let result = appended_count(&mut omhl, role_author(CRITIC), vec![answers]);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_omhl_verifier_removing_or_changing_an_existing_evidence_item() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        CODE_REVIEWER,
+        node_item(DIVERGENCE, "divergence", divergence_data("open")),
+    );
+    let base = record_id_of(&mut omhl, DIVERGENCE);
+    let new_evidence = json!({ "source": "git", "summary": "fixed in the last commit" });
+    let removed = with_field(fixed_divergence_data(), "evidence", json!([new_evidence]));
+    let changed = with_field(
+        fixed_divergence_data(),
+        "evidence",
+        json!([{ "source": "docs", "summary": "the docs say otherwise" }, new_evidence]),
+    );
+
+    let codes: Vec<&str> = [removed, changed]
+        .into_iter()
+        .map(|data| {
+            let revision = revision_item(DIVERGENCE, "divergence", data, &base);
+
+            refused_code(&mut omhl, role_author(VERIFIER), vec![revision])
+        })
+        .collect();
+
+    assert_eq!(codes, vec![REVISION_FORBIDDEN; 2]);
+}
+
+// `answers` do critic
+
+#[test]
+fn it_should_refuse_an_answers_relation_from_omhl_critic_to_a_business_gap() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_critic_premise(&mut omhl);
+    append_ok(
+        &mut omhl,
+        vec![node_item(GAP, "gap", gap_data(Some("business")))],
+    );
+    let answers = relation_item("answers", PREMISE, GAP);
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![answers]);
+
+    assert_eq!(code, ANSWER_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_an_answers_relation_from_omhl_critic_to_a_gap_without_kind() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_critic_premise(&mut omhl);
+    append_ok(&mut omhl, vec![node_item(GAP, "gap", gap_data(None))]);
+    let answers = relation_item("answers", PREMISE, GAP);
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![answers]);
+
+    assert_eq!(code, ANSWER_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_an_answers_relation_from_omhl_critic_to_a_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_critic_premise(&mut omhl);
+    append_ok(
+        &mut omhl,
+        vec![node_item(
+            ANCHOR,
+            "premise",
+            confirmed_premise_data("Users pay monthly"),
+        )],
+    );
+    let answers = relation_item("answers", PREMISE, ANCHOR);
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![answers]);
+
+    assert_eq!(code, ANSWER_FORBIDDEN);
+}
+
+#[test]
+fn it_should_accept_an_answers_relation_from_omhl_critic_to_a_technical_gap() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_critic_premise(&mut omhl);
+    append_ok(
+        &mut omhl,
+        vec![node_item(GAP, "gap", gap_data(Some("technical")))],
+    );
+    let answers = relation_item("answers", PREMISE, GAP);
+
+    let result = appended_count(&mut omhl, role_author(CRITIC), vec![answers]);
+
+    assert_eq!(result, Ok(1));
+}

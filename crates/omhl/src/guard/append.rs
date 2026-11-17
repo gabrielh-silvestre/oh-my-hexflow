@@ -70,8 +70,8 @@ impl<'i> NodeItem<'i> {
 /// Tipo e `kind` de um node, lidos do lote ou do banco.
 #[derive(Clone)]
 pub(super) struct Endpoint {
-    type_name: String,
-    kind: Option<String>,
+    pub(super) type_name: String,
+    pub(super) kind: Option<String>,
 }
 
 pub(super) struct Guard<'a, 'd> {
@@ -216,7 +216,7 @@ impl Guard<'_, '_> {
             return Ok(());
         }
 
-        check_confirmation(node)
+        check_confirmation(node, &self.author.agent)
     }
 
     /// Fechar só por `close_work_item`, e work item fechado é definitivo.
@@ -288,7 +288,7 @@ impl Guard<'_, '_> {
             .map_err(|code| OmhlError::rule(code, &format!("/items/{index}/body/to")))
     }
 
-    fn endpoint_of(&mut self, id: &SemanticId) -> Result<Option<Endpoint>, OmhlError> {
+    pub(super) fn endpoint_of(&mut self, id: &SemanticId) -> Result<Option<Endpoint>, OmhlError> {
         if let Some(node) = self.batch.get(id) {
             return Ok(Some(node.clone()));
         }
