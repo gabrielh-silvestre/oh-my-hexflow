@@ -169,7 +169,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `omhl::pr_gate` | 221 | `required_checks`, `pr_gate_questions`, `spec_digests` | média |
 | `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |
-| `omhl::app` | 3.559 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
+| `omhl::app` | 4.865 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
 | `omhl::adapters` | 645 | `cli::run`, `hook::session_start` | funda por adapter |
 | `omhl::extensions` | 1.015 | `collect`, `plan` | funda |
 | `omhl::projection` | 569 | `build`, `write` | funda |
@@ -294,13 +294,13 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Aninhadas.** `extensions`, `projection`, `render` (3.13 a 3.15) são orquestradas por `Engine`.
 
-**Profundidade.** Funda no uso (2 adapters), com a fuga de contrato descrita nos itens 2, 5 e 6 da seção 5. É onde o contexto mais cresceu em `omhl`: 3.559 linhas, o maior módulo.
+**Profundidade.** Funda no uso (2 adapters), com a fuga de contrato descrita nos itens 2, 5 e 6 da seção 5. É onde o contexto mais cresceu em `omhl`: 4.865 linhas, o maior módulo.
 
 ### 3.12 Gateway de consumo: `omhl::adapters`
 
 **Papel.** Traduz um protocolo externo (linha de comando, evento de hook) em `Action` e imprime o resultado; não conhece o domínio.
 
-**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`. `main.rs` (20 linhas) só monta o `Env` e chama `cli::run`.
+**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`. `main.rs` (25 linhas) só monta o `Env` e chama `cli::run`.
 
 **Escondido.** Em `hook.rs`: a saída `hookSpecificOutput` e o aviso de extensions (só códigos e contagens).
 
@@ -456,6 +456,7 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 | Sem `thread::scope` nas leitoras de cano | `it_should_not_scope_the_threads_of_the_pipe_readers` |
 | Os adapters só importam `app` e `project::Env` | `it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_the_project_env` |
 | O `main.rs` lê o pid do pai antes de qualquer outra coisa | `it_should_read_the_parent_pid_before_anything_else_in_main` |
+| Sem `mcp`, `tool_call` nem `json-rpc` em `src/` fora de `adapters/` e `main.rs` (ADR 0006) | `it_should_keep_the_removed_mcp_port_out_of_the_src_layers` |
 
 ### Regras que valem hoje no código mas sem teste
 

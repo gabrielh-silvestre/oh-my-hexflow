@@ -42,11 +42,12 @@ Nenhuma superfície de protocolo a manter, a saída da CLI preservada no primeir
 
 ## Consequências
 
-- Sem o MCP, o autor gravado pelo agente é sempre `claude/cli` (sob `CLAUDECODE=1`). Records antigos com `client: "mcp"` continuam na chain (append-only), e nenhuma leitura os trata de forma especial: a guarda não distingue o autor `mcp`.
+- Sem o MCP, o autor gravado pelo agente é `claude/cli` só quando `CLAUDECODE=1`; sem a variável, a CLI grava `user/cli` (ver [directives-flow.md](../directives-flow.md)). O MCP gravava `claude` sem depender do ambiente; agora o rótulo do agente depende da variável e é só rótulo de auditoria, não prova de autoria. Records antigos com `client: "mcp"` continuam na chain (append-only), e nenhuma leitura os trata de forma especial: a guarda não distingue o autor `mcp`.
 - `omhl --help` perde a linha `mcp`.
 - Quando as skills chegarem, um subcomando novo passará a exigir citação nas skills, `references/` com os cinco títulos e um exemplo.
 - **A T3 fica cumprida só na parte do MCP.** `app` ainda carrega `Caller::{cli, cli_under_claude_code, hook}` e o payload do `PreToolUse` (débito 5 de [architecture.md](../architecture.md)). O que as duas portas usavam em comum já mora em `app`.
 - Quando o teste dos exemplos existir, o `check sweep` dele varrerá qualquer raiz da máquina (efeito documentado).
+- O ADR 0004 foi editado no lugar para tirar o MCP da lista de clientes da guarda.
 - Um segundo cliente de agente exigirá nova decisão.
 
 ## Follow-ups
