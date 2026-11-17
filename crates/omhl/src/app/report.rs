@@ -21,8 +21,9 @@ impl Engine<'_> {
         let where_eq = match work_item {
             None => Vec::new(),
             Some(id) => {
-                parse_at(SemanticId::parse, id, "/work_item")?;
-                work_item_filter(id)?
+                let id = parse_at(SemanticId::parse, id, "/work_item")?;
+                self.omhl.find_work_item(&self.tenant, &id)?;
+                work_item_filter(id.as_str())?
             }
         };
         let gaps = nodes_matching(&mut self.omhl, &self.tenant, "gap", where_eq)?;

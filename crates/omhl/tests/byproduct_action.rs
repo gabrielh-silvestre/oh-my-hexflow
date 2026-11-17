@@ -32,7 +32,10 @@ const B1000_SHA: &str = "b01dcaddfdccba222da3cd3f9174b32adf001a0d41ce28916a0aee3
 const BLONG_SHA: &str = "ca8e77d1adc23806e3800feefb40538e3469570a9fe516b6e84a3259fb29e5fe";
 const BSMALL_SHA: &str = "a834c640cc27439d8a70b00733ebf8165a1a9d5aac5ccb6a48cb33dff45c48cd";
 const BOLD_SHA: &str = "a70000123a86ac68ca89f9d24c68274450d0219382a369353d8125183681fa39";
+const BWINDOW_SHA: &str = "246f6399fcbb83c92c027d999aec980cae16c2e6f0a828a3161844f2f6ccf515";
 const BNEW_SHA: &str = "ee08c8b2e66a380ea0f78adb2f10ca49ed60f588af8dade87cd957e9d0c89feb";
+const BTWOLONG_SHA: &str = "8e42172b4b8e767a12b5b636416fe8334fe22f234130d2ac62348d95a353fe3b";
+const BMULTIBYTE_SHA: &str = "b89360b3f394ce566fe51579db3e5ff44f551dff5314abdbfbf2a1069edcad08";
 
 // Apoio
 
@@ -211,21 +214,52 @@ fn it_should_default_to_the_last_50_lines() {
 }
 
 #[test]
-fn it_should_cap_tail_at_500_lines() {
+fn it_should_refuse_tail_above_500() {
     let fixture = Fixture::new();
     let blob = put_b1000(&fixture);
     fixture.attest('a', W1, "failed", &blob);
 
-    let exact = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "500"]);
-    let above = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "1000"]);
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "501"]);
 
-    let exact = success(&exact);
-    let above = success(&above);
-    let lines = lines_of(&above);
+    let error = failure(&output);
+    assert_eq!(error["error"]["code"], json!("invalid-arguments"));
+    assert_eq!(error["error"]["details"][0]["path"], json!("/tail"));
+}
+
+#[test]
+fn it_should_accept_tail_of_exactly_500() {
+    let fixture = Fixture::new();
+    let blob = put_b1000(&fixture);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "500"]);
+
+    let result = success(&output);
+    let lines = lines_of(&result);
     assert_eq!(lines.len(), 500);
     assert_eq!(lines[0], "out 501");
     assert_eq!(lines[499], "err 2");
-    assert_eq!(exact, above);
+}
+
+#[test]
+fn it_should_explain_the_tail_rule() {
+    let fixture = Fixture::new();
+    let blob = put_b1000(&fixture);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let below = failure(&fixture.omhl(&["byproduct", CHECK, W1, "--tail", "0"]));
+    let above = failure(&fixture.omhl(&["byproduct", CHECK, W1, "--tail", "501"]));
+
+    for error in [below, above] {
+        assert_eq!(
+            error["error"]["message"],
+            json!("tail must be between 1 and 500")
+        );
+        assert_eq!(
+            error["error"]["details"][0]["message"],
+            json!("tail must be between 1 and 500")
+        );
+    }
 }
 
 #[test]
@@ -250,6 +284,67 @@ fn it_should_cap_the_size_of_each_returned_line() {
     let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "1"]);
 
     assert_eq!(lines_of(&success(&output)), ["x".repeat(2000)]);
+}
+
+#[test]
+fn it_should_report_truncated_lines() {
+    let fixture = Fixture::new();
+    let blob = fixture.put_blob(&format!("{}\n", "x".repeat(2500)), "", BLONG_SHA);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "1"]);
+
+    assert_eq!(success(&output)["truncated_lines"], json!(1));
+}
+
+#[test]
+fn it_should_omit_truncated_lines_when_none() {
+    let fixture = Fixture::new();
+    let blob = put_bsmall(&fixture);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1]);
+
+    assert!(success(&output).get("truncated_lines").is_none());
+}
+
+#[test]
+fn it_should_count_only_the_returned_lines_that_were_truncated() {
+    let fixture = Fixture::new();
+    let stdout = format!("{}\n{}\nshort\n", "a".repeat(2500), "b".repeat(2500));
+    let blob = fixture.put_blob(&stdout, "", BWINDOW_SHA);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "2"]);
+
+    assert_eq!(success(&output)["truncated_lines"], json!(1));
+}
+
+#[test]
+fn it_should_count_every_truncated_line_in_the_window() {
+    let fixture = Fixture::new();
+    let stdout = format!("{}\n{}\n", "a".repeat(2500), "b".repeat(2500));
+    let blob = fixture.put_blob(&stdout, "", BTWOLONG_SHA);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "2"]);
+
+    let result = success(&output);
+    assert_eq!(result["truncated_lines"], json!(2));
+    assert_eq!(lines_of(&result), ["a".repeat(2000), "b".repeat(2000)]);
+}
+
+#[test]
+fn it_should_cut_a_multibyte_line_at_a_character_boundary() {
+    let fixture = Fixture::new();
+    let blob = fixture.put_blob(&format!("{}\n", "é".repeat(2001)), "", BMULTIBYTE_SHA);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "1"]);
+
+    let result = success(&output);
+    assert_eq!(lines_of(&result), ["é".repeat(2000)]);
+    assert_eq!(result["truncated_lines"], json!(1));
 }
 
 #[test]

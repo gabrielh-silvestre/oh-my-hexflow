@@ -339,7 +339,7 @@ fn split_where(index: usize, pair: &str) -> Result<(String, String), AppError> {
         Some((field, value)) if !field.is_empty() => Ok((field.to_owned(), value.to_owned())),
         _ => Err(AppError::invalid_arguments(
             &format!("/where/{index}"),
-            "unknown value",
+            "where must be FIELD=VALUE with a non-empty FIELD",
         )),
     }
 }

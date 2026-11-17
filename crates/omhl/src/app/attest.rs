@@ -23,7 +23,10 @@ impl Engine<'_> {
         note: Option<&str>,
     ) -> Result<Value, AppError> {
         if !OUTCOMES.contains(&outcome) {
-            return Err(AppError::invalid_arguments("/outcome", "unknown value"));
+            return Err(AppError::invalid_arguments(
+                "/outcome",
+                "outcome must be passed, passed_with_warning or failed",
+            ));
         }
         let check = parse_at(SemanticId::parse, check, "/check")?;
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;

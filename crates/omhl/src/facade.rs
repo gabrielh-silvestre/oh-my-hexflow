@@ -1,6 +1,6 @@
 use hexlog::{
-    AppendOutcome, AppendRequest, Author, ChainHead, ChainReport, Clock, Config, Deps, Hash,
-    Hexlog, IdGenerator, Lineage, ListFilter, NodeView, Page, PageRequest, RelationQuery,
+    AppendOutcome, AppendRequest, Author, Catalog, ChainHead, ChainReport, Clock, Config, Deps,
+    Hash, Hexlog, IdGenerator, Lineage, ListFilter, NodeView, Page, PageRequest, RelationQuery,
     RelationTypeName, RelationView, RevisionView, SemanticId, TenantId, TenantInfo, TypeName,
 };
 
@@ -72,6 +72,11 @@ impl<'d> Omhl<'d> {
 
     pub fn ensure_tenant(&mut self, tenant: &TenantId) -> Result<TenantInfo, OmhlError> {
         Ok(self.hexlog.ensure_tenant(tenant)?)
+    }
+
+    /// Catalog montado em `graphs::catalog()`, o mesmo que a guarda usa.
+    pub fn catalog(&self) -> &Catalog {
+        self.hexlog.catalog()
     }
 
     /// A guarda valida o lote inteiro antes de qualquer escrita.

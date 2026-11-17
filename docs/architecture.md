@@ -73,6 +73,7 @@ flowchart LR
   app --> render
   app --> native
   app --> guard
+  app --> graphs
   app --> ports
   app --> guidance
   gate --> guidance
@@ -143,7 +144,7 @@ Notas de leitura:
 
 ## 2. Contexto em um parágrafo
 
-O workspace tem dois crates. O `hexlog` é o motor agnóstico: guarda a chain de records por tenant num SQLite, valida contra um catalog dado por quem o abre e não conhece decisão, check, gate nem PRD. O `omhl` é o plugin opinativo: monta o catalog dos graphs, embute o native, guarda as regras de domínio na escrita, avalia gates, renderiza o contexto, carrega extensions e gera a projection, e expõe tudo por dois gateways (CLI e hook) que dividem uma única camada de casos de uso (`app`). A separação não é só convenção: 27 testes de arquitetura no `omhl` e 11 no `hexlog` a travam (seção 4).
+O workspace tem dois crates. O `hexlog` é o motor agnóstico: guarda a chain de records por tenant num SQLite, valida contra um catalog dado por quem o abre e não conhece decisão, check, gate nem PRD. O `omhl` é o plugin opinativo: monta o catalog dos graphs, embute o native, guarda as regras de domínio na escrita, avalia gates, renderiza o contexto, carrega extensions e gera a projection, e expõe tudo por dois gateways (CLI e hook) que dividem uma única camada de casos de uso (`app`). A separação não é só convenção: 28 testes de arquitetura no `omhl` e 11 no `hexlog` a travam (seção 4).
 
 As decisões estruturais, com o porquê de cada uma:
 
@@ -152,6 +153,7 @@ As decisões estruturais, com o porquê de cada uma:
 - [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor`, `loader` e `guideline-retire` são a fronteira da guarda (3.23, `guard`).
 - [0005](adr/0005-saida-dos-checks-em-blobs-fora-do-banco.md): a saída dos checks fica em blobs fora do banco (3.21, `ports/blob`).
 - [0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md): a CLI é a única interface do agente e o UTCP foi descartado (3.12, seção 5).
+- [0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md): uma opção da CLI é respeitada ou recusada com a regra, nunca cortada ou ignorada em silêncio (3.11, `app`).
 
 ## 3. Caixas cinzas
 
@@ -161,13 +163,13 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 |---|---|---|---|
 | `hexlog` | 5.493 | 10 operações em `Hexlog` + 58 nomes exportados | funda |
 | `hexlog::engine` | 2.510 | `decide`, `verify_chain`, `instant_is_well_formed` | funda |
-| `hexlog::catalog` | 1.149 | `Catalog::new` + 5 consultas | funda |
+| `hexlog::catalog` | 1.154 | `Catalog::new` + 6 consultas | funda |
 | `hexlog::store` | 932 | `Store` (3 métodos) | funda, seam de 1 adapter |
-| `omhl::facade` (`Omhl`) | 272 | 15 operações | média |
+| `omhl::facade` (`Omhl`) | 281 | 16 operações | média |
 | `omhl::gate` | 352 | `evaluate`, `read_consistent`, `GateSource` | funda |
 | `omhl::guard` | 519 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id` | funda |
 | `omhl::pr_gate` | 221 | `required_checks`, `pr_gate_questions`, `spec_digests` | média |
-| `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES` | funda como função, rasa como vocabulário |
+| `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES`, `namespace_of` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |
 | `omhl::app` | 4.865 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
 | `omhl::adapters` | 645 | `cli::run`, `hook::session_start` | funda por adapter |
@@ -205,17 +207,17 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Escondido.** Os seis passos de `decide` (forma, tenant, replay, regras estáticas, cauda, histórico, montagem), `chain.rs` (JCS, `hash_record`, `fingerprint`), `limits.rs`, `rules.rs`, `model.rs` (corpo do record).
 
-**Profundidade.** Funda: 3 pontos de entrada sobre 2,5 mil linhas. As ports `Store`/`WriteReads`/`QueryReads`/`VerifyReads`/`Definitions` têm um adapter cada (`SqliteStore`/`Tx` em `store/sqlite`, `Catalog` em `catalog/types.rs:251`): seam hipotético pela régua da skill. Ele se paga porque é o que o teste `it_should_not_import_store_or_catalog_from_the_engine_sources` usa para manter o engine sem SQL (seção 4); os testes de integração do hexlog usam o SQLite real.
+**Profundidade.** Funda: 3 pontos de entrada sobre 2,5 mil linhas. As ports `Store`/`WriteReads`/`QueryReads`/`VerifyReads`/`Definitions` têm um adapter cada (`SqliteStore`/`Tx` em `store/sqlite`, `Catalog` em `catalog/types.rs:256`): seam hipotético pela régua da skill. Ele se paga porque é o que o teste `it_should_not_import_store_or_catalog_from_the_engine_sources` usa para manter o engine sem SQL (seção 4); os testes de integração do hexlog usam o SQLite real.
 
 ### 3.3 Aninhada: `hexlog::catalog`
 
 **Papel.** Compila e valida as definições de tipos de node e relation types, e valida o `data` de cada node contra o schema do tipo.
 
-**Interface.** `Catalog::new(Vec<TypeDef>, Vec<RelationTypeDef>) -> Result<Catalog, HexlogError>` (`catalog/types.rs:159`), `type_def`, `relation_type_def`, `type_hash`, `relation_type_hash`, `validate_data` (`:226-243`), mais `TypeDef`, `RelationTypeDef`.
+**Interface.** `Catalog::new(Vec<TypeDef>, Vec<RelationTypeDef>) -> Result<Catalog, HexlogError>` (`catalog/types.rs:159`), `type_def`, `type_defs`, `relation_type_def`, `type_hash`, `relation_type_hash`, `validate_data` (`:226-248`), mais `TypeDef`, `RelationTypeDef`.
 
 **Escondido.** Compilador de JSON Schema 2020-12 (`catalog/validate.rs`, 882 linhas: `CompiledSchema`, `compile`), grafo de relations com `petgraph`, hash das definições (`def_hash`) que o record grava.
 
-**Profundidade.** Funda: 6 chamadas sobre 1,1 mil linhas, e o `omhl` obtém um catalog inteiro validado numa chamada (`graphs::catalog`).
+**Profundidade.** Funda: 7 chamadas sobre 1,1 mil linhas, e o `omhl` obtém um catalog inteiro validado numa chamada (`graphs::catalog`).
 
 ### 3.4 Aninhada: `hexlog::store`
 
@@ -231,13 +233,13 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** É o `Hexlog` com as regras do plugin: guarda de escrita, gates, fechamento de work item e leitura para a projection.
 
-**Interface.** `Omhl<'d>` (`crates/omhl/src/facade.rs`): `open`, `ensure_tenant`, `append`, `get`, `lineage_records`, `list`, `relations`, `chain_head`, `verify_chain`, `evaluate`, `evaluate_pr_gate`, `read_projection_state`, `check_nodes`, `check_after_relations`, `close_work_item`, `find_work_item`. Entradas: `OmhlDeps` (`clock`, `ids`, `probe`), `ClosedWorkItem`, `GateQuestion`, `GateReport`. Invariante: `append` só grava depois da guarda validar o batch inteiro; `close_work_item` grava direto, sem a guarda, e exige snapshot de árvore limpa.
+**Interface.** `Omhl<'d>` (`crates/omhl/src/facade.rs`): `open`, `ensure_tenant`, `catalog`, `append`, `get`, `lineage_records`, `list`, `relations`, `chain_head`, `verify_chain`, `evaluate`, `evaluate_pr_gate`, `read_projection_state`, `check_nodes`, `check_after_relations`, `close_work_item`, `find_work_item`. Entradas: `OmhlDeps` (`clock`, `ids`, `probe`), `ClosedWorkItem`, `GateQuestion`, `GateReport`. Invariante: `append` só grava depois da guarda validar o batch inteiro; `close_work_item` grava direto, sem a guarda, e exige snapshot de árvore limpa.
 
 **Escondido.** Montagem do catalog (`graphs::catalog`), do `NativeBase` estático, leitura do gate entre duas leituras iguais do chain head (`read_consistent`), a regra de que o gate reprovado ainda fecha.
 
 **Aninhadas.** `guard`, `gate`, `pr_gate`, `graphs`, `native`, `probe`.
 
-**Profundidade.** Média. Das 15 operações, 6 só repassam ao `Hexlog` (`ensure_tenant`, `get`, `lineage_records`, `relations`, `chain_head`, `verify_chain`: `facade.rs:73,84,93,112,120,124`). O valor está em 5: `append`, `list` (com guarda), `evaluate`, `evaluate_pr_gate`, `close_work_item`. `check_nodes`, `check_after_relations` e `find_work_item` são consultas usadas pelo `app`. Pelo teste da exclusão, sumir com a facade espalharia a guarda e o gate por todos os chamadores; é por isso que ela existe, mas ela é mais larga do que funda.
+**Profundidade.** Média. Das 16 operações, 7 só repassam ao `Hexlog` (`ensure_tenant`, `catalog`, `get`, `lineage_records`, `relations`, `chain_head`, `verify_chain`: `facade.rs:73,78,89,98,117,125,129`). O valor está em 5: `append`, `list` (com guarda), `evaluate`, `evaluate_pr_gate`, `close_work_item`. `check_nodes`, `check_after_relations` e `find_work_item` são consultas usadas pelo `app`. Pelo teste da exclusão, sumir com a facade espalharia a guarda e o gate por todos os chamadores; é por isso que ela existe, mas ela é mais larga do que funda.
 
 ### 3.6 Aninhada: `omhl::gate`
 
@@ -271,7 +273,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** Entrega o catalog dos três graphs (decisões, checks, work items) como dado.
 
-**Interface.** `catalog() -> Result<Catalog, HexlogError>` e `WORK_ITEM_TYPES` (`graphs/mod.rs:5,14`).
+**Interface.** `catalog() -> Result<Catalog, HexlogError>`, `WORK_ITEM_TYPES` e `namespace_of(&str) -> Option<&'static str>` (`graphs/mod.rs`); `app/list_filter.rs` consome `namespace_of` para validar `list --id-prefix` e `--where`.
 
 **Escondido.** Os três `catalog.json` (6,4 kB) embutidos por `include_str!` e a leitura; a validação fica no `Catalog::new` do hexlog.
 
@@ -457,11 +459,12 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 | Os adapters só importam `app` e `project::Env` | `it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_the_project_env` |
 | O `main.rs` lê o pid do pai antes de qualquer outra coisa | `it_should_read_the_parent_pid_before_anything_else_in_main` |
 | Sem `mcp`, `tool_call` nem `json-rpc` em `src/` fora de `adapters/` e `main.rs` (ADR 0006) | `it_should_keep_the_removed_mcp_port_out_of_the_src_layers` |
+| `src/app` só tem os cortes numéricos (`.min(`, `.max(`, `.clamp(`, `.take(`, `saturating_`) da lista fechada, 9 ao todo; um corte novo reprova até ser justificado (ver [ADR 0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md)) | `it_should_not_grow_the_numeric_cuts_in_src_app_without_an_inventory_entry` |
 
 ### Regras que valem hoje no código mas sem teste
 
 - No `hexlog`: `store` e `catalog` não importam um ao outro, e só a facade os compõe. É verdade hoje (verificado nos imports), mas só a regra `engine -> store/catalog` está travada.
-- No `omhl`: a lista de camadas internas que não podem importar `adapters` omite `facade`, `guard`, `gate`, `graphs`, `pr_gate`, `probe`; hoje nenhum o faz. Também não há trava para o conjunto que `app` pode importar (`facade`, `extensions`, `projection`, `render`, `native`, `guard`, `ports`, `project`, `probe`, `gate`) nem para o que os adapters podem importar além do `hexlog` (hoje só `app` e `project`).
+- No `omhl`: a lista de camadas internas que não podem importar `adapters` omite `facade`, `guard`, `gate`, `graphs`, `pr_gate`, `probe`; hoje nenhum o faz. Também não há trava para o conjunto que `app` pode importar (`facade`, `extensions`, `projection`, `render`, `native`, `guard`, `graphs`, `ports`, `project`, `probe`, `gate`) nem para o que os adapters podem importar além do `hexlog` (hoje só `app` e `project`).
 
 ## 5. Pontos rasos ou com vazamento
 
@@ -469,11 +472,11 @@ Oito itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 
 1. **Vocabulário de tipos espalhado (corte).** Os nomes `work-item`, `pull-request`, `premise`, `decision`, `guideline`, `attestation` são strings soltas em `facade.rs:23-31` (`PROJECTED_NODE_TYPES`, que ganhou `gap` e `divergence` com o fluxo de diretivas), `projection/build.rs:59-61` (`is_work_item`) e `:17-22` (`SECTIONS`), `guard/append.rs:15-19` (`namespace_of`) e `:121-126` (`check_node`), `pr_gate.rs:71,84`, `app/context.rs:15-18`, `app/attest.rs:13`. Só `WORK_ITEM_TYPES` (`graphs/mod.rs:5`) é compartilhado, e `projection/build.rs` não o usa. Trocar o nome de um tipo exige caçar seis arquivos. Já feito: `namespace_of` e os namespaces `premises`, `guidelines`, `gaps` e `divergences` moram em `graphs` (o validador de spec e a guarda derivam dali), e a gramática da pasta de spec e dos arquivos fica em `workflow/names.rs`, com um teste de arquitetura que proíbe os literais `wi-`, `parte-` e `emenda-` fora dele. Falta: `graphs` exportar os tipos de work item, os tipos projetados e o nome `loader`, no lugar das cópias nos arquivos acima. Dívida aceita ao lado dela: `workflow/spec.rs` (802 linhas) junta duas responsabilidades, a validação estrutural das partes e emendas (`validate_spec`) e a conferência delas contra o grafo (`validate_graph`, `amendment_state`), e não foi dividido. Trade-off: `graphs` ganha interface; em troca vira o único dono do vocabulário, que o `gate` já prova que dá para isolar.
 
-2. **`app` entra no domínio por mais de uma porta (corte barato, decisão sua no segundo passo).** `app/attest.rs:9` chama `guard::attestation_id`, `app/engine.rs:14` chama `projection::{build, write}`, `app/load.rs:1,11-17` chama `hexlog::chain::fingerprint`, `extensions::{collect, plan}` e `NativeBase`, e `app/context.rs` lê `NativeBase` direto. Enquanto isso, 6 das 15 operações de `Omhl` só repassam (`facade.rs:73,84,93,112,120,124`). Nada trava o que `app` pode importar (seção 4). Corte barato: um teste que fixe o conjunto permitido de `app`. Corte maior, só se valer: mover a montagem do atestado para dentro de `Omhl`, o que acrescenta uma operação à facade e tira o conhecimento de `guard` de `app`.
+2. **`app` entra no domínio por mais de uma porta (corte barato, decisão sua no segundo passo).** `app/attest.rs:9` chama `guard::attestation_id`, `app/engine.rs:14` chama `projection::{build, write}`, `app/load.rs:1,11-17` chama `hexlog::chain::fingerprint`, `extensions::{collect, plan}` e `NativeBase`, e `app/context.rs` lê `NativeBase` direto, e `app/list_filter.rs` chama `graphs::namespace_of`, uma porta a mais (vocabulário, sem passar pela facade). Enquanto isso, 7 das 16 operações de `Omhl` só repassam (`facade.rs:73,78,89,98,117,125,129`). Nada trava o que `app` pode importar (seção 4). Corte barato: um teste que fixe o conjunto permitido de `app`. Corte maior, só se valer: mover a montagem do atestado para dentro de `Omhl`, o que acrescenta uma operação à facade e tira o conhecimento de `guard` de `app`.
 
-3. **Paginação e constantes duplicadas (corte).** O laço de páginas existe em `app/read.rs:nodes_matching` (`PAGE_LIMIT = 50`, `:6`; `all_nodes` e `latest_attestation` o chamam) e em `gate/source.rs:HexlogSource::nodes` (usa `config.limits.page_default`, `facade.rs:65`), e `app/engine.rs:17` tem um terceiro `DEFAULT_PAGE_LIMIT = 50`. A relation `after` aparece como constante em `app/context.rs:10` e `app/load.rs:21` e como literal em `native/mod.rs:88`. Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade (a 14ª), em troca de um só laço.
+3. **Paginação e constantes duplicadas (corte).** O laço de páginas existe em `app/read.rs:nodes_matching` (`PAGE_LIMIT = 50`, `:6`; `all_nodes` e `latest_attestation` o chamam) e em `gate/source.rs:HexlogSource::nodes` (usa `config.limits.page_default`, `facade.rs:69`), e `app/engine.rs:17` tem um terceiro `DEFAULT_PAGE_LIMIT = 50`. A relation `after` aparece como constante em `app/context.rs:10` e `app/load.rs:21` e como literal em `native/mod.rs:88`. Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade (a 14ª), em troca de um só laço.
 
-4. **A sonda do git vive em duas camadas (dívida).** `Engine` guarda o `probe` (`app/mod.rs`, campo `probe: deps.probe`; `app/engine.rs:probe_snapshot`) e `Omhl` guarda outro (`facade.rs:46-50`, usado em `:75` e `:215`). Em `close`, `Engine::close` sonda e `close_work_item` sonda de novo (`facade.rs:215`): dois `git` por fechamento, e a segunda leitura é a que vale. Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito, o que o `tests/pr_gate.rs` aproveita. Vira corte se aparecer um caso em que as duas leituras discordem.
+4. **A sonda do git vive em duas camadas (dívida).** `Engine` guarda o `probe` (`app/mod.rs`, campo `probe: deps.probe`; `app/engine.rs:probe_snapshot`) e `Omhl` guarda outro (`facade.rs:50-55`, usado em `:84` e `:255`). Em `close`, `Engine::close` sonda e `close_work_item` sonda de novo (`facade.rs:255`): dois `git` por fechamento, e a segunda leitura é a que vale. Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito, o que o `tests/pr_gate.rs` aproveita. Vira corte se aparecer um caso em que as duas leituras discordem.
 
 5. **Nome e formato de porta dentro de `app` (corte).** `app` ainda conhece o nome de quem o chama e o formato de uma porta: `Caller::{cli, cli_under_claude_code, hook}` (`app/action.rs:100`), `spec_lock` com o payload do `PreToolUse` (`app/spec.rs:289`) e `invalid_hook_input` (`app/error.rs:150`). Acrescentar uma ação toca 4 pontos: `Action` (`action.rs`), `Engine::run`, `ActionCommand` e `to_action` (`cli.rs`). Corte: o adapter traduz o payload para um struct neutro e passa o `Caller` pronto; `app` deixa de nomear a porta. Trade-off: não medido além de mover os três nomes e o parse do payload.
 
@@ -481,4 +484,4 @@ Oito itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 
 7. **Helpers no lugar errado (corte pequeno, em parte feito).** `list_sorted_capped` saiu de `extensions/files.rs` para `ports/files.rs` no fluxo de diretivas, e `projection/write.rs` o importa de lá. Falta o resto: `projection/build.rs` importa `render::sort_by_id`, e `project/layout.rs` mistura constantes de `extensions` (`EXT_FILE_MAX_BYTES`, `CHECKS_DIR`), de `projection` (`PROJECTION_*`) e de arquivo temporário (`TMP_*`). Corte: `render::sort_by_id` vai para `project` (que já hospeda `text.rs`).
 
-8. **Superfície pública do `hexlog` maior que o consumo (dívida consciente).** `lib.rs:25-29` exporta 6 funções de `chain` e o `omhl` usa só `fingerprint` (`app/load.rs:1`); `CHECKED_FIELDS` (`lib.rs:9`) só serve a `tests/chain_tamper.rs`; `Hexlog::catalog` (`facade.rs:331`) não tem chamador no workspace. A causa é a regra de que os testes de integração usem só a API pública (`it_should_keep_integration_tests_on_the_public_api`): o que os testes de adulteração precisam vira público. Cortar exige uma feature de cargo para test support. Também é o único conhecimento de host dentro do motor: `SnapshotKind::GitCommit` e `SnapshotKind::GitTree` (`engine/snapshot.rs:8-11`), enum fechado de propósito, assumido e travado por `it_should_mention_git_only_in_engine_snapshot`.
+8. **Superfície pública do `hexlog` maior que o consumo (dívida consciente).** `lib.rs:25-29` exporta 6 funções de `chain` e o `omhl` usa só `fingerprint` (`app/load.rs:1`); `CHECKED_FIELDS` (`lib.rs:9`) só serve a `tests/chain_tamper.rs`; `Hexlog::catalog` (`facade.rs:331`) só tem um chamador, `Omhl::catalog` (`omhl/src/facade.rs:78`). A causa é a regra de que os testes de integração usem só a API pública (`it_should_keep_integration_tests_on_the_public_api`): o que os testes de adulteração precisam vira público. Cortar exige uma feature de cargo para test support. Também é o único conhecimento de host dentro do motor: `SnapshotKind::GitCommit` e `SnapshotKind::GitTree` (`engine/snapshot.rs:8-11`), enum fechado de propósito, assumido e travado por `it_should_mention_git_only_in_engine_snapshot`.

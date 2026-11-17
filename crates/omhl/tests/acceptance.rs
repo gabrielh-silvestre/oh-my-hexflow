@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use support::child::{Cmd, omhl};
 use support::git::git_in;
 use support::omhl::{
-    LINT_DOCS, OmhlHarness, acme, append_ok, check_data, decision_data, node_item, premise_data,
-    work_item_data,
+    LIMIT_RULE, LINT_DOCS, OmhlHarness, acme, append_ok, check_data, decision_data, node_item,
+    premise_data, work_item_data,
 };
 use support::pr_gate::{DECISION, PREMISE, relation_item};
 use support::project::Project;
@@ -219,11 +219,11 @@ fn it_should_report_the_limit_error_from_the_cli() {
 
     let expected = json!({
         "code": "invalid-arguments",
-        "message": "unknown value",
+        "message": LIMIT_RULE,
         "details": [{
             "path": "/limit",
             "code": "invalid-arguments",
-            "message": "unknown value",
+            "message": LIMIT_RULE,
         }],
     });
     assert_eq!(cli.code, Some(1));

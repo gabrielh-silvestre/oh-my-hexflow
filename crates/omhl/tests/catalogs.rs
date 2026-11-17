@@ -3,6 +3,7 @@ mod support;
 use std::collections::BTreeSet;
 
 use hexlog::{Catalog, DataViolation, NativeNodes, RelationTypeDef, TypeDef};
+use omhl::app::list_filter::is_text_field;
 use omhl::graphs;
 use omhl::native::NativeBase;
 use serde_json::{Value, json};
@@ -1351,4 +1352,103 @@ fn old_decisions_records() -> Vec<hexlog::AppendItem> {
         node_item("premises.p-1", "premise", old_decisions_premise()),
         node_item("guidelines.g-1", "guideline", old_decisions_guideline()),
     ]
+}
+
+// Campos de texto para o filtro `where` do `list`
+
+fn where_fields(catalog: &Catalog, type_name: &str, text: bool) -> BTreeSet<String> {
+    let def = catalog.type_def(&tname(type_name)).expect("type exists");
+
+    def.schema["properties"]
+        .as_object()
+        .expect("the type declares properties")
+        .iter()
+        .filter(|(_, schema)| is_text_field(schema) == text)
+        .map(|(field, _)| field.clone())
+        .collect()
+}
+
+fn field_set(fields: &[&str]) -> BTreeSet<String> {
+    fields.iter().map(|field| (*field).to_owned()).collect()
+}
+
+#[test]
+fn it_should_classify_every_catalog_field_for_where() {
+    let catalog = catalog();
+    let expected: [(&str, &[&str], &[&str]); 9] = [
+        (
+            "check",
+            &["how", "concern", "variant"],
+            &["when", "blocking", "run", "timeout_secs", "expect"],
+        ),
+        (
+            "attestation",
+            &[
+                "check",
+                "work_item",
+                "outcome",
+                "note",
+                "spec_digest",
+                "byproduct",
+            ],
+            &[
+                "ok",
+                "exit_code",
+                "duration_ms",
+                "timed_out",
+                "truncated",
+                "command",
+            ],
+        ),
+        (
+            "premise",
+            &["text", "status", "work_item", "kind"],
+            &["confirmed_by"],
+        ),
+        ("guideline", &["text", "kind"], &["confirmed_by"]),
+        ("decision", &["text", "work_item"], &["evidence"]),
+        ("gap", &["question", "context", "work_item"], &[]),
+        (
+            "divergence",
+            &[
+                "source_ref",
+                "kind",
+                "text",
+                "resolution",
+                "work_item",
+                "amendment",
+            ],
+            &["evidence", "confirmed_by"],
+        ),
+        ("work-item", &["title", "status"], &["gate"]),
+        (
+            "pull-request",
+            &["title", "status", "provider", "repo", "branch"],
+            &["gate", "number"],
+        ),
+    ];
+
+    for (type_name, text, other) in expected {
+        assert_eq!(
+            where_fields(&catalog, type_name, true),
+            field_set(text),
+            "text fields of {type_name}"
+        );
+        assert_eq!(
+            where_fields(&catalog, type_name, false),
+            field_set(other),
+            "non-text fields of {type_name}"
+        );
+    }
+}
+
+#[test]
+fn it_should_treat_an_enum_field_without_a_type_as_text_for_where() {
+    let catalog = catalog();
+    let def = catalog.type_def(&tname("premise")).expect("type exists");
+
+    let status = &def.schema["properties"]["status"];
+
+    assert!(status.get("type").is_none(), "the enum carries no `type`");
+    assert!(is_text_field(status));
 }

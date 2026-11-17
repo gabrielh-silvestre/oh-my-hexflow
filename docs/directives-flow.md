@@ -58,15 +58,25 @@ Um erro sai no stderr, numa linha JSON, com código de saída 1. Uma saída de s
 | `omhl spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
 | `omhl gate-worktree --branch <nome>` | Decide se a worktree da branch pode ser criada |
 | `omhl hook spec-lock` | Hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de spec congelada |
-| `omhl report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta |
+| `omhl report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |
 | `omhl report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção |
 | `omhl report retro <work-item>` | A retro de um work item, aberto ou fechado |
-| `omhl list --where <campo>=<valor>` | Filtra os nodes por igualdade de campo |
+| `omhl list --where <campo>=<valor>` | Filtra os nodes por igualdade de campo de texto; as regras de recusa estão no [ADR 0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md) |
 | `omhl close <work-item>` | Passa a devolver o campo `retro` (seção 8) |
 
 A interface do agente é a CLI.
 
-**`list --where`.** O filtro `--where campo=valor` repete: todos os pares precisam bater. O valor é texto, e o `omhl` divide no primeiro `=`, então o valor pode conter `=`. Um par sem `=` ou com o campo vazio responde `invalid-arguments` em `/where/<índice>`. Os tetos de pares e de tamanho do valor vêm do núcleo (`where-eq-value-too-long`, por exemplo, para um valor acima de 256 caracteres). Para consultar divergências de um work item:
+**`list`: opção respeitada ou recusada.** O `list` não devolve `{"items":[]}` para um filtro que nunca casaria nada: ele recusa com `invalid-arguments` e uma mensagem que diz a regra, sem repetir o valor ([ADR 0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md)). As regras:
+
+- **`--limit`** de 1 a 200 (o teto da página); `0` e acima de 200 recusam em `/limit`.
+- **`--id-prefix`** é uma sequência de nomes separados por `.`: cada segmento tem de 1 a 63 caracteres, feitos de letras minúsculas, dígitos e hífens, e não começa por hífen, com até 200 caracteres no total (recusa em `/id_prefix`). O prefixo casa por **segmento inteiro**: `premises.cli1` não casa `premises.cli1-b1`. O primeiro segmento precisa ser o namespace de um tipo (`premises`, `work-items`, `checks`; `premise` no singular recusa), e, com `--type`, o namespace daquele tipo.
+- **`--type`** precisa existir no catálogo (`premises` no plural recusa, em `/type`).
+- **`--where campo=valor`** repete: todos os pares precisam bater. O valor é texto, e o `omhl` divide no primeiro `=`, então o valor pode conter `=`. Um par sem `=` ou com o campo vazio responde `invalid-arguments` em `/where/<índice>` ("where must be FIELD=VALUE with a non-empty FIELD"). O campo precisa ser de **texto**: o schema tem `type: "string"`, ou não tem `type` e todo valor do `enum` é string (é o caso de `status`, `kind`, `resolution`, `concern` e `outcome`); `boolean`, `integer`, `array` e `object` não são, então `--where blocking=true` recusa. Um campo repetido com valores diferentes recusa, e essa checagem vem antes da do valor no `enum`: `--where status=open --where status=closed` responde campo repetido, não valor fora do `enum`; o mesmo par repetido segue aceito. Um valor fora do `enum` do campo recusa (`status=confimed`).
+- **Tipos candidatos.** Com `--type`, o único candidato é ele. Sem `--type`, são os tipos que o namespace do `--id-prefix` admite, ou todos os do catálogo. O filtro vale se algum candidato declara **todos** os campos do `--where` como texto e aceita os valores; senão o `omhl` recusa em `/where/<índice>`. Por isso `--where status=open` e `--where kind=missing` funcionam sem `--type`, e `--where title=x --where kind=missing` recusa (nenhum tipo declara os dois).
+- Os tetos de pares (8) e de tamanho do valor (`where-eq-value-too-long`, para um valor acima de 256 caracteres) vêm do núcleo e são conferidos depois das regras acima.
+- **Ordem de conferência.** O primeiro erro vence: sintaxe de cada `--where` (no adapter); `--limit`; sintaxe do `--id-prefix`; sintaxe do `--type`; `--type` no catálogo; namespace do `--id-prefix`; campo repetido com valor diferente; cada `--where` em ordem de índice (campo, texto, valor aceito); por último os tetos do núcleo (8 pares, 256 caracteres).
+
+Um filtro válido pode devolver `[]` de verdade (um `work_item` sem nodes, um `--after-seq` além da cabeça). O `--project-dir`, em qualquer comando, precisa existir: um diretório inexistente recusa com `invalid-project-dir` (saída 1) em vez de subir até o projeto de um ancestral. Para consultar divergências de um work item:
 
 ```bash
 omhl list --type divergence --where work_item=work-items.w1 --where resolution=open
@@ -203,6 +213,7 @@ omhl-gate = "case {{ branch }} in develop|main) exit 0;; esac; omhl gate-worktre
 - O `pre-switch` roda antes de a branch e a worktree existirem num `wt switch -c`. Uma saída não zero aborta, e não sobra branch nem diretório.
 - Num `wt switch -c`, o `{{ branch }}` é o destino. `^`, `-` e `@` chegam resolvidos. `pr:N` chega literal (observado no `wt` 0.70.0, sem apoio na doc), porque o hook roda antes de o `wt` buscar o PR, e o gate o recusa com `prefix-not-allowed`.
 - O `case` garante `wt switch develop` e `wt switch main` mesmo sem o `omhl` no `PATH`. Para qualquer outro nome, sem o `omhl` o `sh` sai com `127` e o `wt` aborta.
+- O hook não passa `--project-dir`, então a recusa de um `--project-dir` inexistente (`invalid-project-dir`, saída 1) não o afeta. Quem chama `omhl gate-worktree --project-dir <caminho>` à mão com um caminho que não existe passa a receber essa recusa, em vez de saída 0 muda.
 - O `omhl` do hook é o do `PATH`. Instale-o fora de qualquer worktree (veja `binary-in-worktree` na seção 5 de [mechanical-gates.md](mechanical-gates.md)), senão um `wt remove` o apaga.
 - O gate só funciona com o `omhl` no `PATH` do `wt`. Sem ele, todo `wt switch` para uma branch que não seja `develop` nem `main` sai com `127` e o `wt` aborta, inclusive `wt switch -c`. Confira com `command -v omhl` antes de rodar `wt config approvals add`.
 - **`wt switch -c` parte da `main`**, a branch padrão, não da `develop`. Para partir da `develop`, passe `--base develop`.

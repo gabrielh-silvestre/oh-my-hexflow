@@ -3,11 +3,16 @@ mod support;
 use std::path::Path;
 use std::process::{Command, Output};
 
+use hexlog::Limits;
 use serde_json::{Value, json};
 use support::child::{Cmd, Output as Child, omhl};
 use support::ext::ExtTree;
 use support::git::{GitRepo, git_in};
-use support::omhl::{decision_data, divergence_wires, divergence_work_item_wires, work_item_data};
+use support::omhl::{
+    FIELD_NOT_TEXT, ID_PREFIX_RULE, LIMIT_RULE, OUTCOME_RULE, TYPE_NOT_DEFINED, WHERE_RULE,
+    decision_data, divergence_wires, divergence_work_item_wires, list_refusal, project_dir_refusal,
+    work_item_data,
+};
 use support::project::Project;
 use tempfile::TempDir;
 
@@ -201,11 +206,11 @@ fn it_should_refuse_a_malformed_id_prefix_from_the_cli() {
         json!({
             "error": {
                 "code": "invalid-arguments",
-                "message": "unknown value",
+                "message": ID_PREFIX_RULE,
                 "details": [{
                     "path": "/id_prefix",
                     "code": "invalid-arguments",
-                    "message": "unknown value",
+                    "message": ID_PREFIX_RULE,
                 }],
             }
         })
@@ -240,6 +245,91 @@ fn it_should_find_the_project_by_the_project_dir_flag() {
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(json_line(&output.stdout)["node"]["data"], data);
+}
+
+// --project-dir
+
+/// Um `omhl` com `--project-dir` apontando para `dir`, o banco na pasta de dados do projeto.
+fn with_project_dir(project: &Project, dir: &Path, args: &[&str]) -> Cmd {
+    let dir = dir.to_str().expect("the path is UTF-8");
+    let mut full = vec!["--project-dir", dir];
+    full.extend(args);
+
+    omhl(&full).xdg(project.xdg())
+}
+
+fn file_in(dir: &Path) -> std::path::PathBuf {
+    let file = dir.join("a-file");
+    std::fs::write(&file, "x").expect("the file is written");
+
+    file
+}
+
+#[test]
+fn it_should_refuse_a_project_dir_that_does_not_exist() {
+    let project = Project::new("acme");
+    let missing = project.dir().join("missing");
+
+    let output = with_project_dir(&project, &missing, &["list"]).run();
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert_eq!(json_line(&output.stderr), project_dir_refusal());
+}
+
+#[test]
+fn it_should_not_write_to_the_ancestor_project_when_the_project_dir_does_not_exist() {
+    let project = Project::new("acme");
+    let missing = project.dir().join("missing");
+    let request = json!({
+        "items": [{ "body": {
+            "kind": "node",
+            "id": "decisions.x",
+            "type": "decision",
+            "data": decision_data("Use WAL", None),
+        } }]
+    });
+
+    let appended = with_project_dir(&project, &missing, &["append"])
+        .stdin(request.to_string())
+        .run();
+
+    assert_eq!(appended.code, Some(1), "stdout: {}", appended.stdout);
+    assert_eq!(json_line(&appended.stderr), project_dir_refusal());
+    assert!(
+        list_ids_of(&project, &[]).is_empty(),
+        "the ancestor project stays empty"
+    );
+}
+
+#[test]
+fn it_should_keep_refusing_a_project_dir_that_is_a_file_as_invalid_marker() {
+    let project = Project::new("acme");
+    let scratch = TempDir::new().expect("scratch directory is created");
+    let file = file_in(scratch.path());
+
+    let output = with_project_dir(&project, &file, &["list"]).run();
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert_eq!(
+        json_line(&output.stderr)["error"]["code"],
+        json!("invalid-marker")
+    );
+}
+
+#[test]
+fn it_should_keep_refusing_a_project_dir_below_a_file_as_invalid_marker() {
+    let project = Project::new("acme");
+    let scratch = TempDir::new().expect("scratch directory is created");
+    let below = file_in(scratch.path()).join("xyz");
+
+    let output = with_project_dir(&project, &below, &["list"]).run();
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert_eq!(
+        json_line(&output.stderr)["error"]["code"],
+        json!("invalid-marker")
+    );
 }
 
 // append, get e render
@@ -692,21 +782,17 @@ fn it_should_return_nothing_when_no_divergence_matches_every_where_flag() {
 fn it_should_accept_eight_where_flags() {
     let project = Project::new("acme");
     seed_divergences(&project);
-    let filters = [
-        "f1=v", "f2=v", "f3=v", "f4=v", "f5=v", "f6=v", "f7=v", "f8=v",
-    ];
+    let filters = ["text=absent"; 8];
 
     let ids = divergence_ids_where(&project, &filters);
 
-    assert!(ids.is_empty(), "no divergence has those fields: {ids:?}");
+    assert!(ids.is_empty(), "no divergence has that text: {ids:?}");
 }
 
 #[test]
 fn it_should_refuse_more_than_eight_where_flags() {
     let project = Project::new("acme");
-    let filters = [
-        "f1=v", "f2=v", "f3=v", "f4=v", "f5=v", "f6=v", "f7=v", "f8=v", "f9=v",
-    ];
+    let filters = ["text=absent"; 9];
 
     let code = where_error_code(&project, &filters);
 
@@ -750,4 +836,141 @@ fn it_should_refuse_a_where_flag_with_an_empty_field() {
     let code = where_error_code(&project, &["=missing"]);
 
     assert_eq!(code, json!("invalid-arguments"));
+}
+
+// list: regras do filtro
+
+fn list_refusal_of(project: &Project, filters: &[&str]) -> Value {
+    let mut args = vec!["list"];
+    args.extend(filters);
+
+    let output = in_project(project, &args).run();
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert_eq!(output.stderr.matches('\n').count(), 1, "one error line");
+
+    json_line(&output.stderr)
+}
+
+fn list_ids_of(project: &Project, filters: &[&str]) -> Vec<String> {
+    let mut args = vec!["list"];
+    args.extend(filters);
+
+    let listed = in_project(project, &args).run();
+
+    assert_eq!(listed.code, Some(0), "stderr: {}", listed.stderr);
+    json_line(&listed.stdout)["items"]
+        .as_array()
+        .expect("items is an array")
+        .iter()
+        .map(|item| item["id"].as_str().expect("the id is text").to_owned())
+        .collect()
+}
+
+#[test]
+fn it_should_refuse_an_id_prefix_with_an_invalid_segment() {
+    let project = Project::new("acme");
+    let segment_too_long = format!("premises.{}", "a".repeat(64));
+    let prefixes = [
+        "",
+        "premises.",
+        ".a",
+        "a..b",
+        "premises.-x",
+        &segment_too_long,
+    ];
+
+    for prefix in prefixes {
+        let refusal = list_refusal_of(&project, &["--id-prefix", prefix]);
+
+        assert_eq!(
+            refusal,
+            list_refusal("/id_prefix", ID_PREFIX_RULE),
+            "{prefix:?}"
+        );
+    }
+}
+
+#[test]
+fn it_should_refuse_a_type_that_is_not_in_the_catalog() {
+    let project = Project::new("acme");
+
+    for type_name in ["nopetype", "premises"] {
+        let refusal = list_refusal_of(&project, &["--type", type_name]);
+
+        assert_eq!(
+            refusal,
+            list_refusal("/type", TYPE_NOT_DEFINED),
+            "{type_name}"
+        );
+    }
+}
+
+#[test]
+fn it_should_list_only_the_items_under_the_id_prefix() {
+    let project = Project::new("acme");
+    seed_divergences(&project);
+
+    let ids = list_ids_of(&project, &["--id-prefix", "divergences"]);
+
+    assert_eq!(ids, ["divergences.d1", "divergences.d2", "divergences.d3"]);
+}
+
+#[test]
+fn it_should_refuse_a_limit_above_the_page_maximum() {
+    let project = Project::new("acme");
+    let above = (Limits::default().page_max + 1).to_string();
+
+    let refusal = list_refusal_of(&project, &["--limit", &above]);
+
+    assert_eq!(refusal, list_refusal("/limit", LIMIT_RULE));
+}
+
+#[test]
+fn it_should_accept_a_limit_of_exactly_200() {
+    let project = Project::new("acme");
+    let max = Limits::default().page_max.to_string();
+
+    let ids = list_ids_of(&project, &["--limit", &max]);
+
+    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
+}
+
+#[test]
+fn it_should_explain_the_where_syntax() {
+    let project = Project::new("acme");
+
+    for filter in ["kind", "=missing"] {
+        let refusal = list_refusal_of(&project, &["--where", filter]);
+
+        assert_eq!(
+            refusal,
+            list_refusal("/where/0", WHERE_RULE),
+            "filter {filter}"
+        );
+    }
+}
+
+#[test]
+fn it_should_explain_the_outcome_values() {
+    let project = Project::new("acme");
+    open_work_item(&project);
+
+    let output = in_project(&project, &["attest", RUN_TESTS, W1, "--outcome", "nope"]).run();
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert_eq!(
+        json_line(&output.stderr),
+        list_refusal("/outcome", OUTCOME_RULE)
+    );
+}
+
+#[test]
+fn it_should_refuse_where_on_a_non_text_field() {
+    let project = Project::new("acme");
+
+    let refusal = list_refusal_of(&project, &["--type", "check", "--where", "blocking=true"]);
+
+    assert_eq!(refusal, list_refusal("/where/0", FIELD_NOT_TEXT));
 }

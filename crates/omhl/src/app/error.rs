@@ -161,6 +161,13 @@ impl AppError {
         )
     }
 
+    pub(crate) fn project_dir_missing() -> AppError {
+        AppError::plain(
+            "invalid-project-dir",
+            "the project directory does not exist",
+        )
+    }
+
     pub(crate) fn no_marker() -> AppError {
         AppError::plain(
             "no-marker",
