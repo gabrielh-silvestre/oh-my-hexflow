@@ -1,9 +1,9 @@
-use hexlog::{FieldName, ListFilter, Scalar, SemanticId, TypeDef, TypeName};
+use hexlog::{Catalog, FieldName, ListFilter, Scalar, SemanticId, TypeDef, TypeName};
 use serde_json::Value;
 
 use super::engine::parse_at;
 use super::error::AppError;
-use crate::graphs::{namespace_of, type_defs};
+use crate::graphs::namespace_of;
 
 /// Teto de um segmento de `SemanticId` no `hexlog` (`hexlog/src/ids.rs`, privado); a mensagem do prefixo o repete.
 const ID_SEGMENT_MAX: usize = 63;
@@ -19,8 +19,11 @@ pub fn is_text_field(schema: &Value) -> bool {
     }
 }
 
-/// Recusa o filtro que nunca casa nada, na ordem de 2.2.1 do plano; o primeiro erro vence.
+/// Recusa o filtro que nunca casa nada; o primeiro erro vence. A ordem: sintaxe do `--id-prefix`,
+/// sintaxe do `--type`, `--type` no catálogo, namespace do `--id-prefix`, campo repetido com valor
+/// diferente e, por fim, cada `--where` em ordem de índice (campo, texto, valor aceito).
 pub(super) fn validate_list_filter(
+    catalog: &Catalog,
     type_name: Option<&str>,
     id_prefix: Option<&str>,
     where_eq: &[(String, String)],
@@ -31,16 +34,16 @@ pub(super) fn validate_list_filter(
     let type_name = type_name
         .map(|name| parse_at(TypeName::parse, name, "/type"))
         .transpose()?;
-    let defs = type_defs()?;
+    let defs: Vec<&TypeDef> = catalog.type_defs().collect();
     let typed = type_name
         .as_ref()
-        .map(|name| find_type(&defs, name))
+        .map(|name| find_type(catalog, name))
         .transpose()?;
     if let Some(prefix) = id_prefix {
         check_prefix_namespace(&defs, typed, prefix)?;
     }
-    let pairs = check_where_fields(&defs, typed, id_prefix, where_eq)?;
     check_repeated_fields(where_eq)?;
+    let pairs = check_where_fields(&defs, typed, id_prefix, where_eq)?;
 
     Ok(ListFilter {
         type_name,
@@ -59,14 +62,14 @@ fn check_id_prefix_syntax(prefix: &str) -> Result<(), AppError> {
     Err(AppError::invalid_arguments(
         "/id_prefix",
         &format!(
-            "id prefix must be dot-separated names of up to {ID_SEGMENT_MAX} characters, each starting with a letter or a digit, up to {ID_PREFIX_MAX} characters in total"
+            "id prefix must be dot-separated names of 1 to {ID_SEGMENT_MAX} characters, each made of lowercase letters, digits and hyphens and not starting with a hyphen, up to {ID_PREFIX_MAX} characters in total"
         ),
     ))
 }
 
-fn find_type<'a>(defs: &'a [TypeDef], name: &TypeName) -> Result<&'a TypeDef, AppError> {
-    defs.iter()
-        .find(|def| def.name == *name)
+fn find_type<'a>(catalog: &'a Catalog, name: &TypeName) -> Result<&'a TypeDef, AppError> {
+    catalog
+        .type_def(name)
         .ok_or_else(|| AppError::invalid_arguments("/type", "type is not defined in the catalog"))
 }
 
@@ -79,7 +82,7 @@ fn in_namespace(def: &TypeDef, namespace: &str) -> bool {
 }
 
 fn check_prefix_namespace(
-    defs: &[TypeDef],
+    defs: &[&TypeDef],
     typed: Option<&TypeDef>,
     prefix: &str,
 ) -> Result<(), AppError> {
@@ -116,7 +119,7 @@ fn declares_text(defs: &[&TypeDef], field: &str) -> bool {
 
 /// Reduz o conjunto de tipos candidatos a cada `--where`; esvaziá-lo recusa o filtro.
 fn check_where_fields(
-    defs: &[TypeDef],
+    defs: &[&TypeDef],
     typed: Option<&TypeDef>,
     id_prefix: Option<&str>,
     where_eq: &[(String, String)],
@@ -126,10 +129,11 @@ fn check_where_fields(
         (None, Some(prefix)) => {
             let namespace = first_segment(prefix);
             defs.iter()
+                .copied()
                 .filter(|def| in_namespace(def, namespace))
                 .collect()
         }
-        (None, None) => defs.iter().collect(),
+        (None, None) => defs.to_vec(),
     };
     let mut candidates = initial.clone();
     let mut pairs = Vec::with_capacity(where_eq.len());

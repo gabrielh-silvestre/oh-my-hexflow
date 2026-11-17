@@ -54,13 +54,18 @@ const SPEC_GRAMMAR_LITERALS: &[&str] = &["wi-", "parte-", "emenda-"];
 const SPEC_GRAMMAR_MODULE: &str = "workflow/names.rs";
 const REMOVED_PORT_TERMS: &[&str] = &["mcp", "tool_call", "json-rpc"];
 const NUMERIC_CUT_NEEDLES: &[&str] = &[".min(", ".max(", ".clamp(", ".take(", "saturating_"];
-/// Cortes numéricos de `src/app` por arquivo, os únicos justificados; um corte novo entra aqui junto
-/// da sua entrada no inventário do plano (2.2 ou 2.4), nunca sozinho.
+/// Cortes numéricos de `src/app` por arquivo, os únicos justificados; um corte novo entra aqui com a
+/// razão ao lado e, se for um caso mantido, com a linha em "Avaliados e mantidos" do ADR 0007, nunca sozinho.
 const NUMERIC_CUTS_IN_APP: &[(&str, usize)] = &[
+    // janela da cauda: saturating_sub(wanted) devolve menos linhas que o pedido; --tail acima de 500 já recusa (I1)
     ("byproduct_tail.rs", 1),
+    // output_tail do resumo da falha (20 linhas de 500 caracteres); a saída inteira fica no byproduct
     ("check_run.rs", 2),
+    // listas de erros cortadas em ISSUES_MAX, sempre com omitted; o corte é avisado
     ("error.rs", 4),
+    // lê 1 byte além de INPUT_MAX_BYTES para recusar a entrada grande demais; sentinela de recusa, não corte
     ("input.rs", 1),
+    // lotes de BATCH_SIZE; nada é descartado, o resto vai no lote seguinte
     ("load.rs", 1),
 ];
 const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
@@ -390,7 +395,7 @@ fn numeric_cut_mismatches(dir: &Path, allowed: &[(&str, usize)]) -> Vec<String> 
             .map_or(0, |(_, count)| *count);
         if found > expected {
             failures.push(format!(
-                "{relative}: {found} numeric cut(s), the closed list allows {expected}; justify the new cut in the plan inventory (2.2 or 2.4) before raising the list"
+                "{relative}: {found} numeric cut(s), the closed list allows {expected}; refuse the option or report the cut, or record the kept case in docs/adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md (\"Avaliados e mantidos\") and a one-line reason beside the entry, before raising the list"
             ));
         } else if found < expected {
             failures.push(format!(
@@ -1497,26 +1502,67 @@ fn it_should_not_grow_the_numeric_cuts_in_src_app_without_an_inventory_entry() {
         &src_dir().join("app"),
         NUMERIC_CUTS_IN_APP,
     ));
-    failures.extend(prove_extra_numeric_cut_is_flagged());
+    failures.extend(prove_numeric_cut_list_is_enforced());
+    failures.extend(prove_every_numeric_cut_needle_is_counted());
 
     assert_no_failures(&failures);
 }
 
-/// A lista exata passa; um corte além dela reprova.
-fn prove_extra_numeric_cut_is_flagged() -> Vec<String> {
+/// Um diretório sintético com um único fonte `cut.rs`.
+fn synthetic_cut_dir(source: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("temporary directory");
-    fs::write(
-        dir.path().join("cut.rs"),
-        "fn f() { 1u8.min(2); 3u8.max(4); }\n",
-    )
-    .expect("write the synthetic source");
+    fs::write(dir.path().join("cut.rs"), source).expect("write the synthetic source");
+
+    dir
+}
+
+/// A lista exata passa; um corte além dela, um a menos e um em arquivo fora da lista reprovam.
+fn prove_numeric_cut_list_is_enforced() -> Vec<String> {
+    let two_cuts = synthetic_cut_dir("fn f() { 1u8.min(2); 3u8.max(4); }\n");
+    let one_cut = synthetic_cut_dir("fn f() { 1u8.min(2); }\n");
     let mut failures = Vec::new();
 
-    if !numeric_cut_mismatches(dir.path(), &[("cut.rs", 2)]).is_empty() {
+    if !numeric_cut_mismatches(two_cuts.path(), &[("cut.rs", 2)]).is_empty() {
         failures.push("synthetic directory at its allowed count was flagged".to_owned());
     }
-    if numeric_cut_mismatches(dir.path(), &[("cut.rs", 1)]).is_empty() {
+    if numeric_cut_mismatches(two_cuts.path(), &[("cut.rs", 1)]).is_empty() {
         failures.push("synthetic directory with an extra numeric cut was not flagged".to_owned());
+    }
+    if numeric_cut_mismatches(two_cuts.path(), &[]).is_empty() {
+        failures.push("numeric cut in a file outside the closed list was not flagged".to_owned());
+    }
+    let below = numeric_cut_mismatches(one_cut.path(), &[("cut.rs", 2)]);
+    if !below
+        .iter()
+        .any(|failure| failure.contains("lower the list"))
+    {
+        failures.push("synthetic directory below its allowed count was not flagged".to_owned());
+    }
+
+    failures
+}
+
+/// Cada agulha de `NUMERIC_CUT_NEEDLES` tem um trecho que a conta uma vez; agulha nova sem trecho reprova.
+fn prove_every_numeric_cut_needle_is_counted() -> Vec<String> {
+    let snippets: [(&str, &str); 5] = [
+        (".min(", "fn f() { 5u8.min(2); }"),
+        (".max(", "fn f() { 5u8.max(2); }"),
+        (".clamp(", "fn f() { 5u8.clamp(1, 2); }"),
+        (".take(", "fn f(v: Vec<u8>) { v.into_iter().take(3); }"),
+        ("saturating_", "fn f() { 5u8.saturating_sub(2); }"),
+    ];
+    let mut failures = Vec::new();
+
+    let needles: Vec<&str> = snippets.iter().map(|(needle, _)| *needle).collect();
+    if needles != NUMERIC_CUT_NEEDLES {
+        failures.push(format!(
+            "the needle table {needles:?} differs from NUMERIC_CUT_NEEDLES {NUMERIC_CUT_NEEDLES:?}"
+        ));
+    }
+    for (needle, snippet) in snippets {
+        if numeric_cut_refs(snippet) != Ok(1) {
+            failures.push(format!("the snippet for {needle:?} was not counted once"));
+        }
     }
 
     failures

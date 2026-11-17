@@ -4,6 +4,7 @@ use ::omhl::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_b
 use serde_json::{Value, json};
 use support::child::{Output, omhl};
 use support::ext::ExtTree;
+use support::git::commit_marker;
 use support::omhl::decision_data;
 use support::project::Project;
 
@@ -712,6 +713,19 @@ fn it_should_show_only_the_gaps_of_the_work_item_given_to_the_filter() {
     let report = report_with(&project, &["--work-item", W2]);
 
     assert_eq!(gap_ids(&report), [OTHER_GAP]);
+}
+
+#[test]
+fn it_should_report_the_gaps_of_a_closed_work_item() {
+    let project = Project::new("acme");
+    seed(&project, vec![gap(GAP, W1)], vec![]);
+    commit_marker(project.dir());
+    let closed = in_project(&project, &["close", W1]);
+
+    let report = report_with(&project, &["--work-item", W1]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(gap_ids(&report), [GAP]);
 }
 
 #[test]

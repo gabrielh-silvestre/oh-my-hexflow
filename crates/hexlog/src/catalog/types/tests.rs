@@ -101,3 +101,22 @@ fn it_should_expose_requires_snapshot_def_hash_and_acyclic_through_the_definitio
     assert_eq!(single.err().map(|found| found.len()), Some(1));
     assert_eq!(overflowed.err().map(|found| found.len()), Some(51));
 }
+
+#[test]
+fn it_should_iterate_over_every_type_definition_of_the_catalog() {
+    let types = ["alpha", "beta", "gamma"]
+        .into_iter()
+        .map(|name| TypeDef {
+            name: type_name(name),
+            schema: json!({"type": "object"}),
+            requires_snapshot: false,
+            equivalent: None,
+        })
+        .collect();
+    let catalog = Catalog::new(types, Vec::new()).unwrap();
+
+    let mut names: Vec<&str> = catalog.type_defs().map(|def| def.name.as_str()).collect();
+    names.sort_unstable();
+
+    assert_eq!(names, ["alpha", "beta", "gamma"]);
+}

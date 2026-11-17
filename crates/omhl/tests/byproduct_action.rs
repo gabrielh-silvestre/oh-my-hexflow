@@ -34,6 +34,8 @@ const BSMALL_SHA: &str = "a834c640cc27439d8a70b00733ebf8165a1a9d5aac5ccb6a48cb33
 const BOLD_SHA: &str = "a70000123a86ac68ca89f9d24c68274450d0219382a369353d8125183681fa39";
 const BWINDOW_SHA: &str = "246f6399fcbb83c92c027d999aec980cae16c2e6f0a828a3161844f2f6ccf515";
 const BNEW_SHA: &str = "ee08c8b2e66a380ea0f78adb2f10ca49ed60f588af8dade87cd957e9d0c89feb";
+const BTWOLONG_SHA: &str = "8e42172b4b8e767a12b5b636416fe8334fe22f234130d2ac62348d95a353fe3b";
+const BMULTIBYTE_SHA: &str = "b89360b3f394ce566fe51579db3e5ff44f551dff5314abdbfbf2a1069edcad08";
 
 // Apoio
 
@@ -316,6 +318,33 @@ fn it_should_count_only_the_returned_lines_that_were_truncated() {
     let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "2"]);
 
     assert_eq!(success(&output)["truncated_lines"], json!(1));
+}
+
+#[test]
+fn it_should_count_every_truncated_line_in_the_window() {
+    let fixture = Fixture::new();
+    let stdout = format!("{}\n{}\n", "a".repeat(2500), "b".repeat(2500));
+    let blob = fixture.put_blob(&stdout, "", BTWOLONG_SHA);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "2"]);
+
+    let result = success(&output);
+    assert_eq!(result["truncated_lines"], json!(2));
+    assert_eq!(lines_of(&result), ["a".repeat(2000), "b".repeat(2000)]);
+}
+
+#[test]
+fn it_should_cut_a_multibyte_line_at_a_character_boundary() {
+    let fixture = Fixture::new();
+    let blob = fixture.put_blob(&format!("{}\n", "é".repeat(2001)), "", BMULTIBYTE_SHA);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "1"]);
+
+    let result = success(&output);
+    assert_eq!(lines_of(&result), ["é".repeat(2000)]);
+    assert_eq!(result["truncated_lines"], json!(1));
 }
 
 #[test]

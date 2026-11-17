@@ -9,10 +9,8 @@ use support::child::{Cmd, Output as Child, omhl};
 use support::ext::ExtTree;
 use support::git::{GitRepo, git_in};
 use support::omhl::{
-    DIVERGENCE_TEXT, FIELD_NOT_TEXT, FIELD_NOT_TEXT_ANY, FIELD_REPEATED, FIELD_UNDECLARED,
-    ID_PREFIX_RULE, LIMIT_RULE, NO_TYPE_DECLARES_ALL, OUTCOME_RULE, PREFIX_NAMESPACE_ANY,
-    PREFIX_NAMESPACE_TYPE, TYPE_NOT_DEFINED, VALUE_OUTSIDE_ENUM, WHERE_RULE, decision_data,
-    divergence_wires, divergence_work_item_wires, list_refusal, project_dir_refusal,
+    FIELD_NOT_TEXT, ID_PREFIX_RULE, LIMIT_RULE, OUTCOME_RULE, TYPE_NOT_DEFINED, WHERE_RULE,
+    decision_data, divergence_wires, divergence_work_item_wires, list_refusal, project_dir_refusal,
     work_item_data,
 };
 use support::project::Project;
@@ -870,14 +868,6 @@ fn list_ids_of(project: &Project, filters: &[&str]) -> Vec<String> {
         .collect()
 }
 
-/// `premises` seguido de segmentos de `a` com os tamanhos dados.
-fn premises_prefix(segments: &[usize]) -> String {
-    let mut parts = vec!["premises".to_owned()];
-    parts.extend(segments.iter().map(|size| "a".repeat(*size)));
-
-    parts.join(".")
-}
-
 #[test]
 fn it_should_refuse_an_id_prefix_with_an_invalid_segment() {
     let project = Project::new("acme");
@@ -903,66 +893,6 @@ fn it_should_refuse_an_id_prefix_with_an_invalid_segment() {
 }
 
 #[test]
-fn it_should_accept_an_id_prefix_of_one_namespace() {
-    let project = Project::new("acme");
-
-    let ids = list_ids_of(&project, &["--id-prefix", "premises"]);
-
-    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
-}
-
-#[test]
-fn it_should_accept_an_id_prefix_with_a_hyphenated_segment() {
-    let project = Project::new("acme");
-
-    let ids = list_ids_of(&project, &["--id-prefix", "premises.cli1-b1"]);
-
-    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
-}
-
-#[test]
-fn it_should_accept_an_id_prefix_segment_of_63_characters() {
-    let project = Project::new("acme");
-    let prefix = premises_prefix(&[63]);
-
-    let ids = list_ids_of(&project, &["--id-prefix", &prefix]);
-
-    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
-}
-
-#[test]
-fn it_should_refuse_an_id_prefix_segment_of_64_characters() {
-    let project = Project::new("acme");
-    let prefix = premises_prefix(&[64]);
-
-    let refusal = list_refusal_of(&project, &["--id-prefix", &prefix]);
-
-    assert_eq!(refusal, list_refusal("/id_prefix", ID_PREFIX_RULE));
-}
-
-#[test]
-fn it_should_accept_an_id_prefix_of_200_characters() {
-    let project = Project::new("acme");
-    let prefix = premises_prefix(&[63, 63, 63]);
-
-    let ids = list_ids_of(&project, &["--id-prefix", &prefix]);
-
-    assert_eq!(prefix.len(), 200);
-    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
-}
-
-#[test]
-fn it_should_refuse_an_id_prefix_of_201_characters() {
-    let project = Project::new("acme");
-    let prefix = premises_prefix(&[63, 63, 62, 1]);
-
-    let refusal = list_refusal_of(&project, &["--id-prefix", &prefix]);
-
-    assert_eq!(prefix.len(), 201);
-    assert_eq!(refusal, list_refusal("/id_prefix", ID_PREFIX_RULE));
-}
-
-#[test]
 fn it_should_refuse_a_type_that_is_not_in_the_catalog() {
     let project = Project::new("acme");
 
@@ -978,51 +908,13 @@ fn it_should_refuse_a_type_that_is_not_in_the_catalog() {
 }
 
 #[test]
-fn it_should_refuse_an_id_prefix_outside_every_namespace() {
+fn it_should_list_only_the_items_under_the_id_prefix() {
     let project = Project::new("acme");
+    seed_divergences(&project);
 
-    for prefix in ["premise", "premis"] {
-        let refusal = list_refusal_of(&project, &["--id-prefix", prefix]);
+    let ids = list_ids_of(&project, &["--id-prefix", "divergences"]);
 
-        assert_eq!(
-            refusal,
-            list_refusal("/id_prefix", PREFIX_NAMESPACE_ANY),
-            "{prefix}"
-        );
-    }
-}
-
-#[test]
-fn it_should_refuse_an_id_prefix_outside_the_namespace_of_the_type() {
-    let project = Project::new("acme");
-
-    let refusal = list_refusal_of(&project, &["--type", "premise", "--id-prefix", "decisions"]);
-
-    assert_eq!(refusal, list_refusal("/id_prefix", PREFIX_NAMESPACE_TYPE));
-}
-
-#[test]
-fn it_should_accept_an_id_prefix_inside_the_namespace_of_the_type() {
-    let project = Project::new("acme");
-
-    let ids = list_ids_of(
-        &project,
-        &["--type", "premise", "--id-prefix", "premises.cli1"],
-    );
-
-    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
-}
-
-#[test]
-fn it_should_accept_the_shared_work_items_namespace_for_a_pull_request() {
-    let project = Project::new("acme");
-
-    let ids = list_ids_of(
-        &project,
-        &["--type", "pull-request", "--id-prefix", "work-items"],
-    );
-
-    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
+    assert_eq!(ids, ["divergences.d1", "divergences.d2", "divergences.d3"]);
 }
 
 #[test]
@@ -1081,227 +973,4 @@ fn it_should_refuse_where_on_a_non_text_field() {
     let refusal = list_refusal_of(&project, &["--type", "check", "--where", "blocking=true"]);
 
     assert_eq!(refusal, list_refusal("/where/0", FIELD_NOT_TEXT));
-}
-
-#[test]
-fn it_should_refuse_where_on_an_undeclared_field() {
-    let project = Project::new("acme");
-
-    let refusal = list_refusal_of(&project, &["--type", "divergence", "--where", "nope=x"]);
-
-    assert_eq!(refusal, list_refusal("/where/0", FIELD_UNDECLARED));
-}
-
-#[test]
-fn it_should_refuse_where_with_a_value_outside_the_enum() {
-    let project = Project::new("acme");
-    let cases = [("premise", "status=confimed"), ("check", "concern=nope")];
-
-    for (type_name, filter) in cases {
-        let refusal = list_refusal_of(&project, &["--type", type_name, "--where", filter]);
-
-        assert_eq!(
-            refusal,
-            list_refusal("/where/0", VALUE_OUTSIDE_ENUM),
-            "{type_name} {filter}"
-        );
-    }
-}
-
-#[test]
-fn it_should_accept_where_on_an_enum_value_of_a_premise() {
-    let project = Project::new("acme");
-
-    let ids = list_ids_of(
-        &project,
-        &["--type", "premise", "--where", "status=confirmed"],
-    );
-
-    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
-}
-
-#[test]
-fn it_should_accept_where_on_an_enum_value_of_a_check() {
-    let project = Project::new("acme");
-
-    let ids = list_ids_of(&project, &["--type", "check", "--where", "concern=test"]);
-
-    assert!(ids.is_empty(), "nothing is stored: {ids:?}");
-}
-
-#[test]
-fn it_should_accept_where_on_the_text_of_a_divergence() {
-    let project = Project::new("acme");
-    seed_divergences(&project);
-    let filter = format!("text={DIVERGENCE_TEXT}");
-
-    let ids = divergence_ids_where(&project, &[&filter]);
-
-    assert_eq!(ids, ["divergences.d1", "divergences.d2", "divergences.d3"]);
-}
-
-#[test]
-fn it_should_refuse_a_repeated_where_field_with_different_values() {
-    let project = Project::new("acme");
-    let typed = [
-        "--type",
-        "premise",
-        "--where",
-        "status=assumed",
-        "--where",
-        "status=confirmed",
-    ];
-    let untyped = ["--where", "status=assumed", "--where", "status=confirmed"];
-
-    for filters in [&typed[..], &untyped[..]] {
-        let refusal = list_refusal_of(&project, filters);
-
-        assert_eq!(
-            refusal,
-            list_refusal("/where/1", FIELD_REPEATED),
-            "{filters:?}"
-        );
-    }
-}
-
-#[test]
-fn it_should_accept_the_same_where_pair_twice() {
-    let project = Project::new("acme");
-    seed_divergences(&project);
-
-    let ids = divergence_ids_where(&project, &["kind=missing", "kind=missing"]);
-
-    assert_eq!(ids, ["divergences.d1", "divergences.d2"]);
-}
-
-#[test]
-fn it_should_refuse_where_without_type_on_an_unknown_field() {
-    let project = Project::new("acme");
-
-    let refusal = list_refusal_of(&project, &["--where", "blokcing=true"]);
-
-    assert_eq!(refusal, list_refusal("/where/0", FIELD_NOT_TEXT_ANY));
-}
-
-#[test]
-fn it_should_refuse_where_without_type_on_a_field_that_is_never_text() {
-    let project = Project::new("acme");
-
-    let refusal = list_refusal_of(&project, &["--where", "blocking=true"]);
-
-    assert_eq!(refusal, list_refusal("/where/0", FIELD_NOT_TEXT_ANY));
-}
-
-#[test]
-fn it_should_refuse_where_when_the_id_prefix_type_lacks_the_field() {
-    let project = Project::new("acme");
-    let cases = [("checks", "kind=missing"), ("work-items", "kind=x")];
-
-    for (prefix, filter) in cases {
-        let refusal = list_refusal_of(&project, &["--id-prefix", prefix, "--where", filter]);
-
-        assert_eq!(
-            refusal,
-            list_refusal("/where/0", FIELD_NOT_TEXT_ANY),
-            "{prefix}"
-        );
-    }
-}
-
-#[test]
-fn it_should_refuse_where_fields_that_no_single_type_declares() {
-    let project = Project::new("acme");
-    let cases = [
-        ["--where", "title=x", "--where", "kind=missing"],
-        ["--where", "outcome=passed", "--where", "status=open"],
-    ];
-
-    for filters in cases {
-        let refusal = list_refusal_of(&project, &filters);
-
-        assert_eq!(
-            refusal,
-            list_refusal("/where/1", NO_TYPE_DECLARES_ALL),
-            "{filters:?}"
-        );
-    }
-}
-
-#[test]
-fn it_should_refuse_where_without_type_with_a_value_outside_every_enum() {
-    let project = Project::new("acme");
-
-    let refusal = list_refusal_of(&project, &["--where", "status=confimed"]);
-
-    assert_eq!(refusal, list_refusal("/where/0", VALUE_OUTSIDE_ENUM));
-}
-
-#[test]
-fn it_should_accept_where_without_type_on_a_text_field() {
-    let project = Project::new("acme");
-    seed_divergences(&project);
-
-    let ids = list_ids_of(&project, &["--where", "work_item=work-items.w2"]);
-
-    assert_eq!(ids, ["divergences.d2", "divergences.d3"]);
-}
-
-#[test]
-fn it_should_accept_where_without_type_on_a_status_enum_that_has_no_type() {
-    let project = Project::new("acme");
-    seed_divergences(&project);
-
-    let ids = list_ids_of(&project, &["--where", "status=open"]);
-
-    assert_eq!(ids, ["work-items.w1", "work-items.w2"]);
-}
-
-#[test]
-fn it_should_accept_where_without_type_on_a_kind_enum_that_has_no_type() {
-    let project = Project::new("acme");
-    seed_divergences(&project);
-
-    let ids = list_ids_of(&project, &["--where", "kind=missing"]);
-
-    assert_eq!(ids, ["divergences.d1", "divergences.d2"]);
-}
-
-#[test]
-fn it_should_accept_where_fields_that_the_premise_type_declares_together() {
-    let project = Project::new("acme");
-
-    let ids = list_ids_of(
-        &project,
-        &[
-            "--where",
-            "work_item=work-items.w1",
-            "--where",
-            "status=confirmed",
-        ],
-    );
-
-    assert!(ids.is_empty(), "no premise is stored: {ids:?}");
-}
-
-#[test]
-fn it_should_accept_where_fields_that_the_work_item_types_declare_together() {
-    let project = Project::new("acme");
-    seed_divergences(&project);
-
-    let ids = list_ids_of(&project, &["--where", "title=t", "--where", "status=open"]);
-
-    assert_eq!(ids, ["work-items.w1", "work-items.w2"]);
-}
-
-#[test]
-fn it_should_accept_where_on_an_id_prefix_that_fixes_the_candidate_types() {
-    let project = Project::new("acme");
-    seed_divergences(&project);
-
-    let ids = list_ids_of(
-        &project,
-        &["--id-prefix", "work-items", "--where", "status=open"],
-    );
-
-    assert_eq!(ids, ["work-items.w1", "work-items.w2"]);
 }

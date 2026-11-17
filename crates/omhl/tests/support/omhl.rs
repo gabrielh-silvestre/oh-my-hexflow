@@ -245,7 +245,7 @@ pub fn seed_pull_request(omhl: &mut Omhl<'_>) -> RecordId {
 
 // Mensagens das recusas do `list` (a regra, nunca o valor recebido)
 
-pub const ID_PREFIX_RULE: &str = "id prefix must be dot-separated names of up to 63 characters, each starting with a letter or a digit, up to 200 characters in total";
+pub const ID_PREFIX_RULE: &str = "id prefix must be dot-separated names of 1 to 63 characters, each made of lowercase letters, digits and hyphens and not starting with a hyphen, up to 200 characters in total";
 pub const PREFIX_NAMESPACE_ANY: &str = "id prefix must start with the namespace of a type";
 pub const PREFIX_NAMESPACE_TYPE: &str = "id prefix is outside the namespace of the type";
 pub const TYPE_NOT_DEFINED: &str = "type is not defined in the catalog";

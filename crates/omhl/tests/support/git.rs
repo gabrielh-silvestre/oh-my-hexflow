@@ -29,6 +29,22 @@ pub fn git_in(dir: &Path, args: &[&str]) -> Output {
         .expect("the git executable must be on the PATH to run these tests")
 }
 
+/// Transforma a pasta de um projeto de teste num repositório git limpo, com o marcador commitado
+/// (o que o `close` exige).
+pub fn commit_marker(dir: &Path) {
+    let steps: [&[&str]; 5] = [
+        &["init", "-b", "main"],
+        &["config", "user.name", "Test Author"],
+        &["config", "user.email", "author@example.com"],
+        &["add", "-A"],
+        &["commit", "-m", "add marker"],
+    ];
+    for args in steps {
+        let output = git_in(dir, args);
+        assert!(output.status.success(), "git {args:?} failed");
+    }
+}
+
 /// O `Command` do `git` com o ambiente dos hooks de teste: como `git_in` (toda `GIT_*` herdada sai,
 /// config global e de sistema neutras, autor e committer fixos), mais `XDG_DATA_HOME` e `HOME`
 /// explícitos, `-C dir`, stdin nulo, stdout e stderr em cano. Não roda: quem chama faz `spawn` ou

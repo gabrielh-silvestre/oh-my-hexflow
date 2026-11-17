@@ -227,6 +227,11 @@ impl Catalog {
         self.type_entry(name).map(|entry| &entry.def)
     }
 
+    /// Todos os tipos do catálogo, em ordem não especificada.
+    pub fn type_defs(&self) -> impl Iterator<Item = &TypeDef> {
+        self.types.values().map(|entry| &entry.def)
+    }
+
     pub fn relation_type_def(&self, name: &RelationTypeName) -> Option<&RelationTypeDef> {
         self.relation_entry(name).map(|entry| &entry.def)
     }

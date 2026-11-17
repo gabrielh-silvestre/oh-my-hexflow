@@ -128,7 +128,7 @@ impl Engine<'_> {
                 &format!("limit must be between 1 and {page_max}"),
             ));
         }
-        let filter = validate_list_filter(type_name, id_prefix, where_eq)?;
+        let filter = validate_list_filter(self.omhl.catalog(), type_name, id_prefix, where_eq)?;
         let request = PageRequest {
             limit: limit.unwrap_or(DEFAULT_PAGE_LIMIT),
             after_seq,

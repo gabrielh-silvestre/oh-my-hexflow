@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use support::busy::{AttemptClock, with_write_lock, with_write_lock_until_attempt};
 use support::omhl::{
     DIVERGENCE_TEXT, FIELD_NOT_TEXT, FIELD_NOT_TEXT_ANY, FIELD_REPEATED, FIELD_UNDECLARED,
-    ID_PREFIX_RULE, NO_TYPE_DECLARES_ALL, PREFIX_NAMESPACE_ANY, PREFIX_NAMESPACE_TYPE,
+    ID_PREFIX_RULE, LIMIT_RULE, NO_TYPE_DECLARES_ALL, PREFIX_NAMESPACE_ANY, PREFIX_NAMESPACE_TYPE,
     TYPE_NOT_DEFINED, VALUE_OUTSIDE_ENUM, acme, check_data, decision_data, divergence_wires,
     divergence_work_item_wires, list_refusal, premise_data, work_item_data,
 };
@@ -808,6 +808,8 @@ fn it_should_refuse_an_id_prefix_with_an_invalid_segment() {
         ".a",
         "a..b",
         "premises.-x",
+        "Premises.x",
+        "premises.a_b",
         &segment_too_long,
     ];
 
@@ -977,6 +979,20 @@ fn it_should_refuse_where_on_an_undeclared_field() {
 }
 
 #[test]
+fn it_should_refuse_where_on_a_field_name_that_is_not_a_valid_name() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+
+    let error = refuse(
+        &mut app,
+        &filter_action(Some("divergence"), None, &[("Bad Field", "x")]),
+    );
+
+    assert_eq!(error.code(), "INVALID_INPUT");
+    assert_eq!(detail_paths(&error), vec!["/where/0"]);
+}
+
+#[test]
 fn it_should_refuse_where_with_a_value_outside_the_enum() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();
@@ -1049,6 +1065,39 @@ fn it_should_refuse_a_repeated_where_field_with_different_values() {
             "{type_name:?}"
         );
     }
+}
+
+#[test]
+fn it_should_refuse_a_repeated_text_field_without_a_type() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let pairs = [("title", "a"), ("title", "b")];
+
+    let refusal = filter_refusal(&mut app, None, None, &pairs);
+
+    assert_eq!(refusal, list_refusal("/where/1", FIELD_REPEATED));
+}
+
+#[test]
+fn it_should_refuse_a_repeated_status_without_a_type_even_when_each_value_fits_some_type() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let pairs = [("status", "open"), ("status", "confirmed")];
+
+    let refusal = filter_refusal(&mut app, None, None, &pairs);
+
+    assert_eq!(refusal, list_refusal("/where/1", FIELD_REPEATED));
+}
+
+#[test]
+fn it_should_refuse_a_repeated_status_of_a_work_item_even_when_one_value_is_outside_its_enum() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let pairs = [("status", "open"), ("status", "confirmed")];
+
+    let refusal = filter_refusal(&mut app, Some("work-item"), None, &pairs);
+
+    assert_eq!(refusal, list_refusal("/where/1", FIELD_REPEATED));
 }
 
 #[test]
@@ -1196,6 +1245,107 @@ fn it_should_accept_where_on_an_id_prefix_that_fixes_the_candidate_types() {
     let ids = filter_ids(&mut app, None, Some("work-items"), &[("status", "open")]);
 
     assert_eq!(ids, [W1, W2]);
+}
+
+fn paged(action: Action, limit: Option<u32>, after_seq: Option<u64>) -> Action {
+    let Action::List {
+        type_name,
+        id_prefix,
+        where_eq,
+        ..
+    } = action
+    else {
+        unreachable!("filter_action builds a list")
+    };
+
+    Action::List {
+        type_name,
+        id_prefix,
+        limit,
+        after_seq,
+        where_eq,
+    }
+}
+
+#[test]
+fn it_should_refuse_a_limit_of_zero() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let action = paged(filter_action(None, None, &[]), Some(0), None);
+
+    let refusal = refuse(&mut app, &action).to_json();
+
+    assert_eq!(refusal, list_refusal("/limit", LIMIT_RULE));
+}
+
+#[test]
+fn it_should_refuse_a_limit_above_the_page_maximum() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let action = paged(filter_action(None, None, &[]), Some(201), None);
+
+    let refusal = refuse(&mut app, &action).to_json();
+
+    assert_eq!(refusal, list_refusal("/limit", LIMIT_RULE));
+}
+
+#[test]
+fn it_should_continue_a_filtered_list_after_the_given_seq() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    seed_divergences(&mut app);
+    let pairs = [("kind", "missing")];
+    let first = run(
+        &mut app,
+        &paged(
+            filter_action(Some("divergence"), None, &pairs),
+            Some(1),
+            None,
+        ),
+    );
+    let after = first["next_after_seq"].as_u64();
+    let action = paged(
+        filter_action(Some("divergence"), None, &pairs),
+        Some(1),
+        after,
+    );
+
+    let second = run(&mut app, &action);
+
+    assert_eq!(item_ids(&second), ["divergences.d2"]);
+}
+
+#[test]
+fn it_should_list_only_the_items_under_a_namespace_id_prefix() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    seed_divergences(&mut app);
+
+    let ids = filter_ids(&mut app, None, Some("divergences"), &[]);
+
+    assert_eq!(ids, ["divergences.d1", "divergences.d2", "divergences.d3"]);
+}
+
+#[test]
+fn it_should_list_only_the_work_items_under_the_work_items_id_prefix() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    seed_divergences(&mut app);
+
+    let ids = filter_ids(&mut app, None, Some("work-items"), &[]);
+
+    assert_eq!(ids, [W1, W2]);
+}
+
+#[test]
+fn it_should_list_only_the_item_of_an_exact_id_prefix() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    seed_divergences(&mut app);
+
+    let ids = filter_ids(&mut app, None, Some("divergences.d2"), &[]);
+
+    assert_eq!(ids, ["divergences.d2"]);
 }
 
 #[test]

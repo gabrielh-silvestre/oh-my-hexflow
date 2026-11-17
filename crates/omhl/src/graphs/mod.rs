@@ -54,11 +54,6 @@ pub fn catalog() -> Result<Catalog, HexlogError> {
     Catalog::new(types, relations)
 }
 
-/// Os tipos dos três grafos, para quem precisa percorrê-los (o `Catalog` não os lista).
-pub fn type_defs() -> Result<Vec<TypeDef>, HexlogError> {
-    Ok(definitions()?.0)
-}
-
 fn take_section(file: &mut Value, key: &str) -> Value {
     file.get_mut(key).map_or(Value::Null, Value::take)
 }
