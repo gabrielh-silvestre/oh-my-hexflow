@@ -1,8 +1,8 @@
 mod support;
 
 use hexlog::{
-    AppendItem, AppendOutcome, AppendRequest, Author, FieldName, ListFilter, PageRequest, RecordId,
-    Scalar, Snapshot, SnapshotKind,
+    AppendItem, Author, FieldName, ListFilter, PageRequest, RecordId, Scalar, Snapshot,
+    SnapshotKind,
 };
 use omhl::app::App;
 use omhl::app::action::{Action, Caller};
@@ -15,15 +15,16 @@ use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::{Value, json};
 use support::git::GitRepo;
 use support::omhl::{
-    LINT_DOCS, OmhlHarness, PR_7, RUN_TESTS, acme, append_ok, attestation_data, attestation_id_for,
-    attestation_item, check_data, closed_with_gate, decision_data, node_item, premise_data,
-    pull_request_data, refusal, request, retirement_item, revision_item, seed_pull_request,
-    with_snapshot, work_item_data,
+    LINT_DOCS, OmhlHarness, PR_7, RUN_TESTS, acme, append_as, append_ok, attestation_data,
+    attestation_id_for, attestation_item, check_data, closed_with_gate, decision_data, node_item,
+    premise_data, pull_request_data, refusal, request, retirement_item, revision_item,
+    seed_pull_request, with_snapshot, work_item_data,
 };
 use support::pr_gate::{close, snapshots};
 use support::raw::RawHarness;
 use support::{
-    FakeProbe, executor_attestation_data, executor_author, loader_author, sid, snap, snap64, tname,
+    FakeProbe, agent_author, cli_author, executor_attestation_data, executor_author, loader_author,
+    sid, snap, snap64, tname,
 };
 
 const ITEM_ID_POINTER: &str = "/items/0/body/id";
@@ -82,17 +83,6 @@ fn mechanical_check(event: &str, run: &[&str], blocking: bool) -> Value {
     data
 }
 
-fn append_as(
-    omhl: &mut Omhl<'_>,
-    author: Author,
-    items: Vec<AppendItem>,
-) -> Result<AppendOutcome, OmhlError> {
-    omhl.append(&AppendRequest {
-        author,
-        ..request(items)
-    })
-}
-
 fn refusal_as_executor(omhl: &mut Omhl<'_>, items: Vec<AppendItem>) -> OmhlError {
     append_as(omhl, executor_author(), items).expect_err("the append is refused")
 }
@@ -102,22 +92,6 @@ fn seed_pull_request_and_check(omhl: &mut Omhl<'_>, check: &str, event: &str) {
     seed_pull_request(omhl);
     let node = node_item(check, "check", mechanical_check(event, &["true"], true));
     append_as(omhl, loader_author(), vec![node]).expect("the check is accepted");
-}
-
-fn agent_author() -> Author {
-    Author {
-        agent: "claude".to_owned(),
-        model: None,
-        client: "cli".to_owned(),
-    }
-}
-
-fn cli_author() -> Author {
-    Author {
-        agent: "user".to_owned(),
-        model: None,
-        client: "cli".to_owned(),
-    }
 }
 
 fn hook_author() -> Author {

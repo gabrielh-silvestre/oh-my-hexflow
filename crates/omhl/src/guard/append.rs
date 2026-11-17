@@ -69,7 +69,7 @@ impl<'i> NodeItem<'i> {
 
 /// Tipo e `kind` de um node, lidos do lote ou do banco.
 #[derive(Clone)]
-struct Endpoint {
+pub(super) struct Endpoint {
     type_name: String,
     kind: Option<String>,
 }
@@ -82,7 +82,7 @@ pub(super) struct Guard<'a, 'd> {
     probed: Option<Result<ProbeOutcome, ProbeError>>,
     probed_index_tree: Option<Result<ProbeOutcome, ProbeError>>,
     /// Nodes já vistos no lote, na ordem dos itens; prevalecem sobre o banco.
-    batch: HashMap<SemanticId, Endpoint>,
+    pub(super) batch: HashMap<SemanticId, Endpoint>,
 }
 
 /// Valida o lote inteiro, lendo só o banco; o primeiro achado encerra com erro.
@@ -101,6 +101,7 @@ pub(crate) fn check_append(
         batch: HashMap::new(),
     };
     for (index, item) in req.items.iter().enumerate() {
+        guard.check_role(index, item)?;
         if let Some(node) = NodeItem::from_item(index, item) {
             guard.check_node(&node)?;
         } else if let ItemBody::Retirement {

@@ -1,8 +1,7 @@
 mod support;
 
 use hexlog::{
-    AppendItem, AppendOutcome, AppendRequest, Author, FieldName, ListFilter, Scalar, Snapshot,
-    SnapshotKind,
+    Author, FieldName, ListFilter, Scalar, Snapshot, SnapshotKind,
     SnapshotKind::{GitCommit, GitTree},
 };
 use omhl::app::RUNNABLE_EVENTS;
@@ -18,21 +17,21 @@ use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::json;
 use support::legacy::seed_unconfirmed_guideline;
 use support::omhl::{
-    OmhlHarness, PR_7, RUN_TESTS, acme, append_ok, attestation_id_for, attestation_item,
-    check_data, decision_data, node_item, premise_data, pull_request_data, refusal, request,
-    retirement_item, revision_item, seed_pull_request, with_snapshot, work_item_data,
+    OmhlHarness, PR_7, RUN_TESTS, acme, append_as, append_ok, append_ok_as, attestation_id_for,
+    attestation_item, check_data, decision_data, node_item, premise_data, pull_request_data,
+    refusal, retirement_item, revision_item, seed_pull_request, with_snapshot, work_item_data,
 };
 use support::pr_gate::{
-    ANCHOR, ANCHORS_CONFIRMED, CI_GREEN, DECISION, DECISIONS_ANCHORED, FEATURE_1,
+    ANCHOR, ANCHORS_CONFIRMED, CI_GREEN, CRITIC_DECISION, DECISION, DECISIONS_ANCHORED, FEATURE_1,
     NO_OPEN_CONTRADICTION, PREMISE, anchor_decision, attest, attest_required, close, closed_data,
     data_of, default_natives, expected_outcomes, gate_of, head_seq, mechanical_project_check,
     native_check, outcomes, project_check, question, relation_item, relation_retirement_item,
-    required_pairs, seed_contradicted_decision, sids, snapshots,
+    required_pairs, seed_contradicted_decision, seed_critic_contradiction, sids, snapshots,
 };
 use support::raw::RawHarness;
 use support::{
-    FakeProbe, author, executor_attestation_data, executor_author, loader_author, rty, sid, snap,
-    tname,
+    FakeProbe, author, executor_attestation_data, executor_author, loader_author, role_author, rty,
+    sid, snap, tname,
 };
 
 /// Hash do conteúdo vazio, o `byproduct` das attestations escritas à mão.
@@ -99,20 +98,12 @@ fn no_open_contradiction_question() -> GateQuestion {
     )
 }
 
-fn append_as(omhl: &mut Omhl<'_>, author: Author, items: Vec<AppendItem>) -> AppendOutcome {
-    omhl.append(&AppendRequest {
-        author,
-        ..request(items)
-    })
-    .expect("the append is accepted")
-}
-
 /// `checks.fmt` (mecânico, `before-commit`) atestado em `tree('c')` pelo `executor`, e `ci-green` em
 /// `snap('a')`: o gate fecha verde cobrando só esses dois.
 fn seed_per_check_flow(omhl: &mut Omhl<'_>) {
     seed_pull_request(omhl);
     let fmt = mechanical_project_check("checks.fmt", "before-commit", true, false);
-    append_as(
+    append_ok_as(
         omhl,
         loader_author(),
         vec![node_item("checks.fmt", "check", fmt.data.clone())],
@@ -121,7 +112,7 @@ fn seed_per_check_flow(omhl: &mut Omhl<'_>) {
     let mut data = executor_attestation_data("checks.fmt", PR_7, "passed", EMPTY_SHA);
     data["spec_digest"] = json!(spec_digest(&fmt.data));
     let attestation = node_item(&id, "attestation", data);
-    append_as(
+    append_ok_as(
         omhl,
         executor_author(),
         vec![with_snapshot(attestation, &tree('c'))],
@@ -379,6 +370,69 @@ fn it_should_pass_again_after_the_contradiction_is_retired() {
     let report = gate_of(&mut omhl, &at_head());
 
     assert!(report.passed);
+}
+
+#[test]
+fn it_should_pass_the_no_open_contradiction_gate_after_the_verifier_retires_the_contradicts() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let contradiction = seed_contradicted_decision(&mut omhl);
+    append_ok_as(
+        &mut omhl,
+        role_author("omhl:verifier"),
+        vec![relation_retirement_item(
+            "contradicts",
+            PREMISE,
+            DECISION,
+            &contradiction,
+        )],
+    );
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert!(question(&report, NO_OPEN_CONTRADICTION).passed);
+}
+
+#[test]
+fn it_should_accept_a_rests_on_from_a_critic_decision_to_a_confirmed_premise() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_critic_contradiction(&mut omhl, false);
+    let anchor = relation_item("rests-on", CRITIC_DECISION, ANCHOR);
+
+    let result = append_as(&mut omhl, role_author("omhl:critic"), vec![anchor]);
+
+    assert_eq!(result.map(|outcome| outcome.records.len()), Ok(1));
+}
+
+#[test]
+fn it_should_pass_decisions_anchored_with_a_critic_decision_that_contradicts_an_architect_decision()
+{
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_critic_contradiction(&mut omhl, true);
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert!(question(&report, DECISIONS_ANCHORED).passed);
+}
+
+#[test]
+fn it_should_fail_decisions_anchored_when_a_critic_decision_has_no_rests_on() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_critic_contradiction(&mut omhl, false);
+
+    let report = gate_of(&mut omhl, &at_head());
+
+    assert_eq!(
+        question(&report, DECISIONS_ANCHORED).failing,
+        sids(&[CRITIC_DECISION])
+    );
 }
 
 #[test]
@@ -920,7 +974,7 @@ fn seed_decision(omhl: &mut Omhl<'_>) {
 fn seed_decision_on_a_legacy_premise(omhl: &mut Omhl<'_>) {
     seed_decision(omhl);
     let legacy = json!({ "text": "Users pay monthly", "status": "confirmed" });
-    append_as(
+    append_ok_as(
         omhl,
         loader_author(),
         vec![node_item(ANCHOR, "premise", legacy)],
@@ -1089,7 +1143,7 @@ fn it_should_pass_both_anchor_questions_for_a_decision_resting_on_a_guideline_wr
     seed_pull_request(&mut omhl);
     seed_decision(&mut omhl);
     let guideline = json!({ "text": "keep it simple", "kind": "business" });
-    append_as(
+    append_ok_as(
         &mut omhl,
         loader_author(),
         vec![node_item(KEPT_GUIDELINE, "guideline", guideline)],

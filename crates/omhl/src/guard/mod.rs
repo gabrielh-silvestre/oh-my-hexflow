@@ -4,12 +4,14 @@ mod confirmation;
 mod filter;
 mod rests_on;
 mod role;
+mod role_guard;
 
 use hexlog::{SemanticId, Snapshot};
 
 pub(crate) use self::append::{GUIDELINE_RETIRE_CLIENT, check_append};
 pub(crate) use self::attestation::probe_refusal;
 pub(crate) use self::filter::{check_question_filters, check_where_eq};
+pub use self::role::ROLE_REFERENCE_COMMANDS;
 pub(crate) use self::role::known_role;
 use crate::error::{OmhlError, RuleCode};
 
