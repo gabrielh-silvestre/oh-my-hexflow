@@ -77,7 +77,7 @@ fn collect_leaves(command: &clap::Command, prefix: &str, leaves: &mut Vec<String
 }
 
 pub struct Doc {
-    /// Relativo ao diretório de skills: `directives-flow/references/attest.md`.
+    /// Relativo ao diretório de skills: `mechanical-checks/references/attest.md`.
     pub path: String,
     pub text: String,
 }

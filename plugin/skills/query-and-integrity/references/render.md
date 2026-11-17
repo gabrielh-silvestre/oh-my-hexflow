@@ -20,7 +20,7 @@ O texto é instrução do projeto, não é aplicado à força: nada nele bloquei
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
 - `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
@@ -33,12 +33,4 @@ Lê o contexto de um projeto com uma premissa confirmada (as seções de checks 
 ```omhl-example fixture=project
 $ omhl render
 {"omitted":0,"text":"# omhl context for tenant acme\nThese are project instructions, not enforced; nothing here blocks any action.\n\n## Checks\n\n### checks.run-tests\n- event: before-commit\n- blocking: true\n- how: run the project's test suite and confirm it passes before creating a commit\n\n### checks.ci-green-before-merge\n- event: before-merge\n- blocking: true\n- after: checks.run-tests\n- how: wait until every check run on the head commit is green; if one fails, fix it, push, and run CI again\n\n### checks.verify-review-comment-anchoring\n- event: before-publishing-review-comments\n- blocking: true\n- how: compare path, line and side of each inline comment with the diff of the head SHA; post the approved text unchanged\n\n## Guidelines\n\n### guidelines.one-decision-per-turn\n- confirmed: true\n- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next\n\n### guidelines.commit-policy\n- confirmed: true\n- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy\n\n## Premises\n\n### premises.p1\n- mark: confirmed\n- kind: business\n- status: confirmed\n- text: Money is stored in cents.\n- work_item: work-items.w1\n"}
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=project
-$ omhl render --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
-# exit 1
 ```

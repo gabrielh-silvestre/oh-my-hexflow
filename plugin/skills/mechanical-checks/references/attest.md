@@ -2,7 +2,7 @@
 
 ## Quando usar
 
-Para gravar à mão o desfecho de um check **manual** (sem o campo `run`) sobre um work item, depois de o humano revisá-lo. É a mesma folha para a attestation de work item e de check: o registro é do par check e work item, preso ao commit atual. Um check com `run` é mecânico: quem grava o desfecho dele é o `omhl check run`, nunca você (a recusa é `check-run-author`).
+Para gravar à mão o desfecho de um check **manual** (sem o campo `run`) sobre um work item, depois de o humano revisá-lo. O registro é do par check e work item, preso ao commit atual. Um check com `run` é mecânico: quem grava o desfecho dele é o `omhl check run`, nunca você (a recusa é `check-run-author`).
 
 ## Entradas
 
@@ -19,7 +19,7 @@ Uma linha JSON no stdout, saída 0: `attestation` (o `id` derivado do commit, o 
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. A falta de `--outcome` ou de um argumento é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. A falta de `--outcome` ou de um argumento é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `invalid-arguments` (saída 1): o `--outcome` não é um dos três valores. O ponteiro `/outcome` e a mensagem dizem a regra. Corrija o valor.
 - `check-run-author` (saída 1): o check tem `run`. Só o `omhl check run` grava o desfecho dele. Use um check manual ou rode o check.
@@ -68,13 +68,5 @@ $ omhl attest checks.nope work-items.w1 --outcome passed
 # exit 1
 $ omhl attest checks.review work-items.zz --outcome passed
 2> {"error":{"code":"work-item-not-found","details":[{"code":"work-item-not-found","message":"work-item-not-found","path":"/work_item"}],"message":"work-item-not-found at /work_item"}}
-# exit 1
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=checks
-$ omhl attest checks.review work-items.w1 --outcome passed --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
 # exit 1
 ```

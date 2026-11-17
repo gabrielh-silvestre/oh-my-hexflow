@@ -5,7 +5,7 @@ description: Consulta e integridade do banco do omhl. Use para ler o banco, acha
 
 # Consulta e integridade
 
-Todos estes comandos leem o banco do projeto; só o `omhl project` escreve, e apenas arquivos em `.omhl/projection/`. A referência completa está em `docs/directives-flow.md` (a seção do `list`) e em `docs/adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md` do repositório do oh-my-hexflow.
+Todos estes comandos leem o banco do projeto; só o `omhl project` escreve, e apenas arquivos em `.omhl/projection/`. A referência de cada comando está em `references/`.
 
 ## Regras que valem o tempo todo
 
@@ -30,3 +30,4 @@ Abra a referência do comando antes de usá-lo: ela traz as entradas, a saída, 
 | `omhl project` | [references/project.md](references/project.md) |
 | `omhl report answers` | [references/report-answers.md](references/report-answers.md) |
 | `omhl report recurrences` | [references/report-recurrences.md](references/report-recurrences.md) |
+| Erros comuns | [references/errors.md](references/errors.md) |

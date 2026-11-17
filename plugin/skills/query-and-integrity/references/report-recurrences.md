@@ -15,7 +15,7 @@ Uma linha JSON no stdout, saída 0: `min` (o valor usado) e `recurrences`, a lis
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Um `--min` que não é um número inteiro sem sinal é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. Um `--min` que não é um número inteiro sem sinal é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `invalid-workflow-config` (saída 1): sem `--min`, o `.omhl/workflow.toml` é inválido. Corrija o arquivo, ou passe `--min`.
 - `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
@@ -48,12 +48,4 @@ $ omhl report recurrences
 {"min":3,"recurrences":[{"kind":"business","premises":["premises.p1","premises.p2","premises.p3"],"text":"money is stored in cents","work_items":["work-items.w1","work-items.w2","work-items.w3"]}]}
 $ omhl report recurrences --min 4
 {"min":4,"recurrences":[]}
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=project
-$ omhl report recurrences --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
-# exit 1
 ```

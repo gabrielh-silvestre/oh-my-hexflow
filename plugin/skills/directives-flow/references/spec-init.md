@@ -17,7 +17,7 @@ Uma linha JSON no stdout, saída 0: `dir` (a pasta criada), `path` (o `parte-01.
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. A falta de um argumento é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. A falta de um argumento é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `spec-slug-invalid` (saída 1): o slug não segue a regra. O ponteiro é `/slug`. Corrija o nome.
 - `spec-exists` (saída 1): o work item já tem uma pasta de spec, de qualquer slug. Edite a existente; se a spec já foi aprovada, a correção é uma emenda.
@@ -60,13 +60,5 @@ Recusa: work item que não existe:
 ```omhl-example fixture=git
 $ omhl spec init work-items.zz x
 2> {"error":{"code":"work-item-not-found","details":[{"code":"work-item-not-found","message":"work-item-not-found","path":"/work_item"}],"message":"work-item-not-found at /work_item"}}
-# exit 1
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=git
-$ omhl spec init work-items.w1 x --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
 # exit 1
 ```

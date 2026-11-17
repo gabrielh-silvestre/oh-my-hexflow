@@ -8,7 +8,7 @@ Antes de `wt switch -c <branch>`, para conferir se a worktree da branch pode nas
 
 - `--branch <nome>`: o nome da branch, no formato `tipo/wi-<id>__<slug>` (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` ou `docs`). Obrigatório; aceita valor com hífen inicial e a forma `--branch=<valor>`.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
-- O que cada prefixo exige vem de `.omhl/workflow.toml` (os padrões estão em `docs/directives-flow.md`): `feat` e `fix` pedem uma premissa de negócio confirmada e uma spec válida; `refactor` e `tests` pedem uma premissa técnica confirmada; `bugfix` pede uma premissa do agente; `chore` e `docs` não pedem nada.
+- O que cada prefixo exige vem de `.omhl/workflow.toml` (a matriz está em [matrix.md](matrix.md)): `feat` e `fix` pedem uma premissa de negócio confirmada e uma spec válida; `refactor` e `tests` pedem uma premissa técnica confirmada; `bugfix` pede uma premissa do agente; `chore` e `docs` não pedem nada.
 
 ## Saída
 
@@ -16,7 +16,7 @@ Sem o marcador `.omhl.toml` acima do diretório, a CLI sai 0 e não imprime nada
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. A falta do `--branch` é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. A falta do `--branch` é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `worktree-gate-refused` (saída 1): a matriz do prefixo não foi satisfeita. O `context` traz `missing` (os átomos que faltam: `business-premise`, `spec`, `technical-premise-confirmed`, `agent-premise`), `prefix`, `work_item` e `main_dir`. Registre e confirme o que falta, ou escreva e valide a spec, e repita o gate. A violação da spec não sai aqui: rode `omhl spec validate`.
 - `work-item-not-found` (saída 1): o prefixo abre o banco e o work item da branch não existe. O ponteiro é `/branch`. Grave o work item com `omhl append`, ou corrija o id da branch.
@@ -89,7 +89,7 @@ $ omhl gate-worktree --branch pr:12
 # exit 1
 ```
 
-Recusa: `--project-dir` que não existe:
+Recusa: `--project-dir` que não existe sai 1, ao contrário da falta do marcador, que sai 0 calada:
 
 ```omhl-example fixture=git
 $ omhl gate-worktree --branch develop --project-dir /nonexistent

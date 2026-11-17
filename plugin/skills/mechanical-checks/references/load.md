@@ -16,7 +16,7 @@ Uma linha JSON no stdout, saída 0: `tenant`, `dry_run`, e as listas de ids `cre
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `extensions-invalid` (saída 1): algum arquivo de `.omhl/` é inválido. Os `details` trazem o `path` e o `code` do problema (por exemplo `event-unsupported`, para um evento fora de `before-commit`, `before-pr` e `before-merge`, ou `rule-two-streams`, para uma regra com padrão em `stdout` e em `stderr`). Corrija o TOML e rode de novo.
 - `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
@@ -31,12 +31,4 @@ $ omhl load
 {"created":[],"dry_run":false,"orphan_relations":[],"orphans":[],"relations_created":[],"revised":[],"skipped":[],"tenant":"acme","unchanged":["checks.ok","checks.review"],"warnings":[]}
 $ omhl load --dry-run
 {"created":[],"dry_run":true,"orphan_relations":[],"orphans":[],"relations_created":[],"revised":[],"skipped":[],"tenant":"acme","unchanged":["checks.ok","checks.review"],"warnings":[]}
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=checks
-$ omhl load --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
-# exit 1
 ```

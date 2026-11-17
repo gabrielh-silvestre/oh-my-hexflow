@@ -17,7 +17,7 @@ Os arquivos são só de leitura e começam com o cabeçalho `omhl: generated fil
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `projection-failed` (saída 1): a projeção não pôde ser escrita. O detalhe traz o caminho e o código da causa: `not-generated` (já existe na pasta um arquivo sem o cabeçalho de gerado, que o comando nunca sobrescreve: mova-o) ou `too-many-work-items` (há work items demais para a projeção).
 - `no-project-root` (saída 1): não há raiz de projeto para escrever a pasta. Rode dentro do projeto.
@@ -47,12 +47,4 @@ EOF
 {"chain_head":{"hash":"<hash>","seq":3},"records":[{"id":"<record-id>","seq":3}],"replayed":false}
 $ omhl project
 {"dir":".omhl/projection","removed":[],"unchanged":["work-items.w1.md"],"written":["work-items.w2.md"]}
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=project
-$ omhl project --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
-# exit 1
 ```

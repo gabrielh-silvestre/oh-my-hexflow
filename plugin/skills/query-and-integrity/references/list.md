@@ -1,13 +1,20 @@
 # omhl list
 
+- [Quando usar](#quando-usar)
+- [Entradas](#entradas)
+- [Saída](#saída)
+- [Erros](#erros)
+- [Exemplos](#exemplos)
+
 ## Quando usar
 
 Para achar nós no banco quando você não sabe o id: as premissas de um work item, as divergências abertas, os checks, as diretivas. O `list` devolve a revisão vigente de cada nó, em ordem de gravação, página a página. Se você já sabe o id, use `omhl get`. É somente leitura.
 
 O `list` **respeita o pedido ou o recusa**: um filtro que nunca casaria nada (tipo no plural, campo que não existe, valor fora dos permitidos) vem como erro com a regra, nunca como `{"items":[]}`. Por isso um `{"items":[]}` é resposta vazia verdadeira: nenhum nó casa. Para consultar as divergências abertas de um work item:
 
-```bash
-omhl list --type divergence --where work_item=work-items.w1 --where resolution=open
+```omhl-example fixture=project
+$ omhl list --type divergence --where work_item=work-items.w1 --where resolution=open
+{"items":[]}
 ```
 
 ## Entradas
@@ -38,7 +45,7 @@ Uma linha JSON no stdout, saída 0: `{"items": [...]}`. Cada item traz `id`, `ty
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um valor que o clap não lê (`--limit abc`) é erro de uso do clap, com saída 2 e sem código. A mensagem de cada recusa diz a regra e não repete o valor recebido.
+Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um valor que o clap não lê (`--limit abc`) é erro de uso do clap, com saída 2 e sem código. A mensagem de cada recusa diz a regra e não repete o valor recebido. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `invalid-arguments` em `/limit` (saída 1): o `--limit` é `0` ou passa de 200. Use um valor de 1 a 200.
 - `invalid-arguments` em `/type` (saída 1): o `--type` não existe no catálogo. Use o nome no singular, da lista acima.
@@ -180,13 +187,5 @@ Recusa: `--db` dentro da pasta do projeto:
 ```omhl-example fixture=project
 $ omhl list --db novo.db
 2> {"error":{"code":"db-inside-project","details":[],"message":"the database folder is inside the project; its blobs/ folder would dirty the attested tree"}}
-# exit 1
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=project
-$ omhl list --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
 # exit 1
 ```

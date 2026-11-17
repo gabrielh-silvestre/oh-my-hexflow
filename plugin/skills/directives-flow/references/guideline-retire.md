@@ -16,7 +16,7 @@ Uma linha JSON no stdout, saída 0: `retired` (o id retirado) e `superseded_by` 
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Cada recusa traz a causa em `message` e o próximo passo em `next_step`, sem repetir o valor de entrada. A falta do `<ID>` é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. Cada recusa traz a causa em `message` e o próximo passo em `next_step`, sem repetir o valor de entrada. A falta do `<ID>` é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `guideline-not-found` (saída 1): o id não é uma diretiva vigente do repositório (não existe, já foi retirada, é nativa ou é de outro tipo). Confira o id.
 - `guideline-not-orphaned` (saída 1): o arquivo da diretiva ainda existe na árvore. Apague o arquivo, mergeie a remoção e repita.
@@ -60,13 +60,5 @@ Recusa: a diretiva não existe:
 ```omhl-example fixture=retire-guideline
 $ omhl guideline retire guidelines.nope
 2> {"error":{"code":"guideline-not-found","details":[{"code":"guideline-not-found","message":"the id is not a current guideline stored in the repository","next_step":"pass the id of a current guideline that is not native","path":"/id"}],"message":"the id is not a current guideline stored in the repository"}}
-# exit 1
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=retire-guideline
-$ omhl guideline retire guidelines.brief --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
 # exit 1
 ```

@@ -1,5 +1,11 @@
 # omhl close
 
+- [Quando usar](#quando-usar)
+- [Entradas](#entradas)
+- [Saída](#saída)
+- [Erros](#erros)
+- [Exemplos](#exemplos)
+
 ## Quando usar
 
 Quando o trabalho do work item terminou e o gate de pull request já foi conferido com `omhl gate-pr`. O `close` roda o gate de novo, grava o fechamento no work item e devolve o resultado do gate junto com a retro. Rode-o com o PR pronto, não antes: o fechamento é gravado num banco append-only.
@@ -18,11 +24,11 @@ Uma linha JSON no stdout, saída 0, com três campos:
 - `report`: o mesmo relatório do `omhl gate-pr` (`gate`, `passed`, `questions`, `chain_head`).
 - `retro`: `null` quando não há divergência nem gap respondido sem critério; senão, o relatório do `omhl report retro`. A retro lê os fatos antes de gravar, então o `close` nunca devolve erro depois de gravar.
 
-**O `close` fecha mesmo com o gate reprovado** (`report.passed: false`): o resultado fica gravado no work item. Depois do fechamento, a premissa do work item sai do contexto de sessão (`omhl render`) e continua na projeção. Quando `retro` vem preenchido, proponha uma melhoria por item, como em `directives-flow`.
+**O `close` fecha mesmo com o gate reprovado** (`report.passed: false`): o resultado fica gravado no work item. Depois do fechamento, a premissa do work item sai do contexto de sessão (`omhl render`) e continua na projeção. Quando `retro` vem preenchido, proponha uma melhoria por item, como em [SKILL.md](../SKILL.md).
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Quando há retro e a leitura dos fatos falha, o `close` recusa sem gravar nada.
+Um erro sai no stderr, numa linha JSON, com saída 1. A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Quando há retro e a leitura dos fatos falha, o `close` recusa sem gravar nada. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `work-item-not-found` (saída 1): o work item não existe. O ponteiro é `/work_item`. Confira o id.
 - `invalid-transition` (saída 1): o work item já está fechado. Um work item fechado não fecha de novo.
@@ -90,13 +96,5 @@ Recusa: fora de um repositório git (a fixture `project` não tem git):
 ```omhl-example fixture=project
 $ omhl close work-items.w1
 2> {"error":{"code":"probe-failed","details":[{"code":"probe-failed","message":"probe-failed","path":"/snapshot"}],"message":"probe-failed at /snapshot: fatal: not a git repository (or any of the parent directories): .git"}}
-# exit 1
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=checks
-$ omhl close work-items.w1 --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
 # exit 1
 ```

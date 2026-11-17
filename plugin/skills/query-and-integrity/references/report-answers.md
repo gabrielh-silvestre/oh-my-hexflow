@@ -23,7 +23,7 @@ Uma resposta é a relation `answers` de uma premissa para o gap, gravada com `om
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `work-item-not-found` (saída 1): o `--work-item` não existe. O ponteiro é `/work_item`. Confira o id; antes desta regra, o comando devolvia `{"gaps":[]}` e passava por "nenhum gap".
 - `INVALID_INPUT` (saída 1): o `--work-item` tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
@@ -61,13 +61,5 @@ $ omhl report answers --work-item work-items.zz
 # exit 1
 $ omhl report answers --work-item Bad_Id
 2> {"error":{"code":"INVALID_INPUT","details":[{"code":"semantic-id-format","message":"invalid semantic id","path":"/work_item"}],"message":"invalid semantic id"}}
-# exit 1
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=project
-$ omhl report answers --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
 # exit 1
 ```

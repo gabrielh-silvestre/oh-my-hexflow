@@ -23,7 +23,7 @@ Um check **manual** (sem `run`) recebe o desfecho de `omhl attest`; um check com
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Um gate reprovado **não** é erro.
+Um erro sai no stderr, numa linha JSON, com saída 1. A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Um gate reprovado **não** é erro. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `work-item-not-found` (saída 1): o work item não existe (ou o id é de outro tipo de node). O ponteiro é `/work_item`. Confira o id.
 - `INVALID_INPUT` (saída 1): o id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
@@ -71,13 +71,5 @@ Recusa: fora de um repositório git (a fixture `project` não tem git):
 ```omhl-example fixture=project
 $ omhl gate-pr work-items.w1
 2> {"error":{"code":"probe-failed","details":[{"code":"probe-failed","message":"probe-failed","path":"/snapshot"}],"message":"probe-failed at /snapshot: fatal: not a git repository (or any of the parent directories): .git"}}
-# exit 1
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=checks
-$ omhl gate-pr work-items.w1 --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
 # exit 1
 ```

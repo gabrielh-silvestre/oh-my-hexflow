@@ -17,7 +17,7 @@ Uma linha JSON no stdout, saída 0, quando a spec passa: `ok: true`, `parts` (as
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. A falta do argumento é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. A falta do argumento é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `spec-invalid` (saída 1): a spec viola regras. Cada item de `details` traz o `code` da regra (`section-empty`, `sections-invalid`, `item-id-invalid`, `placeholder-found`, `cited-id-unconfirmed`, `business-premise-missing`, `pending-gap-unresolved`...) e o `path` no formato `<arquivo>:<linha>`. Até 20 detalhes aparecem; a mensagem conta os omitidos. O texto da spec nunca entra no erro. Corrija a linha apontada e rode de novo.
 - `spec-not-found` (saída 1): o work item não tem pasta de spec com ao menos uma parte. Rode `omhl spec init`.
@@ -50,13 +50,5 @@ Recusa: o work item não tem pasta de spec:
 ```omhl-example fixture=git
 $ omhl spec validate work-items.w1
 2> {"error":{"code":"spec-not-found","details":[{"code":"spec-not-found","message":"the work item has no spec folder with a part","path":"/work_item"}],"message":"the work item has no spec folder with a part"}}
-# exit 1
-```
-
-Recusa: `--project-dir` que não existe:
-
-```omhl-example fixture=git
-$ omhl spec validate work-items.w1 --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
 # exit 1
 ```

@@ -15,7 +15,7 @@ Uma linha JSON no stdout, saída 0: `{"retired":"<id>"}`. O banco é append-only
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `check-not-orphaned` (saída 1): o arquivo do check ainda existe na árvore. Apague-o (e mergeie a remoção) antes, ou desista da retirada.
 - `check-not-found` (saída 1): o id não é um check vigente do projeto (inclui o que já foi aposentado). Confira o id.

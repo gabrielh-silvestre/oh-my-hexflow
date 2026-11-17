@@ -18,9 +18,9 @@ Uma linha JSON no stdout, saída 0 quando nenhum check bloqueante reprovou: `eve
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Isso inclui faltar `--event` e `--check`, e usar `--pre-push` sem `--event before-pr`.
+Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Isso inclui faltar `--event` e `--check`, e usar `--pre-push` sem `--event before-pr`. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
-- `checks-failed`: um check bloqueante reprovou. Cada `details` com `failed` diz como ler a saída (`omhl byproduct <check> <work-item> --tail 40`). Na `develop` não há `byproduct`: a cauda vem em `context.output_tail`. Corrija o código e repita.
+- `checks-failed`: um check bloqueante reprovou. Cada `details` com `failed` diz como ler a saída (`omhl byproduct <check> <work-item> --tail 40`). Na `develop` não há `byproduct`: a cauda vem em `context.output_tail`. Corrija o código e repita. A saída (inclusive `context.output_tail`) pode ter segredos: não a copie para PR, issue, commit, `--note` nem `omhl append`, e não a repita ao usuário (regra em [byproduct.md](byproduct.md)).
 - `check-not-run`: um problema impediu o veredito, e nada foi gravado para o check. Cada `details` traz o motivo e um `context.kind`: `spawn-failed` (o binário do `run` não existe no `PATH` do git), `spec-stale` (o TOML diverge do banco: rode `omhl load`), `spec-invalid`, `command-changed-tree` (o check alterou a árvore: mantenha-o somente leitura) ou `not-run` (o check restante não rodou). Siga o `hint` do contexto e repita.
 - `attestation-refused`: a guarda recusou a gravação. O detalhe `outcome-immutable` diz que o mesmo snapshot já tem outro desfecho: mude a árvore (um novo commit) para um veredito novo. Outros motivos: `snapshot-tree-mismatch` e `snapshot-dirty` (não faça stage durante o hook), `work-item-closed`, `probe-failed`.
 - `attestation-not-recorded`: o banco ficou travado ou falhou ao gravar depois do comando. O veredito foi calculado e não gravado: repita o mesmo comando.
@@ -53,7 +53,7 @@ $ omhl check run --check checks.ok
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 ```
 
-Recusas: check que não existe, check manual (sem `run`) e `--project-dir` que não existe:
+Recusas: check que não existe e check manual (sem `run`):
 
 ```omhl-example fixture=checks
 $ omhl check run --check checks.nope
@@ -61,8 +61,5 @@ $ omhl check run --check checks.nope
 # exit 1
 $ omhl check run --check checks.review
 2> {"error":{"code":"check-not-mechanical","details":[{"code":"check-not-mechanical","message":"the check has no command","path":"/check"}],"message":"the check has no command"}}
-# exit 1
-$ omhl check run --event before-pr --project-dir /nonexistent
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
 # exit 1
 ```
