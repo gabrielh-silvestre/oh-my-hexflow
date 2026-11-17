@@ -54,7 +54,7 @@ Cada erro traz `error.code` e, em `details`, o `path` do campo (nunca o conteúd
 - `input-too-deep` (saída 1): o JSON tem aninhamento demais. Achate a estrutura.
 - `append-invalid` (saída 1): uma chave desconhecida ou um campo com a forma errada. O `path` aponta o campo (por exemplo, `base` mora no item, não no `body`).
 - `confirmation-required` (saída 1): premissa `confirmed`, diretiva ou divergência `spec-stale` sem `confirmed_by`. Pergunte ao humano e grave a pergunta e a resposta literais.
-- `confirmation-invalid` (saída 1): o `by` não começa com `person:` ou não tem nome, ou o `confirmed_by` veio num registro que não o admite (por exemplo, `confirmed_by` ou `amendment` numa divergência que não está em `spec-stale`). Corrija o campo.
+- `confirmation-invalid` (saída 1): o `by` não começa com `person:` ou não tem nome (salvo `"by": "critic"` gravado pelo `omhl:critic` numa premissa `technical`), ou o `confirmed_by` veio num registro que não o admite (por exemplo, `confirmed_by` ou `amendment` numa divergência que não está em `spec-stale`). Corrija o campo.
 - `kind-missing` (saída 1): diretiva nova ou revisada sem `kind`. Acrescente `business` ou `architecture`.
 - `kind-invalid` (saída 1): `kind` de diretiva com outro valor. Use `business` ou `architecture`.
 - `work-item-not-found` (saída 1): o `work_item` da premissa, do gap ou da divergência não existe. Grave o work item antes.

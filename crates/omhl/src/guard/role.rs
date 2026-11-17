@@ -109,9 +109,7 @@ type RoleMatrixRow = (
 
 /// Lida de `MATRICES`, a mesma fonte da guarda; só para os testes (paridade com a doc).
 #[doc(hidden)]
-pub const ROLE_REFERENCE_MATRIX: [RoleMatrixRow; 7] = reference_matrix();
-
-const fn reference_matrix() -> [RoleMatrixRow; 7] {
+pub const ROLE_REFERENCE_MATRIX: [RoleMatrixRow; 7] = {
     let mut table: [RoleMatrixRow; 7] = [("", &[], &[], &[]); 7];
     let mut index = 0;
     while index < MATRICES.len() {
@@ -121,7 +119,7 @@ const fn reference_matrix() -> [RoleMatrixRow; 7] {
     }
 
     table
-}
+};
 
 /// O papel lista `name` no campo da matriz escolhido por `pick` (`nodes`, `relations` ou `retire`).
 pub(super) fn matrix_lists(
