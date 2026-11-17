@@ -25,7 +25,7 @@ Uma resposta é a relation `answers` de uma premissa para o gap, gravada com `om
 
 Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
-- `work-item-not-found` (saída 1): o `--work-item` não existe. O ponteiro é `/work_item`. Confira o id; antes desta regra, o comando devolvia `{"gaps":[]}` e passava por "nenhum gap".
+- `work-item-not-found` (saída 1): o `--work-item` não existe. O ponteiro é `/work_item`. Confira o id com `omhl get <id>`.
 - `INVALID_INPUT` (saída 1): o `--work-item` tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
 - `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
 - `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
