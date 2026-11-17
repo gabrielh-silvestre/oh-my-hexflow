@@ -276,7 +276,7 @@ Passam sem hook que barre: o merge fast-forward, `cherry-pick`, `revert`, `rebas
 
 ### A `main` com proteção do GitHub
 
-O repositório é público desde 2026-11-17, e a `main` tem proteção de branch exigindo o check `ci` (configurada no work item `perf2`; ver [Testes unitários no gate, integração no CI](#testes-unitários-no-gate-integração-no-ci)). Os hooks locais (`pre-push`, `pre-commit` e `pre-merge-commit`) e o `gate-pr` seguem como a outra camada.
+O repositório é público desde 2026-11-17, e a `main` tem um ruleset do GitHub exigindo o check `ci` (configurado no work item `perf2`; ver [Testes unitários no gate, integração no CI](#testes-unitários-no-gate-integração-no-ci)). Os hooks locais (`pre-push`, `pre-commit` e `pre-merge-commit`) e o `gate-pr` seguem como a outra camada.
 
 ### A varredura de processos fugidos
 
@@ -347,7 +347,7 @@ O job `ci` roda, a cada PR (qualquer base) e a cada push na `main`, `cargo fmt`,
 
 O merge é bloqueado em duas camadas (decisão `perf2-bloqueio-camada-dupla`):
 
-1. A proteção de branch da `main` exige o check `ci` do app do GitHub Actions, com `enforce_admins`.
+1. O ruleset `main` do GitHub exige o check `ci` do app do GitHub Actions (`integration_id` 15368) e proíbe deletar a `main` ou reescrevê-la com force-push. O papel admin só contorna as regras no merge de um PR, marcando o bypass de forma explícita (`bypass_mode: pull_request`); um push direto na `main` fica bloqueado para todos.
 2. A attestation manual de `checks.ci-green-before-merge` cita a execução do CI do mesmo commit. Selecione a execução com `gh run list --workflow ci.yml --branch <branch> --event pull_request --limit 1 --json databaseId,headSha,conclusion,url`. Exija `conclusion` igual a `success` e `headSha` igual a `git rev-parse HEAD`, e grave os dois na nota: `omhl attest checks.ci-green-before-merge work-items.<id> --outcome passed --note "<url> <headSha>"`. Depois de um rebase (por exemplo, no merge de pilha do `gh stack`), o SHA muda: espere o CI novo e ateste de novo.
 
 Ao mexer em área coberta por `tests/`, rode na máquina local só o arquivo afetado (`cargo test -p <crate> --test <nome>`). Se o `proptest` gravar uma semente nova em `crates/hexlog/tests/chain_properties.proptest-regressions` (arquivo rastreado) numa rodada local, restaure o arquivo antes do commit, como descreve o [README](../README.md).
