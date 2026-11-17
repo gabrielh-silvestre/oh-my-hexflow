@@ -21,7 +21,7 @@ Uma linha JSON no stdout, saída 0 quando nenhum check bloqueante reprovou: `eve
 Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Isso inclui faltar `--event` e `--check`, e usar `--pre-push` sem `--event before-pr`. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `checks-failed`: um check bloqueante reprovou. Cada `details` com `failed` diz como ler a saída (`omhl byproduct <check> <work-item> --tail 40`). Na `develop` não há `byproduct`: a cauda vem em `context.output_tail`. Corrija o código e repita. A saída (inclusive `context.output_tail`) pode ter segredos: não a copie para PR, issue, commit, `--note` nem `omhl append`, e não a repita ao usuário (regra em [byproduct.md](byproduct.md)).
-- `check-not-run`: um problema impediu o veredito, e nada foi gravado para o check. Cada `details` traz o motivo e um `context.kind`: `spawn-failed` (o binário do `run` não existe no `PATH` do git), `spec-stale` (o TOML diverge do banco: rode `omhl load`), `spec-invalid`, `command-changed-tree` (o check alterou a árvore: mantenha-o somente leitura) ou `not-run` (o check restante não rodou). Siga o `hint` do contexto e repita.
+- `check-not-run`: um problema impediu o veredito, e nada foi gravado para o check. Cada `details` traz o motivo e um `context.kind`: `spawn-failed` (o binário do `run` não existe no `PATH` do git: `context.kind` `spawn-not-found`; sem permissão para executá-lo: `spawn-permission-denied`), `spec-stale` (o TOML diverge do banco: rode `omhl load`), `spec-invalid`, `command-changed-tree` (o check alterou a árvore: mantenha-o somente leitura) ou `not-run` (o check restante não rodou). Siga o `hint` do contexto e repita.
 - `attestation-refused`: a guarda recusou a gravação. O detalhe `outcome-immutable` diz que o mesmo snapshot já tem outro desfecho: mude a árvore (um novo commit) para um veredito novo. Outros motivos: `snapshot-tree-mismatch` e `snapshot-dirty` (não faça stage durante o hook), `work-item-closed`, `probe-failed`.
 - `attestation-not-recorded`: o banco ficou travado ou falhou ao gravar depois do comando. O veredito foi calculado e não gravado: repita o mesmo comando.
 - `check-not-found` (saída 1): o `--check` não existe no banco. Confira o id e rode `omhl load`.
@@ -61,5 +61,36 @@ $ omhl check run --check checks.nope
 # exit 1
 $ omhl check run --check checks.review
 2> {"error":{"code":"check-not-mechanical","details":[{"code":"check-not-mechanical","message":"the check has no command","path":"/check"}],"message":"the check has no command"}}
+# exit 1
+```
+
+Um check bloqueante que reprova: stdout vazio, saída 1 e o comando exato para ler a causa. O check desta fixture imprime `first` e `second` no stdout, `boom` no stderr e sai 1:
+
+```omhl-example fixture=failing-check
+$ omhl check run --event before-pr
+2> {"error":{"code":"checks-failed","details":[{"code":"failed","message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
+# exit 1
+```
+
+Um check **não bloqueante** que reprova **não** falha o comando: sai 0, e só o `ok: false` do item de `results` mostra a reprovação. Leia `results`, não só o código de saída:
+
+```omhl-example fixture=soft-check
+$ omhl check run --event before-pr
+{"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":false,"check":"checks.soft","duration_ms":12,"exit_code":1,"ok":false,"outcome":"failed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
+```
+
+Recusa: árvore suja no `before-pr` (a fixture deixa o arquivo `notes.txt` sem commit):
+
+```omhl-example fixture=dirty-checks
+$ omhl check run --event before-pr
+2> {"error":{"code":"worktree-dirty","details":[{"code":"worktree-dirty","context":{"branch":"feat/wi-w1__x","event":"before-pr","kind":"worktree-dirty","work_item":"work-items.w1"},"message":"the working tree has uncommitted changes","path":""}],"message":"the working tree has uncommitted changes"}}
+# exit 1
+```
+
+Recusa: o binário do `run` não existe, então não há veredito e nada é gravado (`check-not-run`):
+
+```omhl-example fixture=missing-binary
+$ omhl check run --event before-pr
+2> {"error":{"code":"check-not-run","details":[{"code":"spawn-failed","context":{"argv":["omhl-ghost-binary"],"branch":"feat/wi-w1__x","check":"checks.ghost","cwd":"<repo>","event":"before-pr","hint":"`omhl-ghost-binary` was not found; install it or add it to the PATH that git hooks see, then run the same `omhl check run` again","kind":"spawn-not-found","os_error":"omhl-ghost-binary did not start: No such file or directory (os error 2)","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"message":"the command could not run","path":"checks.ghost"}],"message":"a check could not run to a verdict"}}
 # exit 1
 ```

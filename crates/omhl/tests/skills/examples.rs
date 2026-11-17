@@ -36,12 +36,16 @@ use crate::support::git::git_command_with_env;
 use crate::support::project::Project;
 use crate::support::sweep_lock::serialize_sweeps;
 
+const FENCE_TAG: &str = "omhl-example";
 const FENCE: &str = "```omhl-example";
 const BRANCH: &str = "feat/wi-w1__x";
 const GIT_DATE: &str = "2026-01-01T00:00:00Z";
 const WORK_ITEM: &str = r#"{"items":[{"body":{"kind":"node","id":"work-items.w1","type":"work-item","data":{"title":"First item","status":"open"}}}]}"#;
 const PREMISE: &str = r#"{"items":[{"body":{"kind":"node","id":"premises.p1","type":"premise","data":{"text":"Money is stored in cents.","status":"confirmed","kind":"business","work_item":"work-items.w1","confirmed_by":{"by":"person:ana","question":"How is money stored?","answer":"In cents."}}}}]}"#;
 const MECHANICAL_CHECK: &str = "blocking = true\nhow = \"Always passes.\"\nrun = [\"true\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-pr\"\n";
+const FAILING_CHECK: &str = "blocking = true\nhow = \"Always fails.\"\nrun = [\"sh\", \"-c\", \"echo first; echo second; echo boom >&2; exit 1\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-pr\"\n";
+const SOFT_CHECK: &str = "blocking = false\nhow = \"Fails but does not block.\"\nrun = [\"sh\", \"-c\", \"exit 1\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-pr\"\n";
+const GHOST_CHECK: &str = "blocking = true\nhow = \"Binary does not exist.\"\nrun = [\"omhl-ghost-binary\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-pr\"\n";
 const MANUAL_CHECK: &str =
     "blocking = false\nhow = \"Review it by hand.\"\n\n[when]\nevent = \"before-merge\"\n";
 const GUIDELINE: &str = "kind = \"business\"\ntext = \"Be brief.\"\n";
@@ -102,6 +106,79 @@ fn split_args(text: &str) -> Result<Vec<String>, String> {
 
 fn join_lines(lines: &[&str]) -> String {
     lines.iter().map(|line| format!("{line}\n")).collect()
+}
+
+struct Opener<'a> {
+    indent: usize,
+    ch: char,
+    len: usize,
+    info: &'a str,
+}
+
+/// Abre uma cerca à la CommonMark: recuo, três ou mais crases ou tis e a linha de informação.
+fn opener(line: &str) -> Option<Opener<'_>> {
+    let rest = line.trim_start_matches(' ');
+    let ch = rest.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    let len = rest.chars().take_while(|c| *c == ch).count();
+
+    (len >= 3).then(|| Opener {
+        indent: line.len() - rest.len(),
+        ch,
+        len,
+        info: rest[len..].trim(),
+    })
+}
+
+fn closes(line: &str, open: &Opener) -> bool {
+    let rest = line.trim_start_matches(' ').trim_end();
+
+    rest.len() >= open.len && rest.chars().all(|c| c == open.ch)
+}
+
+/// Reprova o bloco que parece exemplo mas não executa: o `parse_blocks` só vê a cerca exata.
+fn check_fences(file: &str, text: &str) -> Result<(), String> {
+    let command = Regex::new(r"^\s*(?:\$ )?omhl\s+[a-z]").expect("regex");
+    let prompt = Regex::new(r"^\s*\$ omhl\s").expect("regex");
+    let header = Regex::new(&format!(r"^{FENCE_TAG} fixture=\S+$")).expect("regex");
+    let mut lines = text.lines().enumerate();
+    while let Some((index, line)) = lines.next() {
+        let at = format!("{file}:{}", index + 1);
+        let Some(open) = opener(line) else {
+            if prompt.is_match(line) {
+                return Err(format!(
+                    "{at}: `$ omhl` outside a fence; use an {FENCE_TAG} block"
+                ));
+            }
+            continue;
+        };
+        let body: Vec<&str> = lines
+            .by_ref()
+            .map(|(_, inner)| inner)
+            .take_while(|inner| !closes(inner, &open))
+            .collect();
+        let tag = open.info.split_whitespace().next().unwrap_or("");
+        if tag == FENCE_TAG {
+            let exact = open.indent == 0 && open.ch == '`' && open.len == 3;
+            if !exact || !header.is_match(open.info) {
+                return Err(format!(
+                    "{at}: the fence must be exactly ```{FENCE_TAG} fixture=<name>"
+                ));
+            }
+            if !body.iter().any(|inner| inner.starts_with("$ omhl ")) {
+                return Err(format!("{at}: the {FENCE_TAG} block has no `$ omhl` step"));
+            }
+        } else if tag.starts_with("omhl") {
+            return Err(format!(
+                "{at}: unknown fence `{tag}`; the only executable one is {FENCE_TAG}"
+            ));
+        } else if body.iter().any(|inner| command.is_match(inner)) {
+            return Err(format!(
+                "{at}: an `omhl` command block must be an {FENCE_TAG} block"
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 fn parse_blocks(file: &str, text: &str) -> Result<Vec<Block>, String> {
@@ -334,16 +411,30 @@ impl Fixture {
                 fixture.omhl_ok(&["spec", "init", "work-items.w1", "x"]);
                 fixture.write(".omhl/specs/wi-w1__x/parte-01.md", SPEC_PART);
             }
-            "checks" | "retire-check" => {
+            "checks" | "retire-check" | "dirty-checks" => {
                 fixture.write(".omhl/checks/ok.toml", MECHANICAL_CHECK);
                 fixture.write(".omhl/checks/review.toml", MANUAL_CHECK);
                 fixture.seed();
                 fixture.init_git();
                 fixture.omhl_ok(&["load"]);
+                if name == "dirty-checks" {
+                    fixture.write("notes.txt", "not committed\n");
+                }
                 if name == "retire-check" {
                     fs::remove_file(fixture.dir().join(".omhl/checks/ok.toml"))
                         .expect("the check file is removed");
                 }
+            }
+            "failing-check" | "soft-check" | "missing-binary" => {
+                let (file, toml) = match name {
+                    "failing-check" => ("bad", FAILING_CHECK),
+                    "soft-check" => ("soft", SOFT_CHECK),
+                    _ => ("ghost", GHOST_CHECK),
+                };
+                fixture.write(&format!(".omhl/checks/{file}.toml"), toml);
+                fixture.seed();
+                fixture.init_git();
+                fixture.omhl_ok(&["load"]);
             }
             "retire-guideline" => {
                 fixture.seed();
@@ -403,24 +494,27 @@ fn run_block(block: &Block) -> Result<(), String> {
 
 fn real_blocks() -> Vec<Block> {
     let mut blocks = Vec::new();
-    for doc in read_docs(&skills_dir())
-        .iter()
-        .filter(|doc| doc.path.contains("/references/"))
-    {
+    for doc in &read_docs(&skills_dir()) {
         let file = format!("plugin/skills/{}", doc.path);
-        blocks.extend(parse_blocks(&file, &doc.text).unwrap_or_else(|error| panic!("{error}")));
+        check_fences(&file, &doc.text).unwrap_or_else(|error| panic!("{error}"));
+        if doc.path.contains("/references/") {
+            blocks.extend(parse_blocks(&file, &doc.text).unwrap_or_else(|error| panic!("{error}")));
+        }
     }
 
     blocks
 }
 
-/// Folhas sem nenhum passo `$ omhl <caminho da folha>` nos blocos.
-fn leaves_without_example(blocks: &[Block]) -> Vec<String> {
-    leaf_commands()
+/// Folhas sem nenhum passo `$ omhl <caminho da folha>` nos blocos da própria página `references/<folha>.md`.
+fn leaves_without_example(blocks: &[Block], leaves: Vec<String>) -> Vec<String> {
+    leaves
         .into_iter()
         .filter(|leaf| {
+            let page = format!("/references/{}.md", leaf.replace(' ', "-"));
+
             !blocks
                 .iter()
+                .filter(|block| block.file.ends_with(&page))
                 .flat_map(|block| &block.steps)
                 .any(|step| starts_with_path(&step.args, leaf))
         })
@@ -431,11 +525,11 @@ fn leaves_without_example(blocks: &[Block]) -> Vec<String> {
 fn skill_examples() {
     let blocks = real_blocks();
 
-    let missing = leaves_without_example(&blocks);
+    let missing = leaves_without_example(&blocks, leaf_commands());
 
     assert!(
         missing.is_empty(),
-        "subcommands without an omhl-example block under {}: {missing:?}",
+        "subcommands without an omhl-example block in their own page under {}: {missing:?}",
         repo_root().join("plugin/skills").display()
     );
     let _serial = serialize_sweeps();
@@ -515,6 +609,86 @@ fn it_should_refuse_a_block_without_fixture_or_never_closed() {
     let unclosed = parse_blocks("a.md", &format!("{FENCE} fixture=git\n$ omhl verify\n"));
 
     assert_eq!((no_fixture.is_err(), unclosed.is_err()), (true, true));
+}
+
+#[test]
+fn it_should_not_count_an_example_of_a_leaf_that_sits_in_another_page() {
+    let body = "```omhl-example fixture=project\n$ omhl list\n{\"items\":[]}\n```\n";
+    let own = parse_blocks("s/references/list.md", body).expect("parses");
+    let other = parse_blocks("s/references/errors.md", body).expect("parses");
+    let leaves = || vec!["list".to_owned()];
+
+    let (with_own, with_other) = (
+        leaves_without_example(&own, leaves()),
+        leaves_without_example(&other, leaves()),
+    );
+
+    assert_eq!((with_own, with_other), (vec![], vec!["list".to_owned()]));
+}
+
+fn fences(text: &str) -> Result<(), String> {
+    check_fences("synthetic.md", text)
+}
+
+#[test]
+fn it_should_refuse_an_indented_omhl_example_fence() {
+    let result = fences("  ```omhl-example fixture=git\n$ omhl verify\n  ```\n");
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn it_should_refuse_an_omhl_example_fence_with_four_backticks_or_tildes() {
+    let backticks = fences("````omhl-example fixture=git\n$ omhl verify\n````\n");
+    let tildes = fences("~~~omhl-example fixture=git\n$ omhl verify\n~~~\n");
+
+    assert_eq!((backticks.is_err(), tildes.is_err()), (true, true));
+}
+
+#[test]
+fn it_should_refuse_an_omhl_example_fence_without_fixture() {
+    let result = fences("```omhl-example\n$ omhl verify\n```\n");
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn it_should_refuse_a_fence_tag_that_starts_with_omhl_but_is_not_omhl_example() {
+    let typo = fences("```omhl-exemple fixture=git\n{\"ok\":true}\n```\n");
+    let bare = fences("```omhl\n{\"ok\":true}\n```\n");
+
+    assert_eq!((typo.is_err(), bare.is_err()), (true, true));
+}
+
+#[test]
+fn it_should_refuse_an_omhl_example_block_without_a_command_step() {
+    let only_output = fences("```omhl-example fixture=git\n{\"ok\":true}\n```\n");
+    let empty = fences("```omhl-example fixture=git\n```\n");
+
+    assert_eq!((only_output.is_err(), empty.is_err()), (true, true));
+}
+
+#[test]
+fn it_should_refuse_an_omhl_command_in_a_block_that_is_not_omhl_example() {
+    let result = fences("```bash\nomhl list --type divergence\n```\n");
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn it_should_refuse_a_dollar_omhl_line_outside_any_fence() {
+    let result = fences("intro\n$ omhl verify\n");
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn it_should_accept_a_valid_omhl_example_and_blocks_that_do_not_run_omhl() {
+    let text = "```omhl-example fixture=git\n$ omhl verify\n{\"ok\":true}\n```\n\n```bash\ncargo test\n```\n\n```text\nrun omhl list later\n```\n";
+
+    let result = fences(text);
+
+    assert_eq!(result, Ok(()));
 }
 
 #[test]

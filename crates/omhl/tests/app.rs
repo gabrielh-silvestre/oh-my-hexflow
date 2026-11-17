@@ -1526,39 +1526,6 @@ fn it_should_refuse_closing_when_the_tree_is_dirty_in_the_app() {
     assert_eq!(node["data"]["status"], json!("open"));
 }
 
-fn byproduct_action(tail: u32) -> Action {
-    Action::Byproduct {
-        check: RUN_TESTS.to_owned(),
-        work_item: W1.to_owned(),
-        tail,
-    }
-}
-
-#[test]
-fn it_should_refuse_a_byproduct_tail_above_the_maximum() {
-    let fixture = Fixture::clean();
-    let mut app = fixture.open();
-
-    let error = refuse(&mut app, &byproduct_action(501));
-
-    assert_eq!(error.code(), "invalid-arguments");
-    assert_eq!(detail_paths(&error), vec!["/tail"]);
-    assert_eq!(
-        error.to_json()["error"]["details"][0]["message"],
-        json!("tail must be between 1 and 500")
-    );
-}
-
-#[test]
-fn it_should_accept_a_byproduct_tail_at_the_maximum() {
-    let fixture = Fixture::clean();
-    let mut app = fixture.open();
-
-    let error = refuse(&mut app, &byproduct_action(500));
-
-    assert_eq!(error.code(), "check-not-found");
-}
-
 #[test]
 fn it_should_append_an_attestation_with_a_git_tree_snapshot_through_the_wire_format() {
     let fixture = Fixture::new(tree_probe(false));

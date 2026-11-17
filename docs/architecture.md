@@ -467,8 +467,8 @@ As quatro skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `w
 
 | Teste | O que reprova |
 |---|---|
-| `skill_coverage` | Subcomando folha da CLI sem citação numa skill (as 23 folhas, sem o grupo `hook` e sem o `help` do clap); citação de subcomando que não existe; `SKILL.md` com mais de 80 linhas; `references/<folha>.md` ausente ou sem os cinco títulos (`Quando usar`, `Entradas`, `Saída`, `Erros`, `Exemplos`); código de erro da seção `Erros` que não é literal em `crates/*/src`. |
-| `skill_examples` | Folha sem nenhum bloco `omhl-example`; bloco cujo stdout, stderr ou código de saída difere do que o binário real devolve (a mensagem traz arquivo, linha, comando e as duas saídas). Só roda no Linux. |
+| `skill_coverage` | Subcomando folha da CLI sem citação numa skill (as 23 folhas, sem o grupo `hook` e sem o `help` do clap); citação de subcomando que não existe; `SKILL.md` com mais de 80 linhas; `references/<folha>.md` ausente ou sem os cinco títulos (`Quando usar`, `Entradas`, `Saída`, `Erros`, `Exemplos`); opção da CLI (as da folha e as globais) que não aparece em `## Entradas` da página da folha; link ou caminho `.md` (`[x](a.md)` ou `` `references/a.md` ``) que não resolve para um arquivo dentro de `plugin/`; código de erro da seção `Erros` que não é literal em `crates/*/src`. |
+| `skill_examples` | Folha sem nenhum bloco `omhl-example` na própria `references/<folha>.md` (um bloco em outra página não vale); cerca mal formada que parece exemplo e não executa (`omhl-example` recuada, com quatro crases ou til, sem `fixture=` ou sem passo `$ omhl`; tag `omhl*` desconhecida; comando `omhl` em bloco que não é `omhl-example`; `$ omhl` fora de cerca), em toda página; bloco cujo stdout, stderr ou código de saída difere do que o binário real devolve (a mensagem traz arquivo, linha, comando e as duas saídas). Só roda no Linux. |
 
 Cada bloco `omhl-example` ganha uma fixture nova (`project`, `git`, `spec`, `checks` e outras, montadas em Rust) e roda sem shell. Datas, ids, hashes, durações, pids e caminhos temporários são normalizados dos dois lados antes da comparação.
 

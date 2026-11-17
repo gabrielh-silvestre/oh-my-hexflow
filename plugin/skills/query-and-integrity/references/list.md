@@ -23,14 +23,14 @@ Todas as opções são opcionais. Sem nenhuma, lista os nós de todos os tipos.
 
 - `--type <tipo>`: um tipo do catálogo, **no singular**: `check`, `guideline`, `premise`, `decision`, `gap`, `divergence`, `attestation`, `work-item` ou `pull-request`. Um tipo que não existe no catálogo é recusado (`premises` no plural recusa).
 - `--id-prefix <prefixo>`: filtra pelo começo do id. Regras:
-  - é uma sequência de nomes separados por `.`; cada nome começa por letra ou dígito, não é vazio e tem até 63 caracteres; o prefixo todo tem até 200 caracteres;
+  - é uma sequência de nomes separados por `.`; cada nome tem de 1 a 63 caracteres, só com letras minúsculas, dígitos e hífens, e não começa por hífen; o prefixo todo tem até 200 caracteres;
   - **casa por segmento inteiro**: `premises.p1` casa `premises.p1`, mas `premises.p` não casa `premises.p1` (e `premises.cli1` não casa `premises.cli1-b1`);
   - **começa por um namespace de tipo**: `premises`, `guidelines`, `checks`, `decisions`, `gaps`, `divergences`, `attestations` ou `work-items` (`premise` no singular recusa). Com `--type`, o namespace é o do tipo (`work-items` serve a `work-item` e `pull-request`).
 - `--where <CAMPO=VALOR>`: filtra por igualdade de um campo, repetível; todos os pares precisam bater. Regras:
   - o comando divide no **primeiro** `=`, então o valor pode conter `=`; um par sem `=` ou com o campo vazio é recusado;
   - o campo precisa ser de **texto**: o schema do campo tem `type: "string"`, ou não tem `type` e todo valor do `enum` é string (é o caso de `status`, `kind`, `resolution`, `concern` e `outcome`). Campo `boolean`, `integer`, `array` ou `object` não vale: `--where blocking=true` recusa;
   - se o campo tem `enum`, o valor precisa ser um dos permitidos (`status=confimed` recusa);
-  - **um valor por campo**: o mesmo campo com valores diferentes recusa; o mesmo par repetido segue aceito;
+  - **um valor por campo**: o mesmo campo com valores diferentes recusa, e essa checagem vem antes da do `enum`: `--where status=confimed --where status=open` recusa o segundo par por repetição, não o primeiro por valor fora do `enum`; o mesmo par repetido segue aceito;
   - o campo precisa existir no tipo (com `--type`) ou em algum tipo candidato (veja abaixo);
   - no máximo 8 pares, e o valor tem até 256 caracteres.
 - **Tipos candidatos (sem `--type`).** Os candidatos são os tipos que o namespace do `--id-prefix` admite, ou os nove do catálogo se não há prefixo. O filtro vale se **algum candidato** declara todos os campos do `--where` como texto e aceita os valores; senão é recusado em `/where/<índice>`. Por isso `--where status=open` funciona sem `--type`, e `--where title=x --where kind=missing` recusa (nenhum tipo declara os dois). Como nenhum tipo tem mais de seis campos de texto, mais de seis campos distintos nunca passam.
@@ -49,7 +49,7 @@ Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida o
 
 - `invalid-arguments` em `/limit` (saída 1): o `--limit` é `0` ou passa de 200. Use um valor de 1 a 200.
 - `invalid-arguments` em `/type` (saída 1): o `--type` não existe no catálogo. Use o nome no singular, da lista acima.
-- `invalid-arguments` em `/id_prefix` (saída 1): o prefixo tem um segmento vazio, começando por `-` ou acima de 63 caracteres, passa de 200 caracteres no total, não começa por um namespace de tipo, ou está fora do namespace do `--type`. Corrija o prefixo.
+- `invalid-arguments` em `/id_prefix` (saída 1): o prefixo tem um segmento vazio, com caractere fora de letra minúscula, dígito e hífen, começando por `-` ou acima de 63 caracteres, passa de 200 caracteres no total, não começa por um namespace de tipo, ou está fora do namespace do `--type`. Corrija o prefixo.
 - `invalid-arguments` em `/where/<índice>` (saída 1): o par `--where` de posição `<índice>` viola uma regra: sem `=` ou com campo vazio; campo que o tipo não declara; campo que não é de texto; valor fora do `enum`; campo repetido com valores diferentes (o ponteiro é o do segundo par); ou, sem `--type`, nenhum tipo candidato o satisfaz. Corrija o par.
 - `where-eq-too-many` (saída 1): o `--where` tem mais de 8 pares (só passam pares idênticos repetidos, pois um tipo não declara tantos campos de texto). Reduza os pares.
 - `where-eq-value-too-long` (saída 1): o valor de um `--where` passa de 256 caracteres. Use um valor menor.
@@ -129,13 +129,13 @@ Recusa (I3): `--id-prefix` com segmento inválido (vazio, começando por `-`, ac
 
 ```omhl-example fixture=project
 $ omhl list --id-prefix premises..x
-2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"id prefix must be dot-separated names of up to 63 characters, each starting with a letter or a digit, up to 200 characters in total","path":"/id_prefix"}],"message":"id prefix must be dot-separated names of up to 63 characters, each starting with a letter or a digit, up to 200 characters in total"}}
+2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"id prefix must be dot-separated names of 1 to 63 characters, each made of lowercase letters, digits and hyphens and not starting with a hyphen, up to 200 characters in total","path":"/id_prefix"}],"message":"id prefix must be dot-separated names of 1 to 63 characters, each made of lowercase letters, digits and hyphens and not starting with a hyphen, up to 200 characters in total"}}
 # exit 1
 $ omhl list --id-prefix premises.-x
-2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"id prefix must be dot-separated names of up to 63 characters, each starting with a letter or a digit, up to 200 characters in total","path":"/id_prefix"}],"message":"id prefix must be dot-separated names of up to 63 characters, each starting with a letter or a digit, up to 200 characters in total"}}
+2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"id prefix must be dot-separated names of 1 to 63 characters, each made of lowercase letters, digits and hyphens and not starting with a hyphen, up to 200 characters in total","path":"/id_prefix"}],"message":"id prefix must be dot-separated names of 1 to 63 characters, each made of lowercase letters, digits and hyphens and not starting with a hyphen, up to 200 characters in total"}}
 # exit 1
 $ omhl list --id-prefix premises.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"id prefix must be dot-separated names of up to 63 characters, each starting with a letter or a digit, up to 200 characters in total","path":"/id_prefix"}],"message":"id prefix must be dot-separated names of up to 63 characters, each starting with a letter or a digit, up to 200 characters in total"}}
+2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"id prefix must be dot-separated names of 1 to 63 characters, each made of lowercase letters, digits and hyphens and not starting with a hyphen, up to 200 characters in total","path":"/id_prefix"}],"message":"id prefix must be dot-separated names of 1 to 63 characters, each made of lowercase letters, digits and hyphens and not starting with a hyphen, up to 200 characters in total"}}
 # exit 1
 ```
 

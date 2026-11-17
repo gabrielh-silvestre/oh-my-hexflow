@@ -13,7 +13,7 @@ Para ler a saída guardada de um check mecânico, depois de um `check run` repro
 
 ## Saída
 
-Uma linha JSON no stdout, saída 0: `check`, `work_item`, `outcome`, `byproduct` (o hash do arquivo de saída) e `lines` (a lista das últimas linhas, na ordem). O arquivo guarda até 4 MiB por fluxo (o começo; o resto é cortado e a saída original leva `truncated`), então `--tail` mostra o fim do trecho **guardado**, não o fim real. Uma linha com mais de 2000 caracteres sai cortada nos 2000 primeiros, e o resultado ganha o campo `truncated_lines` com quantas das linhas devolvidas foram cortadas; o campo **só aparece quando é maior que zero**. Um check que não imprimiu nada devolve `lines` vazio.
+Uma linha JSON no stdout, saída 0: `check`, `work_item`, `outcome`, `byproduct` (o hash do arquivo de saída) e `lines` (a lista das últimas linhas, na ordem). O arquivo guarda até 4 MiB por fluxo (o começo; o resto é cortado e a saída original leva `truncated`), então `--tail` mostra o fim do trecho **guardado**, não o fim real. Uma linha com mais de 2000 caracteres sai cortada nos 2000 primeiros, e o resultado ganha o campo `truncated_lines` com quantas das linhas devolvidas foram cortadas; o campo **só aparece quando é maior que zero**. Um check que não imprimiu nada devolve `lines` vazio. `lines` junta as linhas do `stdout` e, depois, as do `stderr`; o `--tail` pega o fim dessa lista inteira.
 
 **Segredo e dado não confiável.** A saída guardada não passa por filtro e pode conter segredos que o comando imprimiu (variável de ambiente, token em log, URL com credencial). Ao ler:
 
@@ -47,6 +47,18 @@ $ omhl check run --event before-pr
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.ok work-items.w1 --tail 5
 {"byproduct":"<hash>","check":"checks.ok","lines":[],"outcome":"passed","work_item":"work-items.w1"}
+```
+
+Um check que reprova e imprime: `first` e `second` no stdout, `boom` no stderr. O `--tail 2` devolve as duas últimas linhas da lista (o stdout vem antes do stderr) e o `--tail 1` só a última:
+
+```omhl-example fixture=failing-check
+$ omhl check run --event before-pr
+2> {"error":{"code":"checks-failed","details":[{"code":"failed","message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
+# exit 1
+$ omhl byproduct checks.bad work-items.w1 --tail 2
+{"byproduct":"<hash>","check":"checks.bad","lines":["second","boom"],"outcome":"failed","work_item":"work-items.w1"}
+$ omhl byproduct checks.bad work-items.w1 --tail 1
+{"byproduct":"<hash>","check":"checks.bad","lines":["boom"],"outcome":"failed","work_item":"work-items.w1"}
 ```
 
 Recusas: `--tail` acima de 500 e `--tail 0` (a regra vem na mensagem):

@@ -19,7 +19,7 @@ Uma linha JSON no stdout, saída 0, **mesmo com o gate reprovado**: leia o campo
 - `no-open-contradiction`: nenhuma decisão do work item contradiz outra;
 - `decisions-anchored` e `anchors-confirmed`: toda decisão do work item se apoia (`rests-on`) em uma diretiva ou premissa confirmada.
 
-Um check **manual** (sem `run`) recebe o desfecho de `omhl attest`; um check com `run`, de `omhl check run`. Um check de `blocking = false` não entra no gate.
+Um check que reprovou no `check run` não conta: a pergunta dele sai com `matched: 0`, como se nunca tivesse rodado; a causa está em `omhl byproduct`. Um check **manual** (sem `run`) recebe o desfecho de `omhl attest`; um check com `run`, de `omhl check run`. Um check de `blocking = false` não entra no gate.
 
 ## Erros
 
@@ -63,6 +63,14 @@ $ omhl gate-pr work-items.zz
 # exit 1
 $ omhl gate-pr Bad_Id
 2> {"error":{"code":"INVALID_INPUT","details":[{"code":"semantic-id-format","message":"invalid semantic id","path":"/work_item"}],"message":"invalid semantic id"}}
+# exit 1
+```
+
+Recusa: árvore com mudança não commitada (a fixture deixa o arquivo `notes.txt` sem commit):
+
+```omhl-example fixture=dirty-checks
+$ omhl gate-pr work-items.w1
+2> {"error":{"code":"snapshot-dirty","details":[{"code":"snapshot-dirty","message":"snapshot-dirty","path":"/snapshot"}],"message":"snapshot-dirty at /snapshot"}}
 # exit 1
 ```
 

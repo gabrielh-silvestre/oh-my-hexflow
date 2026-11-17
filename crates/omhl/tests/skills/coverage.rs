@@ -1,7 +1,10 @@
 //! `skill_coverage`: toda folha da CLI de ação é citada por uma skill, cada folha tem o seu
 //! `references/<folha>.md` com os cinco títulos fixos, o `SKILL.md` cabe em 80 linhas, e todo código de
 //! erro citado na seção "Erros" existe no código. A lógica fica em funções puras sobre um diretório de
-//! skills, para a prova de falha rodar sobre um diretório sintético.
+//! skills, para a prova de falha rodar sobre um diretório sintético. Cada opção da CLI (as de cada folha
+//! e as globais) também precisa aparecer na seção "Entradas" da página da folha, e todo caminho `.md`
+//! citado (link `](alvo.md)` ou caminho entre crases que começa por `./`, `../`, `references/` ou `docs/`)
+//! precisa resolver para um arquivo dentro de `plugin/`: o plugin viaja sozinho, sem o `docs/` do repositório.
 //!
 //! Convenções que as skills seguem:
 //! - citação: `omhl <caminho completo>` dentro de crases ou numa linha `$ omhl ...` (a prosa solta
@@ -27,12 +30,14 @@ const TITLES: [&str; 5] = [
     "## Erros",
     "## Exemplos",
 ];
-const PREFIXES: [&str; 5] = [
+const PREFIXES: [&str; 7] = [
     "subcommands not cited by any skill under plugin/skills",
     "cited subcommands that do not exist",
     "SKILL.md files above 80 lines",
     "references missing or without the five fixed titles",
     "error codes cited in Erros that are not a literal in crates/*/src",
+    "options missing from the Entradas section of their reference",
+    "markdown paths that do not resolve to a file inside plugin/",
 ];
 
 pub fn repo_root() -> PathBuf {
@@ -45,6 +50,11 @@ pub fn skills_dir() -> PathBuf {
 
 /// Caminhos das folhas de ação (`"check run"`), sem o grupo `hook` e sem o `help` do clap.
 pub fn leaf_commands() -> Vec<String> {
+    leaf_options().into_iter().map(|(leaf, _)| leaf).collect()
+}
+
+/// Cada folha com as suas opções longas (`"check run"`, `["--check", ...]`), sem `help`, `version` e as globais.
+pub fn leaf_options() -> Vec<(String, Vec<String>)> {
     let mut leaves = Vec::new();
     for command in Cli::command().get_subcommands() {
         collect_leaves(command, "", &mut leaves);
@@ -54,7 +64,26 @@ pub fn leaf_commands() -> Vec<String> {
     leaves
 }
 
-fn collect_leaves(command: &clap::Command, prefix: &str, leaves: &mut Vec<String>) {
+/// Opções longas globais (`--db`, `--project-dir`), lidas da raiz, onde nascem.
+pub fn global_options() -> Vec<String> {
+    let mut names = long_options(
+        Cli::command()
+            .get_arguments()
+            .filter(|arg| arg.is_global_set()),
+    );
+    names.sort();
+
+    names
+}
+
+fn long_options<'a>(arguments: impl Iterator<Item = &'a clap::Arg>) -> Vec<String> {
+    arguments
+        .filter(|arg| !matches!(arg.get_id().as_str(), "help" | "version"))
+        .filter_map(|arg| arg.get_long().map(|long| format!("--{long}")))
+        .collect()
+}
+
+fn collect_leaves(command: &clap::Command, prefix: &str, leaves: &mut Vec<(String, Vec<String>)>) {
     let name = command.get_name();
     if name == "help" || (prefix.is_empty() && name == "hook") {
         return;
@@ -69,7 +98,9 @@ fn collect_leaves(command: &clap::Command, prefix: &str, leaves: &mut Vec<String
         .filter(|child| child.get_name() != "help")
         .collect();
     if children.is_empty() {
-        leaves.push(path.clone());
+        let mut options = long_options(command.get_arguments().filter(|arg| !arg.is_global_set()));
+        options.sort();
+        leaves.push((path.clone(), options));
     }
     for child in children {
         collect_leaves(child, &path, leaves);
@@ -180,6 +211,67 @@ fn error_codes(text: &str) -> Vec<String> {
     codes
 }
 
+/// Texto da seção "Entradas" (até o próximo `## `).
+fn entradas(text: &str) -> String {
+    let mut in_section = false;
+    let mut section = String::new();
+    for line in text.lines() {
+        if line.starts_with("## ") {
+            in_section = line.trim_end() == "## Entradas";
+        } else if in_section {
+            section.push_str(line);
+            section.push('\n');
+        }
+    }
+
+    section
+}
+
+/// A opção como palavra inteira: `--by` não casa `--by-x` nem `--check` casa `--check-run`.
+fn mentions(section: &str, option: &str) -> bool {
+    let pattern = format!(r"(?m)(?:^|[^\w-]){}(?:[^\w-]|$)", regex::escape(option));
+
+    Regex::new(&pattern).expect("regex").is_match(section)
+}
+
+/// `(linha, alvo)` de cada caminho `.md` citado em `text`; links `http` ficam de fora.
+fn md_targets(text: &str) -> Vec<(usize, String)> {
+    let pattern = Regex::new(
+        r"\]\(([^)\s#]+\.md)(?:#[^)\s]*)?\)|`((?:\./|\.\./|references/|docs/)[^`\s]*\.md)`",
+    )
+    .expect("regex");
+    let mut found = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        for captures in pattern.captures_iter(line) {
+            let target = captures
+                .get(1)
+                .or(captures.get(2))
+                .expect("one group")
+                .as_str();
+            if !target.starts_with("http") {
+                found.push((index + 1, target.to_owned()));
+            }
+        }
+    }
+
+    found
+}
+
+/// Os caminhos `.md` do `doc` que não resolvem, a partir da pasta do `doc`, para um arquivo dentro de `plugin`.
+fn unresolved_paths(skills: &Path, plugin: &Path, doc: &Doc) -> Vec<String> {
+    let folder = skills.join(&doc.path);
+    let folder = folder.parent().expect("a parent folder");
+
+    md_targets(&doc.text)
+        .into_iter()
+        .filter(|(_, target)| {
+            !fs::canonicalize(folder.join(target))
+                .is_ok_and(|resolved| resolved.is_file() && resolved.starts_with(plugin))
+        })
+        .map(|(line, target)| format!("{}:{line}: {target}", doc.path))
+        .collect()
+}
+
 #[derive(Default)]
 pub struct Findings {
     uncited: Vec<String>,
@@ -187,20 +279,24 @@ pub struct Findings {
     long_skills: Vec<String>,
     bad_references: Vec<String>,
     unknown_codes: Vec<String>,
+    missing_options: Vec<String>,
+    unresolved_paths: Vec<String>,
 }
 
 impl Findings {
-    fn lists(&self) -> [&Vec<String>; 5] {
+    fn lists(&self) -> [&Vec<String>; 7] {
         [
             &self.uncited,
             &self.nonexistent,
             &self.long_skills,
             &self.bad_references,
             &self.unknown_codes,
+            &self.missing_options,
+            &self.unresolved_paths,
         ]
     }
 
-    fn counts(&self) -> [usize; 5] {
+    fn counts(&self) -> [usize; 7] {
         self.lists().map(|list| list.len())
     }
 
@@ -215,11 +311,18 @@ impl Findings {
     }
 }
 
-pub fn check(skills: &Path, leaves: &[String], sources: &str) -> Findings {
+pub fn check(
+    skills: &Path,
+    options: &[(String, Vec<String>)],
+    globals: &[String],
+    sources: &str,
+) -> Findings {
     let docs = read_docs(skills);
+    let plugin = fs::canonicalize(skills.join("..")).expect("the plugin folder exists");
+    let leaves: Vec<String> = options.iter().map(|(leaf, _)| leaf.clone()).collect();
     let mut findings = Findings::default();
 
-    for leaf in leaves {
+    for (leaf, local) in options {
         // Só o SKILL.md cita: todo references/<folha>.md traz `$ omhl <folha>` no exemplo e se citaria sozinho.
         let cited = docs
             .iter()
@@ -244,6 +347,14 @@ pub fn check(skills: &Path, leaves: &[String], sources: &str) -> Findings {
                 .push(format!("{leaf}: file missing"));
         }
         for doc in versions {
+            let section = entradas(&doc.text);
+            for option in local.iter().chain(globals) {
+                if !mentions(&section, option) {
+                    findings
+                        .missing_options
+                        .push(format!("{}: {option}", doc.path));
+                }
+            }
             let missing: Vec<&str> = TITLES
                 .into_iter()
                 .filter(|title| !doc.text.lines().any(|line| line.trim_end() == *title))
@@ -259,12 +370,15 @@ pub fn check(skills: &Path, leaves: &[String], sources: &str) -> Findings {
     for doc in &docs {
         for (line, words) in citations(&doc.text) {
             let known = leaves.iter().any(|leaf| starts_with_path(&words, leaf));
-            if !known && words[0] != "hook" && !is_group_mention(&words, leaves) {
+            if !known && words[0] != "hook" && !is_group_mention(&words, &leaves) {
                 findings
                     .nonexistent
                     .push(format!("{}:{line}: omhl {}", doc.path, words.join(" ")));
             }
         }
+        findings
+            .unresolved_paths
+            .extend(unresolved_paths(skills, &plugin, doc));
         if doc.path.ends_with("/SKILL.md") && doc.text.lines().count() > MAX_SKILL_LINES {
             findings.long_skills.push(doc.path.clone());
         }
@@ -280,12 +394,28 @@ pub fn check(skills: &Path, leaves: &[String], sources: &str) -> Findings {
 
 // Prova de falha sobre um diretório sintético
 
-const SYNTHETIC_LEAVES: [&str; 2] = ["list", "check run"];
+const SYNTHETIC_LEAVES: [(&str, &str); 2] = [("list", "--limit"), ("check run", "--event")];
+const SYNTHETIC_GLOBAL: &str = "--db";
 const SYNTHETIC_SOURCES: &str = r#"fn code() -> &'static str { "known-code" }"#;
 
+/// Página completa: a seção "Entradas" cita a opção da folha e a global.
 fn reference(leaf: &str, errors: &str) -> String {
+    let option = SYNTHETIC_LEAVES
+        .iter()
+        .find(|(name, _)| *name == leaf)
+        .map_or("", |(_, option)| *option);
+
+    page(
+        leaf,
+        &format!("- `{option}`, `{SYNTHETIC_GLOBAL}`."),
+        "",
+        errors,
+    )
+}
+
+fn page(leaf: &str, entradas: &str, usage: &str, errors: &str) -> String {
     format!(
-        "# t\n\n## Quando usar\n\n## Entradas\n\n## Saída\n\n## Erros\n\n{errors}\n\n## Exemplos\n\n$ omhl {leaf}\n"
+        "# t\n\n## Quando usar\n\n{usage}\n\n## Entradas\n\n{entradas}\n\n## Saída\n\n## Erros\n\n{errors}\n\n## Exemplos\n\n$ omhl {leaf}\n"
     )
 }
 
@@ -338,9 +468,13 @@ fn materialize(encoded: &str, dir: &Path) {
 fn count_of(kind: usize) -> impl Fn(&str) -> Result<usize, String> {
     move |encoded| {
         let dir = TempDir::new().expect("temp dir");
-        materialize(encoded, dir.path());
-        let leaves: Vec<String> = SYNTHETIC_LEAVES.map(str::to_owned).to_vec();
-        let findings = check(dir.path(), &leaves, SYNTHETIC_SOURCES);
+        let skills = dir.path().join("plugin/skills");
+        materialize(encoded, &skills);
+        let options: Vec<(String, Vec<String>)> = SYNTHETIC_LEAVES
+            .map(|(leaf, option)| (leaf.to_owned(), vec![option.to_owned()]))
+            .to_vec();
+        let globals = [SYNTHETIC_GLOBAL.to_owned()];
+        let findings = check(&skills, &options, &globals, SYNTHETIC_SOURCES);
         let counts = findings.counts();
         if counts
             .iter()
@@ -357,7 +491,7 @@ fn count_of(kind: usize) -> impl Fn(&str) -> Result<usize, String> {
     }
 }
 
-/// As cinco falhas, cada uma isolada, contra a árvore completa que não reprova nenhuma.
+/// As seis falhas, cada uma isolada, contra a árvore completa que não reprova nenhuma.
 pub fn prove_checks() -> Vec<String> {
     let complete = tree(&[]);
     let both = "# s\n\nRun `omhl list` and `omhl check run`.\n";
@@ -392,6 +526,35 @@ pub fn prove_checks() -> Vec<String> {
         Some(format!("{both}Not ours: `omhl hook x`.\n")),
     )]);
 
+    let known = "- `known-code` (saída 1): x.";
+    let list_page = |entradas: &str, usage: &str| {
+        tree(&[(
+            "s/references/list.md",
+            Some(page("list", entradas, usage, known)),
+        )])
+    };
+    let option_in_prose = list_page("- `--db`.", "Use `--limit` here.");
+    let option_absent = list_page("- `--db`.", "");
+    let global_absent = list_page("- `--limit`.", "");
+    let option_prefix_only = list_page("- `--limit-x`, `--db`.", "");
+
+    let link_page = |links: &str| {
+        tree(&[(
+            "s/references/list.md",
+            Some(page("list", "- `--limit`, `--db`.", links, known)),
+        )])
+    };
+    let link_to_nothing = link_page("See [x](missing.md).");
+    let link_outside_plugin = format!(
+        "{}{}",
+        link_page("See [x](../../../../docs/outside.md)."),
+        "=== ../../docs/outside.md\n# outside\n"
+    );
+    let docs_path = link_page("See `docs/outside.md`.");
+    let links_inside = link_page(
+        "See [c](check-run.md#erros), [s](../SKILL.md), [w](https://x.dev/y.md), `emenda-NN.md`.",
+    );
+
     let mut failures = Vec::new();
     for (kind, flagged) in [
         (0, vec![uncited]),
@@ -399,6 +562,16 @@ pub fn prove_checks() -> Vec<String> {
         (2, vec![long]),
         (3, vec![no_file, no_title]),
         (4, vec![ghost]),
+        (
+            5,
+            vec![
+                option_in_prose,
+                option_absent,
+                global_absent,
+                option_prefix_only,
+            ],
+        ),
+        (6, vec![link_to_nothing, link_outside_plugin, docs_path]),
     ] {
         let flagged: Vec<&str> = flagged.iter().map(String::as_str).collect();
         let accepted = [
@@ -406,6 +579,7 @@ pub fn prove_checks() -> Vec<String> {
             group_only.as_str(),
             clap_usage.as_str(),
             hook_group.as_str(),
+            links_inside.as_str(),
         ];
         failures.extend(
             prove_both_sides(count_of(kind), &flagged, &accepted)
@@ -451,6 +625,43 @@ fn it_should_enumerate_the_action_leaves_of_the_cli() {
 }
 
 #[test]
+fn it_should_enumerate_the_options_of_the_cli() {
+    let expected = [
+        ("attest", vec!["--note", "--outcome"]),
+        ("byproduct", vec!["--tail"]),
+        ("check run", vec!["--check", "--event", "--pre-push"]),
+        ("gate-worktree", vec!["--branch"]),
+        ("guideline retire", vec!["--by"]),
+        ("hooks install", vec!["--force"]),
+        (
+            "list",
+            vec!["--after-seq", "--id-prefix", "--limit", "--type", "--where"],
+        ),
+        ("load", vec!["--dry-run"]),
+        ("report answers", vec!["--work-item"]),
+        ("report recurrences", vec!["--min"]),
+    ];
+
+    let with_options: Vec<(String, Vec<String>)> = leaf_options()
+        .into_iter()
+        .filter(|(_, options)| !options.is_empty())
+        .collect();
+
+    assert_eq!(
+        (with_options, global_options()),
+        (
+            expected
+                .map(|(leaf, options)| (
+                    leaf.to_owned(),
+                    options.into_iter().map(str::to_owned).collect()
+                ))
+                .to_vec(),
+            vec!["--db".to_owned(), "--project-dir".to_owned()]
+        )
+    );
+}
+
+#[test]
 fn it_should_prove_each_coverage_failure_on_a_synthetic_skills_folder() {
     let failures = prove_checks();
 
@@ -460,7 +671,12 @@ fn it_should_prove_each_coverage_failure_on_a_synthetic_skills_folder() {
 #[test]
 fn skill_coverage() {
     let mut failures = prove_checks();
-    let findings = check(&skills_dir(), &leaf_commands(), &read_sources(&repo_root()));
+    let findings = check(
+        &skills_dir(),
+        &leaf_options(),
+        &global_options(),
+        &read_sources(&repo_root()),
+    );
     failures.extend(findings.messages());
 
     assert!(failures.is_empty(), "{}", failures.join("\n"));
