@@ -1061,19 +1061,23 @@ fn it_should_keep_a_gap_without_kind_valid() {
 }
 
 // O motor não expõe `major.minor` da definition; o que se observa é o hash da definition
-// (mudou) e a regra da minor: todo gap válido na definition anterior segue válido (mesma major).
+// (mudou) e a regra da minor: a mudança só alarga (todo gap válido na definition anterior segue
+// válido; o `kind` que a anterior rejeita passa a ser aceito), mesma major.
 #[test]
 fn it_should_raise_the_gap_definition_by_one_minor_and_keep_its_major() {
     let previous = catalog_from(PREVIOUS_DECISIONS_CATALOG_V3);
     let linked = with(gap(), "work_item", json!("work-items.dir0"));
+    let technical = with(gap(), "kind", json!("technical"));
 
     let compatible_change = (
         previous.type_hash(&tname("gap")) != catalog().type_hash(&tname("gap")),
         previous.validate_data(&tname("gap"), &linked).is_ok() && is_accepted("gap", &linked),
         previous.validate_data(&tname("gap"), &gap()).is_ok() && is_accepted("gap", &gap()),
+        previous.validate_data(&tname("gap"), &technical).is_err()
+            && is_accepted("gap", &technical),
     );
 
-    assert_eq!(compatible_change, (true, true, true));
+    assert_eq!(compatible_change, (true, true, true, true));
 }
 
 #[test]
