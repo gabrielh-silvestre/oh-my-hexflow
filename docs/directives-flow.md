@@ -82,7 +82,7 @@ Um filtro válido pode devolver `[]` de verdade (um `work_item` sem nodes, um `-
 omhl list --type divergence --where work_item=work-items.w1 --where resolution=open
 ```
 
-**Autoria.** Grave tudo pela CLI: `omhl append` (JSON no stdin) e `omhl attest`. A CLI grava `agent: "user"`, com uma exceção: sob o Claude Code (variável `CLAUDECODE=1`, que ele e as extensões de IDE definem em subprocessos e terminais integrados: Bash, hooks, tmux e o terminal integrado da IDE), a CLI grava `agent: "claude"` com `client: "cli"`. O erro seguro é o falso positivo: um humano que roda o `omhl` dentro de uma sessão do Claude Code, ou no terminal integrado de uma IDE, sai registrado como agente. O inverso, `env -u CLAUDECODE`, grava `agent: "user"` (Follow-up da trava técnica, seção 3).
+**Autoria.** Grave tudo pela CLI: `omhl append` (JSON no stdin) e `omhl attest`. A CLI grava `agent: "user"`, com uma exceção: sob o Claude Code (variável `CLAUDECODE=1`, que ele e as extensões de IDE definem em subprocessos e terminais integrados: Bash, hooks, tmux e o terminal integrado da IDE), a CLI grava `agent: "claude"` com `client: "cli"`. O erro seguro é o falso positivo: um humano que roda o `omhl` dentro de uma sessão do Claude Code, ou no terminal integrado de uma IDE, sai registrado como agente. O inverso, `env -u CLAUDECODE`, grava `agent: "user"` (Follow-up da trava técnica, seção 3). Com `OMHL_ROLE=omhl:<papel>` sob o Claude Code, a CLI grava `agent: "omhl:<papel>"` no lugar de `"claude"` (seção 8, "A matriz por papel").
 
 **Skill do plugin.** A skill [`directives-flow`](../plugin/skills/directives-flow/SKILL.md) leva este fluxo ao agente. Para cada um dos comandos acima, que ela cobre (`append`, `gate-worktree`, `guideline retire`, `spec init`, `spec validate`), há uma página em [`plugin/skills/directives-flow/references/`](../plugin/skills/directives-flow/references/) com entradas, saída, erros e exemplos que um teste executa contra o `omhl` real (ver [architecture.md](architecture.md), seção 4). O `omhl attest` é coberto pela skill [`mechanical-checks`](../plugin/skills/mechanical-checks/SKILL.md).
 
@@ -103,6 +103,7 @@ A confirmação é a aprovação do humano dentro da sessão. O registro leva o 
 ```
 
 - `by` tem de 1 a 100 caracteres e começa com `person:`, seguido de ao menos um caractere.
+- Exceção: o `omhl:critic` confirma premissa técnica com `"by": "critic"`. Vale só quando o autor é `omhl:critic`, o tipo é `premise`, o `kind` é `technical` e `question` e `answer` literais estão presentes e não vazios. Qualquer outro autor, tipo ou `kind` com `by: "critic"` é `confirmation-invalid`.
 - `question` e `answer` têm de 1 a 2000 caracteres. Um texto maior é recusado, nunca truncado: o literal não pode mudar.
 - O campo é opcional em `premise`, `guideline` e `divergence`. Um record antigo, sem ele, continua válido.
 - `premise` ganha também o `kind` (`technical` ou `business`).
@@ -112,7 +113,7 @@ A guarda do `append` impõe estas regras. A mensagem de erro traz o código e o 
 | Código | Quando |
 |---|---|
 | `confirmation-required` | Uma premissa `confirmed`, uma diretiva ou uma divergência `spec-stale` chegou sem `confirmed_by`, ou a divergência `spec-stale` chegou sem `amendment` |
-| `confirmation-invalid` | O `by` não começa com `person:` ou não tem nome depois dele; uma premissa que não é `confirmed` traz `confirmed_by`; uma divergência que não é `spec-stale` traz `confirmed_by` ou `amendment`; o `amendment` não tem a forma `emenda-NN` |
+| `confirmation-invalid` | O `by` não começa com `person:` ou não tem nome depois dele (salvo a confirmação do critic, acima); uma premissa que não é `confirmed` traz `confirmed_by`; uma divergência que não é `spec-stale` traz `confirmed_by` ou `amendment`; o `amendment` não tem a forma `emenda-NN` |
 
 Uma premissa com `kind` e sem `work_item` responde `work-item-not-found` em `/items/0/body/data/work_item`. Uma premissa sem `kind` e sem `work_item` é permitida: ela não pertence a nenhum work item e não expira.
 
@@ -387,11 +388,48 @@ omhl report answers --work-item work-items.w1
 
 | Campo | Valores |
 |---|---|
-| `state` | `open`: nenhuma resposta. `answered`: há resposta. `needs-human`: a resposta contraria uma diretiva confirmada e não tem `confirmed_by`; o gap segue contando como aberto no validador e na retro |
-| `answerer` | `human` quando a premissa que responde está confirmada (`confirmed` com `confirmed_by`); `autonomous` em qualquer outro caso, inclusive a premissa antiga `confirmed` sem `confirmed_by` e a `assumed` com `confirmed_by` |
+| `state` | `open`: nenhuma resposta. `answered`: há resposta. `needs-human`: a resposta não é de pessoa (`autonomous` ou `critic`) e contraria uma diretiva confirmada; o gap segue contando como aberto no validador e na retro |
+| `answerer` | `human` quando a premissa que responde está confirmada (`confirmed` com `confirmed_by`) e o `by` começa com `person:`; `critic` quando o `by` é `critic`; `autonomous` em qualquer outro caso, inclusive a premissa antiga `confirmed` sem `confirmed_by` e a `assumed` com `confirmed_by` |
 | `no_criterion` | `true` quando nenhuma diretiva confirmada sustenta a resposta |
 
-Com mais de uma resposta, vale a primeira premissa confirmada. Sem nenhuma, vale a primeira em ordem de gravação. O crítico automatizado dessa cadeira não existe nesta entrega: ele só precisará gravar `supports` e `contradicts`.
+Com mais de uma resposta, vale a premissa confirmada por pessoa. Sem ela, vale a confirmada pelo critic. Sem nenhuma das duas, vale a primeira em ordem de gravação; um empate entre respostas do mesmo respondente também cai na primeira gravada. A cadeira já aceita o papel `omhl:critic`, que responde só gap técnico (subseção abaixo). O agente que cumpre esse papel chega numa entrega posterior.
+
+### A matriz por papel
+
+Sete papéis portados gravam com `agent: "omhl:<papel>"`. Cada um grava só os tipos da sua linha:
+
+| Papel | `commands` | `append.nodes` | `append.relations` | `append.retire` |
+|---|---|---|---|---|
+| `omhl:analyst` | `append`, `list`, `get`, `render`, `verify`, `byproduct`, `report answers`, `report recurrences`, `report retro`, `help` | `premise`, `gap` | | |
+| `omhl:planner` | `spec init`, `spec validate`, `list`, `get`, `render`, `verify`, `byproduct`, `report answers`, `report recurrences`, `report retro`, `help` | | | |
+| `omhl:architect` | `append`, `list`, `get`, `render`, `verify`, `byproduct`, `report answers`, `report recurrences`, `report retro`, `help` | `decision` | `rests-on` | |
+| `omhl:critic` | `append`, `spec validate`, `list`, `get`, `render`, `verify`, `byproduct`, `report answers`, `report recurrences`, `report retro`, `help` | `decision`, `premise` | `supports`, `contradicts`, `answers`, `rests-on` | |
+| `omhl:code-reviewer` | `append`, `list`, `get`, `render`, `verify`, `byproduct`, `report answers`, `report recurrences`, `report retro`, `help` | `divergence`, `decision` | `contradicts`, `rests-on` | |
+| `omhl:security-reviewer` | `append`, `list`, `get`, `render`, `verify`, `byproduct`, `report answers`, `report recurrences`, `report retro`, `help` | `divergence`, `decision` | `contradicts`, `rests-on` | |
+| `omhl:verifier` | `append`, `spec validate`, `list`, `get`, `render`, `verify`, `byproduct`, `report answers`, `report recurrences`, `report retro`, `help` | `divergence` | | `contradicts` |
+
+`commands` é a referência dos comandos de cada papel, com a leitura que vale para os sete. A CLI só confere as três colunas de `append`. Um teste mantém esta tabela igual à matriz compilada no `omhl`.
+
+**Como o papel chega.** A variável `OMHL_ROLE=omhl:<papel>` troca o `agent` do record e vale só sob o Claude Code. Valor vazio ou fora dos sete papéis, ou a variável fora do Claude Code, é recusado com `role-unknown` em qualquer comando. Sem `OMHL_ROLE`, a sessão principal grava `claude`. Fora do Claude Code a CLI grava `user`, o dono. Por isso o dono retira um `contradicts` (abaixo) só num terminal fora do Claude Code: `! omhl ...` dentro dele grava `claude`.
+
+**Condições finas.** A tabela diz quais tipos; estas regras dizem em que condição:
+
+- O analyst grava premissa só `assumed`, e o gap sempre com `kind`.
+- O critic grava premissa só `technical`, `confirmed` e `confirmed_by.by` `critic` (seção 3). O `answers` dele vale só para gap de `kind` `technical`. Gap `business`, gap sem `kind` e destino que não é gap respondem `role-answer-forbidden`.
+- A origem de uma relação é um node cuja revisão vigente é do próprio papel; um node do mesmo pedido conta. O critic aponta `contradicts` do seu `decision`, não do de outro. Depois de confirmar a premissa do analyst, o critic é o autor vigente dela e pode ligar o `answers` dela ao gap.
+- A revisão é só de node cuja revisão vigente é do próprio papel. Há duas exceções: o critic confirma premissa técnica ainda não confirmada, de qualquer autor (só `status` e `confirmed_by` mudam); o verifier leva a divergência de qualquer autor de `open` para `code-fixed`, só acrescentando `evidence`, sem mudar mais nada.
+- Nenhum papel muda o `kind` de premissa ou gap, nem leva uma divergência a `accepted` (essa é a resposta do humano).
+- Nenhum papel retira node. A única retirada de relação é a de `contradicts` pelo verifier. O verifier e o dono (`user`) retiram um `contradicts`; `claude` e os demais papéis não. Ninguém retira o que ele mesmo gravou, o dono inclusive.
+- `claude` também não retira um node que é ponta de um `contradicts` vigente contra uma `decision`: isso fecharia o gate sem tocar na contradição.
+- Mudar o `work_item` de um node em `contradicts` vigente é recusado a qualquer autor, porque esconderia a contradição do gate daquele work item.
+
+| Código | Quando |
+|---|---|
+| `role-unknown` | `OMHL_ROLE` traz um valor fora dos sete papéis, ou foi definido fora do Claude Code |
+| `role-record-forbidden` | O papel grava um tipo de node, relação ou retirada fora da sua linha, um conteúdo fora das condições acima, ou uma relação a partir de node que não é dele |
+| `role-revision-forbidden` | O papel revisa node de outro, muda o `kind` de premissa ou gap, leva divergência a `accepted`, ou qualquer autor muda o `work_item` de node em contradição vigente |
+| `role-answer-forbidden` | O critic liga `answers` a um destino que não é gap `technical` |
+| `role-retirement-forbidden` | O papel retira node ou relação fora de `retire`; `claude` retira `contradicts` ou a ponta de uma contradição contra `decision`; o verifier ou o dono retira o `contradicts` que ele mesmo gravou |
 
 ### Divergência
 
@@ -549,12 +587,12 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
 - O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
 - Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`. O comando não tem a guarda `{% if branch %}`.
-- O `confirmed_by` é autodeclarado por qualquer canal. A CLI aceita uma confirmação inventada, e o record forjado sai igual ao legítimo. O rótulo de autoria (`agent: "claude"`) depende de `CLAUDECODE=1`, e a CLI o perde com `env -u CLAUDECODE`. A trava técnica contra forja não existe nesta entrega (seção 3).
+- O `confirmed_by` é autodeclarado por qualquer canal. A CLI aceita uma confirmação inventada, e o record forjado sai igual ao legítimo. O rótulo de autoria (`agent: "claude"`) depende de `CLAUDECODE=1`, e a CLI o perde com `env -u CLAUDECODE`. O `OMHL_ROLE` é autodeclarado do mesmo jeito: quem define a variável escolhe o papel, e o `agent: "omhl:<papel>"` é um rastro, não uma prova. A trava técnica contra forja não existe nesta entrega (seção 3).
 - A spec vive no diretório principal, fora do git. Ela não vai com um clone e some com o diretório.
 - A busca de pastas de spec lê até 10 000 entradas e recusa (`spec-store-unusable`) o work item que tem mais de uma pasta `wi-<id>__*`, mesmo a segunda vazia.
 - O `spec-invalid` e o `amendment-invalid` mostram até 20 detalhes por erro.
 - O `close` de um work item com retro depende de a pasta de spec ser legível e de o `workflow.toml` ser válido (seção 8).
-- A cadeira não tem o crítico automatizado: ninguém grava `supports` e `contradicts` sozinho.
+- A cadeira aceita o papel `omhl:critic` (seção 8), mas o agente que o cumpre chega numa entrega posterior: por ora ninguém grava `supports` e `contradicts` sozinho.
 
 ## 11. Diretivas: `kind`, âncora e retirada
 

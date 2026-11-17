@@ -138,7 +138,7 @@ Notas de leitura:
 - `projection -> extensions` existe só por um helper de filesystem (`extensions::files`); é um dos pontos da seção 5.
 - `projection`, `extensions` e `render` também tomam tipos de dado do `hexlog` (`NodeView`, `SemanticId`); omitido do diagrama.
 - `mechanical`, `runner` e `byproduct` são os gates mecânicos (seções 3.17 a 3.22). `ports -> runner` e `ports -> byproduct` (pontilhadas) são a implementação das ports `CommandRunner` e `ByproductStore` por `ports/process` e `ports/blob`. `mechanical -> hxfacade` (pontilhada) cobre os tipos `SemanticId`, `SnapshotKind` e `Name` e a função `chain::canonical`.
-- `extensions -> mechanical` existe porque `extensions/parse.rs` usa `RUNNABLE_EVENTS` e `CheckSpec::from_data`. `pr_gate -> mechanical` existe porque o gate usa `RUNNABLE_EVENTS` (como `REQUIRED_EVENTS`), `snapshot_for` e `is_mechanical`. `guard -> mechanical` existe só por `is_mechanical`, o único critério de "check mecânico". `facade -> mechanical` existe porque `facade.rs` monta `CheckNode`. As travas atuais já permitem as quatro: só proíbem `adapters`, `app` e `facade` nas camadas puras (seção 4).
+- `extensions -> mechanical` existe porque `extensions/parse.rs` usa `RUNNABLE_EVENTS` e `CheckSpec::from_data`. `pr_gate -> mechanical` existe porque o gate usa `RUNNABLE_EVENTS` (como `REQUIRED_EVENTS`), `snapshot_for` e `is_mechanical`. `guard -> mechanical` existe só por `is_mechanical`, o único critério de "check mecânico". `facade -> mechanical` existe porque `facade.rs` monta `CheckNode`. `guard -> workflow` (fora do diagrama, como as demais arestas de `workflow`) existe porque a confirmação usa `is_amendment_id` e a guarda de papel usa os auxiliares do gap (`confirmer`, `is_confirmed_premise`, `CRITIC_CONFIRMATION`), para o critério de "premissa confirmada" ser um só. As travas atuais já permitem as cinco: só proíbem `adapters`, `app` e `facade` nas camadas puras (seção 4).
 - `probe -> mechanical` existe porque `probe.rs` reexporta `HeadFacts`, que mora em `mechanical::branch`. `mechanical` não importa `probe`, `ports`, `runner` nem `byproduct`.
 - O SQLite só é tocado por `store sqlite`: o `omhl` não declara `sqlx` nem `rusqlite` (travado, seção 4).
 
@@ -167,7 +167,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `hexlog::store` | 932 | `Store` (3 métodos) | funda, seam de 1 adapter |
 | `omhl::facade` (`Omhl`) | 281 | 16 operações | média |
 | `omhl::gate` | 352 | `evaluate`, `read_consistent`, `GateSource` | funda |
-| `omhl::guard` | 519 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id` | funda |
+| `omhl::guard` | 1.220 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id`, `known_role` | funda |
 | `omhl::pr_gate` | 221 | `required_checks`, `pr_gate_questions`, `spec_digests` | média |
 | `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES`, `namespace_of` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |
@@ -255,9 +255,9 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** Recusa antes da escrita o que as regras do plugin proíbem: id fora do namespace do tipo, fechar work item fora de `close_work_item`, reativar o que foi retirado, atestado sem snapshot reproduzível.
 
-**Interface.** `check_append(&mut Hexlog, &dyn SnapshotProbe, &AppendRequest)`, `check_question_filters`, `check_where_eq`, `probe_refusal` (todas `pub(crate)`, `guard/mod.rs:7-9`), `attestation_id` e `WHERE_EQ_PAIRS_MAX`, `WHERE_EQ_TEXT_MAX` (públicos).
+**Interface.** `check_append(&mut Hexlog, &dyn SnapshotProbe, &AppendRequest)`, `check_question_filters`, `check_where_eq`, `probe_refusal` e `known_role` (todas `pub(crate)`, `guard/mod.rs`), `attestation_id` e `WHERE_EQ_PAIRS_MAX`, `WHERE_EQ_TEXT_MAX` (públicos). `ROLE_REFERENCE_COMMANDS` e `ROLE_REFERENCE_MATRIX` também são públicos, mas `#[doc(hidden)]`: servem só aos testes de paridade com a doc e com os agentes.
 
-**Escondido.** `Guard` e `NodeItem` (`guard/append.rs`), a regra de atestado (`guard/attestation.rs`), os filtros (`guard/filter.rs`), a sonda lida uma vez por batch (`probe_once`).
+**Escondido.** `Guard` e `NodeItem` (`guard/append.rs`), a regra de atestado (`guard/attestation.rs`), os filtros (`guard/filter.rs`), a sonda lida uma vez por batch (`probe_once`), a matriz dos sete papéis e as regras puras de autoria (`guard/role.rs`), a parte que lê o banco para aplicá-las aos quatro corpos do `append` (`guard/role_guard.rs`) e a confirmação humana ou do critic (`guard/confirmation.rs`).
 
 **Profundidade.** Funda no comportamento: uma chamada valida o batch. É também o maior consumidor do vocabulário de tipos (seção 5, item 1). Os gates mecânicos acrescentaram regras de atestado: seção 3.23.
 

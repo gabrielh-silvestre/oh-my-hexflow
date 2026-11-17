@@ -6,8 +6,8 @@ use serde_json::Value;
 
 use super::append::Guard;
 use super::role::{
-    CLAUDE, CRITIC, Revision, contradicts_retirement_allowed, known_role, node_allowed,
-    relation_allowed, retirement_allowed, revision_allowed,
+    CLAUDE, CRITIC, Revision, contradicts_retirement_allowed, known_role, matrix_lists,
+    node_allowed, revision_allowed,
 };
 use crate::error::{OmhlError, RuleCode};
 
@@ -95,7 +95,7 @@ impl Guard<'_, '_> {
         let Some(role) = known_role(&self.author.agent) else {
             return Ok(());
         };
-        if !relation_allowed(role, relation_type) {
+        if !matrix_lists(role, |matrix| matrix.relations, relation_type) {
             let pointer = "body/relation_type";
             return Err(refusal(RuleCode::RoleRecordForbidden, index, pointer));
         }
@@ -154,8 +154,8 @@ impl Guard<'_, '_> {
     ) -> Result<(), OmhlError> {
         let relation_type = relation_type.as_str();
         let agent = self.author.agent.as_str();
-        let outside_matrix =
-            known_role(agent).is_some_and(|role| !retirement_allowed(role, relation_type));
+        let outside_matrix = known_role(agent)
+            .is_some_and(|role| !matrix_lists(role, |matrix| matrix.retire, relation_type));
         if outside_matrix {
             return Err(refusal(RuleCode::RoleRetirementForbidden, index, "base"));
         }

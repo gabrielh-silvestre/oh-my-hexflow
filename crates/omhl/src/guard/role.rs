@@ -11,11 +11,11 @@ const ANALYST: &str = "omhl:analyst";
 const VERIFIER: &str = "omhl:verifier";
 
 /// O que um papel portado pode gravar; as condições finas (ex.: `kind` do gap) ficam nas funções abaixo.
-struct Matrix {
+pub(super) struct Matrix {
     role: &'static str,
     nodes: &'static [&'static str],
-    relations: &'static [&'static str],
-    retire: &'static [&'static str],
+    pub(super) relations: &'static [&'static str],
+    pub(super) retire: &'static [&'static str],
 }
 
 /// Os sete papéis que o `OMHL_ROLE` aceita; lista fechada, o valor é gravado como `agent` do record.
@@ -99,9 +99,42 @@ fn matrix_of(role: &str) -> Option<&'static Matrix> {
     MATRICES.iter().find(|matrix| matrix.role == role)
 }
 
+/// `(papel, nodes, relations, retire)` de um papel.
+type RoleMatrixRow = (
+    &'static str,
+    &'static [&'static str],
+    &'static [&'static str],
+    &'static [&'static str],
+);
+
+/// Lida de `MATRICES`, a mesma fonte da guarda; só para os testes (paridade com a doc).
+#[doc(hidden)]
+pub const ROLE_REFERENCE_MATRIX: [RoleMatrixRow; 7] = reference_matrix();
+
+const fn reference_matrix() -> [RoleMatrixRow; 7] {
+    let mut table: [RoleMatrixRow; 7] = [("", &[], &[], &[]); 7];
+    let mut index = 0;
+    while index < MATRICES.len() {
+        let matrix = &MATRICES[index];
+        table[index] = (matrix.role, matrix.nodes, matrix.relations, matrix.retire);
+        index += 1;
+    }
+
+    table
+}
+
+/// O papel lista `name` no campo da matriz escolhido por `pick` (`nodes`, `relations` ou `retire`).
+pub(super) fn matrix_lists(
+    role: &str,
+    pick: fn(&Matrix) -> &'static [&'static str],
+    name: &str,
+) -> bool {
+    matrix_of(role).is_some_and(|matrix| pick(matrix).contains(&name))
+}
+
 /// Tipo de node na matriz do papel e conteúdo dentro das condições finas.
 pub(super) fn node_allowed(role: &str, type_name: &str, data: &Value) -> bool {
-    let listed = matrix_of(role).is_some_and(|matrix| matrix.nodes.contains(&type_name));
+    let listed = matrix_lists(role, |matrix| matrix.nodes, type_name);
     let content_ok = match (role, type_name) {
         (ANALYST, "premise") => data.get("status").and_then(Value::as_str) == Some("assumed"),
         (ANALYST, "gap") => data.get("kind").is_some(),
@@ -115,14 +148,6 @@ pub(super) fn node_allowed(role: &str, type_name: &str, data: &Value) -> bool {
 
 fn confirmed_by_critic(data: &Value) -> bool {
     is_confirmed_premise(data) && confirmer(data) == Some(CRITIC_CONFIRMATION)
-}
-
-pub(super) fn relation_allowed(role: &str, relation_type: &str) -> bool {
-    matrix_of(role).is_some_and(|matrix| matrix.relations.contains(&relation_type))
-}
-
-pub(super) fn retirement_allowed(role: &str, relation_type: &str) -> bool {
-    matrix_of(role).is_some_and(|matrix| matrix.retire.contains(&relation_type))
 }
 
 /// Fatos de uma revisão feita por um papel portado.

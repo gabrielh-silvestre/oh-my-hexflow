@@ -63,6 +63,11 @@ Cada erro traz `error.code` e, em `details`, o `path` do campo (nunca o conteúd
 - `rests-on-architecture` (saída 1): uma diretiva se apoia numa diretiva de `kind` `architecture`. Apoie-a numa de negócio.
 - `rests-on-target-type` (saída 1): uma diretiva se apoia numa premissa. A relation `rests-on` de diretiva só aceita diretiva.
 - `guideline-retire-by-command` (saída 1): a retirada de diretiva veio pelo `append`. Use `omhl guideline retire`.
+- `role-unknown` (saída 1): o `OMHL_ROLE` tem um valor fora dos sete papéis, ou foi definido fora do Claude Code. Corrija ou remova a variável.
+- `role-record-forbidden` (saída 1): o papel grava um tipo de node, relação ou retirada que não é dele, ou uma relação a partir de node de outro. Grave só o que a linha do papel permite.
+- `role-revision-forbidden` (saída 1): o papel revisa node de outro, muda o `kind` de premissa ou gap, ou leva uma divergência a `accepted`. Grave um node seu ou peça ao dono.
+- `role-answer-forbidden` (saída 1): o critic liga `answers` a um destino que não é gap `technical`. Deixe o gap ao dono.
+- `role-retirement-forbidden` (saída 1): quem chama não pode retirar esse node ou relação, ou o `contradicts` é seu. Peça ao verifier ou ao dono.
 - `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
 - `INVALID_INPUT` (saída 1): um valor do pedido tem forma inválida para o banco (por exemplo, id semântico mal formado, `batch-size` com lote vazio ou de mais de 50 itens, ou `idempotency-key-format`). O `path` e o `code` do detalhe dizem qual.
 - `INVALID_RECORD` (saída 1): o `data` não bate com o schema da tabela acima, ou a relation aponta para um nó inexistente. Cada violação vem em `details`, com `code` (`required`, `enum`, `additional-properties`, `min-length`, `endpoint-not-found`, entre outros) e o `path` do campo; o `message` não traz os valores válidos, olhe a tabela. Corrija todos os campos listados de uma vez.
