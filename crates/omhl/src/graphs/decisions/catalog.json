@@ -81,7 +81,8 @@
         "properties": {
           "question": {"type": "string", "minLength": 1, "maxLength": 2000},
           "context": {"type": "string", "minLength": 1, "maxLength": 2000},
-          "work_item": {"type": "string", "minLength": 1, "maxLength": 200}
+          "work_item": {"type": "string", "minLength": 1, "maxLength": 200},
+          "kind": {"enum": ["technical", "business"]}
         }
       }
     },

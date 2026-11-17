@@ -34,7 +34,7 @@ Campo extra é recusado. Os textos têm de 1 a 2000 caracteres (o `title`, de 1 
 | `work-item` | `title`, `status` (`open`; `closed` só pelo `omhl close`) | |
 | `premise` | `text`, `status` (`assumed` ou `confirmed`) | `kind` (`technical`, `business`), `work_item`, `confirmed_by` |
 | `guideline` | `text` | `kind` (`business`, `architecture`), `confirmed_by` |
-| `gap` | `question`, `context` | `work_item` |
+| `gap` | `question`, `context` | `kind` (`technical`, `business`), `work_item` |
 | `divergence` | `source_ref`, `kind` (`missing`, `partial`, `contradicts`, `unrequested`), `text`, `evidence`, `resolution` (`open`, `spec-stale`, `code-fixed`, `accepted`), `work_item` | `confirmed_by`, `amendment` |
 | `decision` | `text`, `evidence` | `work_item` |
 
