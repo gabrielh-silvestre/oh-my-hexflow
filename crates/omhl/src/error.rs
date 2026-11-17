@@ -71,6 +71,7 @@ pub enum RuleCode {
     RestsOnArchitecture,
     RestsOnTargetType,
     GuidelineRetireByCommand,
+    RoleUnknown,
 }
 
 impl RuleCode {
@@ -102,6 +103,7 @@ impl RuleCode {
             RuleCode::RestsOnArchitecture => "rests-on-architecture",
             RuleCode::RestsOnTargetType => "rests-on-target-type",
             RuleCode::GuidelineRetireByCommand => "guideline-retire-by-command",
+            RuleCode::RoleUnknown => "role-unknown",
         }
     }
 
@@ -126,6 +128,10 @@ impl RuleCode {
             RuleCode::GuidelineRetireByCommand => Some(Guidance {
                 cause: "a guideline can only be retired by the retire command",
                 next_step: "retire a guideline with omhl guideline retire",
+            }),
+            RuleCode::RoleUnknown => Some(Guidance {
+                cause: "OMHL_ROLE must be one of the seven omhl roles and is only accepted under Claude Code",
+                next_step: "unset OMHL_ROLE, or set it to a valid omhl role while running under Claude Code",
             }),
             _ => None,
         }

@@ -14,6 +14,7 @@ fn main() -> ExitCode {
         git_index_file: git_index_file.as_deref(),
         parent_pid,
         claude_code: std::env::var_os("CLAUDECODE").is_some_and(|value| value == "1"),
+        role: std::env::var_os("OMHL_ROLE").map(|value| value.to_string_lossy().into_owned()),
     };
     cli::run(
         std::env::args_os(),
