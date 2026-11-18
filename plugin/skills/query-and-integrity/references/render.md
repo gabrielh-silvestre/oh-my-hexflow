@@ -8,6 +8,7 @@ Para ler o contexto de sessão do projeto: os checks, as diretivas, as decisões
 
 - Nenhum argumento.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco, fora da pasta do projeto; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

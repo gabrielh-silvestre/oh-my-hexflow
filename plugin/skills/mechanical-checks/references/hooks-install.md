@@ -9,6 +9,7 @@ Uma vez por clone, para o git chamar os checks sozinho: grava os quatro scripts 
 - `--force`: segue mesmo que o clone já tenha hooks próprios ou outro `core.hooksPath`. **Só rode com a aprovação explícita do humano**, dada depois de você mostrar o que será sobrescrito (o passo está em "Erros"). O comando não faz backup: o `core.hooksPath` anterior se perde e os hooks de `.git/hooks` continuam no disco, mas o git deixa de executá-los (git-lfs e `commit-msg`, por exemplo). Encadeá-los não é suportado.
 - Precisa de um repositório git, versão 2.31 ou mais nova.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

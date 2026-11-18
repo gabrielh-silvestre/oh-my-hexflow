@@ -8,6 +8,7 @@ Para conferir a spec de um work item depois de escrevê-la, até passar, e de no
 
 - `<WORK_ITEM>`: o id do work item, como `work-items.w1`.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 - A pasta da spec (`.omhl/specs/wi-<id>__<slug>/`, no diretório principal) com as partes `parte-NN.md` e as emendas `emenda-NN.md`. Cada parte tem as cinco seções `##` na ordem: `Objetivo`, `Diretivas e premissas aplicáveis`, `Comportamentos` (itens `- CMP-###:`), `Critérios de aceitação` (itens `- CA-###:`) e `Fora de escopo`.
 - O grafo no banco: os `premises.<nome>` e `guidelines.<nome>` citados precisam existir e estar confirmados, e a spec precisa citar uma premissa de negócio confirmada do work item.
 

@@ -8,6 +8,7 @@ Para descartar de vez um check cujo arquivo foi apagado da árvore e cujo apagam
 
 - `<CHECK>`: o id do check, como `checks.ok`. Tem de ser um check vigente do projeto, com o arquivo `.omhl/checks/<slug>.toml` ausente da árvore.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

@@ -9,6 +9,7 @@ Depois de criar, editar ou apagar um arquivo em `.omhl/` (check ou diretiva), pa
 - Sem argumentos posicionais. Lê os arquivos do projeto em `.omhl/`.
 - `--dry-run`: informa o que faria, sem gravar.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

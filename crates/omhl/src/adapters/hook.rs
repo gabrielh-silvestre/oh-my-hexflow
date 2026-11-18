@@ -42,7 +42,7 @@ pub fn session_start(
     }
 }
 
-/// Nunca sai com 2: a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
+/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
     pre_tool_use(stdin, out, err, |input| {
         Ok(match check_spec_lock(input)? {

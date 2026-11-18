@@ -9,6 +9,7 @@ Para criar a pasta da spec de um work item `feat/` ou `fix/`, com a primeira par
 - `<WORK_ITEM>`: o id do work item, como `work-items.w1`. Precisa existir e estar aberto.
 - `<SLUG>`: o nome da pasta depois do id, de 1 a 64 caracteres de `a-z`, `0-9` e `-`, sem começar por `-`. A pasta será `wi-<id>__<slug>`.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 - Precisa de um repositório git (o comando acha o diretório principal por ele).
 
 ## Saída

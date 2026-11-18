@@ -11,6 +11,7 @@ Para gravar à mão o desfecho de um check **manual** (sem o campo `run`) sobre 
 - `--outcome`: `passed`, `passed_with_warning` ou `failed`. Obrigatório.
 - `--note <texto>`: observação livre, opcional.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 - Precisa de um repositório git com a árvore limpa: o registro prende o desfecho ao `HEAD`.
 
 ## Saída

@@ -974,3 +974,111 @@ fn it_should_refuse_where_on_a_non_text_field() {
 
     assert_eq!(refusal, list_refusal("/where/0", FIELD_NOT_TEXT));
 }
+
+// Formato de saída
+
+const JSON_ONLY: &str = "this command only prints JSON; use --format json";
+const NOT_YET: &str = "not available for this command yet";
+
+#[test]
+fn it_should_accept_the_global_format_before_and_after_the_subcommand() {
+    let project = Project::new("acme");
+
+    let before = in_project(&project, &["--format", "json", "list"]).run();
+    let after = in_project(&project, &["list", "--format", "json"]).run();
+
+    assert_eq!((before.code, after.code), (Some(0), Some(0)));
+    assert_eq!(before.stdout, after.stdout);
+}
+
+#[test]
+fn it_should_let_the_format_after_the_subcommand_win() {
+    let project = Project::new("acme");
+
+    let output = in_project(&project, &["--format", "json", "list", "--format", "agent"]).run();
+
+    assert_eq!(output.code, Some(2));
+    assert!(output.stderr.contains(NOT_YET), "stderr: {}", output.stderr);
+}
+
+#[test]
+fn it_should_exit_two_for_an_unknown_format() {
+    let project = Project::new("acme");
+
+    let output = in_project(&project, &["list", "--format", "xml"]).run();
+
+    assert_eq!(output.code, Some(2));
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+}
+
+#[test]
+fn it_should_refuse_agent_and_human_on_the_json_only_commands() {
+    let commands: [&[&str]; 5] = [
+        &["hook", "session-start"],
+        &["hook", "spec-lock"],
+        &["hook", "agent-role"],
+        &["hooks", "post-commit"],
+        &["gate-worktree", "--branch", "feat/wi-w1__x"],
+    ];
+
+    for command in commands {
+        for format in ["agent", "human"] {
+            let output = run(&[command, &["--format", format]].concat());
+
+            assert_eq!(output.status.code(), Some(2), "{command:?} {format}");
+            assert!(output.stdout.is_empty(), "{command:?} {format}: stdout");
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains(JSON_ONLY),
+                "{command:?} {format}: stderr"
+            );
+        }
+    }
+}
+
+#[test]
+fn it_should_refuse_agent_and_human_on_an_active_command_without_text_yet() {
+    let project = Project::new("acme");
+
+    for format in ["agent", "human"] {
+        let output = in_project(&project, &["verify", "--format", format]).run();
+
+        assert_eq!(output.code, Some(2), "{format}");
+        assert!(output.stdout.is_empty(), "{format}: stdout");
+        assert!(
+            output.stderr.contains(NOT_YET),
+            "{format}: {}",
+            output.stderr
+        );
+    }
+}
+
+#[test]
+fn it_should_keep_gate_worktree_silent_without_a_marker_when_the_format_is_json() {
+    let bare = TempDir::new().expect("bare directory is created");
+    let xdg = TempDir::new().expect("data directory is created");
+
+    let output = omhl(&[
+        "gate-worktree",
+        "--branch",
+        "feat/wi-w1__x",
+        "--format",
+        "json",
+    ])
+    .cwd(bare.path())
+    .xdg(xdg.path())
+    .run();
+
+    assert_eq!(output.code, Some(0));
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+}
+
+#[test]
+fn it_should_cite_the_format_option_in_help() {
+    let output = omhl(&["--help"]).run();
+
+    assert!(
+        output.stdout.contains("--format"),
+        "help: {}",
+        output.stdout
+    );
+}

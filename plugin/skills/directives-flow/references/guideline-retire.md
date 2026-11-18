@@ -9,6 +9,7 @@ Para retirar uma diretiva (`guideline`) cujo arquivo `.omhl/guidelines/<nome>.to
 - `<ID>`: o id da diretiva, como `guidelines.brief`. Precisa ser uma diretiva vigente do repositório, não nativa, com o arquivo já apagado.
 - `--by <id>`: a diretiva que substitui a retirada. Opcional; com ela o comando grava no mesmo pedido a relation `supersedes` (da nova para a antiga) e a retirada. A sucessora precisa ser vigente e diferente da retirada.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

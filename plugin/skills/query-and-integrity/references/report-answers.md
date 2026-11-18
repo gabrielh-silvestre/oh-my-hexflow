@@ -8,6 +8,7 @@ Para ver o estado de cada gap (dúvida técnica aberta durante a execução): se
 
 - `--work-item <id>`: restringe aos gaps de um work item, como `work-items.w1`. O work item precisa existir (aberto ou fechado). Sem a opção, o relatório cobre todos os gaps.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco, fora da pasta do projeto; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

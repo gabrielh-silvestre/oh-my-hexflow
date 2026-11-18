@@ -38,6 +38,7 @@ Todas as opções são opcionais. Sem nenhuma, lista os nós de todos os tipos.
 - `--after-seq <n>`: o cursor da página: devolve os nós com `seq` maior que `n`. Use o `next_after_seq` da página anterior. Um valor além da cabeça do banco devolve a página vazia, que é resposta verdadeira.
 - `--db <caminho>`: o arquivo do banco. Um caminho novo **cria o banco**; o caminho precisa ficar fora da pasta do projeto.
 - `--project-dir <pasta>`: onde procurar o marcador `.omhl.toml`. A pasta precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

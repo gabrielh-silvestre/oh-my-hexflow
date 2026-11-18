@@ -14,6 +14,7 @@ Quando o trabalho do work item terminou e o gate de pull request já foi conferi
 
 - `<WORK_ITEM>`: o id do work item, como `work-items.w1`. Precisa existir e estar aberto.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 - Precisa de um repositório git com a árvore limpa: o fechamento prende o resultado do gate ao `HEAD`.
 
 ## Saída

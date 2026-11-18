@@ -8,6 +8,7 @@ Para ler um nó do banco quando você já sabe o id: um work item, uma premissa,
 
 - `<ID>`: o id do nó, como `work-items.w1` ou `premises.p1`. Tem a forma `<namespace>.<nome>`.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco, fora da pasta do projeto; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

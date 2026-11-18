@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 
 use super::check_run_text::{render_error, render_success};
 use super::hook;
+use super::text::{CommandKey, deferred, has_renderer, silent_without_marker};
 use crate::app::RUNNABLE_EVENTS;
 use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
@@ -26,6 +27,9 @@ pub struct Cli {
     /// Directory where the project marker lookup starts.
     #[arg(long, global = true)]
     pub project_dir: Option<PathBuf>,
+    /// Output format: `agent` (text for agents), `human` (text for people) or `json` (one JSON line). The default is `agent` for the commands that print text and `json` for the others; the hook commands, `hooks post-commit` and `gate-worktree` only print JSON.
+    #[arg(long, global = true, value_enum)]
+    pub format: Option<OutputFormat>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -155,14 +159,12 @@ pub struct CheckRunArgs {
     pub check: Option<String>,
     #[arg(long, requires = "event")]
     pub pre_push: bool,
-    /// Output format: `text` for agents, `json` for the single JSON line.
-    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-    pub format: OutputFormat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
-    Text,
+    Agent,
+    Human,
     Json,
 }
 
@@ -235,12 +237,14 @@ pub fn run(
         Ok(cli) => cli,
         Err(usage) => return report_usage(&usage, out, err),
     };
-    if let Some(usage) = pre_push_misuse(&cli) {
+    let key = command_key(&cli.command);
+    if let Some(usage) = pre_push_misuse(&cli).or_else(|| format_misuse(&cli, key)) {
         return report_usage(&usage, out, err);
     }
     let Cli {
         db,
         project_dir,
+        format,
         command,
     } = cli;
     let db = db.as_deref();
@@ -265,13 +269,11 @@ pub fn run(
             hook::agent_role(stdin, out, err, env, &groups)
         }
         Command::Action(command) => {
-            // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
-            let silent_without_marker = matches!(command, ActionCommand::GateWorktree { .. });
-            let format = output_format(&command);
+            let format = format.unwrap_or_else(|| default_format(key));
             let result = start_dir(project_dir.as_deref())
                 .and_then(|dir| execute(command, stdin, &dir, db, env));
             match &result {
-                Err(error) if silent_without_marker && error.code() == "no-marker" => {
+                Err(error) if silent_without_marker(key) && error.code() == "no-marker" => {
                     ExitCode::SUCCESS
                 }
                 _ => report(result, format, out, err),
@@ -314,13 +316,83 @@ fn pre_push_misuse(cli: &Cli) -> Option<clap::Error> {
     })
 }
 
-/// Só o `check run` tem texto; todo outro comando segue em JSON.
-fn output_format(command: &ActionCommand) -> OutputFormat {
+/// `agent` e `human` só existem onde o comando tem renderizador; a recusa sai pelo mesmo caminho do erro de uso.
+fn format_misuse(cli: &Cli, key: CommandKey) -> Option<clap::Error> {
+    if !matches!(cli.format, Some(OutputFormat::Agent | OutputFormat::Human)) || has_renderer(key) {
+        return None;
+    }
+    let message = match deferred(key) {
+        true => "this command only prints JSON; use --format json",
+        false => "not available for this command yet; use --format json",
+    };
+
+    Some(Cli::command().error(ErrorKind::InvalidValue, message))
+}
+
+fn default_format(key: CommandKey) -> OutputFormat {
+    match has_renderer(key) {
+        true => OutputFormat::Agent,
+        false => OutputFormat::Json,
+    }
+}
+
+/// Sem braço `_`: comando novo falha na compilação até ganhar uma chave.
+fn command_key(command: &Command) -> CommandKey {
     match command {
-        ActionCommand::Check {
-            command: CheckCommand::Run(args),
-        } => args.format,
-        _ => OutputFormat::Json,
+        Command::Hook {
+            event: HookEvent::SessionStart,
+        } => CommandKey::HookSessionStart,
+        Command::Hook {
+            event: HookEvent::SpecLock,
+        } => CommandKey::HookSpecLock,
+        Command::Hook {
+            event: HookEvent::AgentRole,
+        } => CommandKey::HookAgentRole,
+        Command::Action(ActionCommand::List { .. }) => CommandKey::List,
+        Command::Action(ActionCommand::Get { .. }) => CommandKey::Get,
+        Command::Action(ActionCommand::Append) => CommandKey::Append,
+        Command::Action(ActionCommand::Attest { .. }) => CommandKey::Attest,
+        Command::Action(ActionCommand::Render) => CommandKey::Render,
+        Command::Action(ActionCommand::GatePr { .. }) => CommandKey::GatePr,
+        Command::Action(ActionCommand::GateWorktree { .. }) => CommandKey::GateWorktree,
+        Command::Action(ActionCommand::Close { .. }) => CommandKey::Close,
+        Command::Action(ActionCommand::Verify) => CommandKey::Verify,
+        Command::Action(ActionCommand::Load { .. }) => CommandKey::Load,
+        Command::Action(ActionCommand::Project) => CommandKey::Project,
+        Command::Action(ActionCommand::Check {
+            command: CheckCommand::Run(_),
+        }) => CommandKey::CheckRun,
+        Command::Action(ActionCommand::Check {
+            command: CheckCommand::Sweep,
+        }) => CommandKey::CheckSweep,
+        Command::Action(ActionCommand::Check {
+            command: CheckCommand::Retire { .. },
+        }) => CommandKey::CheckRetire,
+        Command::Action(ActionCommand::Guideline {
+            command: GuidelineCommand::Retire { .. },
+        }) => CommandKey::GuidelineRetire,
+        Command::Action(ActionCommand::Byproduct { .. }) => CommandKey::Byproduct,
+        Command::Action(ActionCommand::Hooks {
+            command: HooksCommand::Install { .. },
+        }) => CommandKey::HooksInstall,
+        Command::Action(ActionCommand::Hooks {
+            command: HooksCommand::PostCommit,
+        }) => CommandKey::HooksPostCommit,
+        Command::Action(ActionCommand::Spec {
+            command: SpecCommand::Init { .. },
+        }) => CommandKey::SpecInit,
+        Command::Action(ActionCommand::Spec {
+            command: SpecCommand::Validate { .. },
+        }) => CommandKey::SpecValidate,
+        Command::Action(ActionCommand::Report {
+            command: ReportCommand::Answers { .. },
+        }) => CommandKey::ReportAnswers,
+        Command::Action(ActionCommand::Report {
+            command: ReportCommand::Recurrences { .. },
+        }) => CommandKey::ReportRecurrences,
+        Command::Action(ActionCommand::Report {
+            command: ReportCommand::Retro { .. },
+        }) => CommandKey::ReportRetro,
     }
 }
 
@@ -335,7 +407,8 @@ fn report(
             let _ = writeln!(out, "{value}");
             ExitCode::SUCCESS
         }
-        (Ok(value), OutputFormat::Text) => {
+        // Até a W1.2 o `human` não tem layout próprio e imprime o mesmo texto do `agent`.
+        (Ok(value), OutputFormat::Agent | OutputFormat::Human) => {
             let _ = writeln!(out, "{}", render_success(&value));
             ExitCode::SUCCESS
         }
@@ -343,7 +416,7 @@ fn report(
             let _ = writeln!(err, "{}", error.to_json());
             ExitCode::from(1)
         }
-        (Err(error), OutputFormat::Text) => {
+        (Err(error), OutputFormat::Agent | OutputFormat::Human) => {
             let _ = writeln!(err, "{}", render_error(&error.to_json()));
             ExitCode::from(1)
         }

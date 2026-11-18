@@ -10,6 +10,7 @@ Para ler a saída guardada de um check mecânico, depois de um `check run` repro
 - `<WORK_ITEM>`: o id do work item, como `work-items.w1`.
 - `--tail <n>`: quantas linhas finais devolver; padrão 50, de **1 a 500**. Um valor fora desse intervalo (inclusive `--tail 0`) é **recusado**, nunca cortado em silêncio.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

@@ -1349,6 +1349,7 @@ fn it_should_not_flag_the_exit_code_type_or_the_clap_command_enum_outside_the_po
         src_dir().join("main.rs"),
         src_dir().join("adapters/cli.rs"),
         src_dir().join("adapters/hook.rs"),
+        src_dir().join("adapters/text/mod.rs"),
     ];
 
     failures.extend(scan_paths(&entry_points, process_spawn_refs));
@@ -1406,6 +1407,7 @@ fn it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_t
         src_dir().join("adapters/check_run_text.rs"),
         src_dir().join("adapters/cli.rs"),
         src_dir().join("adapters/hook.rs"),
+        src_dir().join("adapters/text/mod.rs"),
     ];
 
     failures.extend(scan_paths(&adapters, adapters_inner_refs));

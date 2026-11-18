@@ -8,6 +8,7 @@ Antes de `wt switch -c <branch>`, para conferir se a worktree da branch pode nas
 
 - `--branch <nome>`: o nome da branch, no formato `tipo/wi-<id>__<slug>` (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` ou `docs`). Obrigatório; aceita valor com hífen inicial e a forma `--branch=<valor>`.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
+- `--format json`: opção global, o único formato deste comando, que só imprime JSON. `agent` e `human` saem com erro de uso (saída 2), antes de o comando rodar.
 - O que cada prefixo exige vem de `.omhl/workflow.toml` (a matriz está em [matrix.md](matrix.md)): `feat` e `fix` pedem uma premissa de negócio confirmada e uma spec válida; `refactor` e `tests` pedem uma premissa técnica confirmada; `bugfix` pede uma premissa do agente; `chore` e `docs` não pedem nada.
 
 ## Saída

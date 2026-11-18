@@ -8,6 +8,7 @@ Em dois momentos. Antes de registrar uma premissa, com `--min 2`, para achar uma
 
 - `--min <n>`: o número mínimo de work items distintos para o grupo entrar. Sem a opção, vale `promotion.min_work_items` do `.omhl/workflow.toml`, e na falta dele o padrão 3. A opção vence o arquivo. O comando não valida o valor: `--min 0` e `--min 1` listam todos os grupos.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco, fora da pasta do projeto; o `--project-dir` precisa existir. O `workflow.toml` é lido do projeto mesmo com `--db`.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

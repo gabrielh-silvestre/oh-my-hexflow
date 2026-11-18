@@ -8,6 +8,7 @@ Quando sobrou processo de um check cujo `omhl` já saiu (Ctrl+C, `kill`, queda d
 
 - Sem argumentos posicionais.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 
 ## Saída
 

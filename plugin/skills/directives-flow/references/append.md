@@ -17,6 +17,7 @@ Para gravar no banco do projeto: work item, premissa, gap, divergência, diretiv
 - Premissa `confirmed` leva `confirmed_by` com `by` (`person:<nome>`), `question` e `answer` literais, copiados da resposta real do humano.
 - Diretiva nova ou revisada leva `kind`: `business` ou `architecture`.
 - Opções: `--db <caminho>` (um caminho novo cria o banco) e `--project-dir <pasta>` (a pasta onde a busca do marcador `.omhl.toml` começa; precisa existir).
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
 - `key` (opcional, no topo do JSON, ao lado de `items`; não existe flag `--key`): um texto de 1 a 200 caracteres que você escolhe para identificar este pedido, por exemplo `gaps-limit-1`. Ela existe para o retry. Se o `append` falha sem você saber se gravou (`BUSY`, `STORE_ERROR`, timeout), repita o pedido idêntico com a mesma `key`:
   - Se o primeiro não tinha gravado, o segundo grava e devolve `replayed: false`.
   - Se o primeiro já tinha gravado, nada é gravado de novo e a saída traz os mesmos `records` com `replayed: true`. Nos dois casos o pedido está feito: siga em frente.
