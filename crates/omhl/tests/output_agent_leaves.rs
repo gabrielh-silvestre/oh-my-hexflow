@@ -14,6 +14,7 @@ use support::git::git_in;
 use support::inproc::{run_inproc, run_inproc_at};
 use support::omhl::{decision_data, work_item_data};
 use support::project::Project;
+use support::query;
 use support::run::Run;
 
 // ---------------------------------------------------------------- folhas de um `Value`
@@ -293,6 +294,11 @@ fn table_problems(profile: &Profile, outcome: Outcome, value: &Value) -> Vec<Str
 /// (5) entrada não opcional da tabela do desfecho sem chave no `Value`; a de tipo de nó só vale se o `Value` tem um nó do tipo.
 fn required_problems(profile: &Profile, outcome: Outcome, value: &Value) -> Vec<String> {
     let leaves = collect_leaves(profile, outcome, value);
+    // Um `Value` sem nó (`{"node":null}` do `get`, página vazia do `list`) não tem de onde cobrar as chaves de nó.
+    let node_profile = profile.nodes.is_some() && outcome == Outcome::Success;
+    if node_profile && leaves.iter().all(|leaf| leaf.node_type.is_none()) {
+        return Vec::new();
+    }
 
     profile
         .entries(outcome)
@@ -820,6 +826,130 @@ fn check_run_ambiguous_absent(value: &Value) -> Vec<String> {
     ]
 }
 
+// ---------------------------------------------------------------- fixtures do `list` e do `get` (em processo)
+
+fn query_state() -> Fixture {
+    Fixture::of(query::query_project())
+}
+
+fn items_of(value: &Value) -> &Vec<Value> {
+    value["items"].as_array().expect("the list has items")
+}
+
+/// `N nodes · seq A–B` e as palavras dos fatos `Derived` do nó (`shadowed`, `blocking`).
+fn list_facts(value: &Value) -> Vec<String> {
+    let items = items_of(value);
+    let first = &items[0]["seq"];
+    let last = &items[items.len() - 1]["seq"];
+
+    vec![
+        format!("{} nodes · seq {first}–{last}", items.len()),
+        "shadowed".to_owned(),
+        "blocking".to_owned(),
+    ]
+}
+
+fn list_page_facts(value: &Value) -> Vec<String> {
+    let items = items_of(value);
+    let last = &items[items.len() - 1]["seq"];
+
+    vec![
+        format!("{} nodes · seq 1–{last}", items.len()),
+        format!(
+            "Next: omhl list --after-seq {} with the same filters",
+            value["next_after_seq"]
+        ),
+    ]
+}
+
+fn list_last_page_absent(_value: &Value) -> Vec<String> {
+    vec!["Next:".to_owned()]
+}
+
+/// O cabeçalho do `get` e os fatos `Derived` do nó; `data` busca cada fato pelo ponteiro JSON em `node.data`.
+fn get_facts(value: &Value, data: &[(&str, &str)]) -> Vec<String> {
+    let node = &value["node"];
+    let mut facts = vec![
+        format!(
+            "✔ get · {} · {} · seq {}",
+            text_at(node, "id"),
+            text_at(node, "type"),
+            node["seq"]
+        ),
+        format!("shadowed: {}", node["shadowed"]),
+    ];
+    for (label, pointer) in data {
+        let found = node["data"]
+            .pointer(pointer)
+            .unwrap_or_else(|| panic!("`{pointer}` is not in {node}"));
+        facts.push(format!("{label}: {found}"));
+    }
+
+    facts
+}
+
+fn get_header_facts(value: &Value) -> Vec<String> {
+    get_facts(value, &[])
+}
+
+fn get_attestation_facts(value: &Value) -> Vec<String> {
+    get_facts(
+        value,
+        &[
+            ("ok", "/ok"),
+            ("exit_code", "/exit_code"),
+            ("duration_ms", "/duration_ms"),
+            ("timed_out", "/timed_out"),
+            ("truncated", "/truncated"),
+        ],
+    )
+}
+
+fn get_closed_work_item_facts(value: &Value) -> Vec<String> {
+    get_facts(value, &[("gate.passed", "/gate/passed")])
+}
+
+fn get_check_facts(value: &Value) -> Vec<String> {
+    get_facts(
+        value,
+        &[
+            ("blocking", "/blocking"),
+            ("expect[0].exit", "/expect/0/exit"),
+        ],
+    )
+}
+
+fn get_blocking_facts(value: &Value) -> Vec<String> {
+    get_facts(value, &[("blocking", "/blocking")])
+}
+
+fn get_missing_node_facts(_value: &Value) -> Vec<String> {
+    vec!["⚠ get · node not found".to_owned()]
+}
+
+/// O erro genérico do app: o cabeçalho `código · mensagem` e a linha do detalhe, que só repete o código se difere.
+fn generic_error_facts(value: &Value) -> Vec<String> {
+    let error = &value["error"];
+    let detail = &error["details"][0];
+    let detail_line = match detail["code"] == error["code"] {
+        true => format!("- {}", text_at(detail, "path")),
+        false => format!(
+            "- {} · {}",
+            text_at(detail, "path"),
+            text_at(detail, "code")
+        ),
+    };
+
+    vec![
+        format!(
+            "✘ {} · {}",
+            text_at(error, "code"),
+            text_at(error, "message")
+        ),
+        detail_line,
+    ]
+}
+
 /// Um estado de fixture de um comando: cada onda das etapas 3 e 4 acrescenta os seus casos.
 struct Case {
     name: &'static str,
@@ -835,7 +965,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 9] = [
+const CASES: [Case; 24] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -925,6 +1055,156 @@ const CASES: [Case; 9] = [
         fixture: check_run_head_ambiguous,
         derived: check_run_ambiguous_facts,
         absent: check_run_ambiguous_absent,
+    },
+    Case {
+        name: "list with the nine types and a shadowed check",
+        key: CommandKey::List,
+        args: &["list"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: list_facts,
+        absent: list_last_page_absent,
+    },
+    Case {
+        name: "list page with a next page",
+        key: CommandKey::List,
+        args: &["list", "--limit", "3"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: list_page_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get decision",
+        key: CommandKey::Get,
+        args: &["get", query::DECISION],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get attestation",
+        key: CommandKey::Get,
+        args: &["get", query::ATTESTATION],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_attestation_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get premise",
+        key: CommandKey::Get,
+        args: &["get", query::PREMISE],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get closed work item with gate",
+        key: CommandKey::Get,
+        args: &["get", query::CLOSED_WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_closed_work_item_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get project check",
+        key: CommandKey::Get,
+        args: &["get", query::CHECK],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_check_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get shadowed check",
+        key: CommandKey::Get,
+        args: &["get", query::SHADOWED_CHECK],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_blocking_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get divergence",
+        key: CommandKey::Get,
+        args: &["get", query::DIVERGENCE],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get pull request",
+        key: CommandKey::Get,
+        args: &["get", query::PULL_REQUEST],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get gap",
+        key: CommandKey::Get,
+        args: &["get", query::GAP],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get guideline",
+        key: CommandKey::Get,
+        args: &["get", query::GUIDELINE],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get missing node",
+        key: CommandKey::Get,
+        args: &["get", "checks.absent-probe"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: get_missing_node_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "get invalid id",
+        key: CommandKey::Get,
+        args: &["get", "Bad_Id"],
+        outcome: Outcome::Failure,
+        error_code: Some("INVALID_INPUT"),
+        fixture: query_state,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "list limit zero",
+        key: CommandKey::List,
+        args: &["list", "--limit", "0"],
+        outcome: Outcome::Failure,
+        error_code: Some("invalid-arguments"),
+        fixture: query_state,
+        derived: generic_error_facts,
+        absent: no_facts,
     },
 ];
 
