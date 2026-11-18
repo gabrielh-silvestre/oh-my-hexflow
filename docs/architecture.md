@@ -167,7 +167,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `hexlog::store` | 932 | `Store` (3 métodos) | funda, seam de 1 adapter |
 | `omhl::facade` (`Omhl`) | 281 | 16 operações | média |
 | `omhl::gate` | 352 | `evaluate`, `read_consistent`, `GateSource` | funda |
-| `omhl::guard` | 1.253 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id`, `known_role` | funda |
+| `omhl::guard` | 1.256 | `check_append`, `check_question_filters`, `check_where_eq`, `probe_refusal`, `attestation_id`, `known_role` | funda |
 | `omhl::pr_gate` | 221 | `required_checks`, `pr_gate_questions`, `spec_digests` | média |
 | `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES`, `namespace_of` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |

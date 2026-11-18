@@ -718,6 +718,67 @@ fn it_should_refuse_omhl_verifier_changing_a_divergence_field_other_than_resolut
 }
 
 #[test]
+fn it_should_refuse_a_ported_role_closing_its_own_divergence_as_spec_stale() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        CODE_REVIEWER,
+        node_item(DIVERGENCE, "divergence", divergence_data("open")),
+    );
+    let base = record_id_of(&mut omhl, DIVERGENCE);
+    let closed = revision_item(
+        DIVERGENCE,
+        "divergence",
+        spec_stale_divergence_data(),
+        &base,
+    );
+
+    let code = refused_code(&mut omhl, role_author(CODE_REVIEWER), vec![closed]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_a_ported_role_closing_its_own_divergence_as_code_fixed() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        CODE_REVIEWER,
+        node_item(DIVERGENCE, "divergence", divergence_data("open")),
+    );
+    let base = record_id_of(&mut omhl, DIVERGENCE);
+    let fixed = revision_item(DIVERGENCE, "divergence", fixed_divergence_data(), &base);
+
+    let code = refused_code(&mut omhl, role_author(CODE_REVIEWER), vec![fixed]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_omhl_verifier_closing_its_own_divergence_outside_the_close_rule() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        VERIFIER,
+        node_item(DIVERGENCE, "divergence", divergence_data("open")),
+    );
+    let base = record_id_of(&mut omhl, DIVERGENCE);
+    let closed_without_new_evidence =
+        with_field(divergence_data("open"), "resolution", json!("code-fixed"));
+    let revision = revision_item(DIVERGENCE, "divergence", closed_without_new_evidence, &base);
+
+    let code = refused_code(&mut omhl, role_author(VERIFIER), vec![revision]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
 fn it_should_refuse_omhl_verifier_revising_a_spec_stale_divergence() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();

@@ -162,10 +162,13 @@ pub(super) struct Revision<'a> {
     pub(super) revised: &'a Value,
 }
 
-/// Só o próprio papel revisa o que gravou; `kind` de premissa e gap não muda, divergência não vira `accepted`
-/// e premissa confirmada ou divergência já resolvida não são revisadas, nem pelo autor.
+/// Só o próprio papel revisa o que gravou; `kind` de premissa e gap não muda, divergência só sai de `open`
+/// pelo fechamento do verifier e premissa confirmada ou divergência já resolvida não são revisadas, nem pelo autor.
 pub(super) fn revision_allowed(revision: &Revision<'_>) -> bool {
-    if changes_kind(revision) || accepts_divergence(revision) || is_settled(revision) {
+    if changes_kind(revision)
+        || leaves_open_outside_verifier_close(revision)
+        || is_settled(revision)
+    {
         return false;
     }
 
@@ -191,8 +194,10 @@ fn resolution_of(data: &Value) -> Option<&str> {
     data.get("resolution").and_then(Value::as_str)
 }
 
-fn accepts_divergence(revision: &Revision<'_>) -> bool {
-    revision.type_name == "divergence" && resolution_of(revision.revised) == Some("accepted")
+fn leaves_open_outside_verifier_close(revision: &Revision<'_>) -> bool {
+    revision.type_name == "divergence"
+        && resolution_of(revision.revised) != Some("open")
+        && !verifier_closes_divergence(revision)
 }
 
 /// O verifier confere a correção: `open` vira `code-fixed` e a evidência só cresce; nada mais muda.
@@ -205,7 +210,6 @@ fn verifier_closes_divergence(revision: &Revision<'_>) -> bool {
 
     revision.role == VERIFIER
         && revision.type_name == "divergence"
-        && resolution_of(revision.current) == Some("open")
         && resolution_of(revision.revised) == Some("code-fixed")
         && evidence_of(revised).starts_with(evidence_of(current))
         && evidence_of(revised).len() > evidence_of(current).len()
@@ -225,7 +229,6 @@ fn critic_confirms_premise(revision: &Revision<'_>) -> bool {
     revision.role == CRITIC
         && revision.type_name == "premise"
         && current.get("kind").and_then(Value::as_str) == Some("technical")
-        && !is_confirmed_premise(revision.current)
         && confirmed_by_critic(revision.revised)
         && fields_except(current, &confirmation_fields)
             == fields_except(revised, &confirmation_fields)
