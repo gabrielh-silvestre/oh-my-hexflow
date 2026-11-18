@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::{Value, json};
-use support::child::{Output as Child, omhl};
+use support::child::{Output as Child, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::git_in;
 use support::hook::assert_released_with_code;
@@ -56,7 +56,7 @@ fn hook_for(project: &Project) -> Child {
 }
 
 fn in_project(project: &Project, args: &[&str]) -> Child {
-    omhl(args).cwd(project.dir()).xdg(project.xdg()).run()
+    omhl_json(args).cwd(project.dir()).xdg(project.xdg()).run()
 }
 
 fn append_decisions(project: &Project, decisions: &[(String, String)]) {

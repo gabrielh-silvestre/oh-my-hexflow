@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 
 use hexlog::Limits;
 use serde_json::{Value, json};
-use support::child::{Cmd, Output as Child, omhl};
+use support::child::{Cmd, Output as Child, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::{GitRepo, git_in};
 use support::omhl::{
@@ -63,7 +63,7 @@ fn it_should_print_usage_and_exit_two_for_any_other_argument() {
 
 /// Um `omhl` rodando dentro do projeto, com o banco na pasta de dados dele.
 fn in_project(project: &Project, args: &[&str]) -> Cmd {
-    omhl(args).cwd(project.dir()).xdg(project.xdg())
+    omhl_json(args).cwd(project.dir()).xdg(project.xdg())
 }
 
 fn json_line(text: &str) -> Value {
@@ -113,6 +113,11 @@ fn first_help_words(help: &str) -> Vec<&str> {
     help.lines()
         .filter_map(|line| line.split_whitespace().next())
         .collect()
+}
+
+/// Como `in_project`, sem prepender `--format`: para os testes que passam o formato por conta própria.
+fn in_project_raw(project: &Project, args: &[&str]) -> Cmd {
+    omhl(args).cwd(project.dir()).xdg(project.xdg())
 }
 
 // Roteamento e uso
@@ -175,7 +180,7 @@ fn it_should_exit_one_with_a_json_error_when_there_is_no_marker() {
         );
     }
 
-    let output = omhl(&["list"]).cwd(bare.path()).xdg(xdg.path()).run();
+    let output = omhl_json(&["list"]).cwd(bare.path()).xdg(xdg.path()).run();
 
     assert_eq!(output.code, Some(1));
     assert!(output.stdout.is_empty(), "stdout stays empty");
@@ -238,7 +243,7 @@ fn it_should_find_the_project_by_the_project_dir_flag() {
     append_in(&project, "decisions.x", "decision", &data);
     let dir = project.dir().to_str().expect("the path is UTF-8");
 
-    let output = omhl(&["--project-dir", dir, "get", "decisions.x"])
+    let output = omhl_json(&["--project-dir", dir, "get", "decisions.x"])
         .cwd(elsewhere.path())
         .xdg(project.xdg())
         .run();
@@ -255,7 +260,7 @@ fn with_project_dir(project: &Project, dir: &Path, args: &[&str]) -> Cmd {
     let mut full = vec!["--project-dir", dir];
     full.extend(args);
 
-    omhl(&full).xdg(project.xdg())
+    omhl_json(&full).xdg(project.xdg())
 }
 
 fn file_in(dir: &Path) -> std::path::PathBuf {
@@ -603,7 +608,7 @@ fn it_should_refuse_a_db_inside_the_project_root_without_creating_files() {
     let cases = ["rel.db", inside.to_str().expect("the path is UTF-8")];
 
     for db in cases {
-        let output = omhl(&["--db", db, "list"]).cwd(project.dir()).run();
+        let output = omhl_json(&["--db", db, "list"]).cwd(project.dir()).run();
 
         assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
         assert_eq!(
@@ -984,8 +989,8 @@ const NOT_YET: &str = "not available for this command yet";
 fn it_should_accept_the_global_format_before_and_after_the_subcommand() {
     let project = Project::new("acme");
 
-    let before = in_project(&project, &["--format", "json", "list"]).run();
-    let after = in_project(&project, &["list", "--format", "json"]).run();
+    let before = in_project_raw(&project, &["--format", "json", "list"]).run();
+    let after = in_project_raw(&project, &["list", "--format", "json"]).run();
 
     assert_eq!((before.code, after.code), (Some(0), Some(0)));
     assert_eq!(before.stdout, after.stdout);
@@ -995,7 +1000,7 @@ fn it_should_accept_the_global_format_before_and_after_the_subcommand() {
 fn it_should_let_the_format_after_the_subcommand_win() {
     let project = Project::new("acme");
 
-    let output = in_project(&project, &["--format", "json", "list", "--format", "agent"]).run();
+    let output = in_project_raw(&project, &["--format", "json", "list", "--format", "agent"]).run();
 
     assert_eq!(output.code, Some(2));
     assert!(output.stderr.contains(NOT_YET), "stderr: {}", output.stderr);
@@ -1005,7 +1010,7 @@ fn it_should_let_the_format_after_the_subcommand_win() {
 fn it_should_exit_two_for_an_unknown_format() {
     let project = Project::new("acme");
 
-    let output = in_project(&project, &["list", "--format", "xml"]).run();
+    let output = in_project_raw(&project, &["list", "--format", "xml"]).run();
 
     assert_eq!(output.code, Some(2));
     assert!(output.stdout.is_empty(), "stdout stays empty");
@@ -1040,7 +1045,7 @@ fn it_should_refuse_agent_and_human_on_an_active_command_without_text_yet() {
     let project = Project::new("acme");
 
     for format in ["agent", "human"] {
-        let output = in_project(&project, &["verify", "--format", format]).run();
+        let output = in_project_raw(&project, &["verify", "--format", format]).run();
 
         assert_eq!(output.code, Some(2), "{format}");
         assert!(output.stdout.is_empty(), "{format}: stdout");

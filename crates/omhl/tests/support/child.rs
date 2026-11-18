@@ -34,6 +34,13 @@ pub fn omhl(args: &[&str]) -> Cmd {
     }
 }
 
+/// Como `omhl`, pedindo a saída em JSON (`--format json`) para os testes que a leem.
+pub fn omhl_json(args: &[&str]) -> Cmd {
+    let mut full = vec!["--format", "json"];
+    full.extend_from_slice(args);
+    omhl(&full)
+}
+
 impl Cmd {
     pub fn stdin(mut self, bytes: impl AsRef<[u8]>) -> Cmd {
         self.stdin = bytes.as_ref().to_vec();
