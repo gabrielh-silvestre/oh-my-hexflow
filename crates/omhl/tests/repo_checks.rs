@@ -282,7 +282,13 @@ fn it_should_load_the_repository_checks_without_errors() {
 }
 
 #[test]
-fn it_should_list_five_created_checks_in_the_dry_run() {
+fn it_should_list_the_checks_and_the_guidelines_in_the_dry_run() {
+    const REPO_GUIDELINES: [&str; 3] = [
+        "guidelines.diferencial",
+        "guidelines.premissa-so-vale-confirmada",
+        "guidelines.proposito",
+    ];
+    let expected: Vec<&str> = REPO_CHECKS.into_iter().chain(REPO_GUIDELINES).collect();
     let xdg = TempDir::new().expect("data directory is created");
 
     let output = load(&["load", "--dry-run"], xdg.path());
@@ -290,7 +296,7 @@ fn it_should_list_five_created_checks_in_the_dry_run() {
 
     let report = ok_json(&output);
     assert_eq!(report["dry_run"], json!(true));
-    assert_eq!(report["created"], json!(REPO_CHECKS));
+    assert_eq!(report["created"], json!(expected));
     assert_eq!(report["revised"], json!([]));
     assert_eq!(listed, Vec::<Value>::new());
 }
