@@ -143,16 +143,6 @@ impl Harness {
         }
     }
 
-    /// Como `new`, com o diretório temporário criado dentro de `dir`.
-    pub fn new_in(dir: &str) -> Harness {
-        Harness {
-            dir: TempDir::new_in(dir).expect("temporary directory is created"),
-            clock: FixedClock::default(),
-            ids: SeqIds::new(),
-            native: FakeNative::new("v1"),
-        }
-    }
-
     /// Catálogo nativo `v1` com `n.other`, do tipo `note`, já reservado.
     pub fn with_native_other() -> Harness {
         let mut harness = Harness::new();
