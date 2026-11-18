@@ -27,8 +27,8 @@ No sucesso, o texto sai no stdout, com saída 0 quando nenhum check bloqueante r
 
 Na falha `checks-failed`, o texto sai no stderr, com saída 1:
 
-- A primeira linha diz que o evento está bloqueado e quantos checks reprovaram: `✘ BLOCKED · before-pr · work-items.w1 · 1 of 3 checks failed, 1 not run`. Na `develop` o work item vira `no work item`.
-- Cada check reprovado traz uma linha com o id, `concern/variant` (se declarados), `blocking` ou `non-blocking`, `exit N` ou `timed out`, a duração e `truncated` (se a saída foi cortada). A duração sai em `NNNms` abaixo de 1 segundo e em `N.Ns` a partir dele. Abaixo vêm o `command:` (o `run` do check) e o `how to read the output:` com o `omhl byproduct` exato. Na `develop` não há `byproduct`: o texto mostra a cauda da saída, e só ela.
+- A primeira linha diz que o evento está bloqueado e quantos checks reprovaram: `✘ BLOCKED · before-pr · work-items.w1 · 1 of 3 checks failed, 1 passed, 1 not run`. Na `develop` o work item vira `no work item`.
+- Cada check reprovado traz uma linha com o id, `concern/variant` (se declarados), `blocking` ou `non-blocking`, `timeout Ns` (o limite do check), `exit N` ou `timed out`, a duração e `truncated` (se a saída foi cortada). A duração sai em `NNNms` abaixo de 1 segundo e em `N.Ns` a partir dele. Abaixo vêm o `command:` (o `run` do check) e o `how to read the output:` com o `omhl byproduct` exato. Na `develop` não há `byproduct`: o texto mostra a cauda da saída, e só ela.
 - Quando mostra saída de check, o texto avisa que ela pode ter segredos e não deve ser copiada nem repetida ao usuário. Fecha com `Next:`.
 
 Os demais erros saem no stderr, também em texto, com saída 1 (ou a saída de hoje): `✘ <código> · <mensagem>`, uma linha por detalhe (`- <código> at <caminho>`) e, quando o JSON os traz, o `kind`, o check, a causa, o `hint` e o próximo passo.
@@ -104,8 +104,8 @@ Um check bloqueante que reprova: stdout vazio, saída 1 e o comando exato para l
 
 ```omhl-example fixture=failing-check
 $ omhl check run --event before-pr
-2> ✘ BLOCKED · before-pr · work-items.w1 · 1 of 1 checks failed, 0 not run
-2>   ✘ checks.bad · blocking · exit 1 · 12ms
+2> ✘ BLOCKED · before-pr · work-items.w1 · 1 of 1 checks failed, 0 passed, 0 not run
+2>   ✘ checks.bad · blocking · timeout 60s · exit 1 · 12ms
 2>     command: sh -c echo first; echo second; echo boom >&2; exit 1
 2>     how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40
 2> The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.

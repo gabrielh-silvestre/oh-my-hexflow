@@ -9,7 +9,9 @@ const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
 pub fn render_success(value: &Value) -> String {
     let event = text(value, "event");
     if text(value, "push") == "nothing-to-attest" {
-        return format!("✔ {event} · nothing to attest in this push; no check ran");
+        return strip_control(&format!(
+            "✔ {event} · nothing to attest in this push; no check ran"
+        ));
     }
 
     let mut lines = vec![success_header(value, event)];
@@ -20,7 +22,7 @@ pub fn render_success(value: &Value) -> String {
         next_step_after_success(event)
     ));
 
-    lines.join("\n")
+    strip_control(&lines.join("\n"))
 }
 
 /// `value` é o `{"error": {...}}` de `AppError::to_json`; a linha final não leva quebra.
@@ -40,7 +42,14 @@ pub fn render_error(value: &Value) -> String {
     }
     lines.push(format!("Next: {}.", next_step_after_error(code)));
 
-    lines.join("\n")
+    strip_control(&lines.join("\n"))
+}
+
+/// Run, hint, cause e cauda vêm do TOML, do SO ou do comando: o texto nunca leva controle.
+fn strip_control(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+        .collect()
 }
 
 fn text<'a>(value: &'a Value, key: &str) -> &'a str {
@@ -77,11 +86,12 @@ fn blocked_header(context: &Value) -> String {
     let count = |key: &str| summary[key].as_u64().unwrap_or_default();
 
     format!(
-        "✘ BLOCKED · {} · {} · {} of {} checks failed, {} not run",
+        "✘ BLOCKED · {} · {} · {} of {} checks failed, {} passed, {} not run",
         text(context, "event"),
         context["work_item"].as_str().unwrap_or("no work item"),
         count("failed"),
         count("planned"),
+        count("passed"),
         count("not_run")
     )
 }
@@ -100,6 +110,9 @@ fn failed_check_line(path: &str, context: &Value) -> String {
         }
         .to_owned(),
     );
+    if let Some(timeout_secs) = context["timeout_secs"].as_u64() {
+        parts.push(format!("timeout {timeout_secs}s"));
+    }
     if let Some(exit_code) = context["exit_code"].as_i64() {
         parts.push(format!("exit {exit_code}"));
     }
@@ -251,16 +264,10 @@ fn detail_lines(detail: &Value) -> Vec<String> {
 fn tail_lines(tail: &Value) -> Vec<String> {
     let mut lines = vec!["    output tail:".to_owned()];
     for stream in ["stdout", "stderr"] {
-        lines.extend(items(tail, stream).map(|line| {
-            let line = line.as_str().unwrap_or_default();
-            // Cauda de check pode trazer ANSI do próprio comando: o texto nunca leva controle.
-            let clean: String = line
-                .chars()
-                .filter(|c| !c.is_control() || *c == '\t')
-                .collect();
-
-            format!("      {stream} | {clean}")
-        }));
+        lines.extend(
+            items(tail, stream)
+                .map(|line| format!("      {stream} | {}", line.as_str().unwrap_or_default())),
+        );
     }
     if lines.len() == 1 {
         lines.push("      (empty)".to_owned());
@@ -576,7 +583,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "✘ BLOCKED · before-pr · work-items.w1 · 1 of 3 checks failed, 1 not run\n  ✘ checks.bad · test/suite · blocking · exit 101 · 2.6s\n    command: cargo test\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\nThe output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.\nNext: read the output with the command above, fix the cause, then run the same command again."
+            "✘ BLOCKED · before-pr · work-items.w1 · 1 of 3 checks failed, 1 passed, 1 not run\n  ✘ checks.bad · test/suite · blocking · timeout 60s · exit 101 · 2.6s\n    command: cargo test\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\nThe output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.\nNext: read the output with the command above, fix the cause, then run the same command again."
         );
     }
 
@@ -616,7 +623,9 @@ mod tests {
 
         let rendered = render_error(&value);
 
-        assert!(rendered.contains("  ✘ checks.slow · test/suite · blocking · timed out · 2.6s\n"));
+        assert!(rendered.contains(
+            "  ✘ checks.slow · test/suite · blocking · timeout 60s · timed out · 2.6s\n"
+        ));
     }
 
     #[test]
@@ -630,7 +639,7 @@ mod tests {
 
         let rendered = render_error(&value);
 
-        assert!(rendered.contains("blocking · exit 101 · 2.6s · truncated\n"));
+        assert!(rendered.contains("blocking · timeout 60s · exit 101 · 2.6s · truncated\n"));
     }
 
     #[test]
@@ -641,7 +650,9 @@ mod tests {
 
         assert_eq!(
             rendered.lines().next(),
-            Some("✘ BLOCKED · before-pr · no work item · 1 of 3 checks failed, 1 not run")
+            Some(
+                "✘ BLOCKED · before-pr · no work item · 1 of 3 checks failed, 1 passed, 1 not run"
+            )
         );
     }
 
@@ -796,6 +807,45 @@ mod tests {
         for rendered in every_rendering() {
             assert!(!rendered.contains('\u{1b}'), "{rendered:?}");
         }
+    }
+
+    #[test]
+    fn it_should_strip_the_escape_byte_from_run_hint_cause_and_message() {
+        let with_escape_run = with_context(
+            failed_detail("checks.bad", "omhl byproduct checks.bad w1 --tail 40"),
+            "run",
+            json!(["sh", "-c", "\u{1b}[31mx"]),
+        );
+        let with_escape_hint_and_cause = with_context(
+            with_context(
+                failed_detail("checks.bad", "omhl byproduct checks.bad w1 --tail 40"),
+                "hint",
+                json!("\u{1b}[31minstall it"),
+            ),
+            "os_error",
+            json!("\u{1b}[31mNo such file"),
+        );
+        let renderings = [
+            render_error(&checks_failed(vec![with_escape_run])),
+            render_error(&checks_failed(vec![with_escape_hint_and_cause])),
+            render_error(&error("worktree-dirty", "\u{1b}[31mdirty", vec![])),
+        ];
+
+        for rendered in renderings {
+            assert!(!rendered.contains('\u{1b}'), "{rendered:?}");
+        }
+    }
+
+    #[test]
+    fn it_should_strip_the_escape_byte_from_a_success_text() {
+        let mut value = success("before-pr", vec![]);
+        value["warnings"] = json!([{
+            "code": "check-orphaned", "check": "checks.gone", "hint": "\u{1b}[31mrebase it"
+        }]);
+
+        let rendered = render_success(&value);
+
+        assert!(rendered.contains("checks.gone did not run. [31mrebase it"));
     }
 
     #[test]

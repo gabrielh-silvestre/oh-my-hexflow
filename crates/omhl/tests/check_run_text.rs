@@ -284,7 +284,7 @@ fn it_should_open_the_failure_text_with_event_work_item_and_summary() {
 
     assert_eq!(
         output.stderr.lines().next(),
-        Some("✘ BLOCKED · before-pr · work-items.w1 · 1 of 2 checks failed, 1 not run")
+        Some("✘ BLOCKED · before-pr · work-items.w1 · 1 of 2 checks failed, 0 passed, 1 not run")
     );
 }
 
@@ -297,7 +297,7 @@ fn it_should_open_the_failure_text_without_a_work_item_on_develop() {
 
     assert_eq!(
         output.stderr.lines().next(),
-        Some("✘ BLOCKED · before-pr · no work item · 1 of 1 checks failed, 0 not run")
+        Some("✘ BLOCKED · before-pr · no work item · 1 of 1 checks failed, 0 passed, 0 not run")
     );
 }
 
@@ -309,7 +309,8 @@ fn it_should_describe_a_failed_check_in_the_text_with_its_exit_code_and_command(
 
     let lines: Vec<&str> = output.stderr.lines().collect();
     assert!(
-        lines[1].starts_with("  ✘ checks.suite · test/suite · blocking · exit 101 · "),
+        lines[1]
+            .starts_with("  ✘ checks.suite · test/suite · blocking · timeout 60s · exit 101 · "),
         "{lines:?}"
     );
     assert_eq!(lines[2], "    command: sh -c exit 101");
@@ -323,7 +324,7 @@ fn it_should_describe_a_timed_out_check_in_the_text_without_an_exit_code() {
 
     let line = output.stderr.lines().nth(1).expect("the failed check line");
     assert!(
-        line.starts_with("  ✘ checks.slow · blocking · timed out · "),
+        line.starts_with("  ✘ checks.slow · blocking · timeout 1s · timed out · "),
         "{line}"
     );
     assert!(!line.contains("exit"), "{line}");
@@ -453,7 +454,7 @@ fn it_should_print_the_failure_text_on_stderr_without_the_check_output() {
     assert!(
         output
             .stderr
-            .contains("  ✘ checks.red · blocking · exit 1 · "),
+            .contains("  ✘ checks.red · blocking · timeout 60s · exit 1 · "),
         "{}",
         output.stderr
     );
@@ -506,4 +507,175 @@ fn it_should_never_put_the_escape_byte_in_the_text_output() {
 
     assert!(!failure.stderr.contains('\u{1b}'));
     assert!(!success.stdout.contains('\u{1b}'));
+}
+
+const WARNING: &str = r#"blocking = true
+how = "Exits 1, which the expectation accepts with a warning."
+run = ["sh", "-c", "exit 1"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }, { exit = 1, outcome = "passed_with_warning" }]
+
+[when]
+event = "before-pr"
+"#;
+
+const MANUAL: &str = r#"blocking = false
+how = "Review it by hand."
+
+[when]
+event = "before-merge"
+"#;
+
+const GHOST: &str = r#"blocking = true
+how = "The binary does not exist."
+run = ["omhl-ghost-binary"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }]
+
+[when]
+event = "before-pr"
+"#;
+
+const STAGER: &str = r#"blocking = true
+how = "Stages a file behind the snapshot."
+run = ["sh", "-c", "echo n > n && git add n"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }]
+
+[when]
+event = "before-commit"
+"#;
+
+/// Saída 1, stdout vazio, o código do erro e o do detalhe escritos no stderr, e sem controle.
+fn assert_text_refusal(output: &support::child::Output, code: &str, detail_code: &str) {
+    assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+    assert_eq!(output.stdout, "");
+    assert!(
+        output.stderr.starts_with(&format!("✘ {code} · ")),
+        "{}",
+        output.stderr
+    );
+    assert!(output.stderr.contains(detail_code), "{}", output.stderr);
+    assert!(!output.stderr.contains('\u{1b}'), "{:?}", output.stderr);
+}
+
+#[test]
+fn it_should_tell_a_passed_with_warning_check_from_a_passed_one_in_the_success_text() {
+    let p = cli_repo(&[("warn", WARNING), ("green", GREEN)]);
+
+    let output = run_pr(&p, "text");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(output.stderr, "");
+    let lines: Vec<&str> = output.stdout.lines().collect();
+    assert!(
+        lines[1].starts_with("  ✔ checks.green  passed  "),
+        "{lines:?}"
+    );
+    assert!(
+        lines[2].starts_with("  ⚠ checks.warn  passed_with_warning  "),
+        "{lines:?}"
+    );
+    assert!(lines[2].ends_with("ms (exit 1)"), "{lines:?}");
+}
+
+#[test]
+fn it_should_print_check_not_found_as_text_for_an_unknown_check() {
+    let p = cli_repo(&[("green", GREEN)]);
+
+    let output = omhl_in(&p, &["check", "run", "--check", "checks.nope"]).run();
+
+    assert_text_refusal(&output, "check-not-found", "check-not-found");
+}
+
+#[test]
+fn it_should_print_check_not_mechanical_as_text_for_a_check_without_a_command() {
+    let p = cli_repo(&[("review", MANUAL)]);
+
+    let output = omhl_in(&p, &["check", "run", "--check", "checks.review"]).run();
+
+    assert_text_refusal(&output, "check-not-mechanical", "check-not-mechanical");
+}
+
+#[test]
+fn it_should_print_spec_stale_as_text_when_the_committed_file_differs_from_the_stored_definition() {
+    let p = cli_repo(&[("green", GREEN)]);
+    ExtTree::at(p.dir()).check(
+        "green",
+        &GREEN.replace(r#"run = ["true"]"#, r#"run = ["false"]"#),
+    );
+    git(&p, &["add", "-A"]);
+    git(&p, &["commit", "-q", "-m", "edit green"]);
+
+    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+
+    assert_text_refusal(&output, "check-not-run", "spec-stale");
+    assert!(output.stderr.contains("omhl load"), "{}", output.stderr);
+}
+
+#[test]
+fn it_should_print_no_marker_as_text_outside_a_marked_project() {
+    let bare = tempfile::TempDir::new().expect("bare directory");
+    let xdg = tempfile::TempDir::new().expect("data directory");
+
+    let output = omhl(&["check", "run", "--event", "before-pr"])
+        .cwd(bare.path())
+        .xdg(xdg.path())
+        .run();
+
+    assert_text_refusal(&output, "no-marker", "rebase");
+}
+
+#[test]
+fn it_should_print_push_input_invalid_as_text_for_a_malformed_pre_push_line() {
+    let p = cli_repo(&[("green", GREEN)]);
+
+    let output = omhl_in(&p, &["check", "run", "--event", "before-pr", "--pre-push"])
+        .stdin("garbage\n")
+        .run();
+
+    assert_text_refusal(&output, "push-input-invalid", "push-input-invalid");
+}
+
+#[test]
+fn it_should_print_worktree_dirty_as_text_for_an_untracked_file() {
+    let p = cli_repo(&[("green", GREEN)]);
+    fs::write(p.dir().join("u.txt"), "u\n").expect("untracked file");
+
+    let output = run_pr(&p, "text");
+
+    assert_text_refusal(&output, "worktree-dirty", "worktree-dirty");
+}
+
+#[test]
+fn it_should_print_branch_protected_as_text_on_main() {
+    let p = cli_repo(&[("green", GREEN)]);
+    git(&p, &["switch", "-q", "main"]);
+
+    let output = run_pr(&p, "text");
+
+    assert_text_refusal(&output, "branch-protected", "branch-protected");
+}
+
+#[test]
+fn it_should_print_check_not_run_as_text_when_the_binary_of_the_check_does_not_exist() {
+    let p = cli_repo(&[("ghost", GHOST)]);
+
+    let output = run_pr(&p, "text");
+
+    assert_text_refusal(&output, "check-not-run", "spawn-failed");
+    assert!(
+        output.stderr.contains("kind: spawn-not-found"),
+        "{}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_print_attestation_refused_as_text_when_a_check_stages_a_file_behind_the_snapshot() {
+    let p = cli_repo(&[("stager", STAGER)]);
+
+    let output = omhl_in(&p, &["check", "run", "--event", "before-commit"]).run();
+
+    assert_text_refusal(&output, "attestation-refused", "snapshot-tree-mismatch");
 }

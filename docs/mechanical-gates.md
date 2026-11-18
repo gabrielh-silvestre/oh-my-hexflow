@@ -66,7 +66,7 @@ Quando só há checks bloqueantes reprovados, o erro é `checks-failed`. Um chec
 omhl byproduct checks.lint work-items.w1 --tail 40
 ```
 
-No texto, o `checks-failed` abre com `✘ BLOCKED · <evento> · <work item> · N of M checks failed, K not run`, e cada check reprovado mostra o id, `concern/variant` (se declarados), `blocking` ou `non-blocking`, `exit N` ou `timed out`, a duração (`NNNms` abaixo de 1 segundo, `N.Ns` a partir dele), `truncated` (se a saída foi cortada), o `command:` e o comando do `byproduct`.
+No texto, o `checks-failed` abre com `✘ BLOCKED · <evento> · <work item> · N of M checks failed, P passed, K not run`, e cada check reprovado mostra o id, `concern/variant` (se declarados), `blocking` ou `non-blocking`, `timeout Ns` (o limite do check), `exit N` ou `timed out`, a duração (`NNNms` abaixo de 1 segundo, `N.Ns` a partir dele), `truncated` (se a saída foi cortada), o `command:` e o comando do `byproduct`.
 
 No JSON, o `checks-failed` traz no `error.context` o `event`, o `work_item` (ausente na `develop`) e o `summary` (`planned`, `passed`, `failed` e `not_run`; `not_run` conta os checks órfãos). O `context` de cada detalhe `failed` traz `blocking`, `concern` e `variant` (só quando o check os declara), `run`, `timeout_secs`, `exit_code` (ausente quando o comando não devolveu código), `duration_ms`, `timed_out` e `truncated`. O `run` vem do TOML versionado do check: não ponha segredo no argv.
 
