@@ -78,8 +78,14 @@ fn stderr(output: &GitOutput) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
+/// O texto do erro do hook traz o `code` no cabeçalho (`✘ <code> · ...`) ou numa linha de detalhe.
 fn has_code(output: &GitOutput, code: &str) -> bool {
-    stderr(output).contains(&format!("\"code\":\"{code}\""))
+    stderr(output).lines().map(str::trim_start).any(|line| {
+        line.starts_with(&format!("✘ {code} · "))
+            || line.starts_with(&format!("✘ BLOCKED · {code} · "))
+            || line == format!("- {code}")
+            || line.starts_with(&format!("- {code} at "))
+    })
 }
 
 fn rev_parse_hooks(dir: &Path) -> String {

@@ -1,0 +1,653 @@
+//! Texto do `omhl check run` para agentes: lê só o `Value` que o JSON já mostra, nunca o domínio.
+
+use serde_json::Value;
+
+const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
+const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
+
+/// `value` é o sucesso do comando; a linha final não leva quebra.
+pub fn render_success(value: &Value) -> String {
+    let event = text(value, "event");
+    if text(value, "push") == "nothing-to-attest" {
+        return format!("✔ {event} · nothing to attest in this push; no check ran");
+    }
+
+    let mut lines = vec![success_header(value, event)];
+    lines.extend(items(value, "results").map(result_line));
+    lines.extend(items(value, "warnings").map(|warning| warning_line(warning, event)));
+    lines.push(format!(
+        "Nothing blocked. Next: {}.",
+        next_step_after_success(event)
+    ));
+
+    lines.join("\n")
+}
+
+/// `value` é o `{"error": {...}}` de `AppError::to_json`; a linha final não leva quebra.
+pub fn render_error(value: &Value) -> String {
+    let error = &value["error"];
+    let code = text(error, "code");
+    let blocked = code == "checks-failed";
+    let mut lines = vec![if blocked {
+        format!("✘ BLOCKED · {code} · {}", text(error, "message"))
+    } else {
+        format!("✘ {code} · {}", text(error, "message"))
+    }];
+    lines.extend(items(error, "details").flat_map(detail_lines));
+    if blocked || items(error, "details").any(|detail| !detail["context"]["output_tail"].is_null())
+    {
+        lines.push(SECRET_WARNING.to_owned());
+    }
+    lines.push(format!("Next: {}.", next_step_after_error(code)));
+
+    lines.join("\n")
+}
+
+fn text<'a>(value: &'a Value, key: &str) -> &'a str {
+    value[key].as_str().unwrap_or_default()
+}
+
+fn items<'a>(value: &'a Value, key: &str) -> impl Iterator<Item = &'a Value> {
+    value[key].as_array().into_iter().flatten()
+}
+
+fn success_header(value: &Value, event: &str) -> String {
+    let work_item = value["work_item"].as_str().unwrap_or("no work item");
+    let recorded = if value["recorded"] == true {
+        "recorded"
+    } else {
+        "not recorded"
+    };
+    let snapshot = &value["snapshot"];
+    let snapshot = match snapshot["id"].as_str() {
+        Some(id) => format!(
+            " ({} {})",
+            text(snapshot, "kind"),
+            id.chars().take(7).collect::<String>()
+        ),
+        None => String::new(),
+    };
+
+    format!("✔ {event} · {work_item} · {recorded}{snapshot}")
+}
+
+fn result_line(result: &Value) -> String {
+    let outcome = text(result, "outcome");
+    let icon = match outcome {
+        "passed" => "✔",
+        "passed_with_warning" => "⚠",
+        _ => "✘",
+    };
+    let mut notes = Vec::new();
+    if result["blocking"] == false {
+        notes.push("non-blocking".to_owned());
+    }
+    if outcome != "passed"
+        && let Some(exit_code) = result["exit_code"].as_i64()
+    {
+        notes.push(format!("exit {exit_code}"));
+    }
+    if result["timed_out"] == true {
+        notes.push("timed out".to_owned());
+    }
+    if result["truncated"] == true {
+        notes.push("truncated".to_owned());
+    }
+    let notes = if notes.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", notes.join(", "))
+    };
+
+    format!(
+        "  {icon} {}  {outcome}  {}ms{notes}",
+        text(result, "check"),
+        result["duration_ms"].as_u64().unwrap_or_default()
+    )
+}
+
+fn warning_line(warning: &Value, event: &str) -> String {
+    let code = text(warning, "code");
+    match code {
+        "no-checks-for-event" => format!(
+            "⚠ {code}: no check is planned for {event}, so nothing ran and this is not a pass. Next: add a mechanical check for this event if one is expected."
+        ),
+        "check-orphaned" => format!(
+            "⚠ {code}: {} did not run. {}",
+            text(warning, "check"),
+            text(warning, "hint")
+        ),
+        _ => format!("⚠ {code}"),
+    }
+}
+
+fn next_step_after_success(event: &str) -> &'static str {
+    match event {
+        "before-commit" => "go on with the commit",
+        "before-pr" => "go on with the push",
+        "before-merge" => "go on with the merge",
+        _ => "go on",
+    }
+}
+
+fn next_step_after_error(code: &str) -> &'static str {
+    match code {
+        "checks-failed" => {
+            "read the output with the command above, fix the cause, then run the same command again"
+        }
+        _ => {
+            "follow the hint above if there is one, fix the cause, then run the same command again"
+        }
+    }
+}
+
+fn detail_lines(detail: &Value) -> Vec<String> {
+    let code = text(detail, "code");
+    let message = text(detail, "message");
+    let path = text(detail, "path");
+    let context = &detail["context"];
+    let mut lines = Vec::new();
+
+    if code == "failed" {
+        let blocking = if message.starts_with(NON_BLOCKING_PREFIX) {
+            "non-blocking"
+        } else {
+            "blocking"
+        };
+        lines.push(format!("  ✘ {path} · {blocking}"));
+        lines.push(format!(
+            "    how to read the output: {}",
+            message.strip_prefix(NON_BLOCKING_PREFIX).unwrap_or(message)
+        ));
+    } else {
+        lines.push(if path.is_empty() {
+            format!("  - {code}")
+        } else {
+            format!("  - {code} at {path}")
+        });
+        if message != code {
+            lines.push(format!("    {message}"));
+        }
+    }
+    for (label, value) in [
+        (
+            "kind",
+            context["kind"].as_str().filter(|kind| *kind != code),
+        ),
+        ("check", context["check"].as_str()),
+        ("cause", context["os_error"].as_str()),
+        ("hint", context["hint"].as_str()),
+        ("next step", detail["next_step"].as_str()),
+    ] {
+        if let Some(value) = value {
+            lines.push(format!("    {label}: {value}"));
+        }
+    }
+    if !context["output_tail"].is_null() {
+        lines.extend(tail_lines(&context["output_tail"]));
+    }
+
+    lines
+}
+
+fn tail_lines(tail: &Value) -> Vec<String> {
+    let mut lines = vec!["    output tail:".to_owned()];
+    for stream in ["stdout", "stderr"] {
+        lines.extend(items(tail, stream).map(|line| {
+            let line = line.as_str().unwrap_or_default();
+            // Cauda de check pode trazer ANSI do próprio comando: o texto nunca leva controle.
+            let clean: String = line
+                .chars()
+                .filter(|c| !c.is_control() || *c == '\t')
+                .collect();
+
+            format!("      {stream} | {clean}")
+        }));
+    }
+    if lines.len() == 1 {
+        lines.push("      (empty)".to_owned());
+    }
+
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    const COMMIT: &str = "c43356d0b9a1e8f47d2a5b6c7e8f9a0b1c2d3e4f";
+
+    fn result(check: &str, outcome: &str, blocking: bool, exit_code: i64, ms: u64) -> Value {
+        json!({
+            "blocking": blocking, "check": check, "duration_ms": ms, "exit_code": exit_code,
+            "ok": outcome != "failed", "outcome": outcome, "timed_out": false, "truncated": false
+        })
+    }
+
+    fn success(event: &str, results: Vec<Value>) -> Value {
+        json!({
+            "blocked": [], "event": event, "recorded": true, "results": Value::Array(results),
+            "snapshot": { "id": COMMIT, "kind": "git-commit" }, "work_item": "work-items.w1"
+        })
+    }
+
+    fn failed_detail(path: &str, message: &str) -> Value {
+        json!({ "code": "failed", "message": message, "path": path })
+    }
+
+    fn error(code: &str, message: &str, details: Vec<Value>) -> Value {
+        json!({ "error": { "code": code, "details": Value::Array(details), "message": message } })
+    }
+
+    fn checks_failed(details: Vec<Value>) -> Value {
+        error("checks-failed", "a blocking check failed", details)
+    }
+
+    fn develop_failure(tail: Value) -> Value {
+        let mut detail = json!({
+            "code": "failed", "path": "checks.bad", "message": "output in context.output_tail",
+            "context": {
+                "kind": "failed", "event": "before-pr", "check": "checks.bad",
+                "snapshot": { "id": COMMIT, "kind": "git-commit" }
+            }
+        });
+        detail["context"]["output_tail"] = tail;
+
+        checks_failed(vec![detail])
+    }
+
+    fn pre_check_errors() -> Vec<Value> {
+        vec![
+            error(
+                "no-marker",
+                "no .omhl.toml found in the project directory or any parent; a branch older than the marker needs a rebase onto main",
+                vec![],
+            ),
+            error(
+                "invalid-project-dir",
+                "the project directory does not exist",
+                vec![],
+            ),
+            error(
+                "push-input-invalid",
+                "push-input-invalid at ",
+                vec![json!({
+                    "code": "push-input-invalid", "message": "the pre-push input is invalid", "path": "",
+                    "context": { "kind": "push-input-invalid", "event": "before-pr", "hint": "the pre-push input needs four fields per line; run git push again" }
+                })],
+            ),
+        ]
+    }
+
+    fn refusals() -> Vec<Value> {
+        vec![
+            error(
+                "check-not-found",
+                "check-not-found at /check",
+                vec![
+                    json!({ "code": "check-not-found", "message": "check-not-found", "path": "/check" }),
+                ],
+            ),
+            error(
+                "worktree-dirty",
+                "the working tree has uncommitted changes",
+                vec![json!({
+                    "code": "worktree-dirty", "message": "the working tree has uncommitted changes", "path": "",
+                    "context": { "branch": "feat/wi-w1__x", "event": "before-pr", "kind": "worktree-dirty", "work_item": "work-items.w1" }
+                })],
+            ),
+            error(
+                "branch-protected",
+                "the branch is protected",
+                vec![json!({
+                    "code": "branch-protected", "message": "the branch is protected", "path": "",
+                    "context": { "kind": "push-to-main", "event": "before-pr", "rref": "refs/heads/main", "hint": "main receives no direct pushes; open a pull request" }
+                })],
+            ),
+            error(
+                "check-not-run",
+                "a check could not run to a verdict",
+                vec![json!({
+                    "code": "spawn-failed", "message": "the command could not run", "path": "checks.ghost",
+                    "context": {
+                        "argv": ["omhl-ghost-binary"], "branch": "feat/wi-w1__x", "check": "checks.ghost", "cwd": "/repo",
+                        "event": "before-pr", "kind": "spawn-not-found",
+                        "hint": "`omhl-ghost-binary` was not found; install it or add it to the PATH that git hooks see, then run the same `omhl check run` again",
+                        "os_error": "omhl-ghost-binary did not start: No such file or directory (os error 2)",
+                        "snapshot": { "id": COMMIT, "kind": "git-commit" }, "work_item": "work-items.w1"
+                    }
+                })],
+            ),
+            error(
+                "attestation-refused",
+                "the guard refused an attestation",
+                vec![json!({
+                    "code": "outcome-immutable", "message": "the guard refused the attestation", "path": "checks.ok",
+                    "context": { "kind": "guard-refused", "check": "checks.ok", "hint": "this snapshot already has the stored outcome for this check; change the tree to get a new verdict" }
+                })],
+            ),
+            error(
+                "check-not-run",
+                "a check could not run to a verdict",
+                vec![json!({
+                    "code": "spec-stale", "message": "the check file is invalid or differs from the stored definition", "path": "checks.ok",
+                    "context": { "kind": "spec-stale", "hint": "the check file on disk is invalid or differs from the stored definition; fix the file and run omhl load, then run the same command again" }
+                })],
+            ),
+            error(
+                "attestation-not-recorded",
+                "a verdict was computed but its attestation was not recorded",
+                vec![json!({
+                    "code": "not-run", "message": "the attestation was not recorded", "path": "checks.ok",
+                    "context": { "kind": "busy", "hint": "the database stayed locked for about 74 seconds; the verdict above was computed but not recorded; run the same command again when the other process ends" }
+                })],
+            ),
+        ]
+    }
+
+    fn every_rendering() -> Vec<String> {
+        let ok = success(
+            "before-pr",
+            vec![result("checks.ok", "passed", true, 0, 12)],
+        );
+        let mut texts = vec![
+            render_success(&ok),
+            render_error(&checks_failed(vec![failed_detail(
+                "checks.bad",
+                "omhl byproduct checks.bad work-items.w1 --tail 40",
+            )])),
+            render_error(&develop_failure(
+                json!({ "stdout": ["\u{1b}[31mred\u{1b}[0m"], "stderr": [] }),
+            )),
+        ];
+        texts.extend(pre_check_errors().iter().map(render_error));
+        texts.extend(refusals().iter().map(render_error));
+
+        texts
+    }
+
+    #[test]
+    fn it_should_open_the_success_text_with_event_work_item_and_snapshot_prefix() {
+        let value = success(
+            "before-pr",
+            vec![result("checks.ok", "passed", true, 0, 12)],
+        );
+
+        let rendered = render_success(&value);
+
+        assert_eq!(
+            rendered.lines().next(),
+            Some("✔ before-pr · work-items.w1 · recorded (git-commit c43356d)")
+        );
+    }
+
+    #[test]
+    fn it_should_render_one_line_per_check_in_json_order_telling_passed_from_passed_with_warning() {
+        let value = success(
+            "before-pr",
+            vec![
+                result("checks.fmt", "passed", true, 0, 12),
+                result("checks.lint", "passed_with_warning", true, 2, 1500),
+            ],
+        );
+
+        let rendered = render_success(&value);
+
+        assert_eq!(
+            rendered,
+            "✔ before-pr · work-items.w1 · recorded (git-commit c43356d)\n  ✔ checks.fmt  passed  12ms\n  ⚠ checks.lint  passed_with_warning  1500ms (exit 2)\nNothing blocked. Next: go on with the push."
+        );
+    }
+
+    #[test]
+    fn it_should_flag_a_non_blocking_failure_in_a_successful_run() {
+        let mut soft = result("checks.soft", "failed", false, 1, 12);
+        soft["truncated"] = json!(true);
+        let value = success("before-pr", vec![soft]);
+
+        let rendered = render_success(&value);
+
+        assert!(
+            rendered.contains("  ✘ checks.soft  failed  12ms (non-blocking, exit 1, truncated)")
+        );
+    }
+
+    #[test]
+    fn it_should_flag_a_timed_out_check() {
+        let mut slow = result("checks.slow", "failed", false, 0, 60000);
+        slow["timed_out"] = json!(true);
+        let value = success("before-pr", vec![slow]);
+
+        let rendered = render_success(&value);
+
+        assert!(rendered.contains("(non-blocking, exit 0, timed out)"));
+    }
+
+    #[test]
+    fn it_should_name_the_next_step_of_each_event_on_the_last_line() {
+        let last = |event: &str| {
+            render_success(&success(event, vec![]))
+                .lines()
+                .last()
+                .map(str::to_owned)
+        };
+
+        assert_eq!(
+            last("before-commit").as_deref(),
+            Some("Nothing blocked. Next: go on with the commit.")
+        );
+        assert_eq!(
+            last("before-merge").as_deref(),
+            Some("Nothing blocked. Next: go on with the merge.")
+        );
+    }
+
+    #[test]
+    fn it_should_warn_with_an_action_when_the_event_has_no_check() {
+        let value = json!({
+            "blocked": [], "checks_planned": 0, "event": "before-merge", "recorded": true,
+            "results": [], "snapshot": null, "warnings": [{ "code": "no-checks-for-event" }],
+            "work_item": "work-items.w1"
+        });
+
+        let rendered = render_success(&value);
+
+        assert_eq!(
+            rendered,
+            "✔ before-merge · work-items.w1 · recorded\n⚠ no-checks-for-event: no check is planned for before-merge, so nothing ran and this is not a pass. Next: add a mechanical check for this event if one is expected.\nNothing blocked. Next: go on with the merge."
+        );
+    }
+
+    #[test]
+    fn it_should_warn_with_the_check_and_its_hint_when_a_check_is_orphaned() {
+        let mut value = success("before-pr", vec![]);
+        value["warnings"] = json!([{
+            "code": "check-orphaned", "check": "checks.gone", "hint": "the check file is missing in this working tree; rebase it onto main"
+        }]);
+
+        let rendered = render_success(&value);
+
+        assert!(rendered.contains(
+            "⚠ check-orphaned: checks.gone did not run. the check file is missing in this working tree; rebase it onto main"
+        ));
+    }
+
+    #[test]
+    fn it_should_say_in_one_line_that_a_push_had_nothing_to_attest() {
+        let value = json!({ "event": "before-pr", "push": "nothing-to-attest", "results": [] });
+
+        let rendered = render_success(&value);
+
+        assert_eq!(
+            rendered,
+            "✔ before-pr · nothing to attest in this push; no check ran"
+        );
+    }
+
+    #[test]
+    fn it_should_report_a_blocked_event_with_the_failed_check_and_how_to_read_its_output() {
+        let value = checks_failed(vec![failed_detail(
+            "checks.bad",
+            "omhl byproduct checks.bad work-items.w1 --tail 40",
+        )]);
+
+        let rendered = render_error(&value);
+
+        assert_eq!(
+            rendered,
+            "✘ BLOCKED · checks-failed · a blocking check failed\n  ✘ checks.bad · blocking\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\nThe output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.\nNext: read the output with the command above, fix the cause, then run the same command again."
+        );
+    }
+
+    #[test]
+    fn it_should_label_a_non_blocking_failed_check_and_drop_the_json_prefix() {
+        let value = checks_failed(vec![failed_detail(
+            "checks.soft",
+            "non-blocking: omhl byproduct checks.soft work-items.w1 --tail 40",
+        )]);
+
+        let rendered = render_error(&value);
+
+        assert!(rendered.contains(
+            "  ✘ checks.soft · non-blocking\n    how to read the output: omhl byproduct checks.soft"
+        ));
+    }
+
+    #[test]
+    fn it_should_keep_the_cut_output_note_of_a_failed_check() {
+        let value = checks_failed(vec![failed_detail(
+            "checks.big",
+            "output was cut at 4 MiB; the rule could not be checked; omhl byproduct checks.big work-items.w1 --tail 40",
+        )]);
+
+        let rendered = render_error(&value);
+
+        assert!(
+            rendered
+                .contains("output was cut at 4 MiB; the rule could not be checked; omhl byproduct")
+        );
+    }
+
+    #[test]
+    fn it_should_show_the_output_tail_of_a_failed_check_on_develop_with_the_secret_warning() {
+        let value = develop_failure(json!({ "stdout": ["first", "second"], "stderr": ["boom"] }));
+
+        let rendered = render_error(&value);
+
+        assert!(rendered.contains(
+            "    output tail:\n      stdout | first\n      stdout | second\n      stderr | boom\n"
+        ));
+        assert!(rendered.contains(SECRET_WARNING));
+    }
+
+    #[test]
+    fn it_should_say_the_tail_is_empty_when_the_failed_check_printed_nothing() {
+        let value = develop_failure(json!({ "stdout": [], "stderr": [] }));
+
+        let rendered = render_error(&value);
+
+        assert!(rendered.contains("    output tail:\n      (empty)\n"));
+    }
+
+    #[test]
+    fn it_should_write_the_error_code_detail_code_message_path_and_hint_of_every_refusal() {
+        let expected = [
+            ("check-not-found", "check-not-found", "/check", ""),
+            (
+                "worktree-dirty",
+                "worktree-dirty",
+                "",
+                "the working tree has uncommitted changes",
+            ),
+            (
+                "branch-protected",
+                "branch-protected",
+                "",
+                "main receives no direct pushes; open a pull request",
+            ),
+            (
+                "check-not-run",
+                "spawn-failed",
+                "checks.ghost",
+                "`omhl-ghost-binary` was not found",
+            ),
+            (
+                "attestation-refused",
+                "outcome-immutable",
+                "checks.ok",
+                "change the tree to get a new verdict",
+            ),
+            ("check-not-run", "spec-stale", "checks.ok", "run omhl load"),
+            (
+                "attestation-not-recorded",
+                "not-run",
+                "checks.ok",
+                "run the same command again when the other process ends",
+            ),
+        ];
+
+        for (value, (code, detail_code, path, fragment)) in refusals().iter().zip(expected) {
+            let rendered = render_error(value);
+
+            assert!(rendered.contains(code), "{code}: {rendered}");
+            assert!(rendered.contains(detail_code), "{detail_code}: {rendered}");
+            assert!(rendered.contains(path), "{path}: {rendered}");
+            assert!(rendered.contains(fragment), "{fragment}: {rendered}");
+        }
+    }
+
+    #[test]
+    fn it_should_show_the_spawn_cause_and_kind_of_a_check_that_could_not_run() {
+        let value = &refusals()[3];
+
+        let rendered = render_error(value);
+
+        assert!(rendered.contains("    kind: spawn-not-found\n"));
+        assert!(rendered.contains(
+            "    cause: omhl-ghost-binary did not start: No such file or directory (os error 2)\n"
+        ));
+    }
+
+    #[test]
+    fn it_should_render_errors_raised_before_any_check_with_code_and_message() {
+        let expected = [
+            (
+                "no-marker",
+                "a branch older than the marker needs a rebase onto main",
+            ),
+            (
+                "invalid-project-dir",
+                "the project directory does not exist",
+            ),
+            (
+                "push-input-invalid",
+                "the pre-push input needs four fields per line",
+            ),
+        ];
+
+        for (value, (code, fragment)) in pre_check_errors().iter().zip(expected) {
+            let rendered = render_error(value);
+
+            assert!(rendered.starts_with(&format!("✘ {code} · ")), "{rendered}");
+            assert!(rendered.contains(fragment), "{fragment}: {rendered}");
+        }
+    }
+
+    #[test]
+    fn it_should_never_emit_the_escape_byte() {
+        for rendered in every_rendering() {
+            assert!(!rendered.contains('\u{1b}'), "{rendered:?}");
+        }
+    }
+
+    #[test]
+    fn it_should_keep_the_readable_part_of_a_tail_line_that_had_ansi() {
+        let value = develop_failure(json!({ "stdout": ["\u{1b}[31mred\u{1b}[0m"], "stderr": [] }));
+
+        let rendered = render_error(&value);
+
+        assert!(rendered.contains("      stdout | [31mred[0m\n"));
+    }
+}

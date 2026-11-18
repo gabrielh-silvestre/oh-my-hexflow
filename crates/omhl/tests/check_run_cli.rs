@@ -261,7 +261,11 @@ fn pre_push_line(local: &str, sha: &str, remote: &str) -> String {
 fn it_should_attest_a_before_pr_check_through_the_binary_in_a_real_repository() {
     let p = cli_repo(&[("green", GREEN)]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     let head = head(&p);
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
@@ -319,7 +323,11 @@ fn it_should_attest_a_before_pr_check_through_the_binary_in_a_real_repository() 
 fn it_should_print_one_json_line_on_stdout_and_exit_zero_when_every_check_passes() {
     let p = cli_repo(&[("a", GREEN), ("b", GREEN)]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert!(output.stdout.ends_with('\n'), "stdout ends in a newline");
@@ -354,7 +362,11 @@ fn it_should_print_one_json_line_on_stdout_and_exit_zero_when_every_check_passes
 fn it_should_exit_one_and_print_the_failing_check_on_stderr_when_a_blocking_check_fails() {
     let p = cli_repo(&[("red", RED)]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     assert_eq!(
@@ -382,7 +394,11 @@ fn it_should_exit_one_and_print_the_failing_check_on_stderr_when_a_blocking_chec
 fn it_should_print_nothing_on_stdout_when_a_blocking_check_fails() {
     let p = cli_repo(&[("red", RED)]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     // Pré-condição: sem ela, um pânico (stdout vazio, exit 101) passaria por este teste.
     assert_eq!(
@@ -398,7 +414,11 @@ fn it_should_print_nothing_on_stdout_when_a_blocking_check_fails() {
 fn it_should_not_echo_the_command_output_in_the_error_json() {
     let p = cli_repo(&[("red", NOISY_RED)]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     let error = error_of(&output.stderr);
@@ -490,7 +510,11 @@ fn it_should_refuse_a_before_pr_run_when_the_committed_file_differs_from_the_sto
     git(&p, &["add", "-A"]);
     git(&p, &["commit", "-q", "-m", "edit gate"]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     let error = error_of(&output.stderr);
@@ -514,7 +538,11 @@ fn it_should_ignore_and_warn_an_orphaned_check_when_its_file_was_deleted() {
     git(&p, &["add", "-A"]);
     git(&p, &["commit", "-q", "-m", "drop gate"]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     let result = json_line(&output.stdout);
@@ -539,7 +567,11 @@ fn it_should_run_the_live_checks_and_warn_the_orphaned_one_in_the_same_run() {
     git(&p, &["add", "-A"]);
     git(&p, &["commit", "-q", "-m", "drop gone"]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     let result = json_line(&output.stdout);
@@ -556,7 +588,11 @@ fn it_should_refuse_with_spec_stale_when_the_check_file_no_longer_parses() {
     git(&p, &["add", "-A"]);
     git(&p, &["commit", "-q", "-m", "break gate"]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     let error = error_of(&output.stderr);
@@ -573,7 +609,18 @@ fn it_should_refuse_a_before_commit_run_when_the_file_differs_from_the_stored_de
     ExtTree::at(p.dir()).check("gate", &v2);
     git(&p, &["add", "-A"]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-commit"]).run();
+    let output = omhl_in(
+        &p,
+        &[
+            "check",
+            "run",
+            "--format",
+            "json",
+            "--event",
+            "before-commit",
+        ],
+    )
+    .run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     assert_eq!(output.stdout, "");
@@ -593,7 +640,11 @@ fn it_should_run_the_new_command_after_load() {
     assert_eq!(loaded.code, Some(0), "load stderr: {}", loaded.stderr);
     assert_eq!(json_line(&loaded.stdout)["revised"], json!(["checks.gate"]));
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     assert_eq!(error_of(&output.stderr)["code"], json!("checks-failed"));
@@ -608,7 +659,11 @@ fn it_should_fail_a_check_that_exceeds_its_timeout_through_the_binary() {
     let slow = check_toml("Always passes.", &["sleep", "5"], 1);
     let p = cli_repo(&[("slow", &slow)]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     assert_eq!(error_of(&output.stderr)["code"], json!("checks-failed"));
@@ -628,7 +683,11 @@ fn it_should_fail_a_check_that_exceeds_its_timeout_through_the_binary() {
 #[test]
 fn it_should_leave_omhl_verify_passing_after_a_check_run() {
     let p = cli_repo(&[("green", GREEN)]);
-    let run = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let run = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
     assert_eq!(run.code, Some(0), "check run stderr: {}", run.stderr);
 
     let verified = omhl_in(&p, &["verify"]).run();
@@ -648,9 +707,12 @@ fn it_should_not_let_a_git_index_file_in_the_environment_change_a_before_pr_snap
     git(&p, &["rm", "-q", "--cached", "extra.txt"]);
     fs::remove_file(p.dir().join("extra.txt")).expect("extra.txt is removed");
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"])
-        .env("GIT_INDEX_FILE", &alt_index)
-        .run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .env("GIT_INDEX_FILE", &alt_index)
+    .run();
 
     let snapshot = json!({ "kind": "git-commit", "id": head(&p) });
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
@@ -684,7 +746,11 @@ fn it_should_answer_branch_name_invalid_for_a_branch_outside_the_pattern_through
     let p = cli_repo(&[("touch", &touch(&ran))]);
     git(&p, &["switch", "-q", "-c", "topic"]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     assert_eq!(output.stdout, "");
@@ -718,7 +784,10 @@ fn it_should_leave_no_orphan_and_no_attestation_when_the_binary_is_interrupted()
         120,
     );
     let p = cli_repo(&[("interrupted", &interrupted)]);
-    let mut child = spawn_omhl(&p, &["check", "run", "--event", "before-pr"]);
+    let mut child = spawn_omhl(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    );
     let shell = read_pid(&pids, Duration::from_secs(10));
     let sleeper = read_pid(&tmp.path().join("pids.grandchild"), Duration::from_secs(10));
 
@@ -751,13 +820,29 @@ fn it_should_read_the_pushed_refs_from_stdin_when_the_pre_push_flag_is_given() {
 
     let feature_push = omhl_in(
         &pushed,
-        &["check", "run", "--event", "before-pr", "--pre-push"],
+        &[
+            "check",
+            "run",
+            "--format",
+            "json",
+            "--event",
+            "before-pr",
+            "--pre-push",
+        ],
     )
     .stdin(pre_push_line(feature, &head(&pushed), feature))
     .run();
     let main_push = omhl_in(
         &to_main,
-        &["check", "run", "--event", "before-pr", "--pre-push"],
+        &[
+            "check",
+            "run",
+            "--format",
+            "json",
+            "--event",
+            "before-pr",
+            "--pre-push",
+        ],
     )
     .stdin(pre_push_line(feature, &head(&to_main), "refs/heads/main"))
     .run();
@@ -846,9 +931,20 @@ fn it_should_refuse_a_pre_push_input_larger_than_the_input_limit() {
     ));
     assert_eq!(stdin.len(), 1_048_577);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr", "--pre-push"])
-        .stdin(stdin)
-        .run();
+    let output = omhl_in(
+        &p,
+        &[
+            "check",
+            "run",
+            "--format",
+            "json",
+            "--event",
+            "before-pr",
+            "--pre-push",
+        ],
+    )
+    .stdin(stdin)
+    .run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     assert_eq!(output.stdout, "");
@@ -885,7 +981,11 @@ fn load_then_restore_tree(p: &Project, toml: &str) {
 #[test]
 fn it_should_accept_in_the_gate_an_attestation_sealed_with_the_current_definition() {
     let p = cli_repo(&[("gate", GATE_V1)]);
-    let run = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let run = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
     assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
 
     let question = gate_question(&p, "spec-digest-match:checks.gate");
@@ -896,7 +996,11 @@ fn it_should_accept_in_the_gate_an_attestation_sealed_with_the_current_definitio
 #[test]
 fn it_should_refuse_in_the_gate_an_attestation_sealed_with_an_old_definition() {
     let p = cli_repo(&[("gate", GATE_V1)]);
-    let run = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let run = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
     assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
     load_then_restore_tree(&p, GATE_V2);
     assert_eq!(gate_question(&p, "checks.gate")["passed"], json!(true));
@@ -945,7 +1049,11 @@ fn it_should_retire_an_orphaned_check_and_stop_warning_about_it() {
     drop_check_file(&p, "gate");
 
     let retired = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
-    let run = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let run = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
     let node = omhl_in(&p, &["get", "checks.gate"]).run();
 
     assert_eq!(retired.code, Some(0), "stderr: {}", retired.stderr);

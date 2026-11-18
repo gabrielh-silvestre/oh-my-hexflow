@@ -949,7 +949,14 @@ fn it_should_attest_the_tree_of_the_index_file_named_in_the_environment() {
     binary.add_to_index(&hook_index, "x.txt");
 
     let output = binary
-        .omhl(&["check", "run", "--event", "before-commit"])
+        .omhl(&[
+            "check",
+            "run",
+            "--format",
+            "json",
+            "--event",
+            "before-commit",
+        ])
         .env("GIT_INDEX_FILE", &hook_index)
         .run();
 
@@ -1019,6 +1026,8 @@ fn it_should_resolve_a_relative_git_index_file_against_the_process_directory_and
         project_dir,
         "check",
         "run",
+        "--format",
+        "json",
         "--event",
         "before-commit",
     ])
