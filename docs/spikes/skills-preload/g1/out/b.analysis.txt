@@ -1,0 +1,25 @@
+MAIN SESSION CALLS:
+   {'tool': 'Agent', 'st': 'omhlprobe:probe-qual', 'name': None, 'skill': None, 'prompt_canary': False}
+   {'tool': 'Agent', 'st': 'omhlprobe:probe-qual', 'name': 'g1-probe-named', 'skill': None, 'prompt_canary': False}
+   {'tool': 'Agent', 'st': 'omhlprobe:probe-none', 'name': None, 'skill': None, 'prompt_canary': False}
+   {'tool': 'Agent', 'st': 'omhlprobe:probe-none', 'name': 'g1-none-named', 'skill': None, 'prompt_canary': False}
+   {'tool': 'Agent', 'st': 'oh-my-hexflow:planner', 'name': None, 'skill': None, 'prompt_canary': False}
+   {'tool': 'Agent', 'st': 'oh-my-hexflow:planner', 'name': 'g1-planner-named', 'skill': None, 'prompt_canary': False}
+SUBAGENT a85e1ad2: SubagentStart.agent_type='omhlprobe:probe-qual' PreToolUse.agent_type=['omhlprobe:probe-qual'] tools=['Bash', 'SubagentHandback'] META=found
+   meta.json: agentType='omhlprobe:probe-qual' customAgentType=None name=None taskKind=None shape='background'
+   transcript: preload marker at rec 3, first tool_use at rec 18, Skill/Read/Grep/Glob tool_use=[]
+SUBAGENT ag1-prob: SubagentStart.agent_type='g1-probe-named' PreToolUse.agent_type=['g1-probe-named'] tools=['Bash', 'SendMessage'] META=found
+   meta.json: agentType='g1-probe-named' customAgentType='omhlprobe:probe-qual' name='g1-probe-named' taskKind='in_process_teammate' shape='background'
+   transcript: preload marker at rec None, first tool_use at rec 17, Skill/Read/Grep/Glob tool_use=[]
+SUBAGENT a4f35de9: SubagentStart.agent_type='omhlprobe:probe-none' PreToolUse.agent_type=['omhlprobe:probe-none'] tools=['Bash', 'SubagentHandback'] META=found
+   meta.json: agentType='omhlprobe:probe-none' customAgentType=None name=None taskKind=None shape='background'
+   transcript: preload marker at rec None, first tool_use at rec 18, Skill/Read/Grep/Glob tool_use=[]
+SUBAGENT ag1-none: SubagentStart.agent_type='g1-none-named' PreToolUse.agent_type=['g1-none-named'] tools=['Bash', 'SendMessage'] META=found
+   meta.json: agentType='g1-none-named' customAgentType='omhlprobe:probe-none' name='g1-none-named' taskKind='in_process_teammate' shape='background'
+   transcript: preload marker at rec None, first tool_use at rec 18, Skill/Read/Grep/Glob tool_use=[]
+SUBAGENT a8a4a8c4: SubagentStart.agent_type='oh-my-hexflow:planner' PreToolUse.agent_type=['oh-my-hexflow:planner'] tools=['Bash', 'SubagentHandback'] META=found
+   meta.json: agentType='oh-my-hexflow:planner' customAgentType=None name=None taskKind=None shape='background'
+   transcript: preload marker at rec None, first tool_use at rec 17, Skill/Read/Grep/Glob tool_use=[]
+SUBAGENT ag1-plan: SubagentStart.agent_type='g1-planner-named' PreToolUse.agent_type=['g1-planner-named'] tools=['Bash', 'SendMessage'] META=found
+   meta.json: agentType='g1-planner-named' customAgentType='oh-my-hexflow:planner' name='g1-planner-named' taskKind='in_process_teammate' shape='background'
+   transcript: preload marker at rec None, first tool_use at rec 17, Skill/Read/Grep/Glob tool_use=[]

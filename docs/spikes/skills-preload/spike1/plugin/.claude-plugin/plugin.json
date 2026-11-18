@@ -1,0 +1,5 @@
+{
+  "name": "spikeplug",
+  "version": "0.0.1",
+  "description": "Throwaway spike: does skills: preload a plugin skill into a plugin agent, and what agent_type do hooks see?"
+}

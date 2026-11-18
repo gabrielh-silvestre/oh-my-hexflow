@@ -1,0 +1,33 @@
+0	user
+1	omitido
+2	omitido
+3	omitido
+4	user
+5	user
+6	omitido
+7	omitido
+8	omitido
+9	omitido
+10	omitido
+11	omitido
+12	omitido
+13	api-request-shape
+14	omitido
+15	omitido
+16	api-request
+17	assistant	tool_use:Bash
+18	omitido
+19	omitido
+20	omitido
+21	user
+22	omitido
+23	omitido
+24	omitido
+25	omitido
+26	api-request
+27	assistant	tool_use:SubagentHandback
+28	omitido
+29	user
+30	omitido
+31	omitido
+32	omitido

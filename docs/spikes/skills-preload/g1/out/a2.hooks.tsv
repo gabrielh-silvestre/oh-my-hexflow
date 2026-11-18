@@ -1,0 +1,3 @@
+SubagentStart	{"session_id":"<redigido>","transcript_path":"<redigido>","cwd":"<redigido>","prompt_id":"<redigido>","agent_id":"aed405aa60be4033f","agent_type":"omhlprobe:probe-qual","hook_event_name":"SubagentStart"}
+PreToolUse	{"session_id":"<redigido>","transcript_path":"<redigido>","cwd":"<redigido>","prompt_id":"<redigido>","permission_mode":"dontAsk","agent_id":"aed405aa60be4033f","agent_type":"omhlprobe:probe-qual","effort":{"level":"medium"},"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo g1","description":"Print probe token g1"},"tool_use_id":"toolu_01HbvVsShBynC7iNet7svGzj"}
+META	aed405aa60be4033f	found

@@ -1,0 +1,6 @@
+O agente `spikeplug:probe` foi iniciado em segundo plano. Ainda não há resposta final; assim que ele terminar, eu imprimo o retorno exatamente como veio.
+
+```
+SKILLCANARY=SKILLCANARY-7f3a91
+HOOKCANARY=HOOKCANARY agent_type=spikeplug:probe
+```

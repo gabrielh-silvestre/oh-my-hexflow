@@ -1,0 +1,33 @@
+0	user
+1	omitido
+2	omitido
+3	user	marcador-de-pre-carga	/skill-format>\nBase directory for this skill: <repo>/.omc/research/omc-port-g1/probe-plugin/skills/role-probe\n\n# Role probe\n\nThe canary token is SKILLCANARY-7a4d7a18.\n
+4	omitido
+5	omitido
+6	omitido
+7	omitido
+8	omitido
+9	omitido
+10	omitido
+11	omitido
+12	api-request-shape
+13	omitido
+14	omitido
+15	api-request
+16	assistant
+17	assistant	tool_use:Bash
+18	omitido
+19	omitido
+20	omitido
+21	omitido
+22	user
+23	omitido
+24	omitido
+25	omitido
+26	omitido
+27	omitido
+28	omitido
+29	api-request
+30	assistant
+31	omitido
+32	omitido

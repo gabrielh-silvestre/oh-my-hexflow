@@ -1,0 +1,3 @@
+Lancei o subagente `omhlprobe:probe-none` em segundo plano, sem `name`, com o prompt "run the probe". A resposta final dele ainda não chegou; quando chegar, eu a imprimo literalmente, sem mais nada.
+
+SKILLCANARY=NONE
