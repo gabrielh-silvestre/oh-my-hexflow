@@ -236,6 +236,37 @@ pub fn byproduct_repo() -> Project {
     project
 }
 
+// ---------------------------------------------------------------- `append` e `attest`
+
+pub const MANUAL_CHECK: &str = "checks.ledger-review";
+
+const MANUAL_CHECK_TOML: &str =
+    "blocking = false\nhow = \"Review the ledger by hand.\"\n\n[when]\nevent = \"before-merge\"\n";
+
+/// Pedido de um work item só.
+pub const APPEND_ONE: &str = r#"{"items":[{"body":{"kind":"node","id":"work-items.ledger-close","type":"work-item","data":{"title":"Close the ledger","status":"open"}}}]}"#;
+
+/// Pedido de dois work items.
+pub const APPEND_TWO: &str = r#"{"items":[{"body":{"kind":"node","id":"work-items.ledger-close","type":"work-item","data":{"title":"Close the ledger","status":"open"}}},{"body":{"kind":"node","id":"work-items.audit-trail","type":"work-item","data":{"title":"Audit the trail","status":"open"}}}]}"#;
+
+/// O pedido de um work item só, com `key`: repeti-lo devolve os mesmos records com `replayed: true`.
+pub const APPEND_KEYED: &str = r#"{"key":"close-ledger-1","items":[{"body":{"kind":"node","id":"work-items.ledger-close","type":"work-item","data":{"title":"Close the ledger","status":"open"}}}]}"#;
+
+/// Work item sem `title`: o schema recusa (`INVALID_RECORD`).
+pub const APPEND_MISSING_TITLE: &str = r#"{"items":[{"body":{"kind":"node","id":"work-items.ledger-close","type":"work-item","data":{"status":"open"}}}]}"#;
+
+pub const APPEND_NOT_JSON: &str = "{not json";
+
+/// Grava o pedido com sucesso, pelo binário: a fixture do `append` que já gravou (o `replayed`).
+pub fn appended(project: &Project, request: &str) {
+    omhl_succeeds(project, &["append"], request);
+}
+
+/// Repositório git limpo na branch do work item, com o check manual carregado e o work item aberto: o `attest` grava.
+pub fn attest_repo() -> Project {
+    check_repo(&[("ledger-review", MANUAL_CHECK_TOML)])
+}
+
 // ---------------------------------------------------------------- `check sweep`
 
 /// `check run` e `check sweep` varrem o `/proc` inteiro: um `check run` que começa mata o fugido de outro.

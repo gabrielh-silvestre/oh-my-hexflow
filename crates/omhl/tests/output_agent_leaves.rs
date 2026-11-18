@@ -1294,6 +1294,102 @@ fn counted(count: usize, noun: &str) -> String {
     }
 }
 
+// ---------------------------------------------------------------- fixtures e fatos de `append` e `attest`
+
+/// O pedido vai no stdin: o `append` roda sempre pelo binário.
+fn append_to_empty_db(request: &str) -> Fixture {
+    Fixture::spawned(Project::new("acme"), request)
+}
+
+fn append_one() -> Fixture {
+    append_to_empty_db(cycle::APPEND_ONE)
+}
+
+fn append_two() -> Fixture {
+    append_to_empty_db(cycle::APPEND_TWO)
+}
+
+/// O mesmo pedido com `key` já gravado: o comando do caso o repete e recebe os mesmos records.
+fn append_replayed() -> Fixture {
+    let project = Project::new("acme");
+    cycle::appended(&project, cycle::APPEND_KEYED);
+
+    Fixture::spawned(project, cycle::APPEND_KEYED)
+}
+
+fn append_not_json() -> Fixture {
+    append_to_empty_db(cycle::APPEND_NOT_JSON)
+}
+
+fn append_missing_title() -> Fixture {
+    append_to_empty_db(cycle::APPEND_MISSING_TITLE)
+}
+
+fn attest_state() -> Fixture {
+    Fixture::spawned(cycle::attest_repo(), "")
+}
+
+fn append_facts(value: &Value) -> Vec<String> {
+    let records = value["records"].as_array().expect("records is a list");
+    let mut header = format!("{SYMBOL_OK} append · {}", counted(records.len(), "record"));
+    if value["replayed"] == true {
+        header.push_str(" · replayed");
+    }
+    let lines = records
+        .iter()
+        .map(|record| format!("- {} · seq {}", text_at(record, "id"), record["seq"]));
+
+    std::iter::once(header).chain(lines).collect()
+}
+
+/// A cabeça da cadeia é ruído declarado; `replayed` só aparece na palavra, quando é `true`.
+fn append_fresh_absent(value: &Value) -> Vec<String> {
+    vec![
+        text_at(&value["chain_head"], "hash").to_owned(),
+        "replayed".to_owned(),
+    ]
+}
+
+fn append_replayed_absent(value: &Value) -> Vec<String> {
+    vec![text_at(&value["chain_head"], "hash").to_owned()]
+}
+
+/// `✔` só em `passed`; o registro dos outros desfechos também foi gravado, mas é um aviso (`⚠`).
+fn attest_facts(value: &Value) -> Vec<String> {
+    let attestation = &value["attestation"];
+    let symbol = match attestation["outcome"] == "passed" {
+        true => SYMBOL_OK,
+        false => SYMBOL_WARNING,
+    };
+    let snapshot = text_at(&attestation["snapshot"], "id");
+    let mut facts = vec![format!(
+        "{symbol} attest · {} · {} · {} · snapshot {}",
+        text_at(attestation, "check"),
+        text_at(attestation, "work_item"),
+        text_at(attestation, "outcome"),
+        &snapshot[..7]
+    )];
+    if let Some(note) = attestation["note"].as_str() {
+        facts.push(format!("note: {note}"));
+    }
+
+    facts
+}
+
+/// O id da attestation e a cabeça da cadeia só saem no JSON; o sucesso não sugere próximo passo.
+fn attest_absent(value: &Value) -> Vec<String> {
+    let mut absent = vec![
+        text_at(&value["attestation"], "id").to_owned(),
+        text_at(&value["chain_head"], "hash").to_owned(),
+        NEXT_LABEL.to_owned(),
+    ];
+    if value["attestation"]["note"].is_null() {
+        absent.push("note:".to_owned());
+    }
+
+    absent
+}
+
 /// Um estado de fixture de um comando: cada onda das etapas 3 e 4 acrescenta os seus casos.
 struct Case {
     name: &'static str,
@@ -1309,7 +1405,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 55] = [
+const CASES: [Case; 64] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -1866,6 +1962,122 @@ const CASES: [Case; 55] = [
         derived: generic_error_facts,
         absent: no_facts,
     },
+    Case {
+        name: "append writes one record",
+        key: CommandKey::Append,
+        args: &["append"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: append_one,
+        derived: append_facts,
+        absent: append_fresh_absent,
+    },
+    Case {
+        name: "append writes several records",
+        key: CommandKey::Append,
+        args: &["append"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: append_two,
+        derived: append_facts,
+        absent: append_fresh_absent,
+    },
+    Case {
+        name: "append replays a request that already wrote",
+        key: CommandKey::Append,
+        args: &["append"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: append_replayed,
+        derived: append_facts,
+        absent: append_replayed_absent,
+    },
+    Case {
+        name: "append input-invalid-json",
+        key: CommandKey::Append,
+        args: &["append"],
+        outcome: Outcome::Failure,
+        error_code: Some("input-invalid-json"),
+        fixture: append_not_json,
+        derived: error_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "append INVALID_RECORD",
+        key: CommandKey::Append,
+        args: &["append"],
+        outcome: Outcome::Failure,
+        error_code: Some("INVALID_RECORD"),
+        fixture: append_missing_title,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "attest passed with a note",
+        key: CommandKey::Attest,
+        args: &[
+            "attest",
+            cycle::MANUAL_CHECK,
+            cycle::WORK_ITEM,
+            "--outcome",
+            "passed",
+            "--note",
+            "Totals match the bank export",
+        ],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: attest_state,
+        derived: attest_facts,
+        absent: attest_absent,
+    },
+    Case {
+        name: "attest passed_with_warning",
+        key: CommandKey::Attest,
+        args: &[
+            "attest",
+            cycle::MANUAL_CHECK,
+            cycle::WORK_ITEM,
+            "--outcome",
+            "passed_with_warning",
+        ],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: attest_state,
+        derived: attest_facts,
+        absent: attest_absent,
+    },
+    Case {
+        name: "attest failed",
+        key: CommandKey::Attest,
+        args: &[
+            "attest",
+            cycle::MANUAL_CHECK,
+            cycle::WORK_ITEM,
+            "--outcome",
+            "failed",
+        ],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: attest_state,
+        derived: attest_facts,
+        absent: attest_absent,
+    },
+    Case {
+        name: "attest check-not-found",
+        key: CommandKey::Attest,
+        args: &[
+            "attest",
+            "checks.ghost-one",
+            cycle::WORK_ITEM,
+            "--outcome",
+            "passed",
+        ],
+        outcome: Outcome::Failure,
+        error_code: Some("check-not-found"),
+        fixture: attest_state,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
 ];
 
 fn command(case: &Case, format: &str) -> Vec<String> {
@@ -2057,14 +2269,17 @@ fn mask_durations(text: &str) -> String {
     masked
 }
 
-/// Troca por marcadores o que muda a cada execução: durações, pids e as contagens do `check sweep`.
+/// Troca por marcadores o que muda a cada execução: durações, pids, as contagens do `check sweep` e os ids de record.
 fn mask_volatile(text: &str) -> String {
     let pids = Regex::new(r"\b(pid|owner) \d+\b").expect("the pid pattern compiles");
     let counts = Regex::new(r"\b\d+ (swept|unreadable)\b").expect("the count pattern compiles");
+    let record_ids = Regex::new(r"\b[a-z0-9-]+:[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\b")
+        .expect("the record id pattern compiles");
     let timed = mask_durations(text);
     let masked = pids.replace_all(&timed, "$1 <pid>");
+    let counted = counts.replace_all(&masked, "<n> $1");
 
-    counts.replace_all(&masked, "<n> $1").into_owned()
+    record_ids.replace_all(&counted, "<record-id>").into_owned()
 }
 
 /// O `report` fecha o texto com uma quebra de linha; o `render` não: o `text` do contexto já termina nos seus bytes.
@@ -2084,6 +2299,7 @@ fn changes_the_fixture(case: &Case) -> bool {
             | CommandKey::CheckRetire
             | CommandKey::GuidelineRetire
             | CommandKey::SpecInit
+            | CommandKey::Append
     ) && case.outcome == Outcome::Success
 }
 
