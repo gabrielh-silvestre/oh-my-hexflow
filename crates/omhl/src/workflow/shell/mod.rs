@@ -44,26 +44,22 @@ impl SimpleCommand {
         self.resolved.program_at.map(|at| basename(&self.words[at]))
     }
 
-    /// As palavras antes do programa: atribuições, embrulhos e suas opções.
-    pub fn prefix(&self) -> &[String] {
-        &self.words[..self.resolved.program_at.unwrap_or(self.words.len())]
-    }
-
-    /// As palavras depois do programa real.
-    pub fn args(&self) -> &[String] {
-        self.resolved
-            .program_at
-            .map_or(&[], |at| &self.words[at + 1..])
-    }
-
-    pub fn runs_omhl(&self) -> bool {
-        self.program() == Some("omhl")
+    /// O comando em três partes: as palavras antes do programa (atribuições, embrulhos e suas opções), o programa real e as palavras depois dele.
+    pub fn split(&self) -> (&[String], Option<&str>, &[String]) {
+        match self.resolved.program_at {
+            Some(at) => (
+                &self.words[..at],
+                Some(basename(&self.words[at])),
+                &self.words[at + 1..],
+            ),
+            None => (&self.words, None, &[]),
+        }
     }
 
     /// Roda o `omhl` ou o leitor não consegue descartar que rode: nega-se em vez de adivinhar.
     pub fn may_run_omhl(&self) -> bool {
         match self.resolved.opacity {
-            None => self.runs_omhl(),
+            None => self.program() == Some("omhl"),
             Some(Opacity::Rewriting) => self.words.iter().any(|word| word.contains("omhl")),
             Some(Opacity::UnknownOption) => self.words.iter().any(|word| basename(word) == "omhl"),
         }
@@ -237,7 +233,7 @@ mod tests {
     fn it_should_take_the_basename_of_the_program_and_skip_assignments() {
         assert_eq!(program_names("/home/x/.local/bin/omhl list"), ["omhl"]);
         assert_eq!(program_names("A=1 B=2 omhl list"), ["omhl"]);
-        assert_eq!(read("A=1 omhl list").commands[0].args(), ["list"]);
+        assert_eq!(read("A=1 omhl list").commands[0].split().2, ["list"]);
     }
 
     #[test]
@@ -261,10 +257,13 @@ mod tests {
             "if omhl list; then",
         ] {
             let line = read(command);
-            let found = line.commands.iter().find(|simple| simple.runs_omhl());
+            let found = line
+                .commands
+                .iter()
+                .find(|simple| simple.program() == Some("omhl"));
 
             assert_eq!(
-                found.map(|simple| simple.args()),
+                found.map(|simple| simple.split().2),
                 Some(["list".to_owned()].as_slice()),
                 "{command}"
             );

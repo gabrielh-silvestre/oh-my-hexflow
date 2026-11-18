@@ -69,7 +69,6 @@ impl Lexer {
             }
             self.step(c)?;
         }
-        self.end_word();
         self.end_command();
 
         Ok(())
@@ -122,21 +121,21 @@ impl Lexer {
         }
     }
 
+    /// Fecha a palavra pendente antes: o comando só termina depois da última palavra.
     fn end_command(&mut self) {
+        self.end_word();
         if !self.current.is_empty() {
             self.commands.push(mem::take(&mut self.current));
         }
     }
 
     fn separator(&mut self) {
-        self.end_word();
         self.end_command();
         self.separated = true;
     }
 
     /// A quebra de linha termina o comando mas não conta como separador; depois dela vêm os corpos de heredoc.
     fn line_break(&mut self) -> Result<(), ReadError> {
-        self.end_word();
         self.end_command();
 
         heredoc::skip_bodies(&mut self.cursor, &mut self.heredocs)

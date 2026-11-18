@@ -70,11 +70,11 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
 /// Atribuição de `OMHL_ROLE` como prefixo (também depois de embrulho) ou como argumento de `export` e afins.
 fn assigns_role_variable(line: &CommandLine) -> bool {
     line.commands.iter().any(|simple| {
-        let assigns_in_prefix = simple.prefix().iter().any(|word| names_role_variable(word));
-        let assigns_by_builtin = simple
-            .program()
+        let (prefix, program, args) = simple.split();
+        let assigns_in_prefix = prefix.iter().any(|word| names_role_variable(word));
+        let assigns_by_builtin = program
             .is_some_and(|program| ASSIGNING_PROGRAMS.contains(&program))
-            && simple.args().iter().any(|word| names_role_variable(word));
+            && args.iter().any(|word| names_role_variable(word));
 
         assigns_in_prefix || assigns_by_builtin
     })
@@ -108,7 +108,7 @@ fn ported_agent_verdict(
     }
 
     match reaching.as_slice() {
-        [simple] if !line.compound && simple.runs_omhl() => {
+        [simple] if !line.compound && simple.program() == Some("omhl") => {
             role_matrix_verdict(role, simple, input, env)
         }
         [_] if !line.compound => deny(
@@ -138,19 +138,19 @@ fn role_matrix_verdict(
             );
         }
     };
-    let leaf = resolve_leaf(simple.args(), env.groups);
+    let leaf = resolve_leaf(simple.split().2, env.groups);
     if !leaf.as_ref().is_some_and(|leaf| allow.permits(leaf)) {
         return deny(
             "command-outside-matrix",
             &format!(
-                "omhl:{role} may run only these omhl commands (plus --help, -V and help): {}",
+                "{ROLE_PREFIX}{role} may run only these omhl commands (plus --help, -V and help): {}",
                 allow.commands.join(", ")
             ),
         );
     }
 
     RoleVerdict::Allow {
-        reason: format!("the command is inside the omhl:{role} matrix"),
+        reason: format!("the command is inside the {ROLE_PREFIX}{role} matrix"),
         updated_input: with_role_prefix(input, role),
     }
 }
