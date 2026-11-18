@@ -138,7 +138,11 @@ pub fn detail_lines(detail: &Value, facts: &ErrorFacts) -> Vec<Line> {
     .flatten();
     lines.extend(
         own.filter(|(label, value)| !is_action(label, value, facts))
-            .map(|(label, value)| field(2, label, value)),
+            .map(|(label, value)| Line::Field {
+                depth: 2,
+                label,
+                value,
+            }),
     );
     lines.extend(context_lines(&detail["context"], 2, &code, facts));
 
@@ -159,7 +163,11 @@ pub fn context_lines(
             !is_action(label, value, facts)
                 && !(label == "kind" && (value == own_code || value == &facts.code))
         })
-        .map(|(label, value)| field(depth, label, value))
+        .map(|(label, value)| Line::Field {
+            depth,
+            label,
+            value,
+        })
         .collect()
 }
 
@@ -172,12 +180,4 @@ pub fn closing(facts: &ErrorFacts) -> Closing {
 
 fn is_action(label: &str, value: &str, facts: &ErrorFacts) -> bool {
     matches!(label, "hint" | "next_step") && facts.action.as_deref() == Some(value)
-}
-
-fn field(depth: usize, label: String, value: String) -> Line {
-    Line::Field {
-        depth,
-        label,
-        value,
-    }
 }

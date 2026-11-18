@@ -6,7 +6,7 @@ use super::base::{Entry, Profile, Region, Shape, Specialization};
 use super::doc::{Closing, Join, Line, Marker, items, one_line, opt_text, text};
 use super::error::{self, ErrorFacts};
 #[cfg(test)]
-use super::{BaseRenderer, Renderer};
+use super::{BaseRenderer, Renderer, layout};
 
 const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
@@ -333,21 +333,23 @@ fn failed_check_line(path: &str, context: &Value) -> Line {
     if let Some(exit_code) = context["exit_code"].as_i64() {
         parts.push(format!("exit {exit_code}"));
     }
-    if context["timed_out"] == true {
-        parts.push("timed out".to_owned());
-    }
+    push_if_true(&mut parts, context, "timed_out", "timed out");
     if let Some(duration_ms) = context["duration_ms"].as_u64() {
         parts.push(duration_label(duration_ms));
     }
-    if context["truncated"] == true {
-        parts.push("truncated".to_owned());
-    }
+    push_if_true(&mut parts, context, "truncated", "truncated");
 
     Line::Item {
         depth: 1,
         marker: Marker::Symbol("✘"),
         parts,
         join: Join::Dot,
+    }
+}
+
+fn push_if_true(parts: &mut Vec<String>, object: &Value, key: &str, label: &str) {
+    if object[key] == true {
+        parts.push(label.to_owned());
     }
 }
 
@@ -376,12 +378,8 @@ fn result_line(result: &Value) -> Line {
     {
         notes.push(format!("exit {exit_code}"));
     }
-    if result["timed_out"] == true {
-        notes.push("timed out".to_owned());
-    }
-    if result["truncated"] == true {
-        notes.push("truncated".to_owned());
-    }
+    push_if_true(&mut notes, result, "timed_out", "timed out");
+    push_if_true(&mut notes, result, "truncated", "truncated");
     let notes = if notes.is_empty() {
         String::new()
     } else {
@@ -538,11 +536,11 @@ mod tests {
     use super::*;
 
     fn render_success(value: &Value) -> String {
-        BaseRenderer(CheckRun).agent_success(value)
+        layout::agent(&BaseRenderer(CheckRun).success(value))
     }
 
     fn render_error(value: &Value) -> String {
-        BaseRenderer(CheckRun).agent_failure(value)
+        layout::agent(&BaseRenderer(CheckRun).failure(value))
     }
 
     const COMMIT: &str = "c43356d0b9a1e8f47d2a5b6c7e8f9a0b1c2d3e4f";

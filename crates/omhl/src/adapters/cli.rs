@@ -9,10 +9,7 @@ use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
 use super::hook;
-use super::text::{
-    CommandKey, Layout, deferred, render_failure, render_success, renderer_for,
-    silent_without_marker,
-};
+use super::text::{CommandKey, Layout, deferred, render_failure, render_success, renderer_for};
 use crate::app::RUNNABLE_EVENTS;
 use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
@@ -271,11 +268,13 @@ pub fn run(
             hook::agent_role(stdin, out, err, env, &groups)
         }
         Command::Action(command) => {
+            // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
+            let silent_without_marker = matches!(key, CommandKey::GateWorktree);
             let format = format.unwrap_or_else(|| default_format(key));
             let result = start_dir(project_dir.as_deref())
                 .and_then(|dir| execute(command, stdin, &dir, db, env));
             match &result {
-                Err(error) if silent_without_marker(key) && error.code() == "no-marker" => {
+                Err(error) if silent_without_marker && error.code() == "no-marker" => {
                     ExitCode::SUCCESS
                 }
                 _ => report(result, format, key, out, err),

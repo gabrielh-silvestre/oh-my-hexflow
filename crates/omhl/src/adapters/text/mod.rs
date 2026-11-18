@@ -89,22 +89,6 @@ pub trait Renderer {
 
     /// `value` é o `{"error": {...}}` de `AppError::to_json`.
     fn failure(&self, value: &Value) -> Doc;
-
-    fn agent_success(&self, value: &Value) -> String {
-        layout::agent(&self.success(value))
-    }
-
-    fn human_success(&self, value: &Value) -> String {
-        layout::human(&self.success(value))
-    }
-
-    fn agent_failure(&self, value: &Value) -> String {
-        layout::agent(&self.failure(value))
-    }
-
-    fn human_failure(&self, value: &Value) -> String {
-        layout::human(&self.failure(value))
-    }
 }
 
 /// O único fato guardado por comando: só o `check run` e o `verify` têm renderizador até as ondas seguintes.
@@ -174,10 +158,13 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
 /// Texto do sucesso do comando; sem renderizador (o `report` nunca chega aqui) devolve o próprio JSON.
 pub fn render_success(key: CommandKey, value: &Value, layout: Layout) -> String {
     match renderer_for(key) {
-        Some(renderer) => match layout {
-            Layout::Agent => renderer.agent_success(value),
-            Layout::Human => renderer.human_success(value),
-        },
+        Some(renderer) => {
+            let doc = renderer.success(value);
+            match layout {
+                Layout::Agent => layout::agent(&doc),
+                Layout::Human => layout::human(&doc),
+            }
+        }
         None => value.to_string(),
     }
 }
@@ -185,10 +172,13 @@ pub fn render_success(key: CommandKey, value: &Value, layout: Layout) -> String 
 /// Texto do erro (`{"error": {...}}`); sem renderizador devolve o próprio JSON.
 pub fn render_failure(key: CommandKey, value: &Value, layout: Layout) -> String {
     match renderer_for(key) {
-        Some(renderer) => match layout {
-            Layout::Agent => renderer.agent_failure(value),
-            Layout::Human => renderer.human_failure(value),
-        },
+        Some(renderer) => {
+            let doc = renderer.failure(value);
+            match layout {
+                Layout::Agent => layout::agent(&doc),
+                Layout::Human => layout::human(&doc),
+            }
+        }
         None => value.to_string(),
     }
 }
@@ -223,9 +213,4 @@ pub fn deferred(key: CommandKey) -> bool {
         | CommandKey::ReportRecurrences
         | CommandKey::ReportRetro => false,
     }
-}
-
-/// O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
-pub fn silent_without_marker(key: CommandKey) -> bool {
-    matches!(key, CommandKey::GateWorktree)
 }
