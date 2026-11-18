@@ -6,3 +6,5 @@ mod support;
 mod coverage;
 #[path = "skills/examples.rs"]
 mod examples;
+#[path = "skills/orchestration.rs"]
+mod orchestration;
