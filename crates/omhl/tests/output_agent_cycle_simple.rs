@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use support::child::Output;
 use support::cycle::{
     self, ORPHAN_CHECK, ORPHAN_GUIDELINE, SPEC_SLUG, SUCCESSOR_GUIDELINE, State, WORK_ITEM,
+    assert_single_json_line, assert_text_starting_with, first_line, lines_of,
 };
 use support::project::Project;
 
@@ -36,24 +37,6 @@ fn with_format<'a>(format: Option<&'a str>, args: &[&'a str]) -> Vec<&'a str> {
 
 fn run(state: &State, format: Option<&str>, args: &[&str]) -> Output {
     state.command(&with_format(format, args)).run()
-}
-
-fn first_line(text: &str) -> &str {
-    text.lines().next().unwrap_or_default()
-}
-
-fn assert_text_starting_with(text: &str, symbol: &str) {
-    assert!(serde_json::from_str::<Value>(text).is_err(), "{text}");
-    assert!(first_line(text).starts_with(symbol), "{text}");
-}
-
-fn assert_single_json_line(text: &str) {
-    assert_eq!(text.trim_end().lines().count(), 1, "{text}");
-    serde_json::from_str::<Value>(text.trim_end()).expect("the line is JSON");
-}
-
-fn lines_of(text: &str) -> Vec<&str> {
-    text.lines().collect()
 }
 
 /// O stdout de um comando que tem de sair 0, sem nada no stderr.

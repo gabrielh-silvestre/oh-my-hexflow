@@ -30,6 +30,30 @@ pub const SPEC_SLUG: &str = "export-reports";
 
 const GENERATED_HEADER: &str = "<!-- omhl: generated file, do not edit -->";
 
+// ---------------------------------------------------------------- leitura do texto impresso
+
+pub fn first_line(text: &str) -> &str {
+    text.lines().next().unwrap_or_default()
+}
+
+pub fn lines_of(text: &str) -> Vec<&str> {
+    text.lines().collect()
+}
+
+pub fn assert_text_starting_with(text: &str, symbol: &str) {
+    assert!(serde_json::from_str::<Value>(text).is_err(), "{text}");
+    assert!(first_line(text).starts_with(symbol), "{text}");
+}
+
+pub fn assert_single_json_line(text: &str) {
+    assert_eq!(text.trim_end().lines().count(), 1, "{text}");
+    serde_json::from_str::<Value>(text.trim_end()).expect("the line is JSON");
+}
+
+pub fn parsed(text: &str) -> Value {
+    serde_json::from_str(text.trim_end()).expect("the output is JSON")
+}
+
 // ---------------------------------------------------------------- git e `omhl` de preparo
 
 pub fn git(dir: &Path, args: &[&str]) {

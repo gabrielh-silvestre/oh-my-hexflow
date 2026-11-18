@@ -27,7 +27,6 @@ pub static PROFILE: Profile = Profile {
         Entry::new(Region::Author, "model", Shape::Literal).optional(),
         Entry::new(Region::Snapshot, "kind", Shape::Closed).optional(),
         Entry::new(Region::Snapshot, "id", Shape::Hash(40)).optional(),
-        // check
         Entry::data("check", "how", Shape::Literal),
         Entry::data("check", "blocking", Shape::Derived),
         Entry::data("check", "event", Shape::Closed).under("when"),
@@ -51,7 +50,6 @@ pub static PROFILE: Profile = Profile {
         Entry::data("check", "stderr", Shape::Literal)
             .under("expect")
             .optional(),
-        // attestation
         Entry::data("attestation", "check", Shape::Literal),
         Entry::data("attestation", "work_item", Shape::Literal),
         Entry::data("attestation", "outcome", Shape::Closed),
@@ -64,7 +62,6 @@ pub static PROFILE: Profile = Profile {
         Entry::data("attestation", "command", Shape::Closed).optional(),
         Entry::data("attestation", "spec_digest", Shape::Literal).optional(),
         Entry::data("attestation", "byproduct", Shape::Literal).optional(),
-        // premise
         Entry::data("premise", "text", Shape::Literal),
         Entry::data("premise", "status", Shape::Closed),
         Entry::data("premise", "kind", Shape::Closed).optional(),
@@ -78,7 +75,6 @@ pub static PROFILE: Profile = Profile {
         Entry::data("premise", "answer", Shape::Literal)
             .under("confirmed_by")
             .optional(),
-        // guideline
         Entry::data("guideline", "text", Shape::Literal),
         Entry::data("guideline", "kind", Shape::Closed).optional(),
         Entry::data("guideline", "by", Shape::Closed)
@@ -90,17 +86,14 @@ pub static PROFILE: Profile = Profile {
         Entry::data("guideline", "answer", Shape::Literal)
             .under("confirmed_by")
             .optional(),
-        // decision
         Entry::data("decision", "text", Shape::Literal),
         Entry::data("decision", "work_item", Shape::Literal).optional(),
         Entry::data("decision", "source", Shape::Literal).under("evidence"),
         Entry::data("decision", "summary", Shape::Literal).under("evidence"),
-        // gap
         Entry::data("gap", "question", Shape::Literal),
         Entry::data("gap", "context", Shape::Literal),
         Entry::data("gap", "work_item", Shape::Literal).optional(),
         Entry::data("gap", "kind", Shape::Closed).optional(),
-        // divergence
         Entry::data("divergence", "source_ref", Shape::Literal),
         Entry::data("divergence", "kind", Shape::Closed),
         Entry::data("divergence", "text", Shape::Literal),
@@ -118,7 +111,6 @@ pub static PROFILE: Profile = Profile {
         Entry::data("divergence", "answer", Shape::Literal)
             .under("confirmed_by")
             .optional(),
-        // work-item
         Entry::data("work-item", "title", Shape::Literal),
         Entry::data("work-item", "status", Shape::Closed),
         Entry::data("work-item", "name", Shape::Literal)
@@ -136,7 +128,6 @@ pub static PROFILE: Profile = Profile {
         Entry::data("work-item", "id", Shape::Hash(40))
             .under("snapshot")
             .optional(),
-        // pull-request
         Entry::data("pull-request", "title", Shape::Literal),
         Entry::data("pull-request", "status", Shape::Closed),
         Entry::data("pull-request", "provider", Shape::Closed),

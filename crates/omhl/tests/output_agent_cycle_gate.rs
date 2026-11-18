@@ -4,7 +4,10 @@ use omhl::adapters::text::{CommandKey, Layout, render_success};
 use regex::Regex;
 use serde_json::{Value, json};
 use support::child::Output;
-use support::cycle::{self, WORK_ITEM};
+use support::cycle::{
+    self, WORK_ITEM, assert_single_json_line, assert_text_starting_with, first_line, lines_of,
+    parsed,
+};
 use support::project::Project;
 
 const RECORD_ID: &str = r"acme:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}";
@@ -56,28 +59,6 @@ fn gate_pr(project: &Project, format: Option<&str>) -> String {
 
 fn close(project: &Project, format: Option<&str>) -> String {
     printed(project, format, &["close", WORK_ITEM])
-}
-
-fn first_line(text: &str) -> &str {
-    text.lines().next().unwrap_or_default()
-}
-
-fn lines_of(text: &str) -> Vec<&str> {
-    text.lines().collect()
-}
-
-fn assert_text_starting_with(text: &str, symbol: &str) {
-    assert!(serde_json::from_str::<Value>(text).is_err(), "{text}");
-    assert!(first_line(text).starts_with(symbol), "{text}");
-}
-
-fn assert_single_json_line(text: &str) {
-    assert_eq!(text.trim_end().lines().count(), 1, "{text}");
-    serde_json::from_str::<Value>(text.trim_end()).expect("the line is JSON");
-}
-
-fn parsed(text: &str) -> Value {
-    serde_json::from_str(text.trim_end()).expect("the output is JSON")
 }
 
 fn record_line() -> Regex {

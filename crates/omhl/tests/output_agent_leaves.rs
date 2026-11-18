@@ -1841,7 +1841,7 @@ fn close_absent(value: &Value) -> Vec<String> {
     absent
 }
 
-/// Um estado de fixture de um comando: cada onda das etapas 3 e 4 acrescenta os seus casos.
+/// Um estado de fixture de um comando.
 struct Case {
     name: &'static str,
     key: CommandKey,

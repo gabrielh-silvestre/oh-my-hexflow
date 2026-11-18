@@ -3,7 +3,10 @@ mod support;
 use regex::Regex;
 use serde_json::Value;
 use support::child::Output;
-use support::cycle::{self, APPEND_KEYED, APPEND_ONE, APPEND_TWO, MANUAL_CHECK, State, WORK_ITEM};
+use support::cycle::{
+    self, APPEND_KEYED, APPEND_ONE, APPEND_TWO, MANUAL_CHECK, State, WORK_ITEM,
+    assert_single_json_line, assert_text_starting_with, first_line, lines_of, parsed,
+};
 use support::git::git_in;
 use support::project::Project;
 
@@ -55,28 +58,6 @@ fn refused(state: &State, format: Option<&str>, args: &[&str], stdin: &str) -> S
     assert_eq!(output.stdout, "");
 
     output.stderr
-}
-
-fn first_line(text: &str) -> &str {
-    text.lines().next().unwrap_or_default()
-}
-
-fn lines_of(text: &str) -> Vec<&str> {
-    text.lines().collect()
-}
-
-fn assert_text_starting_with(text: &str, symbol: &str) {
-    assert!(serde_json::from_str::<Value>(text).is_err(), "{text}");
-    assert!(first_line(text).starts_with(symbol), "{text}");
-}
-
-fn assert_single_json_line(text: &str) {
-    assert_eq!(text.trim_end().lines().count(), 1, "{text}");
-    serde_json::from_str::<Value>(text.trim_end()).expect("the line is JSON");
-}
-
-fn parsed(text: &str) -> Value {
-    serde_json::from_str(text.trim_end()).expect("the output is JSON")
 }
 
 fn record_line(seq: u32) -> Regex {
