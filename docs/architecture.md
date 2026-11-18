@@ -172,7 +172,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `omhl::graphs` | 46 + 6,4 kB JSON | `catalog()`, `WORK_ITEM_TYPES`, `namespace_of` | funda como função, rasa como vocabulário |
 | `omhl::native` | 104 | `NativeBase` | dado (folha) |
 | `omhl::app` | 4.865 | `App`, `Runtime`, `run_action`, `Action`, `Caller` | funda, com fuga de contrato |
-| `omhl::adapters` | 645 | `cli::run`, `hook::session_start` | funda por adapter |
+| `omhl::adapters` | 645 | `cli::run`, `hook::session_start` (e `check_run_text.rs`, que o `cli` chama para o texto do `check run`) | funda por adapter |
 | `omhl::extensions` | 1.015 | `collect`, `plan` | funda |
 | `omhl::projection` | 569 | `build`, `write` | funda |
 | `omhl::render` | 297 | `render` | funda |
@@ -493,7 +493,7 @@ Oito itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 
 5. **Nome e formato de porta dentro de `app` (corte).** `app` ainda conhece o nome de quem o chama e o formato de uma porta: `Caller::{cli, cli_under_claude_code, hook}` (`app/action.rs:100`), `spec_lock` com o payload do `PreToolUse` (`app/spec.rs:289`) e `invalid_hook_input` (`app/error.rs:150`). Acrescentar uma ação toca 4 pontos: `Action` (`action.rs`), `Engine::run`, `ActionCommand` e `to_action` (`cli.rs`). Corte: o adapter traduz o payload para um struct neutro e passa o `Caller` pronto; `app` deixa de nomear a porta. Trade-off: não medido além de mover os três nomes e o parse do payload.
 
-6. **Contrato de saída sem tipo (dívida).** `App::dispatch` devolve `Result<Value, AppError>` e o hook decodifica por chave de string: `pending_note` lê `created`, `revised`, `relations_created`, `tenant`; `orphan_note` lê `orphans` (e usa `app::ExtensionKind`, reexportado, para ficar só nos checks); `context_for_session` compara com `"no-marker"`; `warning` compara com `"extensions-invalid"` (`adapters/hook.rs`). As chaves nascem em `app/load.rs`. Hoje só o teste `tests/hook.rs` pega uma divergência. Aceitável porque CLI e hook compartilham um único formato JSON de propósito; vira corte (um `LoadReport` tipado em `app`) quando um segundo consumidor ler o mesmo relatório.
+6. **Contrato de saída sem tipo (dívida).** `App::dispatch` devolve `Result<Value, AppError>` e o hook decodifica por chave de string: `pending_note` lê `created`, `revised`, `relations_created`, `tenant`; `orphan_note` lê `orphans` (e usa `app::ExtensionKind`, reexportado, para ficar só nos checks); `context_for_session` compara com `"no-marker"`; `warning` compara com `"extensions-invalid"` (`adapters/hook.rs`). O texto do `omhl check run` (`adapters/check_run_text.rs`) é um segundo decodificador por chave de string, mas de um relatório só dele (`check run`), então não dispara o corte. As chaves nascem em `app/load.rs`. Hoje só o teste `tests/hook.rs` pega uma divergência. Aceitável porque CLI e hook compartilham um único formato JSON de propósito; vira corte (um `LoadReport` tipado em `app`) quando um segundo consumidor ler o mesmo relatório.
 
 7. **Helpers no lugar errado (corte pequeno, em parte feito).** `list_sorted_capped` saiu de `extensions/files.rs` para `ports/files.rs` no fluxo de diretivas, e `projection/write.rs` o importa de lá. Falta o resto: `projection/build.rs` importa `render::sort_by_id`, e `project/layout.rs` mistura constantes de `extensions` (`EXT_FILE_MAX_BYTES`, `CHECKS_DIR`), de `projection` (`PROJECTION_*`) e de arquivo temporário (`TMP_*`). Corte: `render::sort_by_id` vai para `project` (que já hospeda `text.rs`).
 

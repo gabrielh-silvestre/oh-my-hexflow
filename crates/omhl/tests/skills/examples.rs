@@ -294,6 +294,10 @@ impl Normalizer {
             (r"\b[0-9a-f]{64}\b", "<hash>"),
             (r"\b[0-9a-f]{40}\b", "<commit>"),
             (r#"("(?:duration[a-z_]*|[a-z_]*_ms|elapsed[a-z_]*)"\s*:\s*)\d+(?:\.\d+)?"#, r#"${1}"<ms>""#),
+            // Texto do `check run`: durações (`12ms`, `2.6s`) e o id curto do snapshot, `(git-commit c43356d)`.
+            (r"\b\d+ms\b", "<ms>"),
+            (r"\b\d+\.\ds\b", "<s>"),
+            (r"\((git-commit|git-tree) [0-9a-f]{7}\)", "(${1} <snapshot>)"),
             (r#"("(?:pid|pgid|[a-z_]*_pid)"\s*:\s*)\d+"#, r#"${1}"<pid>""#),
             // `check sweep` vale para qualquer raiz da máquina: `swept` e `unreadable` não são determinísticos.
             (r#"("(?:swept|unreadable)"\s*:\s*)(?:\d+|\[[^\]]*\])"#, r#"${1}"<swept>""#),
@@ -713,6 +717,26 @@ fn it_should_feed_the_heredoc_to_stdin_and_match_stderr_and_exit_code() {
         "project",
         "$ omhl append <<'EOF'\nnot json\nEOF\n2> {\"error\":{\"code\":\"input-invalid-json\",\"details\":[],\"message\":\"input is not valid JSON at line 1 column 2\"}}\n# exit 1\n",
     );
+}
+
+fn text_normalizer() -> Normalizer {
+    Normalizer::new(Path::new("/nowhere/repo"), Path::new("/nowhere/xdg"))
+}
+
+#[test]
+fn it_should_match_check_run_text_durations_and_short_snapshot_against_placeholders() {
+    let expected = "✔ before-pr · work-items.w1 · recorded (git-commit <snapshot>)\n  ✘ checks.bad · blocking · exit 1 · <s>\n  ✔ checks.ok  passed  <ms>";
+    let obtained = "✔ before-pr · work-items.w1 · recorded (git-commit c43356d)\n  ✘ checks.bad · blocking · exit 1 · 2.6s\n  ✔ checks.ok  passed  12ms";
+
+    assert!(text_normalizer().same(expected, obtained));
+}
+
+#[test]
+fn it_should_keep_the_snapshot_kind_when_normalizing_the_short_id() {
+    let expected = "✔ before-commit · work-items.w1 · recorded (git-tree <snapshot>)";
+    let obtained = "✔ before-commit · work-items.w1 · recorded (git-commit c43356d)";
+
+    assert!(!text_normalizer().same(expected, obtained));
 }
 
 #[test]

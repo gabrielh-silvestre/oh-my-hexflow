@@ -16,15 +16,17 @@ O `omhl check run` só roda no Linux. Em outro sistema ele responde `unsupported
 
 O `omhl` exige git 2.31 ou mais novo (`git rev-parse --path-format=absolute`). Num git mais velho, o `check run` falha com `probe-failed` e o `hooks install` recusa antes de gravar o `core.hooksPath`.
 
-Códigos de saída: `0` quando nenhum check bloqueante reprovou, `1` para qualquer erro (uma linha JSON no stderr, stdout vazio) e `2` para erro de uso da linha de comando.
+Códigos de saída: `0` quando nenhum check bloqueante reprovou, `1` para qualquer erro (o erro no stderr, stdout vazio) e `2` para erro de uso da linha de comando. Os códigos são os mesmos nos dois formatos de saída.
 
-**Evento sem checks.** Um `check run` cujo evento não tem nenhum check no banco sai com `0`, sem rodar nada. Para não passar por aprovação, a saída traz `checks_planned: 0` e `warnings: [{"code": "no-checks-for-event"}]`. O `recorded` continua significando o modo de gravação (work item), não que algo foi gravado.
+**Formato da saída.** O `check run` aceita `--format text|json`, e o padrão é `text`. O texto, em inglês e sem cor, é pensado para o agente: no sucesso sai no stdout e diz o que passou e o próximo passo; na falha sai no stderr e diz o que reprovou, onde ler a saída e o que fazer a seguir. Os hooks do git rodam sem `--format` e mostram o texto. Com `--format json` a saída é a linha JSON descrita neste documento, e é a forma de ler o resultado por código. Outro valor de `--format` é erro de uso da linha de comando, com saída `2`. O texto não revela nada que o JSON do mesmo caso não revele. A referência com exemplos executáveis está em [check-run.md](../plugin/skills/mechanical-checks/references/check-run.md).
+
+**Evento sem checks.** Um `check run` cujo evento não tem nenhum check no banco sai com `0`, sem rodar nada. Para não passar por aprovação, o JSON traz `checks_planned: 0` e `warnings: [{"code": "no-checks-for-event"}]`, e o texto traz uma linha de aviso `no-checks-for-event` que lembra que nada rodou. O `recorded` continua significando o modo de gravação (work item), não que algo foi gravado.
 
 ## 1. Falhas sem veredito
 
 Um erro sem veredito é um problema que impede o `omhl` de dizer se o check passou. Ele não é um `failed`. O `omhl` não grava attestation nesses casos, exceto onde a tabela diz o contrário, e termina com o código de saída 1.
 
-O erro sai no stderr, numa linha:
+Com `--format json`, o erro sai no stderr, numa linha (no texto, o mesmo erro sai em linhas legíveis, com os mesmos códigos escritos literalmente):
 
 ```json
 {"error":{"code":"check-not-run","message":"...","details":[{"path":"checks.fmt","code":"spawn-failed","message":"...","context":{"kind":"spawn-not-found","hint":"..."}}]}}
@@ -64,13 +66,17 @@ Quando só há checks bloqueantes reprovados, o erro é `checks-failed`. Um chec
 omhl byproduct checks.lint work-items.w1 --tail 40
 ```
 
+No texto, o `checks-failed` abre com `✘ BLOCKED · <evento> · <work item> · N blocking failed, M non-blocking failed, P passed, K not run` (`M` = `failed` menos `blocking_failed`; o trecho `M non-blocking failed, ` some quando `M` é 0), e cada check reprovado mostra o id, `concern/variant` (se declarados), `blocking` ou `non-blocking`, `timeout Ns` (o limite do check), `exit N` ou `timed out`, a duração (`NNNms` abaixo de 1 segundo, `N.Ns` a partir dele), `truncated` (se a saída foi cortada), o `command:` e o comando do `byproduct`.
+
+No JSON, o `checks-failed` traz no `error.context` o `event`, o `work_item` (ausente na `develop`) e o `summary` (`planned`, `passed`, `failed`, `blocking_failed` e `not_run`; `failed` conta todo check reprovado, bloqueante ou não, `blocking_failed` conta só os bloqueantes, e `not_run` conta os checks órfãos). O `context` de cada detalhe `failed` traz `blocking`, `concern` e `variant` (só quando o check os declara), `run`, `timeout_secs`, `exit_code` (ausente quando o comando não devolveu código), `duration_ms`, `timed_out` e `truncated`. O `run` vem do TOML versionado do check: não ponha segredo no argv.
+
 Na branch `develop` não há `byproduct`: o erro de um check reprovado leva a cauda da saída no `context.output_tail`.
 
 O `omhl byproduct <check> <work-item>` lê a attestation mais recente do par e recusa com `attestation-not-found` quando não há nenhuma, com `byproduct-missing` quando a attestation não aponta para um arquivo de saída que exista (ou o arquivo tem o formato errado) e com `byproduct-corrupt` quando o arquivo não pôde ser lido de volta íntegro (o SHA-256 do conteúdo não bate com o hash). Um `<work-item>` com mais de 256 caracteres é recusado com `where-eq-value-too-long` (`details[0].code`), em vez de `attestation-not-found`; um `<check>` com mais de 200 caracteres já falha antes, com `semantic-id-format`.
 
 ### O `context` do erro
 
-O `context` carrega só os campos que se aplicam ao caso: `kind`, `event`, `check`, `work_item`, `branch`, `argv`, `cwd`, `snapshot`, `expected`, `stored`, `byproduct`, `os_error`, `output_tail`, `hint` e, nos erros do `pre-push`, `lref` e `rref`. O `hint` é uma frase fixa em inglês que diz o que tentar.
+O `context` carrega só os campos que se aplicam ao caso: `kind`, `event`, `check`, `work_item`, `branch`, `argv`, `cwd`, `snapshot`, `expected`, `stored`, `byproduct`, `os_error`, `output_tail`, `hint` e, nos erros do `pre-push`, `lref` e `rref`. No detalhe `failed` do `checks-failed` entram também os fatos do check (`blocking`, `concern`, `variant`, `run`, `timeout_secs`, `exit_code`, `duration_ms`, `timed_out` e `truncated`). O `hint` é uma frase fixa em inglês que diz o que tentar.
 
 O `output_tail` (as últimas 20 linhas de `stdout` e de `stderr`, cada uma cortada em 500 caracteres) aparece só quando o comando rodou e nada foi gravado: `Busy` esgotado, outro erro de gravação da attestation, árvore alterada, sonda que falha depois do comando, falha do blob e `develop`. Quando a attestation foi gravada, o erro não repete a saída. Use `omhl byproduct`.
 

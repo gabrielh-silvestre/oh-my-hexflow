@@ -378,6 +378,19 @@ fn details(error: &AppError) -> Value {
     error.to_json()["error"]["details"].clone()
 }
 
+/// Os detalhes como eram antes dos campos curtos do check reprovado no `context`.
+fn without_context(error: &AppError) -> Value {
+    let mut details = details(error);
+    for detail in details.as_array_mut().expect("the error has details") {
+        detail
+            .as_object_mut()
+            .expect("a detail is an object")
+            .remove("context");
+    }
+
+    details
+}
+
 fn detail_paths(error: &AppError) -> Vec<Value> {
     details(error)
         .as_array()
@@ -656,7 +669,7 @@ fn it_should_run_every_check_and_report_all_even_when_the_first_fails() {
     assert_eq!(received(&specs), vec![argv(BUILD), argv(DOCS), argv(LINT)]);
     assert_eq!(error.code(), "checks-failed");
     assert_eq!(
-        details(&error),
+        without_context(&error),
         json!([
             {
                 "path": "checks.build",
@@ -696,7 +709,7 @@ fn it_should_fail_with_checks_failed_when_a_blocking_check_fails() {
 
     assert_eq!(error.code(), "checks-failed");
     assert_eq!(
-        details(&error),
+        without_context(&error),
         json!([{
             "path": "checks.lint",
             "code": "failed",
@@ -750,7 +763,25 @@ fn it_should_not_echo_the_command_output_in_the_error_details_when_the_attestati
     assert!(!text.contains("SECRET-OUT-7f2"), "stdout leaked: {text}");
     assert!(!text.contains("SECRET-ERR-7f2"), "stderr leaked: {text}");
     assert!(!text.contains("output_tail"), "output_tail leaked: {text}");
-    assert_eq!(details(&error)[0].get("context"), None);
+    let context = details(&error)[0]["context"].clone();
+    let keys: Vec<&str> = context
+        .as_object()
+        .expect("the detail carries the short failure fields")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "blocking",
+            "duration_ms",
+            "exit_code",
+            "run",
+            "timed_out",
+            "timeout_secs",
+            "truncated"
+        ]
+    );
     assert!(!get(&mut app, &att("lint")).is_null());
 }
 
@@ -949,7 +980,7 @@ fn it_should_keep_running_the_other_checks_after_an_immutable_outcome_conflict()
     );
     assert_eq!(details(&error)[0]["code"], json!("outcome-immutable"));
     assert_eq!(
-        details(&error)[1],
+        without_context(&error)[1],
         json!({
             "path": "checks.docs",
             "code": "failed",

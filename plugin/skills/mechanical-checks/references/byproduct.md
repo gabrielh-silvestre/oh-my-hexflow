@@ -2,7 +2,7 @@
 
 ## Quando usar
 
-Para ler a saída guardada de um check mecânico, depois de um `check run` reprovado (ou de um aprovado, para conferir). É a forma de saber **por que** um check falhou: o erro `checks-failed` só diz qual check reprovou. O comando é somente leitura e devolve as últimas linhas da saída (`stdout` e `stderr` do comando) da attestation **mais recente** do par check e work item.
+Para ler a saída guardada de um check mecânico, depois de um `check run` reprovado (ou de um aprovado, para conferir). É a forma de saber **por que** um check falhou: o erro `checks-failed` só diz qual check reprovou e o comando para ler a saída. O comando é somente leitura e devolve as últimas linhas da saída (`stdout` e `stderr` do comando) da attestation **mais recente** do par check e work item.
 
 ## Entradas
 
@@ -43,7 +43,7 @@ Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida o
 Roda um check e lê as últimas linhas da saída dele. O `true` não imprime nada, então `lines` vem vazio:
 
 ```omhl-example fixture=checks
-$ omhl check run --event before-pr
+$ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.ok work-items.w1 --tail 5
 {"byproduct":"<hash>","check":"checks.ok","lines":[],"outcome":"passed","work_item":"work-items.w1"}
@@ -52,8 +52,8 @@ $ omhl byproduct checks.ok work-items.w1 --tail 5
 Um check que reprova e imprime: `first` e `second` no stdout, `boom` no stderr. O `--tail 2` devolve as duas últimas linhas da lista (o stdout vem antes do stderr) e o `--tail 1` só a última:
 
 ```omhl-example fixture=failing-check
-$ omhl check run --event before-pr
-2> {"error":{"code":"checks-failed","details":[{"code":"failed","message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
+$ omhl check run --event before-pr --format json
+2> {"error":{"code":"checks-failed","context":{"event":"before-pr","summary":{"blocking_failed":1,"failed":1,"not_run":0,"passed":0,"planned":1},"work_item":"work-items.w1"},"details":[{"code":"failed","context":{"blocking":true,"duration_ms":12,"exit_code":1,"run":["sh","-c","echo first; echo second; echo boom >&2; exit 1"],"timed_out":false,"timeout_secs":60,"truncated":false},"message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
 # exit 1
 $ omhl byproduct checks.bad work-items.w1 --tail 2
 {"byproduct":"<hash>","check":"checks.bad","lines":["second","boom"],"outcome":"failed","work_item":"work-items.w1"}
@@ -64,7 +64,7 @@ $ omhl byproduct checks.bad work-items.w1 --tail 1
 Recusas: `--tail` acima de 500 e `--tail 0` (a regra vem na mensagem):
 
 ```omhl-example fixture=checks
-$ omhl check run --event before-pr
+$ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.ok work-items.w1 --tail 501
 2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"tail must be between 1 and 500","path":"/tail"}],"message":"tail must be between 1 and 500"}}
@@ -77,7 +77,7 @@ $ omhl byproduct checks.ok work-items.w1 --tail 0
 Recusas: check que não existe e work item sem attestation:
 
 ```omhl-example fixture=checks
-$ omhl check run --event before-pr
+$ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.nope work-items.w1
 2> {"error":{"code":"check-not-found","details":[{"code":"check-not-found","message":"check-not-found","path":"/check"}],"message":"check-not-found at /check"}}

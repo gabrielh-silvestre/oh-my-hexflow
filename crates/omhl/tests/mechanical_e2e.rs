@@ -106,14 +106,23 @@ fn text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-/// A linha do stderr que começa com `{"error"`, lida como JSON: a do hook (passa pelo stderr do
-/// `git`) ou a do próprio `omhl`.
-fn hook_error(stderr: &str) -> Value {
+/// A linha JSON `{"error"...}` do stderr de um `omhl check run --format json` direto.
+fn json_error(stderr: &str) -> Value {
     let line = stderr
         .lines()
         .find(|line| line.starts_with("{\"error\""))
         .unwrap_or_else(|| panic!("no error line in stderr: {stderr}"));
     serde_json::from_str(line).expect("the error line is JSON")
+}
+
+/// O `code` do erro no texto do hook: a linha `✘ <code> · ...` ou `✘ BLOCKED · <code> · ...`.
+fn hook_error_code(stderr: &str) -> String {
+    let header = stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("✘ "))
+        .unwrap_or_else(|| panic!("no error line in stderr: {stderr}"));
+    let header = header.strip_prefix("BLOCKED · ").unwrap_or(header);
+    header.split(" · ").next().unwrap_or_default().to_owned()
 }
 
 fn is_lower_hex_64(value: &Value) -> bool {
@@ -440,7 +449,9 @@ fn no_verify_flow(e: &E2e) -> NoVerifyFlow {
     e.stage(&e.r, "n", "n\n");
     let commit = e.git(&e.r, &["commit", "--no-verify", "-m", "n"]);
     let push = e.git(&e.r, &["push", "origin", WORK_ITEM_BRANCH]);
-    let merge_run = e.omhl(&["check", "run", "--event", BEFORE_MERGE]).run();
+    let merge_run = e
+        .omhl(&["check", "run", "--format", "json", "--event", BEFORE_MERGE])
+        .run();
     let gate_pr = e.omhl(&["gate-pr", WORK_ITEM]).run();
     NoVerifyFlow {
         commit,
@@ -469,9 +480,12 @@ fn it_should_block_a_commit_when_a_check_fails_and_allow_it_when_it_passes() {
     let flow = red_then_green(&e);
 
     assert_ne!(flow.blocked.status.code(), Some(0));
-    assert_eq!(
-        hook_error(&text(&flow.blocked.stderr))["error"]["code"],
-        json!("checks-failed")
+    assert!(
+        text(&flow.blocked.stderr)
+            .lines()
+            .any(|line| line.starts_with("✘ BLOCKED · before-commit · ")),
+        "stderr: {}",
+        text(&flow.blocked.stderr)
     );
     assert_eq!(flow.count_after_blocked, "1");
     assert_eq!(flow.load.code, Some(0), "load: {}", flow.load.stderr);
@@ -595,8 +609,8 @@ fn it_should_block_a_commit_with_a_path_while_another_tracked_file_is_modified()
 
     assert_ne!(commit.status.code(), Some(0));
     assert_eq!(
-        hook_error(&text(&commit.stderr))["error"]["code"],
-        json!("worktree-differs-from-index")
+        hook_error_code(&text(&commit.stderr)),
+        "worktree-differs-from-index"
     );
     assert_eq!(e.count(&e.r, "HEAD"), "1");
     assert_eq!(e.attestations(GATE), Vec::<Value>::new());
@@ -672,7 +686,9 @@ fn it_should_recover_the_missing_attestation_by_running_the_event_manually_on_a_
     no_verify_flow(&e);
     let status = e.git_ok(&e.r, &["status", "--porcelain"]);
 
-    let commit_run = e.omhl(&["check", "run", "--event", BEFORE_COMMIT]).run();
+    let commit_run = e
+        .omhl(&["check", "run", "--format", "json", "--event", BEFORE_COMMIT])
+        .run();
     let gate_pr = e.omhl(&["gate-pr", WORK_ITEM]).run();
 
     assert_eq!(status, "");
@@ -690,7 +706,9 @@ fn it_should_pass_the_pull_request_gate_after_the_hooks_attested_the_head_tree_a
 
     let commit = e.git(&e.r, &["commit", "-m", "h"]);
     let push = e.git(&e.r, &["push", "origin", WORK_ITEM_BRANCH]);
-    let merge_run = e.omhl(&["check", "run", "--event", BEFORE_MERGE]).run();
+    let merge_run = e
+        .omhl(&["check", "run", "--format", "json", "--event", BEFORE_MERGE])
+        .run();
     let gate_pr = e.omhl(&["gate-pr", WORK_ITEM]).run();
 
     assert_eq!(
@@ -721,7 +739,7 @@ fn it_should_attest_before_merge_through_a_fake_gh() {
     let path = e.path_with_fake_gh();
 
     let run = e
-        .omhl(&["check", "run", "--event", BEFORE_MERGE])
+        .omhl(&["check", "run", "--format", "json", "--event", BEFORE_MERGE])
         .env("PATH", path)
         .run();
 
@@ -751,14 +769,14 @@ fn it_should_record_a_failed_attestation_with_exit_code_127_when_gh_is_missing_b
     let path = e.path_without_gh();
 
     let run = e
-        .omhl(&["check", "run", "--event", BEFORE_MERGE])
+        .omhl(&["check", "run", "--format", "json", "--event", BEFORE_MERGE])
         .env("PATH", &path)
         .run();
 
     assert_eq!(run.code, Some(1), "stderr: {}", run.stderr);
     assert_eq!(run.stdout, "");
     assert_eq!(
-        hook_error(&run.stderr)["error"]["code"],
+        json_error(&run.stderr)["error"]["code"],
         json!("checks-failed")
     );
     let attestations = e.attestations(CI);
@@ -777,13 +795,13 @@ fn it_should_report_a_missing_binary_as_a_stopped_run_without_attestation() {
     let path = e.path_without_gh();
 
     let run = e
-        .omhl(&["check", "run", "--event", BEFORE_MERGE])
+        .omhl(&["check", "run", "--format", "json", "--event", BEFORE_MERGE])
         .env("PATH", &path)
         .run();
 
     assert_eq!(run.code, Some(1), "stderr: {}", run.stderr);
     assert_eq!(run.stdout, "");
-    let error = &hook_error(&run.stderr)["error"];
+    let error = &json_error(&run.stderr)["error"];
     assert_eq!(error["code"], json!("check-not-run"));
     assert_eq!(error["details"][0]["code"], json!("spawn-failed"));
     assert_eq!(
@@ -813,7 +831,9 @@ fn it_should_leave_omhl_verify_passing_after_the_full_flow() {
         text(&flow.passed.stderr)
     );
     e.git_ok(&e.r, &["push", "origin", WORK_ITEM_BRANCH]);
-    let merge_run = e.omhl(&["check", "run", "--event", BEFORE_MERGE]).run();
+    let merge_run = e
+        .omhl(&["check", "run", "--format", "json", "--event", BEFORE_MERGE])
+        .run();
     assert_eq!(
         merge_run.code,
         Some(0),
@@ -885,10 +905,7 @@ fn it_should_block_a_commit_on_main_with_branch_protected() {
 
     let stderr = text(&commit.stderr);
     assert_ne!(commit.status.code(), Some(0));
-    assert_eq!(
-        hook_error(&stderr)["error"]["code"],
-        json!("branch-protected")
-    );
+    assert_eq!(hook_error_code(&stderr), "branch-protected");
     assert!(stderr.contains(BRANCH_PROTECTED_HINT), "stderr: {stderr}");
     assert_eq!(e.count(&e.r, "main"), "1");
 }
@@ -905,14 +922,8 @@ fn it_should_block_a_push_to_main_and_allow_a_push_of_the_work_item_branch() {
 
     let stderr = text(&to_main.stderr);
     assert_ne!(to_main.status.code(), Some(0));
-    assert_eq!(
-        hook_error(&stderr)["error"]["code"],
-        json!("branch-protected")
-    );
-    assert!(
-        stderr.contains(r#""kind":"push-to-main""#),
-        "stderr: {stderr}"
-    );
+    assert_eq!(hook_error_code(&stderr), "branch-protected");
+    assert!(stderr.contains("kind: push-to-main"), "stderr: {stderr}");
     assert!(stderr.contains(PUSH_TO_MAIN_HINT), "stderr: {stderr}");
     assert_eq!(remote_main.status.code(), Some(1));
     assert_eq!(
@@ -1030,10 +1041,7 @@ fn it_should_refuse_a_push_of_a_branch_that_is_not_checked_out() {
 
     let stderr = text(&push.stderr);
     assert_ne!(push.status.code(), Some(0));
-    assert_eq!(
-        hook_error(&stderr)["error"]["code"],
-        json!("push-ref-not-checked-out")
-    );
+    assert_eq!(hook_error_code(&stderr), "push-ref-not-checked-out");
     assert!(
         stderr.contains(PUSH_REF_NOT_CHECKED_OUT_HINT),
         "stderr: {stderr}"

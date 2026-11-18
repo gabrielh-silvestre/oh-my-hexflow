@@ -86,7 +86,8 @@ Fora de um projeto marcado, o hook não imprime nada e não cria o banco.
 ## Primeiros passos
 
 Os comandos abaixo rodam dentro de um projeto marcado e imprimem uma linha de
-JSON.
+JSON. A exceção é o `check run`, que imprime texto por padrão e uma linha de
+JSON com `--format json`.
 
 1. Grave uma guideline:
 
@@ -135,7 +136,7 @@ JSON.
 | `report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |
 | `report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção a guideline |
 | `report retro <work-item>` | A retro de um work item, aberto ou fechado: divergências, emendas e gaps sem resposta |
-| `check run --event <evento>` ou `check run --check <id>` | Roda os checks mecânicos de um evento (ou um só) e grava as attestations do work item da branch atual. `--pre-push` é do hook `pre-push` |
+| `check run --event <evento>` ou `check run --check <id>` | Roda os checks mecânicos de um evento (ou um só) e grava as attestations do work item da branch atual. A saída é texto; `--format json` devolve a linha de JSON. `--pre-push` é do hook `pre-push` |
 | `check sweep` | Encerra os processos que fugiram de um `check run` anterior |
 | `check retire <check-id>` | Aposenta o check órfão, cujo arquivo `.omhl/checks/<slug>.toml` não existe na árvore, e some o aviso `check-orphaned`. É definitivo e vale para todos os clones e branches: o id não volta. Se a branch ou a worktree é anterior ao check, faça rebase sobre a `main` (ou restaure o arquivo) em vez de aposentar |
 | `guideline retire <id> [--by <id-novo>]` | Retira a diretiva órfã, cujo arquivo `.omhl/guidelines/<slug>.toml` não existe na árvore. Com `--by`, grava também que a diretiva nova a supera. É definitivo e vale para todos os clones e branches |
@@ -144,7 +145,8 @@ JSON.
 | `hooks post-commit` | Apaga a marca da `develop` depois de um commit (o hook `post-commit` o chama) |
 
 `attest` e `close` exigem a árvore git limpa. Um erro sai no stderr como JSON,
-com o código de saída 1.
+com o código de saída 1. O `check run` é a exceção: o erro sai em texto, a menos
+que se passe `--format json`.
 
 A interface do agente é a CLI.
 

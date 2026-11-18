@@ -5,9 +5,10 @@ use std::process::ExitCode;
 
 use clap::builder::PossibleValuesParser;
 use clap::error::ErrorKind;
-use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand};
+use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
+use super::check_run_text::{render_error, render_success};
 use super::hook;
 use crate::app::RUNNABLE_EVENTS;
 use crate::app::action::{Action, Caller, CheckTarget};
@@ -154,6 +155,15 @@ pub struct CheckRunArgs {
     pub check: Option<String>,
     #[arg(long, requires = "event")]
     pub pre_push: bool,
+    /// Output format: `text` for agents, `json` for the single JSON line.
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum OutputFormat {
+    Text,
+    Json,
 }
 
 #[derive(Debug, Subcommand)]
@@ -243,13 +253,14 @@ pub fn run(
         Command::Action(command) => {
             // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
             let silent_without_marker = matches!(command, ActionCommand::GateWorktree { .. });
+            let format = output_format(&command);
             let result = start_dir(project_dir.as_deref())
                 .and_then(|dir| execute(command, stdin, &dir, db, env));
             match &result {
                 Err(error) if silent_without_marker && error.code() == "no-marker" => {
                     ExitCode::SUCCESS
                 }
-                _ => report(result, out, err),
+                _ => report(result, format, out, err),
             }
         }
     }
@@ -289,18 +300,37 @@ fn pre_push_misuse(cli: &Cli) -> Option<clap::Error> {
     })
 }
 
+/// Só o `check run` tem texto; todo outro comando segue em JSON.
+fn output_format(command: &ActionCommand) -> OutputFormat {
+    match command {
+        ActionCommand::Check {
+            command: CheckCommand::Run(args),
+        } => args.format,
+        _ => OutputFormat::Json,
+    }
+}
+
 fn report(
     result: Result<Value, AppError>,
+    format: OutputFormat,
     out: &mut impl std::io::Write,
     err: &mut impl std::io::Write,
 ) -> ExitCode {
-    match result {
-        Ok(value) => {
+    match (result, format) {
+        (Ok(value), OutputFormat::Json) => {
             let _ = writeln!(out, "{value}");
             ExitCode::SUCCESS
         }
-        Err(error) => {
+        (Ok(value), OutputFormat::Text) => {
+            let _ = writeln!(out, "{}", render_success(&value));
+            ExitCode::SUCCESS
+        }
+        (Err(error), OutputFormat::Json) => {
             let _ = writeln!(err, "{}", error.to_json());
+            ExitCode::from(1)
+        }
+        (Err(error), OutputFormat::Text) => {
+            let _ = writeln!(err, "{}", render_error(&error.to_json()));
             ExitCode::from(1)
         }
     }

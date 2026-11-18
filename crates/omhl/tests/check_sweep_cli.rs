@@ -219,7 +219,11 @@ fn it_should_sweep_a_stray_of_a_finished_run_when_check_run_starts() {
     let pidfile = tmp.path().join("stray.pid");
     let owner = tmp.path().join("stray.pid.owner");
     let p = cli_repo(&[("stray", &stray(&pidfile))]);
-    let first = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let first = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
     assert_eq!(first.code, Some(0), "first stderr: {}", first.stderr);
     let s1 = read_pid(&pidfile, Duration::from_secs(5));
     assert!(!dead(s1), "the stray {s1} is alive");
@@ -229,7 +233,11 @@ fn it_should_sweep_a_stray_of_a_finished_run_when_check_run_starts() {
     fs::remove_file(&pidfile).expect("the pid file is removed");
     fs::remove_file(&owner).expect("the owner file is removed");
 
-    let second = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let second = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(second.code, Some(0), "second stderr: {}", second.stderr);
     assert_eq!(second.stderr, "");
@@ -267,7 +275,10 @@ fn it_should_not_sweep_the_stray_of_a_check_run_still_in_progress() {
     let pidfile = tmp.path().join("stray.pid");
     let go = tmp.path().join("go");
     let p = cli_repo(&[("stray", &stray_wait(&pidfile, &go))]);
-    let mut background = spawn_omhl(&p, &["check", "run", "--event", "before-pr"]);
+    let mut background = spawn_omhl(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    );
     let s1 = read_pid(&pidfile, Duration::from_secs(5));
 
     let sweep = omhl_in(&p, &["check", "sweep"]).run();
@@ -334,7 +345,11 @@ fn it_should_run_the_checks_when_the_sweep_log_cannot_be_written() {
     let pidfile = tmp.path().join("stray.pid");
     let owner = tmp.path().join("stray.pid.owner");
     let p = cli_repo(&[("stray", &stray(&pidfile))]);
-    let first = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let first = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
     assert_eq!(first.code, Some(0), "first stderr: {}", first.stderr);
     let s1 = read_pid(&pidfile, Duration::from_secs(5));
     fs::remove_file(&pidfile).expect("the pid file is removed");
@@ -343,7 +358,11 @@ fn it_should_run_the_checks_when_the_sweep_log_cannot_be_written() {
     let _ = fs::remove_file(sweep_log(&p));
     fs::create_dir_all(sweep_log(&p)).expect("the sweep log becomes a directory");
 
-    let second = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let second = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
 
     assert_eq!(second.code, Some(0), "second stderr: {}", second.stderr);
     assert_eq!(second.stderr, "");
@@ -366,7 +385,11 @@ fn it_should_append_the_swept_stray_to_the_sweep_log_through_check_sweep() {
     let tmp = TempDir::new().expect("temp dir");
     let pidfile = tmp.path().join("stray.pid");
     let p = cli_repo(&[("stray", &stray(&pidfile))]);
-    let first = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let first = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
     assert_eq!(first.code, Some(0), "first stderr: {}", first.stderr);
     let s1 = read_pid(&pidfile, Duration::from_secs(5));
     let o1 = read_pid(&tmp.path().join("stray.pid.owner"), Duration::from_secs(5));
