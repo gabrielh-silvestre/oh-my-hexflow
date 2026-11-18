@@ -129,6 +129,34 @@ pub fn counted(count: usize, noun: &str) -> String {
     }
 }
 
+/// Item de lista simples (`- a · b`) na raiz.
+pub fn dash(parts: Vec<String>) -> Line {
+    Line::Item {
+        depth: 0,
+        marker: Marker::Dash,
+        parts,
+        join: Join::Dot,
+    }
+}
+
+/// Campo `rótulo: valor` logo abaixo da linha anterior.
+pub fn field(label: &str, value: String) -> Line {
+    Line::Field {
+        depth: 1,
+        label: label.to_owned(),
+        value,
+    }
+}
+
+/// Os textos de uma lista de strings, inteiros e separados por vírgula.
+pub fn joined(value: &Value, key: &str) -> String {
+    items(value, key)
+        .filter_map(Value::as_str)
+        .map(one_line)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 pub fn items<'a>(value: &'a Value, key: &str) -> impl Iterator<Item = &'a Value> {
     value[key].as_array().into_iter().flatten()
 }

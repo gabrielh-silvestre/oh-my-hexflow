@@ -8,7 +8,7 @@ use super::error::{self, ErrorFacts};
 #[cfg(test)]
 use super::{BaseRenderer, Renderer, layout};
 
-const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
+pub(super) const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
 
 /// Sem rótulo: o cabeçalho do `check run` abre pelo evento. Sem curinga e tudo `optional` exceto `event` (sucesso)

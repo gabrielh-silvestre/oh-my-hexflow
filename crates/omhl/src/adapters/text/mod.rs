@@ -9,6 +9,7 @@ mod layout;
 mod list;
 mod render;
 mod report;
+mod simple;
 mod verify;
 
 use serde_json::Value;
@@ -95,7 +96,7 @@ pub trait Renderer {
     fn failure(&self, value: &Value) -> Doc;
 }
 
-/// O único fato guardado por comando: os comandos de consulta (`list`, `get`, `render`, `report *`), o `verify` e o `check run` já têm renderizador; os demais ativos ganham o seu nas ondas seguintes.
+/// O único fato guardado por comando: ter renderizador. `append`, `attest`, `gate-pr`, `close`, `load` e `spec validate` ganham o seu nas ondas seguintes; os adiados nunca ganham.
 pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     match key {
         CommandKey::CheckRun => Some(&BaseRenderer(check_run::CheckRun)),
@@ -106,20 +107,20 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::ReportAnswers => Some(&BaseRenderer(report::Answers)),
         CommandKey::ReportRecurrences => Some(&BaseRenderer(report::Recurrences)),
         CommandKey::ReportRetro => Some(&BaseRenderer(report::Retro)),
+        CommandKey::Project => Some(&BaseRenderer(simple::Project)),
+        CommandKey::CheckSweep => Some(&BaseRenderer(simple::CheckSweep)),
+        CommandKey::CheckRetire => Some(&BaseRenderer(simple::CheckRetire)),
+        CommandKey::GuidelineRetire => Some(&BaseRenderer(simple::GuidelineRetire)),
+        CommandKey::HooksInstall => Some(&BaseRenderer(simple::HooksInstall)),
+        CommandKey::SpecInit => Some(&BaseRenderer(simple::SpecInit)),
+        CommandKey::Byproduct => Some(&BaseRenderer(simple::Byproduct)),
         CommandKey::Append
         | CommandKey::Attest
         | CommandKey::GatePr
         | CommandKey::GateWorktree
         | CommandKey::Close
         | CommandKey::Load
-        | CommandKey::Project
-        | CommandKey::CheckSweep
-        | CommandKey::CheckRetire
-        | CommandKey::GuidelineRetire
-        | CommandKey::Byproduct
-        | CommandKey::HooksInstall
         | CommandKey::HooksPostCommit
-        | CommandKey::SpecInit
         | CommandKey::SpecValidate
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
@@ -138,20 +139,20 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::ReportAnswers => &report::ANSWERS_PROFILE,
         CommandKey::ReportRecurrences => &report::RECURRENCES_PROFILE,
         CommandKey::ReportRetro => &report::RETRO_PROFILE,
+        CommandKey::Project => &simple::PROJECT_PROFILE,
+        CommandKey::CheckSweep => &simple::CHECK_SWEEP_PROFILE,
+        CommandKey::CheckRetire => &simple::CHECK_RETIRE_PROFILE,
+        CommandKey::GuidelineRetire => &simple::GUIDELINE_RETIRE_PROFILE,
+        CommandKey::HooksInstall => &simple::HOOKS_INSTALL_PROFILE,
+        CommandKey::SpecInit => &simple::SPEC_INIT_PROFILE,
+        CommandKey::Byproduct => &simple::BYPRODUCT_PROFILE,
         CommandKey::Append
         | CommandKey::Attest
         | CommandKey::GatePr
         | CommandKey::GateWorktree
         | CommandKey::Close
         | CommandKey::Load
-        | CommandKey::Project
-        | CommandKey::CheckSweep
-        | CommandKey::CheckRetire
-        | CommandKey::GuidelineRetire
-        | CommandKey::Byproduct
-        | CommandKey::HooksInstall
         | CommandKey::HooksPostCommit
-        | CommandKey::SpecInit
         | CommandKey::SpecValidate
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock

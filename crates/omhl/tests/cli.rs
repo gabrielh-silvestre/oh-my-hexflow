@@ -1002,7 +1002,7 @@ fn it_should_let_the_format_after_the_subcommand_win() {
 
     let output = in_project_raw(
         &project,
-        &["--format", "json", "project", "--format", "agent"],
+        &["--format", "json", "append", "--format", "agent"],
     )
     .run();
 
@@ -1049,7 +1049,7 @@ fn it_should_refuse_agent_and_human_on_an_active_command_without_text_yet() {
     let project = Project::new("acme");
 
     for format in ["agent", "human"] {
-        let output = in_project_raw(&project, &["project", "--format", format]).run();
+        let output = in_project_raw(&project, &["append", "--format", format]).run();
 
         assert_eq!(output.code, Some(2), "{format}");
         assert!(output.stdout.is_empty(), "{format}: stdout");

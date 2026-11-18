@@ -3,7 +3,9 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::doc::{Closing, Fact, Join, Line, Marker, counted, items, one_line, opt_text, text};
+use super::doc::{
+    Closing, Fact, Line, counted, dash, field, items, joined, one_line, opt_text, text,
+};
 use super::error;
 
 pub static ANSWERS_PROFILE: Profile = Profile {
@@ -187,16 +189,8 @@ impl Specialization for Recurrences {
             .flat_map(|group| {
                 [
                     dash(vec![text(group, "kind"), text(group, "text")]),
-                    Line::Field {
-                        depth: 1,
-                        label: "work items".to_owned(),
-                        value: joined(group, "work_items"),
-                    },
-                    Line::Field {
-                        depth: 1,
-                        label: "premises".to_owned(),
-                        value: joined(group, "premises"),
-                    },
+                    field("work items", joined(group, "work_items")),
+                    field("premises", joined(group, "premises")),
                 ]
             })
             .collect()
@@ -291,22 +285,4 @@ impl Specialization for Retro {
             ),
         }
     }
-}
-
-fn dash(parts: Vec<String>) -> Line {
-    Line::Item {
-        depth: 0,
-        marker: Marker::Dash,
-        parts,
-        join: Join::Dot,
-    }
-}
-
-/// Os ids de uma lista de strings, inteiros e separados por vírgula.
-fn joined(value: &Value, key: &str) -> String {
-    items(value, key)
-        .filter_map(Value::as_str)
-        .map(one_line)
-        .collect::<Vec<_>>()
-        .join(", ")
 }

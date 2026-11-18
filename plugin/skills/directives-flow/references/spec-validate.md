@@ -40,7 +40,10 @@ Recusa: a parte recém-criada tem as cinco seções vazias e não cita premissa 
 
 ```omhl-example fixture=git
 $ omhl spec init work-items.w1 x
-{"dir":"<repo>/.omhl/specs/wi-w1__x","path":"<repo>/.omhl/specs/wi-w1__x/parte-01.md","slug":"x","work_item":"work-items.w1"}
+✔ spec init · work-items.w1 · x
+  dir: <repo>/.omhl/specs/wi-w1__x
+  path: <repo>/.omhl/specs/wi-w1__x/parte-01.md
+Next: fill in the five sections of the part file, then run omhl spec validate work-items.w1.
 $ omhl spec validate work-items.w1
 2> {"error":{"code":"spec-invalid","details":[{"code":"section-empty","message":"the spec breaks the rule section-empty","path":"parte-01.md:1"},{"code":"section-empty","message":"the spec breaks the rule section-empty","path":"parte-01.md:3"},{"code":"business-premise-missing","message":"the spec breaks the rule business-premise-missing","path":"parte-01.md:3"},{"code":"section-empty","message":"the spec breaks the rule section-empty","path":"parte-01.md:5"},{"code":"section-empty","message":"the spec breaks the rule section-empty","path":"parte-01.md:7"},{"code":"section-empty","message":"the spec breaks the rule section-empty","path":"parte-01.md:9"}],"message":"the spec is invalid: 6 violation(s) shown, 0 omitted"}}
 # exit 1

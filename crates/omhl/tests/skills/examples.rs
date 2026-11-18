@@ -301,6 +301,9 @@ impl Normalizer {
             (r#"("(?:pid|pgid|[a-z_]*_pid)"\s*:\s*)\d+"#, r#"${1}"<pid>""#),
             // `check sweep` vale para qualquer raiz da máquina: `swept` e `unreadable` não são determinísticos.
             (r#"("(?:swept|unreadable)"\s*:\s*)(?:\d+|\[[^\]]*\])"#, r#"${1}"<swept>""#),
+            // Texto do `check sweep`: `- sleep · pid 4242 · owner 4100` e `2 swept · 0 unreadable`.
+            (r"\b(pid|owner) \d+\b", "${1} <pid>"),
+            (r"\b\d+ (swept|unreadable)\b", "<n> ${1}"),
         ]
         .map(|(pattern, to)| (Regex::new(pattern).expect("regex"), to));
 
@@ -751,7 +754,7 @@ fn it_should_assemble_the_project_fixture() {
 fn it_should_assemble_the_git_fixture() {
     assert_runs(
         "git",
-        "$ omhl spec init work-items.w1 x\n{\"dir\":\"<repo>/.omhl/specs/wi-w1__x\",\"path\":\"<repo>/.omhl/specs/wi-w1__x/parte-01.md\",\"slug\":\"x\",\"work_item\":\"work-items.w1\"}\n",
+        "$ omhl spec init work-items.w1 x --format json\n{\"dir\":\"<repo>/.omhl/specs/wi-w1__x\",\"path\":\"<repo>/.omhl/specs/wi-w1__x/parte-01.md\",\"slug\":\"x\",\"work_item\":\"work-items.w1\"}\n",
     );
 }
 
@@ -775,7 +778,7 @@ fn it_should_assemble_the_checks_fixture() {
 fn it_should_assemble_the_retire_check_fixture() {
     assert_runs(
         "retire-check",
-        "$ omhl check retire checks.ok\n{\"retired\":\"checks.ok\"}\n",
+        "$ omhl check retire checks.ok --format json\n{\"retired\":\"checks.ok\"}\n",
     );
 }
 
@@ -783,7 +786,7 @@ fn it_should_assemble_the_retire_check_fixture() {
 fn it_should_assemble_the_retire_guideline_fixture() {
     assert_runs(
         "retire-guideline",
-        "$ omhl guideline retire guidelines.brief\n{\"retired\":\"guidelines.brief\",\"superseded_by\":null}\n",
+        "$ omhl guideline retire guidelines.brief --format json\n{\"retired\":\"guidelines.brief\",\"superseded_by\":null}\n",
     );
 }
 
@@ -791,7 +794,7 @@ fn it_should_assemble_the_retire_guideline_fixture() {
 fn it_should_assemble_the_hooks_fixture_with_the_hooks_folder_under_its_own_xdg() {
     assert_runs(
         "hooks",
-        "$ omhl hooks install\n{\"hooks_path\":\"<xdg>/omhl/hooks\",\"omhl\":\"<omhl>\",\"scripts\":[\"pre-commit\",\"pre-merge-commit\",\"pre-push\",\"post-commit\"],\"warnings\":[{\"code\":\"binary-in-build-dir\",\"hint\":\"install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks\",\"path\":\"<omhl>\"}]}\n",
+        "$ omhl hooks install --format json\n{\"hooks_path\":\"<xdg>/omhl/hooks\",\"omhl\":\"<omhl>\",\"scripts\":[\"pre-commit\",\"pre-merge-commit\",\"pre-push\",\"post-commit\"],\"warnings\":[{\"code\":\"binary-in-build-dir\",\"hint\":\"install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks\",\"path\":\"<omhl>\"}]}\n",
     );
 }
 

@@ -262,11 +262,13 @@ impl HookRepo {
     }
 
     fn install(&self) -> Output {
-        self.omhl_in(&["hooks", "install"]).run()
+        self.omhl_in(&["hooks", "install", "--format", "json"])
+            .run()
     }
 
     fn install_force(&self) -> Output {
-        self.omhl_in(&["hooks", "install", "--force"]).run()
+        self.omhl_in(&["hooks", "install", "--force", "--format", "json"])
+            .run()
     }
 
     /// `install()` como passo de preparo: o teste não segue se a instalação não saiu 0.
@@ -385,7 +387,7 @@ impl HookRepo {
     }
 
     fn installed_from(&self, copy: &Path) -> Output {
-        let output = self.run_copy(copy, &["hooks", "install"]);
+        let output = self.run_copy(copy, &["hooks", "install", "--format", "json"]);
         assert_eq!(
             output.code,
             Some(0),
@@ -447,7 +449,7 @@ fn install_from_build_copy(rel: &str) -> (HookRepo, PathBuf, Output) {
     let repo = HookRepo::new();
     repo.seed();
     let copy = repo.copy_bin(rel);
-    let output = repo.run_copy(&copy, &["hooks", "install"]);
+    let output = repo.run_copy(&copy, &["hooks", "install", "--format", "json"]);
 
     (repo, copy, output)
 }
@@ -483,7 +485,7 @@ fn it_should_resolve_the_omhl_binary_at_install_time() {
     repo.seed();
     let copy = repo.copy_bin("bin/omhl");
 
-    let output = repo.run_copy(&copy, &["hooks", "install"]);
+    let output = repo.run_copy(&copy, &["hooks", "install", "--format", "json"]);
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(
@@ -623,7 +625,7 @@ fn it_should_fail_with_a_clear_error_outside_a_git_repository() {
     let ceiling = repo.d().parent().expect("the project has a parent folder");
 
     let output = repo
-        .omhl_in(&["hooks", "install"])
+        .omhl_in(&["hooks", "install", "--format", "json"])
         .env("GIT_CEILING_DIRECTORIES", ceiling)
         .run();
 
@@ -682,7 +684,7 @@ fn it_should_refuse_with_hooks_path_conflict_when_a_global_hooks_path_is_set() {
     .expect("the global config is written");
 
     let output = repo
-        .omhl_in(&["hooks", "install"])
+        .omhl_in(&["hooks", "install", "--format", "json"])
         .env("GIT_CONFIG_GLOBAL", &global)
         .run();
 
@@ -1045,7 +1047,7 @@ fn it_should_install_the_hooks_in_the_xdg_data_folder() {
     repo.seed();
 
     let output = repo
-        .omhl_in(&["hooks", "install"])
+        .omhl_in(&["hooks", "install", "--format", "json"])
         .env("HOME", repo.home.path())
         .run();
 
@@ -1069,7 +1071,7 @@ fn it_should_install_the_hooks_in_the_local_share_folder_of_home_when_xdg_is_uns
     repo.seed();
     let home_hooks = repo.home.path().join(".local/share/omhl/hooks");
 
-    let output = omhl(&["hooks", "install"])
+    let output = omhl(&["hooks", "install", "--format", "json"])
         .cwd(repo.d())
         .env("HOME", repo.home.path())
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -1250,7 +1252,7 @@ fn it_should_warn_when_the_omhl_binary_lives_inside_a_linked_worktree() {
     repo.git(&["worktree", "add", "-b", "other", path_text(&linked)]);
     let copy = repo.copy_bin_to(&linked.join("plugin/bin/omhl"));
 
-    let output = repo.run_copy(&copy, &["hooks", "install"]);
+    let output = repo.run_copy(&copy, &["hooks", "install", "--format", "json"]);
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(
@@ -1266,7 +1268,7 @@ fn it_should_not_warn_when_the_omhl_binary_lives_in_the_main_worktree() {
     repo.seed();
     let copy = repo.copy_bin_to(&repo.d().join("plugin/bin/omhl"));
 
-    let output = repo.run_copy(&copy, &["hooks", "install"]);
+    let output = repo.run_copy(&copy, &["hooks", "install", "--format", "json"]);
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(json_line(&output.stdout)["warnings"], json!(null));

@@ -283,7 +283,7 @@ impl E2e {
         assert_eq!(appended.code, Some(0), "append: {}", appended.stderr);
         let loaded = e.omhl(&["load"]).run();
         assert_eq!(loaded.code, Some(0), "load: {}", loaded.stderr);
-        let installed = e.omhl(&["hooks", "install"]).run();
+        let installed = e.omhl(&["hooks", "install", "--format", "json"]).run();
         assert_eq!(
             installed.code,
             Some(0),
