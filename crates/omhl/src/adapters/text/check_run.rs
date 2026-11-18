@@ -3,7 +3,7 @@
 use serde_json::Value;
 
 use super::Renderer;
-use super::doc::{Closing, Doc, Join, Line, Marker, one_line};
+use super::doc::{Closing, Doc, Join, Line, Marker, items, one_line, opt_text, text};
 
 const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
@@ -65,18 +65,6 @@ impl Renderer for CheckRunRenderer {
             closing: Closing::Next(next_step_after_error(&code).to_owned()),
         }
     }
-}
-
-fn text(value: &Value, key: &str) -> String {
-    one_line(value[key].as_str().unwrap_or_default())
-}
-
-fn opt_text(value: &Value, key: &str) -> Option<String> {
-    value[key].as_str().map(one_line)
-}
-
-fn items<'a>(value: &'a Value, key: &str) -> impl Iterator<Item = &'a Value> {
-    value[key].as_array().into_iter().flatten()
 }
 
 fn success_header(value: &Value, event: &str) -> Line {

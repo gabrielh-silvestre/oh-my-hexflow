@@ -1,12 +1,18 @@
 //! Texto dos comandos: a chave de cada comando, o renderizador que a chave escolhe e os dois layouts.
 
+mod base;
 mod check_run;
 mod doc;
+mod error;
 mod layout;
+mod verify;
 
 use serde_json::Value;
 
+use base::BaseRenderer;
 use doc::Doc;
+
+pub use base::{Entry, NodeContainer, Outcome, Profile, Region, Scope, Shape, WILDCARD};
 
 /// Os dois layouts de texto; o JSON não passa por aqui.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,10 +107,11 @@ pub trait Renderer {
     }
 }
 
-/// O único fato guardado por comando: só o `check run` tem renderizador até as ondas seguintes.
+/// O único fato guardado por comando: só o `check run` e o `verify` têm renderizador até as ondas seguintes.
 pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     match key {
         CommandKey::CheckRun => Some(&check_run::CheckRunRenderer),
+        CommandKey::Verify => Some(&BaseRenderer(verify::Verify)),
         CommandKey::List
         | CommandKey::Get
         | CommandKey::Append
@@ -113,7 +120,6 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         | CommandKey::GatePr
         | CommandKey::GateWorktree
         | CommandKey::Close
-        | CommandKey::Verify
         | CommandKey::Load
         | CommandKey::Project
         | CommandKey::CheckSweep
@@ -130,6 +136,39 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole => None,
+    }
+}
+
+/// A tabela de formas do comando; os comandos de base sem tabela devolvem a vazia, em que toda chave está fora dela.
+/// O `check run` ganha a sua na onda que o leva para a base.
+pub fn profile_for(key: CommandKey) -> &'static Profile {
+    match key {
+        CommandKey::Verify => &verify::PROFILE,
+        CommandKey::List
+        | CommandKey::Get
+        | CommandKey::Append
+        | CommandKey::Attest
+        | CommandKey::Render
+        | CommandKey::GatePr
+        | CommandKey::GateWorktree
+        | CommandKey::Close
+        | CommandKey::Load
+        | CommandKey::Project
+        | CommandKey::CheckRun
+        | CommandKey::CheckSweep
+        | CommandKey::CheckRetire
+        | CommandKey::GuidelineRetire
+        | CommandKey::Byproduct
+        | CommandKey::HooksInstall
+        | CommandKey::HooksPostCommit
+        | CommandKey::SpecInit
+        | CommandKey::SpecValidate
+        | CommandKey::ReportAnswers
+        | CommandKey::ReportRecurrences
+        | CommandKey::ReportRetro
+        | CommandKey::HookSessionStart
+        | CommandKey::HookSpecLock
+        | CommandKey::HookAgentRole => &Profile::EMPTY,
     }
 }
 
