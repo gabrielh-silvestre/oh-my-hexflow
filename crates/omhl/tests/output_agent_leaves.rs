@@ -1,7 +1,7 @@
 mod support;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use omhl::adapters::text::{
     CommandKey, Entry, Layout, NodeContainer, Outcome, Profile, Region, Scope, Shape, WILDCARD,
@@ -9,8 +9,10 @@ use omhl::adapters::text::{
 };
 use serde_json::{Value, json};
 use support::child::{Output, omhl as binary};
+use support::ext::ExtTree;
+use support::git::git_in;
 use support::inproc::{run_inproc, run_inproc_at};
-use support::omhl::decision_data;
+use support::omhl::{decision_data, work_item_data};
 use support::project::Project;
 use support::run::Run;
 
@@ -213,6 +215,12 @@ fn groups<'a>(profile: &Profile, outcome: Outcome, leaves: &'a [Leaf]) -> Vec<Gr
             }),
         }
     }
+    // String vazia não é folha de `Literal`: é `Derived`, seja qual for a forma declarada (o caso afirma a ausência do trecho).
+    for group in &mut groups {
+        if group.kind == Kind::Text && group.text.is_empty() && group.shape.is_some() {
+            group.shape = Some(Shape::Derived);
+        }
+    }
 
     groups
 }
@@ -252,7 +260,7 @@ fn erase_token(text: &str, needle: &str) -> String {
 
 // ---------------------------------------------------------------- as checagens do CA-2
 
-/// (4) chave fora da tabela, booleano fora de `Derived`/`Noise` e string vazia fora de `Derived`.
+/// (4) chave fora da tabela e booleano fora de `Derived`/`Noise`.
 fn table_problems(profile: &Profile, outcome: Outcome, value: &Value) -> Vec<String> {
     let leaves = collect_leaves(profile, outcome, value);
     let mut problems: Vec<String> = leaves
@@ -274,12 +282,6 @@ fn table_problems(profile: &Profile, outcome: Outcome, value: &Value) -> Vec<Str
         if group.kind == Kind::Bool && demanding {
             problems.push(format!(
                 "{}: a boolean admits only Derived or Noise",
-                group.paths()
-            ));
-        }
-        if group.text.is_empty() && demanding {
-            problems.push(format!(
-                "{}: an empty string is Derived, never a literal",
                 group.paths()
             ));
         }
@@ -406,6 +408,9 @@ fn presence_problems(
 struct Fixture {
     project: Project,
     project_dir: PathBuf,
+    /// `Some(stdin)`: o comando roda pelo binário, com a pasta do projeto como cwd (o `check run` precisa de git e
+    /// de processo próprio); `None`: roda em processo, com `--project-dir`.
+    spawned_with: Option<String>,
 }
 
 impl Fixture {
@@ -415,11 +420,36 @@ impl Fixture {
         Fixture {
             project,
             project_dir,
+            spawned_with: None,
         }
     }
 
+    fn spawned(project: Project, stdin: &str) -> Fixture {
+        Fixture {
+            spawned_with: Some(stdin.to_owned()),
+            ..Fixture::of(project)
+        }
+    }
+
+    /// O binário com o ambiente do projeto; o `check run` nunca roda no processo do teste (varre os próprios filhos).
+    fn spawn(&self, args: &[&str]) -> Output {
+        binary(args)
+            .cwd(&self.project_dir)
+            .xdg(self.project.xdg())
+            .stdin(self.spawned_with.as_deref().unwrap_or_default())
+            .run()
+    }
+
     fn run(&self, args: &[&str]) -> Run {
-        run_inproc_at(&self.project_dir, self.project.xdg(), args, "")
+        if self.spawned_with.is_none() {
+            return run_inproc_at(&self.project_dir, self.project.xdg(), args, "");
+        }
+        let output = self.spawn(args);
+
+        Run {
+            stdout: output.stdout,
+            stderr: output.stderr,
+        }
     }
 }
 
@@ -508,6 +538,288 @@ fn no_facts(_value: &Value) -> Vec<String> {
     Vec::new()
 }
 
+// ---------------------------------------------------------------- fixtures do `check run` (sempre pelo binário)
+
+const WORK_ITEM: &str = "work-items.payroll";
+const WORK_BRANCH: &str = "feat/wi-payroll__x";
+const CHECK_RUN: &[&str] = &["check", "run", "--event", "before-pr"];
+const CHECK_RUN_ON_PUSH: &[&str] = &["check", "run", "--event", "before-pr", "--pre-push"];
+/// Um push que só apaga uma ref: não há nada a atestar.
+const DELETE_ONLY_PUSH: &str = "(delete) 0000000000000000000000000000000000000000 refs/heads/old bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n";
+
+fn git(dir: &Path, args: &[&str]) {
+    let output = git_in(dir, args);
+
+    assert!(
+        output.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn omhl_succeeds(project: &Project, args: &[&str], stdin: &str) {
+    let output = binary(args)
+        .cwd(project.dir())
+        .xdg(project.xdg())
+        .stdin(stdin)
+        .run();
+
+    assert_eq!(
+        output.code,
+        Some(0),
+        "omhl {args:?} failed: {}",
+        output.stderr
+    );
+}
+
+/// TOML de um check `before-pr` bloqueante que roda `command` num shell.
+fn check_file(concern: &str, variant: &str, command: &str) -> String {
+    let run = serde_json::to_string(&["sh", "-c", command]).expect("the argv serializes");
+
+    format!(
+        "blocking = true\nhow = \"Guards the payroll.\"\nconcern = \"{concern}\"\nvariant = \"{variant}\"\nrun = {run}\ntimeout_secs = 60\nexpect = [{{ exit = 0, outcome = \"passed\" }}]\n\n[when]\nevent = \"before-pr\"\n"
+    )
+}
+
+/// Repositório git na branch do work item, com o check no commit base, o work item gravado e o `load` feito.
+fn check_repo(slug: &str, check_toml: &str) -> Project {
+    let project = Project::new("acme");
+    let dir = project.dir();
+    git(dir, &["init", "-q", "-b", "main"]);
+    git(dir, &["config", "user.name", "Test Author"]);
+    git(dir, &["config", "user.email", "author@example.com"]);
+    ExtTree::at(dir).check(slug, check_toml);
+    git(dir, &["add", "-A"]);
+    git(dir, &["commit", "-q", "-m", "base"]);
+    git(dir, &["switch", "-q", "-c", WORK_BRANCH]);
+    let work_item = json!({
+        "items": [{ "body": {
+            "kind": "node", "id": WORK_ITEM, "type": "work-item",
+            "data": work_item_data("Payroll rollout"),
+        } }]
+    });
+    omhl_succeeds(
+        &project,
+        &["--format", "json", "append"],
+        &work_item.to_string(),
+    );
+    omhl_succeeds(&project, &["--format", "json", "load"], "");
+
+    project
+}
+
+fn check_run_ok() -> Fixture {
+    let toml = check_file("style", "format", "exit 0");
+
+    Fixture::spawned(check_repo("payroll-format", &toml), "")
+}
+
+/// O comando sai com 7 e escreve nas duas saídas: o check reprova e o `checks-failed` mostra o resumo.
+fn check_run_blocked() -> Fixture {
+    let toml = check_file(
+        "test",
+        "suite",
+        "echo emitted-on-stdout; echo emitted-on-stderr >&2; exit 7",
+    );
+
+    Fixture::spawned(check_repo("payroll-suite", &toml), "")
+}
+
+/// O arquivo commitado difere da definição guardada no banco: o check não roda.
+fn check_run_stale() -> Fixture {
+    let project = check_repo("payroll-gate", &check_file("compile", "build", "exit 0"));
+    ExtTree::at(project.dir()).check("payroll-gate", &check_file("compile", "build", "exit 3"));
+    git(project.dir(), &["add", "-A"]);
+    git(project.dir(), &["commit", "-q", "-m", "edit gate"]);
+
+    Fixture::spawned(project, "")
+}
+
+fn check_run_nothing_to_attest() -> Fixture {
+    let toml = check_file("style", "format", "exit 0");
+
+    Fixture::spawned(check_repo("payroll-format", &toml), DELETE_ONLY_PUSH)
+}
+
+/// HEAD solto contido em duas branches: não há branch do work item para resolver.
+fn check_run_head_ambiguous() -> Fixture {
+    let toml = check_file("style", "format", "exit 0");
+    let project = check_repo("payroll-format", &toml);
+    git(project.dir(), &["branch", "payroll-copy"]);
+    git(project.dir(), &["switch", "-q", "--detach"]);
+
+    Fixture::spawned(project, "")
+}
+
+fn text_at<'a>(value: &'a Value, key: &str) -> &'a str {
+    value[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("`{key}` is not a string in {value}"))
+}
+
+/// A duração do check reprovado como o texto a mostra: `Nms` abaixo de 1 s, `S.Ts` acima.
+fn duration_text(duration_ms: u64) -> String {
+    if duration_ms < 1000 {
+        return format!("{duration_ms}ms");
+    }
+
+    format!("{:.1}s", duration_ms as f64 / 1000.0)
+}
+
+fn check_run_ok_facts(value: &Value) -> Vec<String> {
+    let result = &value["results"][0];
+    let id = text_at(&value["snapshot"], "id");
+
+    vec![
+        format!(
+            "✔ {} · {} · recorded (git-commit {}",
+            text_at(value, "event"),
+            text_at(value, "work_item"),
+            &id[..7]
+        ),
+        format!(
+            "✔ {}  {}/{}  {}  {}ms",
+            text_at(result, "check"),
+            text_at(result, "concern"),
+            text_at(result, "variant"),
+            text_at(result, "outcome"),
+            result["duration_ms"]
+        ),
+        "Nothing blocked. Next: go on with the push.".to_owned(),
+    ]
+}
+
+fn check_run_ok_absent(_value: &Value) -> Vec<String> {
+    ["non-blocking", "timed out", "truncated", "exit "]
+        .map(str::to_owned)
+        .to_vec()
+}
+
+fn check_run_blocked_facts(value: &Value) -> Vec<String> {
+    let context = &value["error"]["details"][0]["context"];
+    let summary = &value["error"]["context"]["summary"];
+    assert_eq!(
+        summary["failed"], summary["blocking_failed"],
+        "the fixture has no non-blocking failure"
+    );
+
+    vec![
+        format!(
+            "✘ BLOCKED · {} · {} · {} blocking failed, {} passed, {} not run",
+            text_at(&value["error"]["context"], "event"),
+            text_at(&value["error"]["context"], "work_item"),
+            summary["blocking_failed"],
+            summary["passed"],
+            summary["not_run"]
+        ),
+        format!(
+            "✘ {} · {}/{} · blocking · timeout {}s · exit {} · {}",
+            text_at(&value["error"]["details"][0], "path"),
+            text_at(context, "concern"),
+            text_at(context, "variant"),
+            context["timeout_secs"],
+            context["exit_code"],
+            duration_text(context["duration_ms"].as_u64().expect("a duration"))
+        ),
+        "command:".to_owned(),
+        context["run"]
+            .as_array()
+            .expect("the run is a list")
+            .iter()
+            .map(|part| part.as_str().expect("a run part is text"))
+            .collect::<Vec<_>>()
+            .join(" "),
+        format!(
+            "how to read the output: {}",
+            text_at(&value["error"]["details"][0], "message")
+        ),
+        "The output may contain secrets".to_owned(),
+        "Next: read the output with the command above".to_owned(),
+    ]
+}
+
+fn check_run_blocked_absent(value: &Value) -> Vec<String> {
+    vec![
+        text_at(&value["error"], "code").to_owned(),
+        text_at(&value["error"], "message").to_owned(),
+        "non-blocking".to_owned(),
+        "timed out".to_owned(),
+        "truncated".to_owned(),
+        "kind:".to_owned(),
+    ]
+}
+
+fn check_run_stale_facts(value: &Value) -> Vec<String> {
+    let error = &value["error"];
+    let detail = &error["details"][0];
+
+    vec![
+        format!(
+            "✘ {} · {}",
+            text_at(error, "code"),
+            text_at(error, "message")
+        ),
+        format!(
+            "- {} at {}",
+            text_at(detail, "code"),
+            text_at(detail, "path")
+        ),
+        text_at(detail, "message").to_owned(),
+        format!("check: {}", text_at(&detail["context"], "check")),
+        format!("hint: {}", text_at(&detail["context"], "hint")),
+    ]
+}
+
+/// O cabeçalho `BLOCKED` é o único lugar do evento e do work item; `kind` igual ao `code` não ganha linha.
+fn check_run_stale_absent(value: &Value) -> Vec<String> {
+    let context = &value["error"]["details"][0]["context"];
+
+    vec![
+        "BLOCKED".to_owned(),
+        text_at(context, "event").to_owned(),
+        text_at(context, "work_item").to_owned(),
+        "kind:".to_owned(),
+    ]
+}
+
+fn check_run_nothing_facts(value: &Value) -> Vec<String> {
+    vec![format!(
+        "✔ {} · nothing to attest in this push; no check ran",
+        text_at(value, "event")
+    )]
+}
+
+fn check_run_nothing_absent(_value: &Value) -> Vec<String> {
+    ["recorded", "Nothing blocked", "Next:"]
+        .map(str::to_owned)
+        .to_vec()
+}
+
+fn check_run_ambiguous_facts(value: &Value) -> Vec<String> {
+    let error = &value["error"];
+
+    vec![
+        format!(
+            "✘ {} · {}",
+            text_at(error, "code"),
+            text_at(error, "message")
+        ),
+        format!("- {}", text_at(&error["details"][0], "code")),
+        format!("hint: {}", text_at(&error["details"][0]["context"], "hint")),
+    ]
+}
+
+/// `path` vazio some o ` at <path>`; `event` fica fora do texto; `kind` igual ao `code` não ganha linha.
+fn check_run_ambiguous_absent(value: &Value) -> Vec<String> {
+    let detail = &value["error"]["details"][0];
+
+    vec![
+        format!("{} at", text_at(detail, "code")),
+        text_at(&detail["context"], "event").to_owned(),
+        "kind:".to_owned(),
+    ]
+}
+
 /// Um estado de fixture de um comando: cada onda das etapas 3 e 4 acrescenta os seus casos.
 struct Case {
     name: &'static str,
@@ -519,9 +831,11 @@ struct Case {
     fixture: fn() -> Fixture,
     /// Os fatos `Derived` que o texto mostra nos dois layouts, tirados do `Value`.
     derived: fn(&Value) -> Vec<String>,
+    /// O que o texto omite nos dois layouts (o cabeçalho que substitui `code · message`, a linha `kind:`).
+    absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 4] = [
+const CASES: [Case; 9] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -530,6 +844,7 @@ const CASES: [Case; 4] = [
         error_code: None,
         fixture: verify_ok,
         derived: verify_ok_facts,
+        absent: no_facts,
     },
     Case {
         name: "verify broken chain",
@@ -539,6 +854,7 @@ const CASES: [Case; 4] = [
         error_code: None,
         fixture: verify_broken_chain,
         derived: verify_broken_facts,
+        absent: no_facts,
     },
     Case {
         name: "verify invalid project dir",
@@ -548,6 +864,7 @@ const CASES: [Case; 4] = [
         error_code: Some("invalid-project-dir"),
         fixture: verify_invalid_project_dir,
         derived: no_facts,
+        absent: no_facts,
     },
     Case {
         name: "verify no marker",
@@ -557,6 +874,57 @@ const CASES: [Case; 4] = [
         error_code: Some("no-marker"),
         fixture: verify_no_marker,
         derived: no_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "check run ok",
+        key: CommandKey::CheckRun,
+        args: CHECK_RUN,
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: check_run_ok,
+        derived: check_run_ok_facts,
+        absent: check_run_ok_absent,
+    },
+    Case {
+        name: "check run checks-failed",
+        key: CommandKey::CheckRun,
+        args: CHECK_RUN,
+        outcome: Outcome::Failure,
+        error_code: Some("checks-failed"),
+        fixture: check_run_blocked,
+        derived: check_run_blocked_facts,
+        absent: check_run_blocked_absent,
+    },
+    Case {
+        name: "check run check-not-run",
+        key: CommandKey::CheckRun,
+        args: CHECK_RUN,
+        outcome: Outcome::Failure,
+        error_code: Some("check-not-run"),
+        fixture: check_run_stale,
+        derived: check_run_stale_facts,
+        absent: check_run_stale_absent,
+    },
+    Case {
+        name: "check run pre-push with nothing to attest",
+        key: CommandKey::CheckRun,
+        args: CHECK_RUN_ON_PUSH,
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: check_run_nothing_to_attest,
+        derived: check_run_nothing_facts,
+        absent: check_run_nothing_absent,
+    },
+    Case {
+        name: "check run head-ambiguous",
+        key: CommandKey::CheckRun,
+        args: CHECK_RUN,
+        outcome: Outcome::Failure,
+        error_code: Some("head-ambiguous"),
+        fixture: check_run_head_ambiguous,
+        derived: check_run_ambiguous_facts,
+        absent: check_run_ambiguous_absent,
     },
 ];
 
@@ -602,58 +970,46 @@ fn layout_name(layout: Layout) -> &'static str {
     }
 }
 
-fn assert_no_problems(case: &Case, problems: &[String]) {
-    assert!(problems.is_empty(), "{}: {problems:#?}", case.name);
+/// Roda a checagem em todos os casos e reprova uma vez, com os problemas de todos: um caso vermelho não esconde os outros.
+fn assert_cases_clean(check: impl Fn(&Case, &Value) -> Vec<String>) {
+    let problems: Vec<String> = CASES
+        .iter()
+        .flat_map(|case| {
+            let value = json_of(case, &(case.fixture)());
+
+            check(case, &value)
+                .into_iter()
+                .map(|problem| format!("{}: {problem}", case.name))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    assert!(problems.is_empty(), "{problems:#?}");
 }
 
 // ---------------------------------------------------------------- testes de cobertura das folhas (CA-2)
 
 #[test]
 fn it_should_declare_every_scalar_of_each_real_value_in_the_profile_table() {
-    for case in &CASES {
-        let value = json_of(case, &(case.fixture)());
-
-        assert_no_problems(
-            case,
-            &table_problems(profile_for(case.key), case.outcome, &value),
-        );
-    }
+    assert_cases_clean(|case, value| table_problems(profile_for(case.key), case.outcome, value));
 }
 
 #[test]
 fn it_should_find_every_required_profile_key_in_each_real_value() {
-    for case in &CASES {
-        let value = json_of(case, &(case.fixture)());
-
-        assert_no_problems(
-            case,
-            &required_problems(profile_for(case.key), case.outcome, &value),
-        );
-    }
+    assert_cases_clean(|case, value| required_problems(profile_for(case.key), case.outcome, value));
 }
 
 #[test]
 fn it_should_build_each_fixture_so_that_its_free_literals_are_distinguishable() {
-    for case in &CASES {
-        let value = json_of(case, &(case.fixture)());
-
-        assert_no_problems(
-            case,
-            &fixture_problems(profile_for(case.key), case.outcome, &value),
-        );
-    }
+    assert_cases_clean(|case, value| fixture_problems(profile_for(case.key), case.outcome, value));
 }
 
 fn assert_leaves_in_text(layout: Layout) {
-    for case in &CASES {
-        let value = json_of(case, &(case.fixture)());
-        let text = text_of(case, &value, layout);
+    assert_cases_clean(|case, value| {
+        let text = text_of(case, value, layout);
 
-        assert_no_problems(
-            case,
-            &presence_problems(profile_for(case.key), case.outcome, &value, &text),
-        );
-    }
+        presence_problems(profile_for(case.key), case.outcome, value, &text)
+    });
 }
 
 #[test]
@@ -666,19 +1022,24 @@ fn it_should_show_every_leaf_of_the_real_value_in_the_human_text() {
     assert_leaves_in_text(Layout::Human);
 }
 
-fn assert_derived_facts_in_text(layout: Layout) {
-    for case in &CASES {
-        let value = json_of(case, &(case.fixture)());
-        let text = text_of(case, &value, layout);
+/// O `human` alinha os rótulos com espaços extras: os fatos se comparam com cada sequência de espaços reduzida a um.
+fn squeeze(text: &str) -> String {
+    text.split(' ')
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
-        for fact in (case.derived)(&value) {
-            assert!(
-                text.contains(&fact),
-                "{}: `{fact}` missing from:\n{text}",
-                case.name
-            );
-        }
-    }
+fn assert_derived_facts_in_text(layout: Layout) {
+    assert_cases_clean(|case, value| {
+        let text = squeeze(&text_of(case, value, layout));
+
+        (case.derived)(value)
+            .into_iter()
+            .filter(|fact| !text.contains(&squeeze(fact)))
+            .map(|fact| format!("`{fact}` missing from:\n{text}"))
+            .collect()
+    });
 }
 
 #[test]
@@ -689,6 +1050,28 @@ fn it_should_show_every_derived_fact_in_the_agent_text() {
 #[test]
 fn it_should_show_every_derived_fact_in_the_human_text() {
     assert_derived_facts_in_text(Layout::Human);
+}
+
+fn assert_omitted_facts_absent_from_text(layout: Layout) {
+    assert_cases_clean(|case, value| {
+        let text = squeeze(&text_of(case, value, layout));
+
+        (case.absent)(value)
+            .into_iter()
+            .filter(|fact| text.contains(&squeeze(fact)))
+            .map(|fact| format!("`{fact}` must not be in:\n{text}"))
+            .collect()
+    });
+}
+
+#[test]
+fn it_should_omit_the_facts_the_agent_text_replaces_or_hides() {
+    assert_omitted_facts_absent_from_text(Layout::Agent);
+}
+
+#[test]
+fn it_should_omit_the_facts_the_human_text_replaces_or_hides() {
+    assert_omitted_facts_absent_from_text(Layout::Human);
 }
 
 #[test]
@@ -703,6 +1086,37 @@ fn it_should_not_suggest_a_next_step_when_the_chain_is_ok() {
 
 // ---------------------------------------------------------------- costura comando <-> chave (CA-2 (7))
 
+/// Troca por `<dur>` cada duração (`12ms`, `2.6s`, `60s`): o comando real leva um tempo diferente a cada execução.
+fn mask_durations(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut masked = String::new();
+    let mut index = 0;
+    while index < chars.len() {
+        let starts_number =
+            chars[index].is_ascii_digit() && (index == 0 || !is_token_char(chars[index - 1]));
+        if starts_number {
+            let digits_end = (index..chars.len())
+                .find(|&at| !(chars[at].is_ascii_digit() || chars[at] == '.'))
+                .unwrap_or(chars.len());
+            let unit_len = if chars[digits_end..].starts_with(&['m', 's']) {
+                2
+            } else {
+                usize::from(chars.get(digits_end) == Some(&'s'))
+            };
+            let end = digits_end + unit_len;
+            if unit_len > 0 && !chars.get(end).is_some_and(|&next| is_token_char(next)) {
+                masked.push_str("<dur>");
+                index = end;
+                continue;
+            }
+        }
+        masked.push(chars[index]);
+        index += 1;
+    }
+
+    masked
+}
+
 fn assert_command_prints_the_renderer_output(layout: Layout) {
     for case in &CASES {
         let fixture = (case.fixture)();
@@ -715,7 +1129,12 @@ fn assert_command_prints_the_renderer_output(layout: Layout) {
             Outcome::Success => (run.stdout, run.stderr),
             Outcome::Failure => (run.stderr, run.stdout),
         };
-        assert_eq!(printed, expected, "{}", case.name);
+        assert_eq!(
+            mask_durations(&printed),
+            mask_durations(&expected),
+            "{}",
+            case.name
+        );
         assert_eq!(silent, "", "{}", case.name);
     }
 }
@@ -796,8 +1215,40 @@ fn it_should_accept_a_boolean_declared_as_derived() {
 }
 
 #[test]
-fn it_should_reject_an_empty_string_declared_as_literal() {
+fn it_should_treat_an_empty_string_under_a_literal_key_as_derived_in_the_table_check() {
     let profile = profile!(root("path", Shape::Literal));
+
+    let problems = table_problems(&profile, Outcome::Success, &json!({ "path": "" }));
+
+    assert_eq!(problems, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_not_apply_the_literal_minimum_to_an_empty_string() {
+    let profile = profile!(root("path", Shape::Literal));
+
+    let problems = fixture_problems(&profile, Outcome::Success, &json!({ "path": "" }));
+
+    assert_eq!(problems, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_not_require_an_empty_string_to_be_shown_in_the_text() {
+    let profile = profile!(root("path", Shape::Literal));
+
+    let problems = presence_problems(
+        &profile,
+        Outcome::Success,
+        &json!({ "path": "" }),
+        "nothing here",
+    );
+
+    assert_eq!(problems, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_still_reject_an_empty_string_whose_key_is_missing_from_the_table() {
+    let profile = profile!(root("name", Shape::Literal));
 
     let problems = table_problems(&profile, Outcome::Success, &json!({ "path": "" }));
 
@@ -1052,4 +1503,95 @@ fn it_should_exit_zero_with_a_broken_chain_symbol_when_the_verify_chain_is_broke
 
     assert_eq!(output.code, Some(0));
     assert_text_with_symbol(&output.stdout, &["✘"]);
+}
+
+// ---------------------------------------------------------------- CA-1: o `check run` sem `--format`, com `human` e com `json`
+
+fn binary_check_run(fixture: &Fixture, format: Option<&str>) -> Output {
+    let mut args = Vec::new();
+    if let Some(format) = format {
+        args.extend(["--format", format]);
+    }
+    args.extend(CHECK_RUN);
+
+    fixture.spawn(&args)
+}
+
+#[test]
+fn it_should_print_agent_text_for_check_run_success_when_no_format_is_given() {
+    let output = binary_check_run(&check_run_ok(), None);
+
+    assert_eq!(output.code, Some(0));
+    assert_text_with_symbol(&output.stdout, &["✔"]);
+}
+
+#[test]
+fn it_should_print_agent_text_for_check_run_error_when_no_format_is_given() {
+    let output = binary_check_run(&check_run_blocked(), None);
+
+    assert_eq!(output.code, Some(1));
+    assert_text_with_symbol(&output.stderr, &["✘"]);
+    assert_eq!(output.stdout, "");
+}
+
+#[test]
+fn it_should_print_agent_text_for_a_check_run_with_nothing_to_attest_when_no_format_is_given() {
+    let fixture = check_run_nothing_to_attest();
+
+    let output = fixture.spawn(CHECK_RUN_ON_PUSH);
+
+    assert_eq!(output.code, Some(0));
+    assert_text_with_symbol(&output.stdout, &["✔"]);
+}
+
+#[test]
+fn it_should_print_human_text_for_check_run_success() {
+    let output = binary_check_run(&check_run_ok(), Some("human"));
+
+    assert_eq!(output.code, Some(0));
+    assert_text_with_symbol(&output.stdout, &["✔"]);
+}
+
+#[test]
+fn it_should_print_human_text_for_check_run_error() {
+    let output = binary_check_run(&check_run_blocked(), Some("human"));
+
+    assert_eq!(output.code, Some(1));
+    assert_text_with_symbol(&output.stderr, &["✘"]);
+    assert_eq!(output.stdout, "");
+}
+
+#[test]
+fn it_should_print_a_single_json_line_for_check_run_success_with_format_json() {
+    let output = binary_check_run(&check_run_ok(), Some("json"));
+
+    assert_eq!(output.code, Some(0));
+    assert_eq!(output.stdout.trim_end().lines().count(), 1);
+    assert_eq!(
+        serde_json::from_str::<Value>(output.stdout.trim_end()).expect("the line is JSON")["event"],
+        json!("before-pr")
+    );
+}
+
+#[test]
+fn it_should_print_a_single_json_line_for_check_run_error_with_format_json() {
+    let output = binary_check_run(&check_run_blocked(), Some("json"));
+
+    assert_eq!(output.code, Some(1));
+    assert_eq!(output.stderr.trim_end().lines().count(), 1);
+    assert_eq!(
+        serde_json::from_str::<Value>(output.stderr.trim_end()).expect("the line is JSON")["error"]
+            ["code"],
+        json!("checks-failed")
+    );
+}
+
+#[test]
+fn it_should_mask_every_duration_and_keep_the_other_numbers() {
+    let masked = mask_durations("✔ checks.x2  passed  12ms · timeout 60s · took 2.6s · exit 7");
+
+    assert_eq!(
+        masked,
+        "✔ checks.x2  passed  <dur> · timeout <dur> · took <dur> · exit 7"
+    );
 }

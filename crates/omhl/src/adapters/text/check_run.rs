@@ -24,8 +24,12 @@ pub static PROFILE: Profile = Profile {
         Entry::new(Region::Root, "work_item", Shape::Literal).optional(),
         Entry::new(Region::Root, "recorded", Shape::Derived).optional(),
         Entry::new(Region::Root, "checks_planned", Shape::Noise).optional(),
-        Entry::new(Region::Snapshot, "kind", Shape::Closed).optional(),
-        Entry::new(Region::Snapshot, "id", Shape::Hash(7)).optional(),
+        Entry::new(Region::Data, "kind", Shape::Closed)
+            .under("snapshot")
+            .optional(),
+        Entry::new(Region::Data, "id", Shape::Hash(7))
+            .under("snapshot")
+            .optional(),
         Entry::new(Region::Data, "check", Shape::Literal)
             .under("results")
             .optional(),
