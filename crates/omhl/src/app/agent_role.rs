@@ -38,7 +38,6 @@ pub struct AgentRoleEnv<'e> {
 }
 
 /// O hook `agent-role` para o evento `PreToolUse` do Bash; não abre o banco, só lê o arquivo do agente.
-/// Regras 2 a 10 do plano, na ordem.
 pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
     let Some(command) = input["tool_input"]["command"].as_str() else {
         return RoleVerdict::Pass;
@@ -97,7 +96,7 @@ fn names_role_variable(word: &str) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with('=') || rest.starts_with("+="))
 }
 
-/// Regras 4 a 6: papel fora da lista, comando sem `omhl`, comando composto e embrulho que o leitor não pula.
+/// Papel fora da lista, comando sem `omhl`, comando composto e embrulho que o leitor não pula.
 fn ported_agent_verdict(
     role: &str,
     line: &CommandLine,
@@ -134,8 +133,7 @@ fn ported_agent_verdict(
     }
 }
 
-/// Regras 7 a 10: a matriz `omhl-allow` do papel decide o único comando `omhl`; o `allow` só sai
-/// quando o prefixo chega ao `omhl`.
+/// A matriz `omhl-allow` do papel decide o único comando `omhl`; o `allow` só sai quando o prefixo chega ao `omhl`.
 fn role_matrix_verdict(
     role: &str,
     line: &CommandLine,
@@ -187,7 +185,7 @@ fn matrix_denial(
     })
 }
 
-/// Regra 8: `${CLAUDE_PLUGIN_ROOT}/agents/<papel>.md`; o papel já passou pela lista fechada, então não vira caminho solto.
+/// Lê `${CLAUDE_PLUGIN_ROOT}/agents/<papel>.md`; o papel já passou pela lista fechada, então não vira caminho solto.
 fn read_role_allow(role: &str, plugin_root: Option<&Path>) -> Result<RoleAllow, String> {
     let root = plugin_root.ok_or("CLAUDE_PLUGIN_ROOT is not set")?;
     let path = root.join("agents").join(format!("{role}.md"));
@@ -197,7 +195,7 @@ fn read_role_allow(role: &str, plugin_root: Option<&Path>) -> Result<RoleAllow, 
     parse_role_allow(&agent_file)
 }
 
-/// Regra 9: o `updatedInput` substitui o objeto inteiro, então leva `description`, `timeout` e o resto como vieram.
+/// O `updatedInput` substitui o objeto inteiro, então leva `description`, `timeout` e o resto como vieram.
 fn with_role_prefix(input: &Value, role: &str) -> Value {
     let mut tool_input = input["tool_input"].clone();
     if let Some(command) = input["tool_input"]["command"].as_str() {

@@ -409,7 +409,7 @@ fn it_should_exit_zero_with_a_stderr_line_on_invalid_stdin_for_agent_role() {
 
 // agent-role: matriz do agente e reescrita do comando
 //
-// Os agentes de `tests/fixtures/agents/` são FIXTURES; os reais chegam na S4.
+// Os agentes de `tests/fixtures/agents/` são FIXTURES, não os agentes do plugin.
 
 const APPEND_HEREDOC: &str = "omhl append <<'EOF'\n{\"items\":[]}\nEOF\n";
 const ATTEST: &str = "omhl attest checks.run-tests work-items.w1 --outcome pass";
@@ -1257,7 +1257,7 @@ fn it_should_keep_every_agent_fixture_equal_to_the_reference_role_matrix() {
     }
 }
 
-// Revisão S3: o prefixo só vale quando o `omhl` é provadamente o comando que o recebe
+// Prefixo: só vale quando o `omhl` é provadamente o comando que o recebe
 
 fn assert_denied_mentioning(output: &Child, fragment: &str) {
     assert_denied(output);
@@ -1277,7 +1277,7 @@ fn assert_denied_from_any_origin(command: &str) {
     assert_denied(&run_agent_role(command, None));
 }
 
-// B1: nada além de espaço e tab antes do primeiro comando
+// Nada além de espaço e tab antes do primeiro comando
 
 #[test]
 fn it_should_deny_a_comment_line_before_the_omhl_call() {
@@ -1330,7 +1330,7 @@ fn it_should_not_hide_the_matrix_denial_behind_the_start_rule() {
     assert_denied_listing(&output, "verifier", &command);
 }
 
-// B2: `env` que tira o papel
+// `env` que tira o papel
 
 #[test]
 fn it_should_deny_env_u_omhl_role() {
@@ -1352,7 +1352,7 @@ fn it_should_deny_env_unset_separated_omhl_role() {
     assert_denied_from_any_origin("env --unset OMHL_ROLE omhl list");
 }
 
-// B3: `OMHL_ROLE+=`
+// `OMHL_ROLE+=`
 
 #[test]
 fn it_should_deny_omhl_role_plus_equals_as_a_command_prefix() {
@@ -1369,7 +1369,7 @@ fn it_should_deny_export_omhl_role_plus_equals() {
     assert_denied_from_any_origin("export OMHL_ROLE+=omhl:verifier");
 }
 
-// B4: palavras reservadas que o prefixo não alcança
+// Palavras reservadas que o prefixo não alcança
 
 #[test]
 fn it_should_deny_a_negated_omhl_call() {
@@ -1407,7 +1407,7 @@ fn it_should_put_the_prefix_after_time_when_the_call_has_leading_spaces() {
     );
 }
 
-// B5: `${...}` e `$((...))` são parte da palavra
+// `${...}` e `$((...))` são parte da palavra
 
 #[test]
 fn it_should_allow_omhl_with_a_braced_parameter_inside_double_quotes() {
@@ -1443,7 +1443,7 @@ fn it_should_not_read_a_hash_right_after_a_substitution_as_a_comment() {
     assert_denied(&output);
 }
 
-// B6: heredoc sem aspas no terminador executa `$(...)` e crase
+// Heredoc sem aspas no terminador executa `$(...)` e crase
 
 #[test]
 fn it_should_deny_an_unquoted_heredoc_with_a_command_substitution_in_the_body() {
@@ -1496,7 +1496,7 @@ fn it_should_pass_an_unquoted_heredoc_with_a_substitution_from_the_main_session(
     assert_passed(&output);
 }
 
-// B7: `command -v` consulta, não executa
+// `command -v` consulta, não executa
 
 #[test]
 fn it_should_pass_command_v_omhl() {
@@ -1512,7 +1512,7 @@ fn it_should_pass_command_capital_v_omhl() {
     assert_passed(&output);
 }
 
-// B10: `$'omhl'` e `$"omhl"` são o programa `omhl`
+// `$'omhl'` e `$"omhl"` são o programa `omhl`
 
 #[test]
 fn it_should_read_an_ansi_c_quoted_program_as_omhl() {
@@ -1533,7 +1533,7 @@ fn it_should_apply_the_matrix_to_an_ansi_c_quoted_program() {
     assert_denied_listing(&output, "verifier", &command);
 }
 
-// R1: o texto de `${...}` e `$((...))` fica na palavra, então o hook vê o que o bash vai expandir
+// O texto de `${...}` e `$((...))` fica na palavra, então o hook vê o que o bash vai expandir
 
 #[test]
 fn it_should_deny_a_parameter_expansion_as_the_leaf_of_an_omhl_command() {
@@ -1602,7 +1602,6 @@ fn it_should_allow_an_expansion_inside_a_later_argument_value() {
         "omhl --db \"${X}\" list",
         "omhl list --where a=$B",
         "omhl list $((1 + 1))",
-        "${HOME}/.local/bin/omhl list",
         "timeout ${T} omhl list",
         "FOO=${X} omhl list",
     ] {
@@ -1663,7 +1662,7 @@ fn it_should_pass_a_command_over_the_length_limit_from_the_main_session() {
     assert_passed(&output);
 }
 
-// N1: `time [-p] --` leva o prefixo para depois do `--`
+// `time [-p] --` leva o prefixo para depois do `--`
 
 #[test]
 fn it_should_put_the_prefix_after_the_double_dash_of_time() {

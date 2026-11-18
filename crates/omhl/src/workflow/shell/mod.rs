@@ -7,9 +7,7 @@ mod lexer;
 mod redirect;
 mod wrapper;
 
-pub use self::wrapper::Opacity;
-
-use self::wrapper::{Resolved, basename};
+use self::wrapper::{Opacity, Resolved, basename};
 
 /// Maior comando que o leitor aceita (256 KiB): acima disso ele não lê.
 const MAX_COMMAND_BYTES: usize = 256 * 1024;
@@ -43,11 +41,6 @@ pub struct SimpleCommand {
 }
 
 impl SimpleCommand {
-    /// Todas as palavras, atribuições e embrulhos incluídos.
-    pub fn words(&self) -> &[String] {
-        &self.words
-    }
-
     /// O programa real (basename) depois de pular atribuições e embrulhos; `None` se o leitor não o achou.
     pub fn program(&self) -> Option<&str> {
         self.resolved.program_at.map(|at| basename(&self.words[at]))
@@ -194,7 +187,7 @@ mod tests {
 
             assert_eq!(line.commands.len(), 1, "{command}");
             assert!(!line.compound, "{command}");
-            assert_eq!(line.commands[0].words(), ["omhl", "list"], "{command}");
+            assert_eq!(line.commands[0].words, ["omhl", "list"], "{command}");
         }
     }
 
@@ -352,7 +345,7 @@ mod tests {
             ("echo \"${X}\"", vec!["echo", "${X}"]),
             ("echo a${x:-'b'}c", vec!["echo", "a${x:-'b'}c"]),
         ] {
-            assert_eq!(read(command).commands[0].words(), words, "{command}");
+            assert_eq!(read(command).commands[0].words, words, "{command}");
         }
     }
 
