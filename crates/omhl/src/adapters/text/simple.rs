@@ -7,8 +7,8 @@ use super::base::{Entry, Profile, Region, Shape, Specialization};
 use super::doc::{Closing, Line, dash, field, items, joined, one_line, opt_text, text};
 use super::error;
 use super::vocab::{
-    HASH_PREFIX_LEN, SECRET_WARNING, State, TIMED_OUT, counted, plural, seq_label,
-    without_final_period,
+    HASH_PREFIX_LEN, SECRET_WARNING, State, TIMED_OUT, UNCHANGED, WARNING, counted, plural,
+    seq_label, without_final_period,
 };
 
 pub static PROJECT_PROFILE: Profile = Profile {
@@ -157,7 +157,7 @@ impl Specialization for Project {
         vec![
             text(value, "dir"),
             format!("{} written", items(value, "written").count()),
-            format!("{} unchanged", items(value, "unchanged").count()),
+            format!("{} {UNCHANGED}", items(value, "unchanged").count()),
             format!("{} removed", items(value, "removed").count()),
         ]
     }
@@ -272,7 +272,7 @@ impl Specialization for HooksInstall {
         let mut parts = vec![counted(items(value, "scripts").count(), "script")];
         let warnings = items(value, "warnings").count();
         if warnings > 0 {
-            parts.push(counted(warnings, "warning"));
+            parts.push(counted(warnings, WARNING));
         }
 
         parts
@@ -286,7 +286,7 @@ impl Specialization for HooksInstall {
         ];
         let warnings = items(value, "warnings").map(|warning| {
             dash(vec![
-                "warning".to_owned(),
+                WARNING.to_owned(),
                 text(warning, "code"),
                 text(warning, "path"),
             ])

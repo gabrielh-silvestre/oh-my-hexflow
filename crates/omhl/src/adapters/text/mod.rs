@@ -8,9 +8,11 @@ mod gate;
 mod get;
 mod layout;
 mod list;
+mod load;
 mod render;
 mod report;
 mod simple;
+mod spec_validate;
 mod verify;
 mod vocab;
 
@@ -102,7 +104,7 @@ pub trait Renderer {
     fn failure(&self, value: &Value) -> Doc;
 }
 
-/// O único fato guardado por comando: ter renderizador. `load` e `spec validate` ganham o seu nas ondas seguintes; os adiados nunca ganham.
+/// O único fato guardado por comando: ter renderizador. Os adiados (lidos por máquina) nunca ganham.
 pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     match key {
         CommandKey::CheckRun => Some(&BaseRenderer(check_run::CheckRun)),
@@ -122,12 +124,12 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::Byproduct => Some(&BaseRenderer(simple::Byproduct)),
         CommandKey::Append => Some(&BaseRenderer(simple::Append)),
         CommandKey::Attest => Some(&BaseRenderer(simple::Attest)),
+        CommandKey::Load => Some(&BaseRenderer(load::Load)),
+        CommandKey::SpecValidate => Some(&BaseRenderer(spec_validate::SpecValidate)),
         CommandKey::GatePr => Some(&BaseRenderer(gate::GatePr)),
         CommandKey::Close => Some(&BaseRenderer(gate::Close)),
         CommandKey::GateWorktree
-        | CommandKey::Load
         | CommandKey::HooksPostCommit
-        | CommandKey::SpecValidate
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole => None,
@@ -156,10 +158,10 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::Attest => &simple::ATTEST_PROFILE,
         CommandKey::GatePr => &gate::GATE_PR_PROFILE,
         CommandKey::Close => &gate::CLOSE_PROFILE,
+        CommandKey::Load => &load::PROFILE,
+        CommandKey::SpecValidate => &spec_validate::PROFILE,
         CommandKey::GateWorktree
-        | CommandKey::Load
         | CommandKey::HooksPostCommit
-        | CommandKey::SpecValidate
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole => &Profile::EMPTY,
@@ -194,7 +196,8 @@ pub fn render_failure(key: CommandKey, value: &Value, layout: Layout) -> String 
     }
 }
 
-/// Os comandos lidos por máquina: nunca ganham texto e recusam `--format agent|human`.
+/// Os comandos lidos por máquina: nunca ganham texto e recusam `--format agent|human`. Lista independente de `renderer_for`:
+/// o teste de fechamento confronta as duas.
 pub fn deferred(key: CommandKey) -> bool {
     match key {
         CommandKey::HookSessionStart

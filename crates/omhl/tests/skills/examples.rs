@@ -788,7 +788,7 @@ fn it_should_assemble_the_git_fixture() {
 fn it_should_assemble_the_spec_fixture() {
     assert_runs(
         "spec",
-        "$ omhl spec validate work-items.w1\n{\"amendments\":[],\"ok\":true,\"parts\":[\"parte-01.md\"]}\n",
+        "$ omhl spec validate work-items.w1 --format json\n{\"amendments\":[],\"ok\":true,\"parts\":[\"parte-01.md\"]}\n",
     );
 }
 
@@ -796,7 +796,7 @@ fn it_should_assemble_the_spec_fixture() {
 fn it_should_assemble_the_checks_fixture() {
     assert_runs(
         "checks",
-        "$ omhl load\n{\"created\":[],\"dry_run\":false,\"orphan_relations\":[],\"orphans\":[],\"relations_created\":[],\"revised\":[],\"skipped\":[],\"tenant\":\"acme\",\"unchanged\":[\"checks.ok\",\"checks.review\"],\"warnings\":[]}\n",
+        "$ omhl load --format json\n{\"created\":[],\"dry_run\":false,\"orphan_relations\":[],\"orphans\":[],\"relations_created\":[],\"revised\":[],\"skipped\":[],\"tenant\":\"acme\",\"unchanged\":[\"checks.ok\",\"checks.review\"],\"warnings\":[]}\n",
     );
 }
 

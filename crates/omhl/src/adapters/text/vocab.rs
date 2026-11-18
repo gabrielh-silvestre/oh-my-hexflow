@@ -29,6 +29,8 @@ pub const NON_BLOCKING: &str = "non-blocking";
 pub const TIMED_OUT: &str = "timed out";
 pub const TRUNCATED: &str = "truncated";
 pub const NONE: &str = "none";
+pub const UNCHANGED: &str = "unchanged";
+pub const WARNING: &str = "warning";
 
 /// `seq 7`.
 pub fn seq_label(seq: impl Display) -> String {

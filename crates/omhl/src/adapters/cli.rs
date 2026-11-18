@@ -5,11 +5,11 @@ use std::process::ExitCode;
 
 use clap::builder::PossibleValuesParser;
 use clap::error::ErrorKind;
-use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use clap::{ArgGroup, Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
 use super::hook;
-use super::text::{CommandKey, Layout, deferred, render_failure, render_success, renderer_for};
+use super::text::{CommandKey, Layout, render_failure, render_success, renderer_for};
 use crate::app::RUNNABLE_EVENTS;
 use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
@@ -26,7 +26,7 @@ pub struct Cli {
     /// Directory where the project marker lookup starts.
     #[arg(long, global = true)]
     pub project_dir: Option<PathBuf>,
-    /// Output format: `agent` (text for agents), `human` (text for people) or `json` (one JSON line). The default is `agent` for the commands that print text and `json` for the others; the hook commands, `hooks post-commit` and `gate-worktree` only print JSON.
+    /// Output format: `agent` (text for agents), `human` (text for people) or `json` (one JSON line). The default of each command is in `omhl --help` and in the help of the command; a command whose default is `json` only prints JSON.
     #[arg(long, global = true, value_enum)]
     pub format: Option<OutputFormat>,
     #[command(subcommand)]
@@ -73,7 +73,7 @@ pub enum ActionCommand {
         #[arg(long)]
         note: Option<String>,
     },
-    /// Print the session context as JSON.
+    /// Print the session context.
     Render,
     /// Evaluate the pull-request gate for a work item.
     GatePr { work_item: String },
@@ -232,7 +232,10 @@ pub fn run(
     err: &mut impl std::io::Write,
     env: &Env<'_>,
 ) -> ExitCode {
-    let cli = match Cli::try_parse_from(args) {
+    let parsed = command()
+        .try_get_matches_from(args)
+        .and_then(|matches| Cli::from_arg_matches(&matches));
+    let cli = match parsed {
         Ok(cli) => cli,
         Err(usage) => return report_usage(&usage, out, err),
     };
@@ -324,18 +327,93 @@ fn format_misuse(cli: &Cli, key: CommandKey) -> Option<clap::Error> {
     {
         return None;
     }
-    let message = match deferred(key) {
-        true => "this command only prints JSON; use --format json",
-        false => "not available for this command yet; use --format json",
-    };
 
-    Some(Cli::command().error(ErrorKind::InvalidValue, message))
+    Some(Cli::command().error(
+        ErrorKind::InvalidValue,
+        "this command only prints JSON; use --format json",
+    ))
 }
 
 fn default_format(key: CommandKey) -> OutputFormat {
     match renderer_for(key).is_some() {
         true => OutputFormat::Agent,
         false => OutputFormat::Json,
+    }
+}
+
+/// O clap com o padrão de saída de cada comando no help: o texto sai de `default_format`, o mesmo fato que escolhe o formato na execução.
+fn command() -> clap::Command {
+    let listing: Vec<String> = OutputFormat::value_variants()
+        .iter()
+        .filter_map(|format| {
+            let paths: Vec<&str> = CommandKey::ALL
+                .into_iter()
+                .filter(|key| default_format(*key) == *format)
+                .map(command_path)
+                .collect();
+            (!paths.is_empty()).then(|| format!("  {}: {}", format_name(*format), paths.join(", ")))
+        })
+        .collect();
+    let root = Cli::command().after_help(format!(
+        "Default output format of each command:\n{}",
+        listing.join("\n")
+    ));
+
+    CommandKey::ALL.into_iter().fold(root, |command, key| {
+        let path: Vec<&str> = command_path(key).split(' ').collect();
+        let note = format!(
+            "Default output format: {}.",
+            format_name(default_format(key))
+        );
+
+        annotate(command, &path, note)
+    })
+}
+
+/// Desce pelos subcomandos do `path` e põe a nota no fim do help do comando folha.
+fn annotate(command: clap::Command, path: &[&str], note: String) -> clap::Command {
+    match path.split_first() {
+        Some((name, rest)) => command.mut_subcommand(*name, |sub| annotate(sub, rest, note)),
+        None => command.after_help(note),
+    }
+}
+
+fn format_name(format: OutputFormat) -> String {
+    format
+        .to_possible_value()
+        .map(|value| value.get_name().to_owned())
+        .unwrap_or_default()
+}
+
+/// Como o comando se escreve na CLI; sem braço `_`: chave nova falha na compilação até ganhar o caminho.
+fn command_path(key: CommandKey) -> &'static str {
+    match key {
+        CommandKey::List => "list",
+        CommandKey::Get => "get",
+        CommandKey::Append => "append",
+        CommandKey::Attest => "attest",
+        CommandKey::Render => "render",
+        CommandKey::GatePr => "gate-pr",
+        CommandKey::GateWorktree => "gate-worktree",
+        CommandKey::Close => "close",
+        CommandKey::Verify => "verify",
+        CommandKey::Load => "load",
+        CommandKey::Project => "project",
+        CommandKey::CheckRun => "check run",
+        CommandKey::CheckSweep => "check sweep",
+        CommandKey::CheckRetire => "check retire",
+        CommandKey::GuidelineRetire => "guideline retire",
+        CommandKey::Byproduct => "byproduct",
+        CommandKey::HooksInstall => "hooks install",
+        CommandKey::HooksPostCommit => "hooks post-commit",
+        CommandKey::SpecInit => "spec init",
+        CommandKey::SpecValidate => "spec validate",
+        CommandKey::ReportAnswers => "report answers",
+        CommandKey::ReportRecurrences => "report recurrences",
+        CommandKey::ReportRetro => "report retro",
+        CommandKey::HookSessionStart => "hook session-start",
+        CommandKey::HookSpecLock => "hook spec-lock",
+        CommandKey::HookAgentRole => "hook agent-role",
     }
 }
 
