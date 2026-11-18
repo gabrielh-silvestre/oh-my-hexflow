@@ -604,6 +604,22 @@ fn it_should_tell_critic_and_reviewers_to_ground_each_decision_with_rests_on() {
 }
 
 #[test]
+fn it_should_not_tell_the_reviewers_that_a_contradicts_may_start_from_a_divergence() {
+    for role in ["code-reviewer", "security-reviewer"] {
+        let body = squash(&agent(role).body);
+        let start = body
+            .find("`contradicts` relation only from")
+            .unwrap_or_else(|| panic!("{role} lacks the contradicts rule"));
+        let rule = &body[start..start + 120];
+
+        assert!(
+            rule.contains("only from a `decision` you wrote (never from a divergence"),
+            "{role}: {rule}"
+        );
+    }
+}
+
+#[test]
 fn it_should_tell_every_agent_with_append_to_use_a_quoted_heredoc_one_omhl_command_per_call_and_no_pipe()
  {
     let with_append: Vec<Agent> = agents()

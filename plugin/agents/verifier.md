@@ -81,6 +81,7 @@ Ported from oh-my-claudecode 5.7.19 (MIT), agents/verifier.md. Adapted to the oh
       - Never set `accepted` or `spec-stale`: those are the human's answers. Never revise a divergence that left `open`, never send `confirmed_by` or `amendment`.
       - A failure you find that no divergence covers becomes a new `divergence`, always with `resolution` `open` (fields as in the example of the reviewers: `source_ref`, `kind`, `text`, `evidence`, `work_item`).
       - Retirement: when a `contradicts` relation no longer holds (the contradiction was resolved and you verified it), retire it with a `retirement` item that names the relation. You retire only a `contradicts` you did not write. The reason goes in your reply message, because the graph records only the retirement.
+      - A retirement needs the `base` of the relation (its current record id), and no `omhl` command reads it. Get it in two Bash calls, each one `omhl append`: send the retirement first without `base`; the answer is `FORK_REJECTED` with `not-current`, and `details[0].current` is the record id of the relation. Send the same request again with that id as `base`. If the first call is refused for another reason (any other code, or `not-current` without a `current`), the relation does not exist, was already retired, or you wrote it: do not retry, report it.
     - Example: closing a divergence as `code-fixed` with a new evidence item.
 ```
 omhl append <<'EOF'
@@ -89,10 +90,16 @@ omhl append <<'EOF'
 ]}
 EOF
 ```
-    - Example: retiring a resolved `contradicts` relation.
+    - Example: retiring a resolved `contradicts` relation, first call (no `base`; the refusal returns `details[0].current`).
 ```
 omhl append <<'EOF'
 {"items":[{"body":{"kind":"retirement","lineage":{"kind":"relation","relation_type":"contradicts","from":"decisions.cap-export-rows","to":"decisions.no-export-cap"}}}]}
+EOF
+```
+    - Example: the second call, the same request with the `base` taken from `details[0].current`.
+```
+omhl append <<'EOF'
+{"items":[{"base":"<details[0].current from the FORK_REJECTED of the first call>","body":{"kind":"retirement","lineage":{"kind":"relation","relation_type":"contradicts","from":"decisions.cap-export-rows","to":"decisions.no-export-cap"}}}]}
 EOF
 ```
   </Tool_Usage>

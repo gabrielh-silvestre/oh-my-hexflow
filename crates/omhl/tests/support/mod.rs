@@ -12,6 +12,7 @@ pub mod omhl;
 pub mod pr_gate;
 pub mod project;
 pub mod raw;
+pub mod run;
 pub mod runner;
 pub mod scan;
 #[cfg(target_os = "linux")]

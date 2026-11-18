@@ -1,13 +1,10 @@
 mod support;
 
-use std::ffi::OsString;
 use std::fs;
 
 use hexlog::{AppendItem, AppendRequest, Author, RecordId};
-use omhl::adapters::cli;
 use omhl::error::OmhlError;
 use omhl::facade::Omhl;
-use omhl::project::Env;
 use serde_json::{Value, json};
 use support::omhl::{
     OmhlHarness, PR_7, RUN_TESTS, append_as, append_ok, append_ok_as, attestation_item, check_data,
@@ -19,46 +16,10 @@ use support::pr_gate::{
     relation_item, relation_retirement_item, seed_contradicted_decision, seed_critic_contradiction,
 };
 use support::project::Project;
+use support::run::{Run, run_omhl};
 use support::{FakeProbe, agent_author, author, cli_author, loader_author, role_author, snap};
 
 const DECISION_ID: &str = "decisions.x";
-
-/// Saída de um `omhl` rodado no mesmo processo, com o ambiente dado por valor.
-struct Run {
-    stdout: String,
-    stderr: String,
-}
-
-fn run_omhl(
-    project: &Project,
-    args: &[&str],
-    stdin: &str,
-    claude_code: bool,
-    role: Option<&str>,
-) -> Run {
-    let env = Env {
-        xdg_data_home: Some(project.xdg().as_os_str()),
-        home: None,
-        git_index_file: None,
-        parent_pid: 1,
-        claude_code,
-        role: role.map(str::to_owned),
-        plugin_root: None,
-    };
-    let argv = ["omhl", "--project-dir"]
-        .into_iter()
-        .map(OsString::from)
-        .chain([project.dir().as_os_str().to_owned()])
-        .chain(args.iter().map(OsString::from));
-    let (mut out, mut err) = (Vec::new(), Vec::new());
-
-    cli::run(argv, &mut stdin.as_bytes(), &mut out, &mut err, &env);
-
-    Run {
-        stdout: String::from_utf8_lossy(&out).into_owned(),
-        stderr: String::from_utf8_lossy(&err).into_owned(),
-    }
-}
 
 fn json_line(text: &str) -> Value {
     serde_json::from_str(text.trim_end()).expect("the line is JSON")
