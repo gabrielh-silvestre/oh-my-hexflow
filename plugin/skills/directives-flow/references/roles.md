@@ -4,7 +4,7 @@ Quando consultar: antes de chamar um agente do plugin (o que passar a ele), ao l
 
 ## A matriz
 
-A matriz de comandos, tipos de node, relações e retiradas de cada papel está numa tabela só, na seção "A matriz por papel" de [directives-flow.md](https://github.com/gabrielh-silvestre/oh-my-hexflow/blob/main/docs/directives-flow.md#a-matriz-por-papel). Esta página não a copia. Leitura (`omhl list`, `omhl get` e os demais) vale para os sete papéis; `attest`, `load`, `close`, `gate-pr` e `gate-worktree` não valem para nenhum.
+A matriz de comandos, tipos de node, relações e retiradas de cada papel está numa tabela só, na seção "A matriz por papel" de [directives-flow.md](https://github.com/gabrielh-silvestre/oh-my-hexflow/blob/main/docs/directives-flow.md#a-matriz-por-papel). Esta página não a copia. A matriz da versão instalada está no frontmatter (`omhl-allow`) de cada agente em `plugin/agents/`, por exemplo [critic.md](../../../agents/critic.md). Leitura (`omhl list`, `omhl get` e os demais) vale para os sete papéis; `attest`, `load`, `close`, `gate-pr` e `gate-worktree` não valem para nenhum.
 
 ## O que a sessão principal passa a cada agente
 
@@ -15,12 +15,14 @@ A chamada é `oh-my-hexflow:<papel>`. Todo agente recebe o id do work item (`wor
 | `oh-my-hexflow:analyst` | Nada além do id; o pedido do humano, se houver |
 | `oh-my-hexflow:planner` | O slug da spec; as perguntas abertas do analyst |
 | `oh-my-hexflow:architect` | Nada além do id; a objeção do critic, nas voltas seguintes |
-| `oh-my-hexflow:critic` | A pasta da spec, `.omhl/specs/wi-<id>__<slug>/` |
+| `oh-my-hexflow:critic` | O caminho absoluto da pasta da spec |
 | `oh-my-hexflow:code-reviewer` | A pasta da spec e a mudança a revisar |
 | `oh-my-hexflow:security-reviewer` | A pasta da spec e a mudança a revisar |
 | `oh-my-hexflow:verifier` | A pasta da spec; o id da divergência a conferir; o par `from`/`to` de cada `contradicts` a retirar |
 
-A spec mora no checkout principal, fora da worktree do agente: sem a pasta, os leitores da spec não a encontram. O par `from`/`to` vem das respostas que gravaram o `contradicts`; nenhum comando de leitura devolve relações, então o verifier não o adivinha e devolve o pedido se faltar.
+A spec mora no checkout principal, fora da worktree do agente. Passe o caminho **absoluto** da pasta, no checkout principal: o `dir` do `omhl spec init`, que o planner repete em "Spec written to". Um caminho relativo (`.omhl/specs/wi-<id>__<slug>/`) não existe dentro da worktree, e sem a pasta os leitores da spec não a encontram.
+
+O par `from`/`to` de cada `contradicts` vem das linhas `contradicts: <from> -> <to>` que o critic e os revisores listam na resposta (peça no pedido). Para conferir o que está vigente, ou se a resposta não trouxe o par, rode `omhl project` e leia a seção `## Relations` de `.omhl/projection/work-items.<id>.md`: a projeção só lista relações não retiradas. Nenhum comando de leitura do banco (`omhl list`, `omhl get`, `omhl render`) devolve relações, e o verifier não roda `project`: sem o par no pedido, ele o devolve.
 
 ## O que fazer com a resposta
 

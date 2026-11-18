@@ -1017,3 +1017,16 @@ fn it_should_put_the_rests_on_instruction_inside_the_tool_usage_part_that_says_w
         }
     }
 }
+
+#[test]
+fn it_should_make_every_decision_recording_reviewer_list_each_relation_as_a_from_to_pair_in_the_final_message()
+ {
+    for role in ["critic", "code-reviewer", "security-reviewer"] {
+        let contract = squash(&section(&agent(role).body, "Final_Response_Contract"));
+
+        assert!(
+            contract.contains("`<relation>: <from> -> <to>`"),
+            "{role}: the final message must list each relation as a from -> to pair"
+        );
+    }
+}

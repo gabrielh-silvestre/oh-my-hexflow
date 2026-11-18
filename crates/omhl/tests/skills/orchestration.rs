@@ -103,7 +103,7 @@ fn it_should_call_the_verifier_before_spec_validate_in_plan_consensus() {
     let verifier = line_with(&text, &["oh-my-hexflow:verifier", "contexto isolado"])
         .expect("a step that calls the verifier in an isolated context");
     let validate =
-        line_with(&text, &["omhl spec validate"]).expect("a step that cites spec validate");
+        line_with(&text, &["rode `omhl spec validate"]).expect("the final spec validate step");
 
     assert!(verifier < validate, "the verifier step comes first");
     assert!(
@@ -249,4 +249,337 @@ fn it_should_tell_review_to_list_decisions_and_critic_confirmed_premises_without
         line_with(&text, &["confirmed_by.by", "critic", "author.agent"]).is_some(),
         "the rows come from the critic: decisions by author.agent, premises by confirmed_by.by"
     );
+}
+
+// --- Endurecimento da revisão da S5: testes por regra, ancorados no passo numerado e sem negação ---
+
+const NEGATIONS: [&str; 3] = ["não", "nunca", "sem "];
+
+/// As linhas numeradas (`N. ...`) do corpo, na ordem em que aparecem.
+fn numbered_steps(text: &str) -> Vec<String> {
+    let step = regex::Regex::new(r"^\d+\. ").expect("regex");
+    body(text)
+        .lines()
+        .filter(|line| step.is_match(line))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Índice do primeiro passo numerado que contém todos os `needles`.
+fn step_with(text: &str, needles: &[&str]) -> Option<usize> {
+    numbered_steps(text)
+        .iter()
+        .position(|step| needles.iter().all(|needle| step.contains(needle)))
+}
+
+/// O trecho da linha antes de `marker`: uma negação ali inverteria a regra.
+fn prefix_has_negation(line: &str, marker: &str) -> bool {
+    let prefix = line.split(marker).next().unwrap_or_default();
+    NEGATIONS.iter().any(|negation| prefix.contains(negation))
+}
+
+#[test]
+fn it_should_order_the_plan_consensus_steps_by_number_and_never_negate_the_verifier_call() {
+    let text = read("plan-consensus/SKILL.md");
+
+    let technical_critic = step_with(
+        &text,
+        &[
+            "oh-my-hexflow:critic",
+            "premissas técnicas",
+            "ainda não há plano",
+        ],
+    )
+    .expect("a step where the critic confirms the technical premises before any plan exists");
+    let planner = step_with(&text, &["oh-my-hexflow:planner"]).expect("the planner step");
+    let architect = step_with(&text, &["oh-my-hexflow:architect"]).expect("the architect step");
+    let verifier = step_with(
+        &text,
+        &["oh-my-hexflow:verifier", "contexto isolado", "contradicts"],
+    )
+    .expect("the verifier step");
+    let validate = step_with(&text, &["rode `omhl spec validate"]).expect("the final validate");
+    let steps = numbered_steps(&text);
+
+    assert!(technical_critic < planner && planner < architect && architect < verifier);
+    assert!(
+        verifier < validate,
+        "the verifier step comes before the final validate"
+    );
+    assert!(!prefix_has_negation(
+        &steps[verifier],
+        "oh-my-hexflow:verifier"
+    ));
+}
+
+#[test]
+fn it_should_tell_plan_consensus_that_the_planner_validates_and_the_last_validate_is_the_final_check()
+ {
+    let text = read("plan-consensus/SKILL.md");
+    let planner = &numbered_steps(&text)[step_with(&text, &["oh-my-hexflow:planner"]).unwrap()];
+
+    assert!(
+        planner.contains("e a valida"),
+        "the planner validates the spec"
+    );
+    assert!(
+        planner.contains("conferência final"),
+        "the last validate is the final check"
+    );
+    assert!(
+        !planner.contains("fica para"),
+        "the validation is not deferred"
+    );
+}
+
+#[test]
+fn it_should_define_acceptance_and_the_loop_exits_in_plan_consensus() {
+    let text = read("plan-consensus/SKILL.md");
+    let rounds = &numbered_steps(&text)[step_with(&text, &["3 voltas"]).expect("the rounds step")];
+
+    for phrase in [
+        "`ACCEPT`",
+        "ACCEPT-WITH-RESERVATIONS",
+        "terceira",
+        "impasse",
+        "dono",
+        "gate-pr",
+    ] {
+        assert!(rounds.contains(phrase), "the rounds step lacks '{phrase}'");
+    }
+    assert!(
+        step_with(
+            &text,
+            &["oh-my-hexflow:verifier", "`FAIL`", "volta sem aceite"]
+        )
+        .is_some(),
+        "a verifier FAIL counts as a round without acceptance"
+    );
+}
+
+#[test]
+fn it_should_keep_the_critic_verdict_out_of_the_graph_in_plan_consensus() {
+    let text = read("plan-consensus/SKILL.md");
+
+    assert!(
+        step_with(&text, &["veredito", "só na mensagem", "não o grave"]).is_some(),
+        "the verdict circulates only in the message"
+    );
+}
+
+#[test]
+fn it_should_hand_agents_the_absolute_spec_folder_and_the_from_to_pairs_in_both_skills() {
+    for skill in ["plan-consensus", "review"] {
+        let text = read(&format!("{skill}/SKILL.md"));
+
+        assert!(
+            line_with(&text, &["**absoluto**", "não existe dentro da worktree"]).is_some(),
+            "{skill}: the spec folder is passed as an absolute path"
+        );
+        assert!(
+            line_with(
+                &text,
+                &["<from> -> <to>", "## Relations", "work-items.<id>.md"]
+            )
+            .is_some(),
+            "{skill}: the pairs come from the reply or from the projection"
+        );
+    }
+}
+
+#[test]
+fn it_should_tell_roles_md_where_the_from_to_pair_is_read_and_who_can_read_it() {
+    let roles = base_reference("roles.md");
+
+    assert!(
+        line_with(
+            &roles,
+            &[
+                "omhl project",
+                "## Relations",
+                ".omhl/projection/work-items.<id>.md"
+            ]
+        )
+        .is_some(),
+        "the projection holds the live relations"
+    );
+    assert!(
+        line_with(&roles, &["verifier não roda `project`"]).is_some(),
+        "the verifier cannot run project, so the pair travels in the request"
+    );
+    assert!(
+        !roles.contains("nenhum comando de leitura devolve relações"),
+        "the false statement is gone"
+    );
+    assert!(
+        line_with(&roles, &["**absoluto**", "dir", "omhl spec init"]).is_some(),
+        "the spec folder is absolute"
+    );
+}
+
+#[test]
+fn it_should_state_each_cycle_step_with_its_role() {
+    let cycle = base_reference("cycle.md");
+    let expectations: [(usize, &[&str]); 8] = [
+        (2, &["oh-my-hexflow:analyst"]),
+        (3, &["oh-my-hexflow:critic", "técnico"]),
+        (4, &["oh-my-hexflow:planner", "omhl spec init"]),
+        (5, &["oh-my-hexflow:architect", "rests-on"]),
+        (6, &["oh-my-hexflow:critic", "contradicts"]),
+        (7, &["3 voltas", "dono"]),
+        (
+            9,
+            &[
+                "oh-my-hexflow:code-reviewer",
+                "oh-my-hexflow:security-reviewer",
+                "oh-my-hexflow:verifier",
+            ],
+        ),
+        (10, &["omhl gate-pr", "omhl close"]),
+    ];
+
+    for (number, needles) in expectations {
+        let step = cycle
+            .lines()
+            .find(|line| line.starts_with(&format!("{number}. ")))
+            .unwrap_or_else(|| panic!("cycle.md has step {number}"));
+
+        for needle in needles {
+            assert!(
+                step.contains(needle),
+                "cycle.md step {number} lacks '{needle}'"
+            );
+        }
+    }
+}
+
+#[test]
+fn it_should_keep_roles_md_free_of_a_copy_of_the_matrix() {
+    let roles = base_reference("roles.md");
+
+    for row in roles.lines().filter(|line| line.starts_with('|')) {
+        assert_eq!(
+            row.matches('|').count(),
+            3,
+            "only the two-column pass table: {row}"
+        );
+    }
+    assert!(
+        roles.contains("](../../../agents/critic.md)"),
+        "a relative link to the matrix that travels with the installed version"
+    );
+}
+
+#[test]
+fn it_should_forbid_claude_from_retiring_and_keep_the_owner_rule_affirmative() {
+    let roles = base_reference("roles.md");
+    let owner = roles
+        .lines()
+        .find(|line| line.contains("O dono (`user`)"))
+        .expect("the owner line");
+
+    assert!(
+        line_with(
+            &roles,
+            &["`claude`", "não retira", "role-retirement-forbidden"]
+        )
+        .is_some(),
+        "claude does not retire"
+    );
+    assert!(!prefix_has_negation(owner, "retira um `contradicts`"));
+    assert!(owner.contains("só num terminal externo, fora do Claude Code"));
+}
+
+#[test]
+fn it_should_not_say_in_the_base_skill_that_every_record_is_claude() {
+    let base = read("directives-flow/SKILL.md");
+
+    assert!(
+        line_with(
+            &base,
+            &[
+                "`claude` na sessão principal",
+                "`omhl:<papel>` num agente do plugin",
+                "`user` para o dono"
+            ]
+        )
+        .is_some(),
+        "the recorded agent depends on who runs the command"
+    );
+}
+
+#[test]
+fn it_should_point_review_findings_to_a_decision_that_rests_on_a_guideline_or_premise_never_on_a_decision()
+ {
+    let text = read("review/SKILL.md");
+
+    assert!(
+        line_with(
+            &text,
+            &[
+                "`rests-on` para uma diretriz ou premissa confirmada",
+                "nunca para uma `decision`",
+                "`contradicts`"
+            ]
+        )
+        .is_some()
+    );
+    assert!(line_with(&text, &["`source_ref` no `CA-###`", "`resolution` `open`"]).is_some());
+    assert!(line_with(&text, &["o resto", "só na mensagem"]).is_some());
+}
+
+#[test]
+fn it_should_close_the_review_loop_when_the_verifier_fails_or_leaves_a_divergence_open() {
+    let text = read("review/SKILL.md");
+    let steps = numbered_steps(&text);
+    let loop_step = step_with(&text, &["`FAIL`", "`open`", "volte ao passo 3"])
+        .expect("a step that loops back to step 3");
+    let fix = step_with(&text, &["Corrija o código"]).expect("the fix step");
+
+    assert!(steps[loop_step].contains("chame-o de novo"));
+    assert_eq!(fix + 1, 3, "the loop target is the fix step");
+}
+
+#[test]
+fn it_should_give_the_pr_table_recipe_its_header_the_critic_path_and_the_pagination() {
+    let review = read("review/SKILL.md");
+    let template = base_reference("tracking-table.md");
+
+    assert!(
+        review.contains("`data.confirmed_by.by`"),
+        "the critic path lives under data"
+    );
+    assert!(
+        line_with(&review, &["next_after_seq", "--after-seq <n>"]).is_some(),
+        "the listing is paginated"
+    );
+    assert!(
+        template.contains("`| ID | Item | Estado | Evidência |`"),
+        "the PR table header"
+    );
+    assert!(line_with(&template, &["**Item:**", "`data.text`"]).is_some());
+    assert!(line_with(&template, &["**Evidência:**", "mensagem do verifier"]).is_some());
+    assert!(line_with(&template, &["**ID:**", "texto simples"]).is_some());
+}
+
+#[test]
+fn it_should_keep_the_two_fixed_reply_fields_and_the_gap_recording_rule_in_both_skills() {
+    for skill in ["plan-consensus", "review"] {
+        let text = read(&format!("{skill}/SKILL.md"));
+
+        assert!(text.contains("**Next role:**"), "{skill}: Next role field");
+        assert!(
+            line_with(
+                &text,
+                &[
+                    "**Open questions for the main session:**",
+                    "`gap`",
+                    "`omhl append`",
+                    "`kind`"
+                ]
+            )
+            .is_some(),
+            "{skill}: open questions become gaps with the suggested kind"
+        );
+    }
 }

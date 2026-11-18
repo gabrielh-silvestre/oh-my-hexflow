@@ -31,7 +31,16 @@ Regras:
 
 - **Uma linha por card de item, com o mesmo ID.** Um grupo é uma linha em negrito, sem estado.
 - **A célula do ID é um link para o card dela:** `[M1](#m1)`, o ID em minúsculas e sem pontuação (`1.1` vira `#11`). O card fica acima, sob um título só com o ID. Linhas de grupo não levam link. Numa tabela sem cards, como a do PR, o ID é texto simples.
-- **A última coluna é uma linha.** O detalhe fica no card. Na tabela do PR, ela é a coluna de evidência e leva a mensagem do verifier quando houve retirada.
+- **A última coluna é uma linha.** O detalhe fica no card.
 - **Recontar a linha de totais a cada mudança.** Ela conta só as linhas de item, não as de grupo.
 - **`Para revisitar ao final`** lista só as decisões tomadas provisoriamente. Tire a entrada quando ela se resolver.
 - **Legenda:** mantenha os seis estados acima; um estado novo é decisão do dono, não de quem escreve.
+
+## A tabela do PR
+
+Sem cards, a tabela do PR usa o cabeçalho `| ID | Item | Estado | Evidência |`:
+
+- **ID:** o id do node em texto simples (`decisions.<nome>`, `premises.<nome>`).
+- **Item:** o `data.text` do node.
+- **Estado:** um dos seis da legenda. O significado de cada um na tabela do PR ainda não está fixado: na dúvida, pergunte ao dono, não invente.
+- **Evidência:** a mensagem do verifier quando houve retirada; senão, vazia.

@@ -203,6 +203,7 @@ EOF
     - Your LAST assistant message is the deliverable surfaced to callers. It MUST contain the full structured code review above, including Code Review Summary, severity counts, Issues, Open Questions when any, Positive Observations, Records Written, and Recommendation.
     - Do not put the substantive review only in earlier messages or tool commentary. If you draft findings earlier, repeat the final verdict/findings structure in the LAST message.
     - Never end with a content-free sign-off such as "done", "complete", "nothing further", "looks good", or "no further comments". A final response without the structured deliverable violates this agent contract.
+    - In Records Written, add for every relation recorded one line `<relation>: <from> -> <to>` with the node ids (the main session needs the `contradicts` pairs to hand them to the verifier).
     - The final message ends with the Handoff fields: the next role the main session should call (or "none") and the open questions for the main session, each marked `technical` or `business`.
   </Final_Response_Contract>
 

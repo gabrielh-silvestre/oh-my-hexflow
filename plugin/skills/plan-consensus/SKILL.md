@@ -12,19 +12,20 @@ Você é a sessão principal: chama cada agente como `oh-my-hexflow:<papel>`, um
 ## Antes de começar
 
 - O work item está gravado e aberto (`work-items.<id>`), com o prefixo e o slug escolhidos.
-- Cada chamada leva o id do work item. Quem lê a spec leva também a pasta dela, `.omhl/specs/wi-<id>__<slug>/`.
+- Cada chamada leva o id do work item. Quem lê a spec leva também o caminho **absoluto** da pasta dela, no checkout principal: o `dir` do `omhl spec init`, que o planner repete em "Spec written to". Um caminho relativo não existe dentro da worktree.
 
 ## Os passos
 
 1. Chame `oh-my-hexflow:analyst` com o id. Ele grava premissas `assumed` e gaps com `kind`.
-2. Leve ao humano o que for de negócio (premissa e gap `business`, ou gap sem `kind`) e grave a confirmação com as regras da base. O que for técnico fica para o critic, no passo 5.
-3. Chame `oh-my-hexflow:planner` com o id e o slug. Ele cria e escreve a spec; a validação fica para o passo 8.
-4. Chame `oh-my-hexflow:architect` com o id. Ele grava cada `decision` com o `rests-on` para a âncora.
-5. Chame `oh-my-hexflow:critic` com o id e a pasta da spec. Ele confirma as premissas técnicas, responde os gaps `technical` e grava `supports` ou `contradicts` nas decisões. O veredito circula só na mensagem: não o grave.
-6. Se o critic não aceitar, abra outra volta: devolva as objeções ao architect (e ao planner, se a spec muda) e chame o critic de novo. **São no máximo 3 voltas.** Na terceira sem aceite, pare: mostre ao dono o impasse (o veredito do critic e os `contradicts` vigentes) e espere a decisão dele.
-7. Com o aceite do critic, chame `oh-my-hexflow:verifier` em contexto isolado (passe só o id, a pasta da spec e o par `from`/`to` de cada `contradicts` de voltas anteriores) para conferir que cada `decision` revisada do architect responde ao `contradicts` e retirar os `contradicts` resolvidos. A relação aponta para o id do node, não para a revisão: sem a retirada, ela segue vigente depois da revisão e trava o gate do PR.
-8. Só então rode `omhl spec validate work-items.<id>`.
-9. Com a spec válida, siga o passo 8 do ciclo: `omhl gate-worktree` e a worktree.
+2. Leve ao humano o que for de negócio (premissa e gap `business`, ou gap sem `kind`) e grave a confirmação com as regras da base.
+3. Chame `oh-my-hexflow:critic` só para confirmar as premissas técnicas e responder os gaps `technical`; diga isso no pedido, porque ainda não há plano para julgar. O architect só ancora em premissa confirmada.
+4. Chame `oh-my-hexflow:planner` com o id e o slug. Ele cria a spec e a valida (o `omhl spec validate` é parte do trabalho dele); o passo 9 é a conferência final depois das voltas.
+5. Chame `oh-my-hexflow:architect` com o id. Ele grava cada `decision` com o `rests-on` para a âncora.
+6. Chame `oh-my-hexflow:critic` com o id e a pasta da spec. Ele julga o plano e grava `supports` ou `contradicts` nas decisões. O veredito circula só na mensagem: não o grave. Peça que ele liste cada relação gravada como `<relação>: <from> -> <to>`.
+7. Aceite é o veredito `ACCEPT`. `ACCEPT-WITH-RESERVATIONS` vai ao dono com as reservas, e ele decide. `REJECT` ou `REVISE` abre outra volta: devolva as objeções ao architect (e ao planner, se a spec muda) e chame o critic de novo. A volta 1 são os passos 5 e 6. **São no máximo 3 voltas.** Na terceira sem aceite, pare: mostre ao dono o impasse (o veredito do critic e os `contradicts` vigentes) e espere a decisão dele. Os `contradicts` seguem vigentes e travam o `omhl gate-pr`: o dono os retira num terminal fora do Claude Code, ou manda revisar e o verifier retira.
+8. Com o aceite, chame `oh-my-hexflow:verifier` em contexto isolado (passe só o id, a pasta absoluta da spec e o par `from`/`to` de cada `contradicts` de voltas anteriores) para conferir que cada `decision` revisada do architect responde ao `contradicts` e retirar os `contradicts` resolvidos. Os pares estão nas linhas `contradicts: <from> -> <to>` da resposta do critic e na seção `## Relations` de `.omhl/projection/work-items.<id>.md` (veja [roles.md](../directives-flow/references/roles.md)). A relação aponta para o id do node, não para a revisão: sem a retirada, ela segue vigente depois da revisão e trava o gate do PR. Verifier em `FAIL` ou `INCOMPLETE` conta como volta sem aceite: devolva ao architect (passo 5).
+9. Só então rode `omhl spec validate work-items.<id>`.
+10. Com a spec válida, siga o passo 8 do ciclo ([cycle.md](../directives-flow/references/cycle.md)): `omhl gate-worktree` e a worktree.
 
 ## O que fazer com a resposta de cada agente
 
