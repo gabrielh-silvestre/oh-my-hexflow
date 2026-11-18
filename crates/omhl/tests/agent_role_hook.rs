@@ -13,44 +13,14 @@ use omhl::workflow::omhl_leaf::{GLOBAL_OPTIONS, INFO_FLAGS};
 use omhl::workflow::role_allow::parse_role_allow;
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
-use support::hook::assert_released_with_code;
+use support::hook::{
+    assert_released_with_code, bash_call, bash_call_with, decision_of, json_line, run_agent_role_in,
+};
 use tempfile::TempDir;
-
-fn json_line(text: &str) -> Value {
-    serde_json::from_str(text.trim_end()).expect("the line is JSON")
-}
 
 // agent-role: regras decididas antes de ler a matriz do agente
 
 const PORTED_AGENT: &str = "oh-my-hexflow:verifier";
-
-/// Evento PreToolUse do Bash; sem `agent_type` é a sessão principal.
-fn bash_call(command: &str, agent_type: Option<&str>) -> String {
-    bash_call_with(&json!({ "command": command }), agent_type)
-}
-
-/// Como `bash_call`, com o `tool_input` inteiro à escolha (`description`, `timeout`...).
-fn bash_call_with(tool_input: &Value, agent_type: Option<&str>) -> String {
-    let mut event = json!({
-        "session_id": "s1",
-        "hook_event_name": "PreToolUse",
-        "cwd": "/tmp",
-        "tool_name": "Bash",
-        "tool_input": tool_input,
-    });
-    if let Some(agent_type) = agent_type {
-        event["agent_type"] = json!(agent_type);
-    }
-
-    event.to_string()
-}
-
-fn run_agent_role_in(plugin_root: &Path, stdin: &str) -> Child {
-    omhl(&["hook", "agent-role"])
-        .env("CLAUDE_PLUGIN_ROOT", plugin_root)
-        .stdin(stdin)
-        .run()
-}
 
 /// Roda `omhl hook agent-role` com a raiz das fixtures, onde os sete papéis têm `agents/<papel>.md` legível:
 /// uma negação vem da regra que o teste mira, nunca de um arquivo de agente ausente.
@@ -447,17 +417,6 @@ fn run_as(role: &str, command: &str) -> Child {
     let agent_type = format!("oh-my-hexflow:{role}");
 
     run_agent_role_in(&fixtures_root(), &bash_call(command, Some(&agent_type)))
-}
-
-/// O `hookSpecificOutput` da resposta; falha se o hook ficou calado.
-fn decision_of(output: &Child) -> Value {
-    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
-    assert!(
-        !output.stdout.is_empty(),
-        "expected a decision, stdout is empty"
-    );
-
-    json_line(&output.stdout)["hookSpecificOutput"].clone()
 }
 
 fn assert_allowed_with_prefix(output: &Child, role: &str, command: &str) {
