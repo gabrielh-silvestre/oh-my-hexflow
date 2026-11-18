@@ -21,7 +21,7 @@ O autor da attestation do `check run` é sempre `executor`, também quando a aç
 ## Consequências
 
 - Exigir `loader` na revisão e na retirada fecha dois desvios: sem isso, `checks.lint` viraria texto e seria atestado à mão, ou o gate deixaria de cobrá-lo.
-- É um freio, não uma parede. O agente que chama a CLI pelo Bash continua indistinguível do usuário, e o agente ainda pode rodar `omhl check run`. Não foi verificado se ele consegue gravar direto no arquivo do banco.
+- É um freio, não uma parede. O agente que chama a CLI pelo Bash continua indistinguível do usuário, e o agente ainda pode rodar `omhl check run`. Não foi verificado se ele consegue gravar direto no arquivo do banco. Atualizado em parte pelo [ADR 0008](0008-papel-do-agente-imposto-por-hook-e-matriz.md): para o agente portado, o record sai com `agent: "omhl:<papel>"` e a guarda aplica a matriz do papel; contra a má-fé a frase continua valendo.
 - O `spec_digest` de cada attestation prende o veredito à definição vigente do check, e só o `executor` pode gravá-lo. Quem edita o TOML, roda `omhl load`, roda o `check run` e restaura o arquivo obtém uma attestation válida para a definição que ficou no banco: o `spec_digest` fecha o caso sem má-fé, não o bypass deliberado.
 - Toda fixture de teste que grava um check com `run` usa o autor `loader`, e toda attestation desse check usa `executor`.
 - Toda fixture de teste que retira uma diretiva usa o autor `guideline-retire`.

@@ -4,7 +4,7 @@ Vocabulário em [GLOSSARY.md](../GLOSSARY.md). Visão geral e primeiros passos n
 
 O humano define diretivas e premissas. O agente escolhe os comportamentos e escreve a spec a partir delas. Este fluxo roda no binário `omhl`, sem o hexlog em TypeScript. O núcleo `crates/hexlog` não muda: tipos, relações, gates, hooks e comandos deste fluxo são do `omhl`.
 
-**Estado de ativação.** O gate de criação da worktree (`.config/wt.toml`) e o hook de congelamento (`PreToolUse` em `plugin/hooks/hooks.json`) estão ativos: o `wt` chama o `omhl gate-worktree` antes de criar uma worktree, e o Claude Code chama o `omhl hook spec-lock` antes de cada `Edit`, `Write` e `MultiEdit`. A ordem da ativação e o que o dono faz a cada mudança estão na seção 10.
+**Estado de ativação.** O gate de criação da worktree (`.config/wt.toml`) e os dois hooks `PreToolUse` do plugin (`plugin/hooks/hooks.json`) estão ativos: o `wt` chama o `omhl gate-worktree` antes de criar uma worktree, o Claude Code chama o `omhl hook spec-lock` antes de cada `Edit`, `Write` e `MultiEdit`, e chama o `omhl hook agent-role` antes de cada `Bash` (seção 12). A ordem da ativação e o que o dono faz a cada mudança estão na seção 10.
 
 Os exemplos de saída vêm de uma execução real do `omhl` num repositório descartável. Onde um caminho absoluto aparece, ele foi encurtado para `<repo>`.
 
@@ -23,6 +23,8 @@ Os exemplos de saída vêm de uma execução real do `omhl` num repositório des
 | 9 | Promoção | Agente e humano | Premissa repetida em 3 work items distintos vira sugestão de diretiva. O humano confirma |
 
 Ordem do protocolo, antes do código: escolher prefixo, id e slug; gravar o work item (`work-items.<id>`); sugerir as premissas; confirmar com o humano; criar e validar a spec; só então `wt switch -c`.
+
+A tabela descreve o protocolo sem dizer quem o cumpre. Com os agentes do plugin, cada etapa tem um papel `oh-my-hexflow:<papel>` e há uma volta de consenso entre o architect e o critic antes da spec valer: o ciclo de dez passos está na seção 12.
 
 O work item nasce pelo `append` que já existia, sem comando novo. A guarda recusa premissa, gap e divergência novos cujo `work_item` não aponta para um work item aberto.
 
@@ -58,6 +60,7 @@ Um erro sai no stderr, numa linha JSON, com código de saída 1. Uma saída de s
 | `omhl spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
 | `omhl gate-worktree --branch <nome>` | Decide se a worktree da branch pode ser criada |
 | `omhl hook spec-lock` | Hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de spec congelada |
+| `omhl hook agent-role` | Hook `PreToolUse` do Claude Code para o `Bash` e o `Monitor`: lê o evento no stdin e aplica a matriz do papel ao agente portado (seção 12) |
 | `omhl report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |
 | `omhl report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção |
 | `omhl report retro <work-item>` | A retro de um work item, aberto ou fechado |
@@ -82,9 +85,9 @@ Um filtro válido pode devolver `[]` de verdade (um `work_item` sem nodes, um `-
 omhl list --type divergence --where work_item=work-items.w1 --where resolution=open
 ```
 
-**Autoria.** Grave tudo pela CLI: `omhl append` (JSON no stdin) e `omhl attest`. A CLI grava `agent: "user"`, com uma exceção: sob o Claude Code (variável `CLAUDECODE=1`, que ele e as extensões de IDE definem em subprocessos e terminais integrados: Bash, hooks, tmux e o terminal integrado da IDE), a CLI grava `agent: "claude"` com `client: "cli"`. O erro seguro é o falso positivo: um humano que roda o `omhl` dentro de uma sessão do Claude Code, ou no terminal integrado de uma IDE, sai registrado como agente. O inverso, `env -u CLAUDECODE`, grava `agent: "user"` (Follow-up da trava técnica, seção 3). Com `OMHL_ROLE=omhl:<papel>` sob o Claude Code, a CLI grava `agent: "omhl:<papel>"` no lugar de `"claude"` (seção 8, "A matriz por papel").
+**Autoria.** Grave tudo pela CLI: `omhl append` (JSON no stdin) e `omhl attest`. A CLI grava `agent: "user"`, com uma exceção: sob o Claude Code (variável `CLAUDECODE=1`, que ele e as extensões de IDE definem em subprocessos e terminais integrados: Bash, hooks, tmux e o terminal integrado da IDE), a CLI grava `agent: "claude"` com `client: "cli"`. O erro seguro é o falso positivo: um humano que roda o `omhl` dentro de uma sessão do Claude Code, ou no terminal integrado de uma IDE, sai registrado como agente. O inverso, `env -u CLAUDECODE`, grava `agent: "user"` (Follow-up da trava técnica, seção 3). Com `OMHL_ROLE=omhl:<papel>` sob o Claude Code, a CLI grava `agent: "omhl:<papel>"` no lugar de `"claude"` (seção 8, "A matriz por papel"). Quem define a variável para o agente portado é o hook `agent-role`, que a escreve no comando a partir do `agent_type` do evento (seção 12).
 
-**Skill do plugin.** A skill [`directives-flow`](../plugin/skills/directives-flow/SKILL.md) leva este fluxo ao agente. Para cada um dos comandos acima, que ela cobre (`append`, `gate-worktree`, `guideline retire`, `spec init`, `spec validate`), há uma página em [`plugin/skills/directives-flow/references/`](../plugin/skills/directives-flow/references/) com entradas, saída, erros e exemplos que um teste executa contra o `omhl` real (ver [architecture.md](architecture.md), seção 4). O `omhl attest` é coberto pela skill [`mechanical-checks`](../plugin/skills/mechanical-checks/SKILL.md).
+**Skills do plugin.** A skill [`directives-flow`](../plugin/skills/directives-flow/SKILL.md) leva este fluxo ao agente. Para cada um dos comandos acima, que ela cobre (`append`, `gate-worktree`, `guideline retire`, `spec init`, `spec validate`), há uma página em [`plugin/skills/directives-flow/references/`](../plugin/skills/directives-flow/references/) com entradas, saída, erros e exemplos que um teste executa contra o `omhl` real (ver [architecture.md](architecture.md), seção 4). A mesma pasta traz as páginas de apoio ao ciclo com os agentes: `cycle.md` (os dez passos), `roles.md` (quem faz cada papel e o que a sessão principal lhe passa) e `tracking-table.md` (o template da tabela do PR). Essas páginas não têm os cinco títulos das páginas de comando nem exemplos executáveis. O `omhl attest` é coberto pela skill [`mechanical-checks`](../plugin/skills/mechanical-checks/SKILL.md). As skills [`plan-consensus`](../plugin/skills/plan-consensus/SKILL.md) e [`review`](../plugin/skills/review/SKILL.md) conduzem a sessão principal pelos agentes (seção 12) e exigem a `directives-flow`.
 
 ## 3. Confirmação humana (`confirmed_by`)
 
@@ -392,7 +395,7 @@ omhl report answers --work-item work-items.w1
 | `answerer` | `human` quando a premissa que responde está confirmada (`confirmed` com `confirmed_by`) e o `by` começa com `person:`; `critic` quando o `by` é `critic`; `autonomous` em qualquer outro caso, inclusive a premissa antiga `confirmed` sem `confirmed_by` e a `assumed` com `confirmed_by` |
 | `no_criterion` | `true` quando nenhuma diretiva confirmada sustenta a resposta |
 
-Com mais de uma resposta, vale a premissa confirmada por pessoa. Sem ela, vale a confirmada pelo critic. Sem nenhuma das duas, vale a primeira em ordem de gravação; um empate entre respostas do mesmo respondente também cai na primeira gravada. A cadeira já aceita o papel `omhl:critic`, que responde só gap técnico (subseção abaixo). O agente que cumpre esse papel chega numa entrega posterior.
+Com mais de uma resposta, vale a premissa confirmada por pessoa. Sem ela, vale a confirmada pelo critic. Sem nenhuma das duas, vale a primeira em ordem de gravação; um empate entre respostas do mesmo respondente também cai na primeira gravada. A cadeira aceita o papel `omhl:critic`, que responde só gap técnico (subseção abaixo). O agente `oh-my-hexflow:critic` cumpre esse papel (seção 12).
 
 ### A matriz por papel
 
@@ -567,7 +570,7 @@ O gate do `wt` e o hook `spec-lock` estão ativos. A ativação seguiu esta orde
 
 1. Compile e reinstale o `omhl` fora de qualquer worktree, num único binário no `PATH`, por exemplo em `~/.local/bin` ([README](../README.md), "Instalação"). O plugin (hooks) chama o `omhl` do `PATH`, sem cópia por worktree.
 2. Rode `omhl hooks install`.
-3. Só então versione o `.config/wt.toml` e a entrada `PreToolUse` (`matcher` `Edit|Write|MultiEdit`) em `plugin/hooks/hooks.json`.
+3. Só então versione o `.config/wt.toml` e as entradas `PreToolUse` em `plugin/hooks/hooks.json`: `Edit|Write|MultiEdit` para o `spec-lock` e `Bash|Monitor` para o `agent-role`.
 4. O dono roda `wt config approvals add` e confere com `wt config approvals list` (seção 5), antes de qualquer `wt switch` do agente.
 
 Depois de puxar mudanças, recompile e reinstale o `omhl` do `PATH` antes de usar o plugin. Um `omhl` velho, sem o subcomando `hook spec-lock`, sairia com `2` (erro de uso do clap), e em `PreToolUse` isso bloquearia todo `Edit` e `Write`. O hook roda como `omhl hook spec-lock || exit 1`, que converte essa saída em `1` (erro não bloqueante, pois só a saída `2` bloqueia): a escrita passa, o Claude Code mostra o aviso de erro do hook, e o congelamento fica sem efeito até a reinstalação (limite abaixo). O mesmo vale para o binário ausente (saída `127`). A negação legítima vai por JSON com saída `0` e não depende do código de saída.
@@ -591,12 +594,16 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
 - O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
 - Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`. O comando não tem a guarda `{% if branch %}`.
-- O `confirmed_by` é autodeclarado por qualquer canal. A CLI aceita uma confirmação inventada, e o record forjado sai igual ao legítimo. O rótulo de autoria (`agent: "claude"`) depende de `CLAUDECODE=1`, e a CLI o perde com `env -u CLAUDECODE`. O `OMHL_ROLE` é autodeclarado do mesmo jeito: quem define a variável escolhe o papel, e o `agent: "omhl:<papel>"` é um rastro, não uma prova. A trava técnica contra forja não existe nesta entrega (seção 3).
+- O `confirmed_by` é autodeclarado por qualquer canal. A CLI aceita uma confirmação inventada, e o record forjado sai igual ao legítimo. O rótulo de autoria (`agent: "claude"`) depende de `CLAUDECODE=1`, e a CLI o perde com `env -u CLAUDECODE`. O `OMHL_ROLE` é autodeclarado do mesmo jeito: a CLI aceita o papel de quem definir a variável, e o `agent: "omhl:<papel>"` é um rastro, não uma prova. O hook `agent-role` define a variável para o agente portado (seção 12), dentro dos limites listados abaixo. A trava técnica contra forja não existe nesta entrega (seção 3).
+- Uma `divergence` aberta não bloqueia o `omhl gate-pr` nem o `omhl close`: o gate não pergunta por divergência. Os achados contra a spec ficam visíveis em `omhl report retro`, que lista as divergências. Aceito para a v1; revisar com os dados do piloto.
+- Um `contradicts` contra uma `guideline` fica fora do `no-open-contradiction`, que só olha as decisões do work item. Uma violação de diretiva não bloqueia o PR. A tabela do PR a lista quando o code-reviewer ou o security-reviewer a gravam como `decision` com `contradicts` vigente (skill `review`, passo 7), com o autor marcado; a violação que nenhum revisor grava só a leitura do PR pelo dono cobre. Aceito para a v1; reavaliar no piloto.
+- A razão de uma retirada de `contradicts` pelo verifier não fica no grafo: a retirada não tem `data`, e o verifier não grava `decision`. A razão fica na mensagem dele e na coluna de evidência da tabela do PR.
+- Não há comando que leia o id de uma relação. Por isso o verifier retira um `contradicts` em duas chamadas ao `omhl append`: a primeira, sem `base`, volta `FORK_REJECTED` com o id vigente; a segunda repete o pedido com esse id.
+- O hook `agent-role` protege contra o erro do agente, não contra a má-fé. Escapam dele, e o comando grava como `claude`, sem a matriz do papel: `bash -c`, `sudo` e os outros programas que executam comando sem estar na lista de embrulhos, `cargo run -p omhl -- append`, as ferramentas que não são o `Bash` nem o `Monitor`, um evento que o hook não consegue ler (stdin acima de 1 MiB ou JSON inválido: o erro vai ao stderr, a saída é `0` e o comando roda sem prefixo), o `omhl` velho ou ausente no `PATH` (o `|| exit 1` deixa o comando rodar sem prefixo; o Claude Code só mostra o aviso de erro do hook na transcrição) e um nome escondido por escape. A lista completa está em "Limites" no [ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md).
 - A spec vive no diretório principal, fora do git. Ela não vai com um clone e some com o diretório.
 - A busca de pastas de spec lê até 10 000 entradas e recusa (`spec-store-unusable`) o work item que tem mais de uma pasta `wi-<id>__*`, mesmo a segunda vazia.
 - O `spec-invalid` e o `amendment-invalid` mostram até 20 detalhes por erro.
 - O `close` de um work item com retro depende de a pasta de spec ser legível e de o `workflow.toml` ser válido (seção 8).
-- A cadeira aceita o papel `omhl:critic` (seção 8), mas o agente que o cumpre chega numa entrega posterior: por ora ninguém grava `supports` e `contradicts` sozinho.
 
 ## 11. Diretivas: `kind`, âncora e retirada
 
@@ -660,3 +667,61 @@ Com `--by`, o comando grava no mesmo pedido a relação `supersedes`, da diretiv
 | `guideline-retire-by-command` | A retirada de uma diretiva veio pelo `omhl append`; só o comando a grava |
 
 Cada recusa desta seção traz a causa em `message` e o próximo passo em `next_step`, sem repetir o valor de entrada.
+
+## 12. O ciclo com os agentes
+
+O plugin traz sete agentes (`oh-my-hexflow:analyst`, `planner`, `architect`, `critic`, `code-reviewer`, `security-reviewer` e `verifier`) e duas skills que conduzem a sessão principal por eles: [`plan-consensus`](../plugin/skills/plan-consensus/SKILL.md), dos passos 2 a 8, e [`review`](../plugin/skills/review/SKILL.md), dos passos 9 e 10. O ciclo abaixo é o da seção 1 com os papéis nomeados e a volta de consenso. A sessão principal chama um agente por vez, como `oh-my-hexflow:<papel>`, e um resumo dos mesmos passos está em [`cycle.md`](../plugin/skills/directives-flow/references/cycle.md).
+
+### Os dez passos
+
+1. **Work item.** A sessão principal grava `work-items.<id>` com `omhl append`, com o prefixo e o slug escolhidos.
+2. **Analyst.** O `oh-my-hexflow:analyst` grava premissas `assumed` e gaps, cada gap com `kind` (`technical` ou `business`).
+3. **Confirmação.** O que é de negócio vai ao humano, que confirma dentro da sessão. O que é técnico vai ao critic (`oh-my-hexflow:critic`), que confirma a premissa e responde o gap `technical`. Gap sem `kind` vai ao humano.
+4. **Planner.** O `oh-my-hexflow:planner` cria a spec com `omhl spec init`, a escreve em `.omhl/specs/wi-<id>__<slug>/` e a valida com `omhl spec validate` até passar.
+5. **Architect.** O `oh-my-hexflow:architect` grava cada `decision` com `rests-on` para a âncora.
+6. **Critic.** O `oh-my-hexflow:critic` julga o plano e grava `supports` ou `contradicts` nas decisões.
+7. **Consenso.** Architect e critic repetem os passos 5 e 6 em **no máximo 3 voltas**. O aceite é o veredito `ACCEPT`; `ACCEPT-WITH-RESERVATIONS` vai ao dono com as reservas. Na terceira volta sem aceite, a sessão principal para e mostra o impasse ao dono. Os `contradicts` seguem vigentes e travam o `omhl gate-pr`: o dono os retira num terminal fora do Claude Code, ou manda revisar e o verifier os retira. O veredito do critic circula só na mensagem entre os agentes e não vai ao grafo.
+8. **Spec e worktree.** Com o aceite, o `oh-my-hexflow:verifier` retira os `contradicts` resolvidos; um `FAIL` ou `INCOMPLETE` dele conta como volta sem aceite. Então vêm a conferência final com `omhl spec validate`, o `omhl gate-worktree`, a worktree e a implementação.
+9. **Revisão.** O `oh-my-hexflow:code-reviewer` e o `oh-my-hexflow:security-reviewer` revisam a entrega; cada achado vira uma `divergence` (código que não cumpre a spec) ou uma `decision` com `contradicts` (violação de diretiva ou de decisão). A sessão principal corrige o código das divergências abertas; um desvio que o dono aceita não é correção, e só a resposta dele grava `accepted`. Antes do gate do PR, o `oh-my-hexflow:verifier` fecha a `divergence` de `open` para `code-fixed`, com evidência nova, e retira os `contradicts` resolvidos.
+10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic; depois vêm `omhl gate-pr` e `omhl close`, pela skill [`work-item-closing`](../plugin/skills/work-item-closing/SKILL.md).
+
+```mermaid
+flowchart TD
+  P1["1 Work item - sessão principal"] --> P2["2 analyst: premissas e gaps"]
+  P2 --> P3["3 Confirmação: negócio ao humano, técnico ao critic"]
+  P3 --> P4["4 planner: spec e spec validate"]
+  P4 --> P5["5 architect: decision e rests-on"]
+  P5 --> P6["6 critic: supports ou contradicts"]
+  P6 --> P7{"7 Aceite do critic?"}
+  P7 -- "sim" --> P8A["8 verifier: retira contradicts resolvidos"]
+  P7 -- "não" --> LIM{"3 voltas feitas?"}
+  P8A -- "FAIL ou INCOMPLETE" --> LIM
+  LIM -- "não" --> P5
+  LIM -- "sim" --> ESC["Impasse: a sessão principal para e escala ao dono"]
+  P8A -- "ok" --> P8B["8 spec validate, gate-worktree, worktree e implementação"]
+  P8B --> P9["9 code-reviewer e security-reviewer"]
+  P9 --> FIX0["9 Corrigir o código das divergências"]
+  FIX0 --> V9["9 verifier: fecha divergências e retira contradicts"]
+  V9 -- "FAIL" --> FIX0
+  V9 -- "ok" --> P10["10 PR com a tabela do critic"]
+  P10 --> GP["gate-pr"]
+  GP --> CL["close"]
+```
+
+`ACCEPT-WITH-RESERVATIONS` fica fora do diagrama: vai ao dono com as reservas, e ele decide.
+
+### O que cada passo grava
+
+- Cada agente grava com o próprio papel no campo `agent` (`omhl:<papel>`). A sessão principal grava `claude`. O dono grava `user`, só pelo `omhl` fora do Claude Code (sem `CLAUDECODE`): terminais de IDE e `! omhl ...` dentro do Claude Code gravam `claude`.
+- O que o agente não pode gravar fica fora da matriz do papel (seção 8, "A matriz por papel") e volta na mensagem final dele. A sessão principal grava o que couber a ela, por exemplo um gap para cada pergunta em aberto.
+- A retirada de um `contradicts` cabe ao verifier e ao dono. Ninguém retira o que ele mesmo gravou.
+
+### O hook `agent-role`
+
+O hook é a entrada `PreToolUse` do `Bash` e do `Monitor` (matcher `Bash|Monitor`) em `plugin/hooks/hooks.json`, `omhl hook agent-role || exit 1`, com `timeout` de 10 s. A decisão fica em `app/agent_role.rs`, o leitor do comando de shell em `workflow/shell/` e a leitura do evento e do arquivo do agente nas bordas (`adapters/hook.rs`, `ports/files`). Ele não abre o banco.
+
+- **Quem é o agente.** O `agent_type` do evento é `oh-my-hexflow:<papel>` para um subagente do plugin. Sessão principal e agentes de outros plugins passam sem mudança.
+- **O que o agente portado roda.** O arquivo `plugin/agents/<papel>.md` traz no frontmatter o `omhl-allow` com os comandos do papel. O hook lê esse arquivo em `${CLAUDE_PLUGIN_ROOT}`, confere o comando `omhl` contra a lista e, quando está dentro, responde `allow` e escreve `OMHL_ROLE=omhl:<papel>` na frente do comando. Com o `allow`, o Claude Code pula o prompt de permissão desse comando nos modos `default` e `auto`, salvo regra `deny` ou `ask` das configurações do dono e as ações que nenhum modo aprova ([doc de hooks do Claude Code, "PreToolUse decision control"](https://code.claude.com/docs/en/hooks)).
+- **O que o hook nega** (resposta `deny` com o motivo, saída `0`): papel sem matriz; comando `omhl` fora da lista do papel; comando composto que contém `omhl` (pipe, `&&`, `||`, `;`, `&`, subshell, substituição `$(...)` ou crase, segunda linha); comando em que algo antes do `omhl` impede o prefixo (comentário, linha em branco, redirecionamento, `!` ou palavra de controle como `if`; só espaços e os embrulhos conhecidos, como `env`, `timeout` e `time`, podem vir antes); expansão (`$X`, `${...}`) na posição do programa ou da folha; heredoc sem aspas no terminador com `$(` ou crase no corpo; embrulho com opção que o leitor não conhece (quando uma palavra do comando é `omhl`); comando que menciona `omhl` e tem aspa ou heredoc sem fechar, passa de 64 níveis de aninhamento ou de 256 KiB; `CLAUDE_PLUGIN_ROOT` ausente, ou arquivo do agente ilegível ou sem um `omhl-allow` válido. Um evento ilegível não é negado: o hook sai com `0`, escreve o erro no stderr e o comando roda sem prefixo ([ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md), "Limites").
+- **A atribuição de `OMHL_ROLE` à mão** (`OMHL_ROLE=...`, `export`, `env -u OMHL_ROLE` e afins) é negada para qualquer origem, a sessão principal inclusive.
+- **A matriz tem três cópias que um teste mantém iguais:** a matriz compilada no `omhl` (`nodes`, `relations`, `retire`, com as condições finas do `append`), o `omhl-allow` de cada agente (`commands` e as listas do `append`) e a tabela única de `docs/directives-flow.md` (seção 8). A decisão e o limite estão no [ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md).
