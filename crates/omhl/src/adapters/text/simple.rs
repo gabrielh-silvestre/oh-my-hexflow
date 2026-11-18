@@ -4,7 +4,7 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::doc::{Closing, Line, dash, field, items, joined, one_line, opt_text, text};
+use super::doc::{Closing, Line, dash, field, has_items, items, joined, one_line, opt_text, text};
 use super::error;
 use super::vocab::{
     HASH_PREFIX_LEN, SECRET_WARNING, State, TIMED_OUT, UNCHANGED, WARNING, counted, plural,
@@ -165,7 +165,7 @@ impl Specialization for Project {
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
         ["written", "removed"]
             .into_iter()
-            .filter(|key| items(value, key).next().is_some())
+            .filter(|key| has_items(value, key))
             .map(|key| dash(vec![key.to_owned(), joined(value, key)]))
             .collect()
     }
@@ -262,9 +262,9 @@ impl Specialization for HooksInstall {
     }
 
     fn state(&self, value: &Value) -> State {
-        match items(value, "warnings").next() {
-            Some(_) => State::Warning,
-            None => State::Ok,
+        match has_items(value, "warnings") {
+            true => State::Warning,
+            false => State::Ok,
         }
     }
 

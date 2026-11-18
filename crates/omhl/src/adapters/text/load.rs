@@ -3,7 +3,7 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::doc::{Line, dash, items, joined, text};
+use super::doc::{Line, dash, has_items, items, joined, text};
 use super::error;
 use super::vocab::{State, UNCHANGED, WARNING, plural};
 
@@ -65,9 +65,9 @@ impl Specialization for Load {
     }
 
     fn state(&self, value: &Value) -> State {
-        match items(value, "warnings").next() {
-            Some(_) => State::Warning,
-            None => State::Ok,
+        match has_items(value, "warnings") {
+            true => State::Warning,
+            false => State::Ok,
         }
     }
 
@@ -109,7 +109,7 @@ impl Specialization for Load {
             ("orphans", "orphan"),
         ]
         .into_iter()
-        .filter(|(key, _)| items(value, key).next().is_some())
+        .filter(|(key, _)| has_items(value, key))
         .map(|(key, label)| dash(vec![label.to_owned(), joined(value, key)]));
         let skipped = items(value, "skipped").map(|entry| {
             dash(vec![

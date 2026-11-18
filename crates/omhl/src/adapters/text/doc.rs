@@ -149,6 +149,10 @@ pub fn items<'a>(value: &'a Value, key: &str) -> impl Iterator<Item = &'a Value>
     value[key].as_array().into_iter().flatten()
 }
 
+pub fn has_items(value: &Value, key: &str) -> bool {
+    items(value, key).next().is_some()
+}
+
 fn scalar_text(value: &Value) -> Option<String> {
     match value {
         Value::String(text) => Some(one_line(text)),

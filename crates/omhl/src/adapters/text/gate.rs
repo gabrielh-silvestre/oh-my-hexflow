@@ -3,7 +3,7 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::doc::{Closing, Join, Line, Marker, field, items, joined, opt_text, text};
+use super::doc::{Closing, Join, Line, Marker, field, has_items, items, joined, opt_text, text};
 use super::error;
 use super::report::Retro;
 use super::simple::Append;
@@ -136,7 +136,7 @@ fn question_lines(report: &Value, action: Option<&str>) -> Vec<Line> {
                 parts.push(kind);
             }
             parts.push(format!("matched {}", question["matched"]));
-            if items(question, "failing").next().is_some() {
+            if has_items(question, "failing") {
                 parts.push(format!("failing {}", joined(question, "failing")));
             }
             if question["omitted"].as_u64().is_some_and(|count| count > 0) {

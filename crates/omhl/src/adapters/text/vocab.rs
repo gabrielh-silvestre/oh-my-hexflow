@@ -37,11 +37,6 @@ pub fn seq_label(seq: impl Display) -> String {
     format!("seq {seq}")
 }
 
-/// `seq 3–9`.
-pub fn seq_range(first: impl Display, last: impl Display) -> String {
-    format!("seq {first}–{last}")
-}
-
 /// "N nouns", com o singular em 1.
 pub fn plural(count: usize, noun: &str) -> String {
     match count {

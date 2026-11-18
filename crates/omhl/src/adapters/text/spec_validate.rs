@@ -4,7 +4,7 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::doc::{Join, Line, Marker, dash, items, one_line, text};
+use super::doc::{Join, Line, Marker, dash, has_items, items, one_line, text};
 use super::error;
 use super::vocab::{State, plural};
 
@@ -39,8 +39,8 @@ impl Specialization for SpecValidate {
 
     /// Violação de emenda pendente não reprova, mas fica à vista.
     fn state(&self, value: &Value) -> State {
-        let has_violation = items(value, "amendments")
-            .any(|amendment| items(amendment, "violations").next().is_some());
+        let has_violation =
+            items(value, "amendments").any(|amendment| has_items(amendment, "violations"));
         match has_violation {
             true => State::Warning,
             false => State::Ok,
