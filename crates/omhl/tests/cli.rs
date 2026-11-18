@@ -1000,11 +1000,7 @@ fn it_should_accept_the_global_format_before_and_after_the_subcommand() {
 fn it_should_let_the_format_after_the_subcommand_win() {
     let project = Project::new("acme");
 
-    let output = in_project_raw(
-        &project,
-        &["--format", "json", "append", "--format", "agent"],
-    )
-    .run();
+    let output = in_project_raw(&project, &["--format", "json", "load", "--format", "agent"]).run();
 
     assert_eq!(output.code, Some(2));
     assert!(output.stderr.contains(NOT_YET), "stderr: {}", output.stderr);
@@ -1049,7 +1045,7 @@ fn it_should_refuse_agent_and_human_on_an_active_command_without_text_yet() {
     let project = Project::new("acme");
 
     for format in ["agent", "human"] {
-        let output = in_project_raw(&project, &["append", "--format", format]).run();
+        let output = in_project_raw(&project, &["load", "--format", format]).run();
 
         assert_eq!(output.code, Some(2), "{format}");
         assert!(output.stdout.is_empty(), "{format}: stdout");

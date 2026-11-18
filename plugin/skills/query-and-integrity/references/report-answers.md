@@ -47,7 +47,10 @@ Dois gaps: um respondido pela premissa confirmada `premises.p1` (sem diretiva qu
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}},{"body":{"kind":"node","id":"gaps.fmt","type":"gap","data":{"question":"Which date format?","context":"CSV export.","work_item":"work-items.w1"}}},{"body":{"kind":"relation","relation_type":"answers","from":"premises.p1","to":"gaps.limit"}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":3},{"id":"<record-id>","seq":4},{"id":"<record-id>","seq":5}],"replayed":false}
+✔ append · 3 records
+- <record-id> · seq 3
+- <record-id> · seq 4
+- <record-id> · seq 5
 $ omhl report answers
 ✔ report answers · 2 gaps
 gaps.limit · answered · by premises.p1 · human answer · no criterion · of work-items.w1

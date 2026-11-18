@@ -4,7 +4,7 @@ use std::fs;
 
 use ::omhl::workflow::recurrence::{Premise, Recurrence, normalize, recurrences};
 use serde_json::{Value, json};
-use support::child::{Output, omhl, omhl_json};
+use support::child::{Output, omhl_json};
 use support::git::git_in;
 use support::omhl::work_item_data;
 use support::project::Project;
@@ -297,7 +297,7 @@ fn append_output(project: &Project, items: Vec<Value>) -> Output {
     let mut request = json!({});
     request["items"] = Value::Array(items);
 
-    omhl(&["append"])
+    omhl_json(&["append"])
         .cwd(project.dir())
         .xdg(project.xdg())
         .stdin(request.to_string())

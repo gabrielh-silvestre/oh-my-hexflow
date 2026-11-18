@@ -1,12 +1,15 @@
 //! Texto dos comandos simples do ciclo: `project`, `check sweep`, `check retire`, `guideline retire`,
-//! `hooks install`, `spec init` e `byproduct`. Todos usam a base e o erro genérico.
+//! `hooks install`, `spec init`, `byproduct`, `append` e `attest`. Todos usam a base e o erro genérico.
 
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
 use super::doc::{Closing, Line, dash, field, items, joined, one_line, opt_text, text};
 use super::error;
-use super::vocab::{SECRET_WARNING, State, TIMED_OUT, counted, without_final_period};
+use super::vocab::{
+    HASH_PREFIX_LEN, SECRET_WARNING, State, TIMED_OUT, counted, plural, seq_label,
+    without_final_period,
+};
 
 pub static PROJECT_PROFILE: Profile = Profile {
     label: "project",
@@ -100,6 +103,45 @@ pub static BYPRODUCT_PROFILE: Profile = Profile {
         Entry::new(Region::Root, "byproduct", Shape::Noise),
         Entry::new(Region::Root, "lines", Shape::Literal).optional(),
         Entry::new(Region::Root, "truncated_lines", Shape::Derived).optional(),
+    ],
+    failure: &error::ENTRIES,
+};
+
+pub static APPEND_PROFILE: Profile = Profile {
+    label: "append",
+    nodes: None,
+    success: &[
+        Entry::new(Region::Data, "id", Shape::Literal).under("records"),
+        Entry::new(Region::Data, "seq", Shape::Literal).under("records"),
+        Entry::new(Region::Root, "replayed", Shape::Derived),
+        // O cabeçalho da cadeia só serve a quem verifica a cadeia (`omhl verify`).
+        Entry::new(Region::Data, "seq", Shape::Noise).under("chain_head"),
+        Entry::new(Region::Data, "hash", Shape::Noise).under("chain_head"),
+    ],
+    failure: &error::ENTRIES,
+};
+
+pub static ATTEST_PROFILE: Profile = Profile {
+    label: "attest",
+    nodes: None,
+    success: &[
+        // O id é composto do snapshot, do check e do work item, que o texto já mostra.
+        Entry::new(Region::Data, "id", Shape::Noise).under("attestation"),
+        Entry::new(Region::Data, "check", Shape::Literal).under("attestation"),
+        Entry::new(Region::Data, "work_item", Shape::Literal).under("attestation"),
+        Entry::new(Region::Data, "outcome", Shape::Closed).under("attestation"),
+        Entry::new(Region::Data, "ok", Shape::Derived).under("attestation"),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("attestation")
+            .optional(),
+        Entry::new(Region::Data, "id", Shape::Hash(HASH_PREFIX_LEN)).under("snapshot"),
+        Entry::new(Region::Data, "kind", Shape::Noise).under("snapshot"),
+        // O atestado é um só record, sem chave de idempotência: ids e seq repetem o que já está à vista.
+        Entry::new(Region::Data, "id", Shape::Noise).under("records"),
+        Entry::new(Region::Data, "seq", Shape::Noise).under("records"),
+        Entry::new(Region::Root, "replayed", Shape::Noise),
+        Entry::new(Region::Data, "seq", Shape::Noise).under("chain_head"),
+        Entry::new(Region::Data, "hash", Shape::Noise).under("chain_head"),
     ],
     failure: &error::ENTRIES,
 };
@@ -327,6 +369,66 @@ impl Specialization for Byproduct {
                 depth: 0,
                 text: SECRET_WARNING.to_owned(),
             }])
+            .collect()
+    }
+}
+
+pub struct Append;
+
+impl Specialization for Append {
+    fn profile(&self) -> &'static Profile {
+        &APPEND_PROFILE
+    }
+
+    fn summary(&self, value: &Value) -> Vec<String> {
+        let mut parts = vec![plural(items(value, "records").count(), "record")];
+        if value["replayed"] == true {
+            parts.push("replayed".to_owned());
+        }
+
+        parts
+    }
+
+    fn detail_lines(&self, value: &Value) -> Vec<Line> {
+        items(value, "records")
+            .map(|record| dash(vec![text(record, "id"), seq_label(&record["seq"])]))
+            .collect()
+    }
+}
+
+pub struct Attest;
+
+impl Specialization for Attest {
+    fn profile(&self) -> &'static Profile {
+        &ATTEST_PROFILE
+    }
+
+    fn state(&self, value: &Value) -> State {
+        match value["attestation"]["outcome"] == "passed" {
+            true => State::Ok,
+            false => State::Warning,
+        }
+    }
+
+    fn summary(&self, value: &Value) -> Vec<String> {
+        let attestation = &value["attestation"];
+        let snapshot = text(&attestation["snapshot"], "id");
+
+        vec![
+            text(attestation, "check"),
+            text(attestation, "work_item"),
+            text(attestation, "outcome"),
+            format!(
+                "snapshot {}",
+                snapshot.chars().take(HASH_PREFIX_LEN).collect::<String>()
+            ),
+        ]
+    }
+
+    fn detail_lines(&self, value: &Value) -> Vec<Line> {
+        opt_text(&value["attestation"], "note")
+            .map(|note| field(1, "note", note))
+            .into_iter()
             .collect()
     }
 }

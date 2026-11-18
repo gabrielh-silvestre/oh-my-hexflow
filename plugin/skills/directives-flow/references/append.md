@@ -17,7 +17,7 @@ Para gravar no banco do projeto: work item, premissa, gap, divergência, diretiv
 - Premissa `confirmed` leva `confirmed_by` com `by` (`person:<nome>`), `question` e `answer` literais, copiados da resposta real do humano.
 - Diretiva nova ou revisada leva `kind`: `business` ou `architecture`.
 - Opções: `--db <caminho>` (um caminho novo cria o banco) e `--project-dir <pasta>` (a pasta onde a busca do marcador `.omhl.toml` começa; precisa existir).
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
 - `key` (opcional, no topo do JSON, ao lado de `items`; não existe flag `--key`): um texto de 1 a 200 caracteres que você escolhe para identificar este pedido, por exemplo `gaps-limit-1`. Ela existe para o retry. Se o `append` falha sem você saber se gravou (`BUSY`, `STORE_ERROR`, timeout), repita o pedido idêntico com a mesma `key`:
   - Se o primeiro não tinha gravado, o segundo grava e devolve `replayed: false`.
   - Se o primeiro já tinha gravado, nada é gravado de novo e a saída traz os mesmos `records` com `replayed: true`. Nos dois casos o pedido está feito: siga em frente.
@@ -43,11 +43,11 @@ Campo extra é recusado. Os textos têm de 1 a 2000 caracteres (o `title`, de 1 
 
 ## Saída
 
-Uma linha JSON no stdout, saída 0: `chain_head` (`hash` e `seq` da cabeça da cadeia), `records` (o `id` e o `seq` de cada item gravado) e `replayed` (`true` quando a `key` do pedido já tinha gravado exatamente estes `items`; veja a seção Entradas). Um erro sai no stderr, numa linha JSON, com saída 1.
+Texto no stdout, saída 0: `✔ append · N records` (`1 record` no singular) e uma linha `- <record-id> · seq S` por item gravado, na ordem do pedido. O `<record-id>` inteiro é o `base` de uma revisão futura. Quando a `key` do pedido já tinha gravado exatamente estes `items`, o cabeçalho ganha `· replayed` (veja a seção Entradas). A cabeça da cadeia não aparece no texto. Com `--format json` é uma linha JSON: `chain_head` (`hash` e `seq` da cabeça da cadeia), `records` (o `id` e o `seq` de cada item gravado) e `replayed` (`true` ou `false`). Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`, uma linha `- caminho · código · mensagem` por detalhe e `Next:` quando há `next_step`; com `--format json`, numa linha JSON).
 
 ## Erros
 
-Cada erro traz `error.code` e, em `details`, o `path` do campo (nunca o conteúdo digitado). Um erro de uso do clap (opção desconhecida) sai com saída 2, sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Cada erro traz o código (`error.code` no JSON) e, nos detalhes, o `path` do campo (nunca o conteúdo digitado). Um erro de uso do clap (opção desconhecida) sai com saída 2, sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `input-invalid-json` (saída 1): o stdin não é um JSON válido. A mensagem diz a linha e a coluna. Corrija o JSON.
 - `input-not-utf8` (saída 1): o stdin não é UTF-8. Reenvie em UTF-8.
@@ -89,7 +89,18 @@ Grava um gap e a relation `answers` de uma premissa para ele, no mesmo pedido:
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}},{"body":{"kind":"relation","relation_type":"answers","from":"premises.p1","to":"gaps.limit"}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":4},"records":[{"id":"<record-id>","seq":3},{"id":"<record-id>","seq":4}],"replayed":false}
+✔ append · 2 records
+- <record-id> · seq 3
+- <record-id> · seq 4
+```
+
+Com `--format json` a resposta traz também a cabeça da cadeia:
+
+```omhl-example fixture=project
+$ omhl append --format json <<'EOF'
+{"items":[{"body":{"kind":"node","id":"work-items.w8","type":"work-item","data":{"title":"Export PDF","status":"open"}}}]}
+EOF
+{"chain_head":{"hash":"<hash>","seq":3},"records":[{"id":"<record-id>","seq":3}],"replayed":false}
 ```
 
 Cria o work item (o passo 2 do protocolo):
@@ -98,7 +109,8 @@ Cria o work item (o passo 2 do protocolo):
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"work-items.w9","type":"work-item","data":{"title":"Export CSV","status":"open"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":3},"records":[{"id":"<record-id>","seq":3}],"replayed":false}
+✔ append · 1 record
+- <record-id> · seq 3
 ```
 
 Recusa pelo schema: o mesmo work item sem `title`:
@@ -107,7 +119,8 @@ Recusa pelo schema: o mesmo work item sem `title`:
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"work-items.w9","type":"work-item","data":{"status":"open"}}}]}
 EOF
-2> {"error":{"code":"INVALID_RECORD","details":[{"code":"required","message":"required","path":"/items/0/body/data/title"}],"message":"record content is invalid"}}
+2> ✘ INVALID_RECORD · record content is invalid
+2>   - /items/0/body/data/title · required · required
 # exit 1
 ```
 
@@ -117,11 +130,13 @@ O mesmo pedido, com a mesma `key`, duas vezes: o segundo devolve `replayed: true
 $ omhl append <<'EOF'
 {"key":"gap-limit-1","items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":3},"records":[{"id":"<record-id>","seq":3}],"replayed":false}
+✔ append · 1 record
+- <record-id> · seq 3
 $ omhl append <<'EOF'
 {"key":"gap-limit-1","items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":3},"records":[{"id":"<record-id>","seq":3}],"replayed":true}
+✔ append · 1 record · replayed
+- <record-id> · seq 3
 ```
 
 A mesma `key` com outro conteúdo é recusada com `IDEMPOTENCY_CONFLICT`:
@@ -130,11 +145,13 @@ A mesma `key` com outro conteúdo é recusada com `IDEMPOTENCY_CONFLICT`:
 $ omhl append <<'EOF'
 {"key":"gap-limit-1","items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":3},"records":[{"id":"<record-id>","seq":3}],"replayed":false}
+✔ append · 1 record
+- <record-id> · seq 3
 $ omhl append <<'EOF'
 {"key":"gap-limit-1","items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"Excel export.","work_item":"work-items.w1"}}}]}
 EOF
-2> {"error":{"code":"IDEMPOTENCY_CONFLICT","details":[{"code":"key-reused","message":"idempotency key was used with different items","path":"/key"}],"message":"idempotency key was used with different items"}}
+2> ✘ IDEMPOTENCY_CONFLICT · idempotency key was used with different items
+2>   - /key · key-reused
 # exit 1
 ```
 
@@ -144,7 +161,8 @@ Recusa: `confirmed_by` numa divergência que não é `spec-stale` (ao fechar com
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"divergences.limit","type":"divergence","data":{"source_ref":"CMP-001","kind":"missing","text":"The export has no row limit.","evidence":[{"source":"src/export.rs","summary":"No limit is applied."}],"resolution":"code-fixed","work_item":"work-items.w1","confirmed_by":{"by":"person:ana","question":"q","answer":"a"}}}}]}
 EOF
-2> {"error":{"code":"confirmation-invalid","details":[{"code":"confirmation-invalid","message":"confirmation-invalid","path":"/items/0/body/data/confirmed_by"}],"message":"confirmation-invalid at /items/0/body/data/confirmed_by"}}
+2> ✘ confirmation-invalid · confirmation-invalid at /items/0/body/data/confirmed_by
+2>   - /items/0/body/data/confirmed_by · confirmation-invalid
 # exit 1
 ```
 
@@ -154,7 +172,8 @@ Recusa: premissa `confirmed` sem `confirmed_by`:
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"premises.p2","type":"premise","data":{"text":"Dates are UTC.","status":"confirmed","kind":"business","work_item":"work-items.w1"}}}]}
 EOF
-2> {"error":{"code":"confirmation-required","details":[{"code":"confirmation-required","message":"confirmation-required","path":"/items/0/body/data/confirmed_by"}],"message":"confirmation-required at /items/0/body/data/confirmed_by"}}
+2> ✘ confirmation-required · confirmation-required at /items/0/body/data/confirmed_by
+2>   - /items/0/body/data/confirmed_by · confirmation-required
 # exit 1
 ```
 
@@ -164,7 +183,8 @@ Recusa: o `by` sem o prefixo `person:`:
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"premises.p4","type":"premise","data":{"text":"Dates are UTC.","status":"confirmed","kind":"business","work_item":"work-items.w1","confirmed_by":{"by":"ana","question":"q","answer":"a"}}}}]}
 EOF
-2> {"error":{"code":"confirmation-invalid","details":[{"code":"confirmation-invalid","message":"confirmation-invalid","path":"/items/0/body/data/confirmed_by/by"}],"message":"confirmation-invalid at /items/0/body/data/confirmed_by/by"}}
+2> ✘ confirmation-invalid · confirmation-invalid at /items/0/body/data/confirmed_by/by
+2>   - /items/0/body/data/confirmed_by/by · confirmation-invalid
 # exit 1
 ```
 
@@ -174,7 +194,8 @@ Recusa: premissa de um work item que não existe:
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"premises.p3","type":"premise","data":{"text":"Dates are UTC.","status":"assumed","kind":"technical","work_item":"work-items.zz"}}}]}
 EOF
-2> {"error":{"code":"work-item-not-found","details":[{"code":"work-item-not-found","message":"work-item-not-found","path":"/items/0/body/data/work_item"}],"message":"work-item-not-found at /items/0/body/data/work_item"}}
+2> ✘ work-item-not-found · work-item-not-found at /items/0/body/data/work_item
+2>   - /items/0/body/data/work_item · work-item-not-found
 # exit 1
 ```
 
@@ -184,7 +205,9 @@ Recusa: diretiva sem `kind`:
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"guidelines.g1","type":"guideline","data":{"text":"Be brief."}}}]}
 EOF
-2> {"error":{"code":"kind-missing","details":[{"code":"kind-missing","message":"the guideline has no kind","next_step":"set kind to business or architecture in the item data and append again","path":"/items/0/body/data/kind"}],"message":"the guideline has no kind"}}
+2> ✘ kind-missing · the guideline has no kind
+2>   - /items/0/body/data/kind
+2> Next: set kind to business or architecture in the item data and append again.
 # exit 1
 ```
 
@@ -194,6 +217,6 @@ Recusa: o stdin não é JSON:
 $ omhl append <<'EOF'
 not json
 EOF
-2> {"error":{"code":"input-invalid-json","details":[],"message":"input is not valid JSON at line 1 column 2"}}
+2> ✘ input-invalid-json · input is not valid JSON at line 1 column 2
 # exit 1
 ```

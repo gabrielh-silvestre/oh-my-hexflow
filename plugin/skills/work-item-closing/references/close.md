@@ -58,9 +58,9 @@ Com o gate verde (os dois nativos atestados e o check mecânico rodado), o `repo
 
 ```omhl-example fixture=checks
 $ omhl attest checks.run-tests work-items.w1 --outcome passed
-{"attestation":{"check":"checks.run-tests","id":"attestations.2dbf9e30bc28b8e377c513c63a9f8cae.a3ca65f3.checks.run-tests.work-items.w1","ok":true,"outcome":"passed","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false}
+✔ attest · checks.run-tests · work-items.w1 · passed · snapshot <snapshot>
 $ omhl attest checks.ci-green-before-merge work-items.w1 --outcome passed
-{"attestation":{"check":"checks.ci-green-before-merge","id":"attestations.2dbf9e30bc28b8e377c513c63a9f8cae.a3ca65f3.checks.ci-green-before-merge.work-items.w1","ok":true,"outcome":"passed","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"chain_head":{"hash":"<hash>","seq":6},"records":[{"id":"<record-id>","seq":6}],"replayed":false}
+✔ attest · checks.ci-green-before-merge · work-items.w1 · passed · snapshot <snapshot>
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":"<ms>","exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl close work-items.w1
@@ -73,7 +73,8 @@ Com uma divergência aberta, a retro vem preenchida (só ids, nunca o texto da d
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"divergences.limit","type":"divergence","data":{"source_ref":"CMP-001","kind":"missing","text":"The export has no row limit.","evidence":[{"source":"src/export.rs","summary":"No limit is applied."}],"resolution":"open","work_item":"work-items.w1"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false}
+✔ append · 1 record
+- <record-id> · seq 5
 $ omhl close work-items.w1
 {"outcome":{"chain_head":{"hash":"<hash>","seq":6},"records":[{"id":"<record-id>","seq":6}],"replayed":false},"report":{"chain_head":{"hash":"<hash>","seq":5},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]},"retro":{"amendments":{"approved":[],"pending":[]},"divergences":[{"ids":["divergences.limit"],"kind":"missing","resolution":"open"}],"no_criterion":[],"open_gaps":[]}}
 ```

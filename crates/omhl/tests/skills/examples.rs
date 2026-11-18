@@ -298,6 +298,8 @@ impl Normalizer {
             (r"\b\d+ms\b", "<ms>"),
             (r"\b\d+\.\ds\b", "<s>"),
             (r"\((git-commit|git-tree) [0-9a-f]{7}\)", "(${1} <snapshot>)"),
+            // Texto do `attest`: `snapshot 2dbf9e3`.
+            (r"\bsnapshot [0-9a-f]{7}\b", "snapshot <snapshot>"),
             (r#"("(?:pid|pgid|[a-z_]*_pid)"\s*:\s*)\d+"#, r#"${1}"<pid>""#),
             // `check sweep` vale para qualquer raiz da máquina: `swept` e `unreadable` não são determinísticos.
             (r#"("(?:swept|unreadable)"\s*:\s*)(?:\d+|\[[^\]]*\])"#, r#"${1}"<swept>""#),
@@ -718,7 +720,7 @@ fn it_should_report_file_line_command_and_both_outputs_on_a_mismatch() {
 fn it_should_feed_the_heredoc_to_stdin_and_match_stderr_and_exit_code() {
     assert_runs(
         "project",
-        "$ omhl append <<'EOF'\nnot json\nEOF\n2> {\"error\":{\"code\":\"input-invalid-json\",\"details\":[],\"message\":\"input is not valid JSON at line 1 column 2\"}}\n# exit 1\n",
+        "$ omhl append --format json <<'EOF'\nnot json\nEOF\n2> {\"error\":{\"code\":\"input-invalid-json\",\"details\":[],\"message\":\"input is not valid JSON at line 1 column 2\"}}\n# exit 1\n",
     );
 }
 

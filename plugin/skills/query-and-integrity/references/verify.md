@@ -45,7 +45,8 @@ A cadeia cresce a cada gravação, e o `verify` a acompanha; com `--format json`
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":3},"records":[{"id":"<record-id>","seq":3}],"replayed":false}
+✔ append · 1 record
+- <record-id> · seq 3
 $ omhl verify --format json
 {"breaks":[],"chain_head":"<hash>","ok":true,"total_breaks":0,"total_records":3}
 ```

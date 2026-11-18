@@ -47,9 +47,9 @@ Com os dois checks nativos atestados à mão e o check mecânico rodado, no mesm
 
 ```omhl-example fixture=checks
 $ omhl attest checks.run-tests work-items.w1 --outcome passed
-{"attestation":{"check":"checks.run-tests","id":"attestations.2dbf9e30bc28b8e377c513c63a9f8cae.a3ca65f3.checks.run-tests.work-items.w1","ok":true,"outcome":"passed","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false}
+✔ attest · checks.run-tests · work-items.w1 · passed · snapshot <snapshot>
 $ omhl attest checks.ci-green-before-merge work-items.w1 --outcome passed
-{"attestation":{"check":"checks.ci-green-before-merge","id":"attestations.2dbf9e30bc28b8e377c513c63a9f8cae.a3ca65f3.checks.ci-green-before-merge.work-items.w1","ok":true,"outcome":"passed","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"chain_head":{"hash":"<hash>","seq":6},"records":[{"id":"<record-id>","seq":6}],"replayed":false}
+✔ attest · checks.ci-green-before-merge · work-items.w1 · passed · snapshot <snapshot>
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":"<ms>","exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl gate-pr work-items.w1

@@ -101,7 +101,7 @@ pub trait Renderer {
     fn failure(&self, value: &Value) -> Doc;
 }
 
-/// O único fato guardado por comando: ter renderizador. `append`, `attest`, `gate-pr`, `close`, `load` e `spec validate` ganham o seu nas ondas seguintes; os adiados nunca ganham.
+/// O único fato guardado por comando: ter renderizador. `gate-pr`, `close`, `load` e `spec validate` ganham o seu nas ondas seguintes; os adiados nunca ganham.
 pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     match key {
         CommandKey::CheckRun => Some(&BaseRenderer(check_run::CheckRun)),
@@ -119,9 +119,9 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::HooksInstall => Some(&BaseRenderer(simple::HooksInstall)),
         CommandKey::SpecInit => Some(&BaseRenderer(simple::SpecInit)),
         CommandKey::Byproduct => Some(&BaseRenderer(simple::Byproduct)),
-        CommandKey::Append
-        | CommandKey::Attest
-        | CommandKey::GatePr
+        CommandKey::Append => Some(&BaseRenderer(simple::Append)),
+        CommandKey::Attest => Some(&BaseRenderer(simple::Attest)),
+        CommandKey::GatePr
         | CommandKey::GateWorktree
         | CommandKey::Close
         | CommandKey::Load
@@ -151,9 +151,9 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::HooksInstall => &simple::HOOKS_INSTALL_PROFILE,
         CommandKey::SpecInit => &simple::SPEC_INIT_PROFILE,
         CommandKey::Byproduct => &simple::BYPRODUCT_PROFILE,
-        CommandKey::Append
-        | CommandKey::Attest
-        | CommandKey::GatePr
+        CommandKey::Append => &simple::APPEND_PROFILE,
+        CommandKey::Attest => &simple::ATTEST_PROFILE,
+        CommandKey::GatePr
         | CommandKey::GateWorktree
         | CommandKey::Close
         | CommandKey::Load

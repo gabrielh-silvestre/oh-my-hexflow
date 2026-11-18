@@ -47,7 +47,8 @@ $ omhl project
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"work-items.w2","type":"work-item","data":{"title":"Second item","status":"open"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":3},"records":[{"id":"<record-id>","seq":3}],"replayed":false}
+✔ append · 1 record
+- <record-id> · seq 3
 $ omhl project
 ✔ project · .omhl/projection · 1 written · 1 unchanged · 0 removed
 - written · work-items.w2.md

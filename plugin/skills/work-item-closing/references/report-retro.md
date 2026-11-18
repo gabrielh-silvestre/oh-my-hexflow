@@ -52,7 +52,10 @@ Com uma divergência aberta e um gap respondido por uma premissa sem diretiva qu
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"divergences.limit","type":"divergence","data":{"source_ref":"CMP-001","kind":"missing","text":"The export has no row limit.","evidence":[{"source":"src/export.rs","summary":"No limit is applied."}],"resolution":"open","work_item":"work-items.w1"}}},{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}},{"body":{"kind":"relation","relation_type":"answers","from":"premises.p1","to":"gaps.limit"}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":3},{"id":"<record-id>","seq":4},{"id":"<record-id>","seq":5}],"replayed":false}
+✔ append · 3 records
+- <record-id> · seq 3
+- <record-id> · seq 4
+- <record-id> · seq 5
 $ omhl report retro work-items.w1
 ✔ report retro · 1 divergence · 1 no-criterion gap
 - divergence · missing · open · divergences.limit
@@ -68,7 +71,10 @@ Com retro, fora de um repositório git, o comando recusa:
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"divergences.limit","type":"divergence","data":{"source_ref":"CMP-001","kind":"missing","text":"The export has no row limit.","evidence":[{"source":"src/export.rs","summary":"No limit is applied."}],"resolution":"open","work_item":"work-items.w1"}}},{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}},{"body":{"kind":"relation","relation_type":"answers","from":"premises.p1","to":"gaps.limit"}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":3},{"id":"<record-id>","seq":4},{"id":"<record-id>","seq":5}],"replayed":false}
+✔ append · 3 records
+- <record-id> · seq 3
+- <record-id> · seq 4
+- <record-id> · seq 5
 $ omhl report retro work-items.w1
 2> ✘ probe-failed · probe-failed at /snapshot: fatal: not a git repository (or any of the parent directories): .git
 2>   - /snapshot · probe-failed

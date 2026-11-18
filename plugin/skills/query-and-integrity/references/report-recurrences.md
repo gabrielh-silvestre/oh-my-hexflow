@@ -45,11 +45,15 @@ Três work items com a mesma premissa, escrita com caixa, espaços e pontuação
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"work-items.w2","type":"work-item","data":{"title":"Second item","status":"open"}}},{"body":{"kind":"node","id":"work-items.w3","type":"work-item","data":{"title":"Third item","status":"open"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":4},"records":[{"id":"<record-id>","seq":3},{"id":"<record-id>","seq":4}],"replayed":false}
+✔ append · 2 records
+- <record-id> · seq 3
+- <record-id> · seq 4
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"premises.p2","type":"premise","data":{"text":"money is stored in cents.","status":"assumed","kind":"business","work_item":"work-items.w2"}}},{"body":{"kind":"node","id":"premises.p3","type":"premise","data":{"text":"Money  is stored in CENTS","status":"assumed","kind":"business","work_item":"work-items.w3"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":6},"records":[{"id":"<record-id>","seq":5},{"id":"<record-id>","seq":6}],"replayed":false}
+✔ append · 2 records
+- <record-id> · seq 5
+- <record-id> · seq 6
 $ omhl report recurrences
 ✔ report recurrences · min 3 · 1 group
 - business · money is stored in cents
