@@ -28,6 +28,10 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
 
+      # O teste de execução do hook agent-role roda o comando reescrito também em zsh.
+      - name: zsh
+        run: sudo apt-get install -y zsh
+
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: fmt

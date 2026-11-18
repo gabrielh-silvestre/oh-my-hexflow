@@ -1732,6 +1732,7 @@ fn it_should_report_no_marker_when_discovering_outside_a_project() {
         parent_pid: 1,
         claude_code: false,
         role: None,
+        plugin_root: None,
     };
 
     let error = match Runtime::discover(dir.path(), None, &env) {
@@ -1754,6 +1755,7 @@ fn it_should_open_the_database_from_the_environment_default() {
         parent_pid: 1,
         claude_code: false,
         role: None,
+        plugin_root: None,
     };
     let runtime = match Runtime::discover(project.dir(), None, &env) {
         Ok(runtime) => runtime,

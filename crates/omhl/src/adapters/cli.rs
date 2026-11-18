@@ -220,6 +220,8 @@ pub enum HookEvent {
     SessionStart,
     /// Deny edits to the spec of a work item that already has a branch; reads the PreToolUse event on stdin.
     SpecLock,
+    /// Impose the role matrix on the Bash tool of plugin agents; reads the PreToolUse event on stdin.
+    AgentRole,
 }
 
 pub fn run(
@@ -250,6 +252,18 @@ pub fn run(
         Command::Hook {
             event: HookEvent::SpecLock,
         } => hook::spec_lock(stdin, out, err),
+        Command::Hook {
+            event: HookEvent::AgentRole,
+        } => {
+            let cli = Cli::command();
+            // Os comandos com subcomando vêm do clap: o hook não mantém uma segunda lista de folhas.
+            let groups: Vec<&str> = cli
+                .get_subcommands()
+                .filter(|command| command.has_subcommands())
+                .map(clap::Command::get_name)
+                .collect();
+            hook::agent_role(stdin, out, err, env, &groups)
+        }
         Command::Action(command) => {
             // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
             let silent_without_marker = matches!(command, ActionCommand::GateWorktree { .. });

@@ -9,8 +9,11 @@ use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
 use crate::app::runtime::Runtime;
+use crate::app::{
+    AgentRoleEnv, RoleVerdict, Verdict, agent_role as check_agent_role,
+    spec_lock as check_spec_lock,
+};
 use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
-use crate::app::{Verdict, spec_lock as check_spec_lock};
 use crate::project::Env;
 
 /// Without a marker the hook stays silent; any failure leaves stdout empty so no partial context is injected.
@@ -41,17 +44,59 @@ pub fn session_start(
 
 /// Nunca sai com 2: a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
-    match read_json_input(stdin).and_then(|input| check_spec_lock(&input)) {
-        Ok(Verdict::Allow) => {}
-        Ok(Verdict::Deny { reason, .. }) => {
-            let output = json!({
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": reason,
-                }
-            });
-            let _ = writeln!(out, "{output}");
+    pre_tool_use(stdin, out, err, |input| {
+        Ok(match check_spec_lock(input)? {
+            Verdict::Allow => None,
+            Verdict::Deny { reason, .. } => {
+                Some(json!({ "permissionDecision": "deny", "permissionDecisionReason": reason }))
+            }
+        })
+    })
+}
+
+/// Mesmo contrato do `spec_lock`; só o Bash. O que passa segue o fluxo normal de permissão; só o comando dentro da matriz recebe `allow`.
+pub fn agent_role(
+    stdin: &mut impl Read,
+    out: &mut impl Write,
+    err: &mut impl Write,
+    env: &Env<'_>,
+    groups: &[&str],
+) -> ExitCode {
+    let role_env = AgentRoleEnv {
+        plugin_root: env.plugin_root.map(Path::new),
+        groups,
+    };
+
+    pre_tool_use(stdin, out, err, |input| {
+        Ok(match check_agent_role(input, &role_env) {
+            RoleVerdict::Pass => None,
+            RoleVerdict::Deny { reason, .. } => {
+                Some(json!({ "permissionDecision": "deny", "permissionDecisionReason": reason }))
+            }
+            RoleVerdict::Allow {
+                reason,
+                updated_input,
+            } => Some(json!({
+                "permissionDecision": "allow",
+                "permissionDecisionReason": reason,
+                "updatedInput": updated_input,
+            })),
+        })
+    })
+}
+
+/// `decide` devolve os campos da decisão (sem o nome do evento); `None` deixa o stdout vazio.
+fn pre_tool_use(
+    stdin: &mut impl Read,
+    out: &mut impl Write,
+    err: &mut impl Write,
+    decide: impl FnOnce(&Value) -> Result<Option<Value>, AppError>,
+) -> ExitCode {
+    match read_json_input(stdin).and_then(|input| decide(&input)) {
+        Ok(None) => {}
+        Ok(Some(mut decision)) => {
+            decision["hookEventName"] = json!("PreToolUse");
+            let _ = writeln!(out, "{}", json!({ "hookSpecificOutput": decision }));
         }
         Err(error) => {
             let _ = writeln!(err, "{}", error.to_json());

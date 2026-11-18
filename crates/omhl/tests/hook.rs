@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
 use support::ext::ExtTree;
 use support::git::git_in;
+use support::hook::assert_released_with_code;
 use support::omhl::decision_data;
 use support::project::Project;
 use tempfile::TempDir;
@@ -472,13 +473,6 @@ fn run_spec_lock(xdg: &Path, stdin: &str) -> Child {
         .xdg(xdg)
         .stdin(stdin)
         .run()
-}
-
-fn assert_released_with_code(output: &Child, code: &str) {
-    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
-    assert!(output.stdout.is_empty(), "stdout stays empty");
-    assert_eq!(output.stderr.matches('\n').count(), 1, "one error line");
-    assert_eq!(json_line(&output.stderr)["error"]["code"], json!(code));
 }
 
 #[test]

@@ -6,6 +6,7 @@ pub mod child;
 pub mod ext;
 pub mod gate;
 pub mod git;
+pub mod hook;
 pub mod legacy;
 pub mod omhl;
 pub mod pr_gate;

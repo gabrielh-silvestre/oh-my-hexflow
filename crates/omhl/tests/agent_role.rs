@@ -43,6 +43,7 @@ fn run_omhl(
         parent_pid: 1,
         claude_code,
         role: role.map(str::to_owned),
+        plugin_root: None,
     };
     let argv = ["omhl", "--project-dir"]
         .into_iter()

@@ -23,6 +23,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash|Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "omhl hook agent-role || exit 1",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }
