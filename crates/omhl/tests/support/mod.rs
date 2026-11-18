@@ -7,6 +7,7 @@ pub mod ext;
 pub mod gate;
 pub mod git;
 pub mod hook;
+pub mod inproc;
 pub mod legacy;
 pub mod omhl;
 pub mod pr_gate;
