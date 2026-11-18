@@ -70,10 +70,10 @@ pub fn command_line(name: &str) -> &'static str {
             "exec 9>lock; flock -x 9; echo $$ > cmd.pid.tmp; mv cmd.pid.tmp cmd.pid; sleep 61 & echo $! > neto.pid.tmp; mv neto.pid.tmp neto.pid; wait"
         }
         "detached" => {
-            "setsid sh -c 'echo $$ > neto.pid.tmp; mv neto.pid.tmp neto.pid; exec sleep 61' & while [ ! -e neto.pid ]; do sleep 0.01; done; echo done"
+            "setsid sh -c 'echo $$ > neto.pid.tmp; mv neto.pid.tmp neto.pid; exec sleep 61 >/dev/null 2>&1 </dev/null' & while [ ! -e neto.pid ]; do sleep 0.01; done; echo done"
         }
         "detached-ignore-term" => {
-            "trap '' TERM; setsid sh -c 'echo $$ > neto.pid.tmp; mv neto.pid.tmp neto.pid; exec sleep 61' & while [ ! -e neto.pid ]; do sleep 0.01; done; echo done"
+            "trap '' TERM; setsid sh -c 'echo $$ > neto.pid.tmp; mv neto.pid.tmp neto.pid; exec sleep 61 >/dev/null 2>&1 </dev/null' & while [ ! -e neto.pid ]; do sleep 0.01; done; echo done"
         }
         other => panic!("unknown test command: {other}"),
     }
