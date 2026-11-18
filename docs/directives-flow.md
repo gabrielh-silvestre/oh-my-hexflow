@@ -675,7 +675,7 @@ Cada recusa desta seção traz a causa em `message` e o próximo passo em `next_
 
 ## 12. O ciclo com os agentes
 
-O plugin traz sete agentes (`oh-my-hexflow:analyst`, `planner`, `architect`, `critic`, `code-reviewer`, `security-reviewer` e `verifier`) e duas skills que conduzem a sessão principal por eles: [`plan-consensus`](../plugin/skills/plan-consensus/SKILL.md), dos passos 2 a 8, e [`review`](../plugin/skills/review/SKILL.md), dos passos 9 e 10. O ciclo abaixo é o da seção 1 com os papéis nomeados e a volta de consenso. A sessão principal chama um agente por vez, como `oh-my-hexflow:<papel>`, e o texto de cada passo está também em [`cycle.md`](../plugin/skills/directives-flow/references/cycle.md).
+O plugin traz sete agentes (`oh-my-hexflow:analyst`, `planner`, `architect`, `critic`, `code-reviewer`, `security-reviewer` e `verifier`) e duas skills que conduzem a sessão principal por eles: [`plan-consensus`](../plugin/skills/plan-consensus/SKILL.md), dos passos 2 a 8, e [`review`](../plugin/skills/review/SKILL.md), dos passos 9 e 10. O ciclo abaixo é o da seção 1 com os papéis nomeados e a volta de consenso. A sessão principal chama um agente por vez, como `oh-my-hexflow:<papel>`, e um resumo dos mesmos passos está em [`cycle.md`](../plugin/skills/directives-flow/references/cycle.md).
 
 ### Os dez passos
 
@@ -687,7 +687,7 @@ O plugin traz sete agentes (`oh-my-hexflow:analyst`, `planner`, `architect`, `cr
 6. **Critic.** O `oh-my-hexflow:critic` julga o plano e grava `supports` ou `contradicts` nas decisões.
 7. **Consenso.** Architect e critic repetem os passos 5 e 6 em **no máximo 3 voltas**. O aceite é o veredito `ACCEPT`; `ACCEPT-WITH-RESERVATIONS` vai ao dono com as reservas. Na terceira volta sem aceite, a sessão principal para e mostra o impasse ao dono. Os `contradicts` seguem vigentes e travam o `omhl gate-pr`: o dono os retira num terminal fora do Claude Code, ou manda revisar e o verifier os retira. O veredito do critic circula só na mensagem entre os agentes e não vai ao grafo.
 8. **Spec e worktree.** Com o aceite, o `oh-my-hexflow:verifier` retira os `contradicts` resolvidos; um `FAIL` ou `INCOMPLETE` dele conta como volta sem aceite. Então vêm a conferência final com `omhl spec validate`, o `omhl gate-worktree`, a worktree e a implementação.
-9. **Revisão.** O `oh-my-hexflow:code-reviewer` e o `oh-my-hexflow:security-reviewer` revisam a entrega; cada achado vira uma `divergence` (código que não cumpre a spec) ou uma `decision` com `contradicts` (violação de diretiva ou de decisão). Antes do gate do PR, o `oh-my-hexflow:verifier` fecha a `divergence` de `open` para `code-fixed`, com evidência nova, e retira os `contradicts` resolvidos.
+9. **Revisão.** O `oh-my-hexflow:code-reviewer` e o `oh-my-hexflow:security-reviewer` revisam a entrega; cada achado vira uma `divergence` (código que não cumpre a spec) ou uma `decision` com `contradicts` (violação de diretiva ou de decisão). A sessão principal corrige o código das divergências abertas; um desvio que o dono aceita não é correção, e só a resposta dele grava `accepted`. Antes do gate do PR, o `oh-my-hexflow:verifier` fecha a `divergence` de `open` para `code-fixed`, com evidência nova, e retira os `contradicts` resolvidos.
 10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic; depois vêm `omhl gate-pr` e `omhl close`, pela skill [`work-item-closing`](../plugin/skills/work-item-closing/SKILL.md).
 
 ```mermaid
@@ -705,15 +705,15 @@ flowchart TD
   LIM -- "sim" --> ESC["Impasse: a sessão principal para e escala ao dono"]
   P8A -- "ok" --> P8B["8 spec validate, gate-worktree, worktree e implementação"]
   P8B --> P9["9 code-reviewer e security-reviewer"]
-  P9 --> V9["9 verifier: fecha divergências e retira contradicts"]
-  V9 -- "FAIL" --> FIX["Corrigir o código"]
-  FIX --> V9
+  P9 --> FIX0["9 Corrigir o código das divergências"]
+  FIX0 --> V9["9 verifier: fecha divergências e retira contradicts"]
+  V9 -- "FAIL" --> FIX0
   V9 -- "ok" --> P10["10 PR com a tabela do critic"]
   P10 --> GP["gate-pr"]
   GP --> CL["close"]
 ```
 
-O diagrama mostra o limite de três voltas, a escalada ao dono e o `verifier` antes do `spec validate` e antes do `gate-pr`.
+O diagrama mostra o limite de três voltas, a escalada ao dono e o `verifier` antes do `spec validate` e antes do `gate-pr`. `ACCEPT-WITH-RESERVATIONS` fica fora dele: vai ao dono com as reservas, e ele decide.
 
 ### O que cada passo grava
 
@@ -726,7 +726,7 @@ O diagrama mostra o limite de três voltas, a escalada ao dono e o `verifier` an
 O hook é a entrada `PreToolUse` do `Bash` em `plugin/hooks/hooks.json`, `omhl hook agent-role || exit 1`, com `timeout` de 10 s. A decisão fica em `app/agent_role.rs`, o leitor do comando de shell em `workflow/shell/` e a leitura do evento e do arquivo do agente nas bordas (`adapters/hook.rs`, `ports/files`). Ele não abre o banco.
 
 - **Quem é o agente.** O `agent_type` do evento é `oh-my-hexflow:<papel>` para um subagente do plugin. Sessão principal e agentes de outros plugins passam sem mudança.
-- **O que o agente portado roda.** O arquivo `plugin/agents/<papel>.md` traz no frontmatter o `omhl-allow` com os comandos do papel. O hook lê esse arquivo em `${CLAUDE_PLUGIN_ROOT}`, confere o comando `omhl` contra a lista e, quando está dentro, responde `allow` e escreve `OMHL_ROLE=omhl:<papel>` na frente do comando. Um `allow` dispensa o pedido de permissão do Claude Code para aquele comando.
-- **O que o hook nega** (resposta `deny` com o motivo, saída `0`): papel sem matriz; comando `omhl` fora da lista do papel; comando composto que contém `omhl` (pipe, `&&`, `||`, `;`, `&`, subshell, segunda linha); comando em que algo antes do `omhl` impede o prefixo (comentário, linha em branco, redirecionamento, `!` ou palavra de controle como `if`; só espaços e os embrulhos conhecidos, como `env`, `timeout` e `time`, podem vir antes); expansão (`$X`, `${...}`) na posição do programa ou da folha; heredoc sem aspas no terminador com `$(` ou crase no corpo; embrulho com opção que o leitor não conhece; comando que menciona `omhl` e tem aspa ou heredoc sem fechar, passa de 64 níveis de aninhamento ou de 256 KiB; `CLAUDE_PLUGIN_ROOT` ausente, ou arquivo do agente ilegível ou sem um `omhl-allow` válido.
+- **O que o agente portado roda.** O arquivo `plugin/agents/<papel>.md` traz no frontmatter o `omhl-allow` com os comandos do papel. O hook lê esse arquivo em `${CLAUDE_PLUGIN_ROOT}`, confere o comando `omhl` contra a lista e, quando está dentro, responde `allow` e escreve `OMHL_ROLE=omhl:<papel>` na frente do comando. Com o `allow`, o Claude Code roda aquele comando sem pedir confirmação (spike E3, modos `default` e `auto`).
+- **O que o hook nega** (resposta `deny` com o motivo, saída `0`): papel sem matriz; comando `omhl` fora da lista do papel; comando composto que contém `omhl` (pipe, `&&`, `||`, `;`, `&`, subshell, segunda linha); comando em que algo antes do `omhl` impede o prefixo (comentário, linha em branco, redirecionamento, `!` ou palavra de controle como `if`; só espaços e os embrulhos conhecidos, como `env`, `timeout` e `time`, podem vir antes); expansão (`$X`, `${...}`) na posição do programa ou da folha; heredoc sem aspas no terminador com `$(` ou crase no corpo; embrulho com opção que o leitor não conhece (quando uma palavra do comando é `omhl`); comando que menciona `omhl` e tem aspa ou heredoc sem fechar, passa de 64 níveis de aninhamento ou de 256 KiB; `CLAUDE_PLUGIN_ROOT` ausente, ou arquivo do agente ilegível ou sem um `omhl-allow` válido.
 - **A atribuição de `OMHL_ROLE` à mão** (`OMHL_ROLE=...`, `export`, `env -u OMHL_ROLE` e afins) é negada para qualquer origem, a sessão principal inclusive.
 - **A matriz tem três cópias que um teste mantém iguais:** a tabela compilada no `omhl` (que aplica as condições finas do `append`), o `omhl-allow` de cada agente e a tabela única de `docs/directives-flow.md` (seção 8). A decisão e o limite estão no [ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md).

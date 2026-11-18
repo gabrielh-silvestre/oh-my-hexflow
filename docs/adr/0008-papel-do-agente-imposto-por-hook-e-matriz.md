@@ -25,7 +25,7 @@ A tabela única de `docs/directives-flow.md` (seção 8, "A matriz por papel") �
 - o comando tem de começar pelo `omhl` (depois de espaços e embrulhos), sem comentário, linha em branco, redirecionamento, `!` ou palavra de controle antes;
 - expansão (`$X`, `${...}`) na posição do programa ou da folha;
 - heredoc sem aspas no terminador com `$(` ou crase no corpo;
-- opção de embrulho que o leitor não conhece, e `env -i`, `env -S` e `exec -c` quando o texto contém `omhl`;
+- opção de embrulho que o leitor não conhece, quando uma palavra do comando é `omhl`; e `env -i`, `env -S` e `exec -c`, quando alguma palavra contém `omhl`;
 - aspa ou heredoc sem fechar, aninhamento acima de 64 níveis e comando acima de 256 KiB.
 
 ## Consequências
