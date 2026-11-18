@@ -11,26 +11,26 @@
 //! - `tests/support/ext.rs`: `ExtTree` sem `at` e sem `fifo` (o `mkfifo` fica fora de `src`) e sem `write_check_file` e `toml_value`.
 //!
 //! Helpers que um `tests.rs` copia do arquivo de integração/e2e de onde saíram (uma mudança num vale também no outro):
-//! - `graphs/tests.rs`, de `tests/catalogs.rs`: `PREVIOUS_DECISIONS_CATALOG_V3`, `catalog`, `catalog_from`, `confirmation`,
+//! - `graphs/tests.rs`, de `tests/integration/catalogs.rs`: `PREVIOUS_DECISIONS_CATALOG_V3`, `catalog`, `catalog_from`, `confirmation`,
 //!   `confirmed`, `gap`, `is_accepted`, `old_decisions_guideline`, `old_decisions_premise`, `plain` e `with`;
-//! - `workflow/spec/tests.rs`, de `tests/spec_validate.rs`: `AMENDMENT_MOTIVE_BODY_LINE`, `PART_CA_LINE`, `PART_CMP_LINE`,
+//! - `workflow/spec/tests.rs`, de `tests/e2e/spec_validate.rs`: `AMENDMENT_MOTIVE_BODY_LINE`, `PART_CA_LINE`, `PART_CMP_LINE`,
 //!   `PART_OBJECTIVE_LINE`, `text`, `valid_amendment`, `valid_part` e `with_line`;
-//! - `workflow/spec/tests.rs`, de `tests/spec_validate_graph.rs`: os mesmos de cima (menos `PART_CA_LINE`, `PART_CMP_LINE`) mais
+//! - `workflow/spec/tests.rs`, de `tests/e2e/spec_validate_graph.rs`: os mesmos de cima (menos `PART_CA_LINE`, `PART_CMP_LINE`) mais
 //!   `W1`, `W2`, `BUSINESS_PREMISE`, `DIVERGENCE`, `PART_FIRST_CITATION_LINE`, `PART_SECOND_CITATION_LINE`
 //!   e `pending_marker_part`;
-//! - `workflow/gap/tests.rs`, de `tests/report_answers.rs`: `W1`, `GAP`, `OTHER_GAP`, `ANSWER`, `DIRECTIVE` e `confirmed_by`;
-//! - `workflow/lock/tests.rs`, de `tests/spec_lock.rs`: `FOLDER`, `DEFAULT_SPECS`, `CUSTOM_SPECS`, `FROZEN` e `IN_WORKTREE`;
-//! - `workflow/matrix/tests.rs`, de `tests/gate_worktree.rs`: `missing` e `missing_with_spec`;
-//! - `workflow/recurrence/tests.rs`, de `tests/report_recurrences.rs`: `W1`, `W2`, `W3` e `TLS`;
-//! - `extensions/scan/tests.rs`, de `tests/ext_scan.rs`: `summary` e `at`;
-//! - `project/marker/tests.rs`, de `tests/project.rs`: `MARKER_FILE`; `project/paths/tests.rs`, do mesmo: `mode_of`;
-//! - `projection/write/tests.rs`, de `tests/projection_write.rs`: `HEADER`, `PROJECTION` e `generated`;
-//! - `pr_gate/tests.rs`, de `tests/pr_gate.rs`: `field`, `tree` e `at_head`;
-//! - `workflow/retro/tests.rs`, de `tests/close_retro.rs`: `DIVERGENCE`, `OTHER_DIVERGENCE`, `GAP` e `ANSWER`;
-//! - `native/tests.rs`, de `tests/native.rs`: `CHECK_IDS`, `GUIDELINE_IDS`, `RUN_TESTS`, `CI_GREEN` e `native_ids_with_types`;
-//! - `ports/process/tests.rs`, de `tests/process_runner.rs`: `TWENTY_SECS`; e `spec`, de `tests/proc_roles/mod.rs`;
-//! - `guard/tests.rs`, de `tests/guard.rs`: `rule`;
-//! - `ports/blob/tests.rs` e `byproduct/tests.rs`, ambos de `tests/byproduct_store.rs`: `ABC_SHA256` (uma cópia em cada).
+//! - `workflow/gap/tests.rs`, de `tests/e2e/report_answers.rs`: `W1`, `GAP`, `OTHER_GAP`, `ANSWER`, `DIRECTIVE` e `confirmed_by`;
+//! - `workflow/lock/tests.rs`, de `tests/e2e/spec_lock.rs`: `FOLDER`, `DEFAULT_SPECS`, `CUSTOM_SPECS`, `FROZEN` e `IN_WORKTREE`;
+//! - `workflow/matrix/tests.rs`, de `tests/e2e/gate_worktree.rs`: `missing` e `missing_with_spec`;
+//! - `workflow/recurrence/tests.rs`, de `tests/e2e/report_recurrences.rs`: `W1`, `W2`, `W3` e `TLS`;
+//! - `extensions/scan/tests.rs`, de `tests/integration/ext_scan.rs`: `summary` e `at`;
+//! - `project/marker/tests.rs`, de `tests/integration/project.rs`: `MARKER_FILE`; `project/paths/tests.rs`, do mesmo: `mode_of`;
+//! - `projection/write/tests.rs`, de `tests/integration/projection_write.rs`: `HEADER`, `PROJECTION` e `generated`;
+//! - `pr_gate/tests.rs`, de `tests/integration/pr_gate.rs`: `field`, `tree` e `at_head`;
+//! - `workflow/retro/tests.rs`, de `tests/e2e/close_retro.rs`: `DIVERGENCE`, `OTHER_DIVERGENCE`, `GAP` e `ANSWER`;
+//! - `native/tests.rs`, de `tests/integration/native.rs`: `CHECK_IDS`, `GUIDELINE_IDS`, `RUN_TESTS`, `CI_GREEN` e `native_ids_with_types`;
+//! - `ports/process/tests.rs`, de `tests/integration/process_runner.rs`: `TWENTY_SECS`; e `spec`, de `tests/integration/proc_roles/mod.rs`;
+//! - `guard/tests.rs`, de `tests/integration/guard.rs`: `rule`;
+//! - `ports/blob/tests.rs` e `byproduct/tests.rs`, `ABC_SHA256` (uma cópia em cada; o antigo `tests/byproduct_store.rs` não existe mais).
 
 pub mod ext;
 pub mod gate;

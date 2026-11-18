@@ -8,11 +8,15 @@ status: accepted
 
 O `omhl` tinha duas portas para o agente: a CLI e o adapter MCP (`omhl mcp`, `adapters/mcp.rs`). O plugin já não inicia o MCP (`plugin.json` sem `mcpServers`, teste em `crates/omhl/tests/plugin.rs`), e o README dizia que nenhum fluxo depende dele. Mesmo sem uso, o adapter custava 403 linhas, 14 schemas de ferramenta e uma terceira porta a tocar a cada ação nova, além de vocabulário de protocolo dentro de `app` (`parse_tool_call`, `Caller::mcp`, `AppError::unknown_tool`).
 
+**Nota de 2026-11-18 (work item `perf3`).** O teste do plugin agora é `crates/omhl/tests/integration/plugin.rs`. O layout de `tests/` mudou; ver [Testes unitários no gate, integração no CI](../mechanical-gates.md#testes-unitários-no-gate-integração-no-ci).
+
 ## Decisão
 
 O `omhl` tem uma única interface para o agente: a CLI. O adapter MCP é removido junto com o que só ele usava (`parse_tool_call`, `Caller::mcp`, `AppError::unknown_tool`). **CLI direto, UTCP descartado.**
 
 O Claude Code usa a CLI por quatro skills do plugin, com instruções em `references/` verificadas por um teste de cobertura (`skill_coverage`) e por um teste que executa os exemplos (`skill_examples`), ambos num binário de teste (`tests/skills.rs`) rodado pelo `checks.test-suite` (até o work item `perf2`; ver Consequências). As skills e os testes chegaram no PR #16, do mesmo work item; o primeiro PR deste ADR registrou só a decisão. O hook `session-start` e o `spec-lock` ficam fora das skills.
+
+**Nota de 2026-11-18 (work item `perf3`).** Os testes `skill_coverage` e `skill_examples` agora ficam em `crates/omhl/tests/e2e/skills/` (`coverage.rs` e `examples.rs`), no binário e2e, e não mais em `tests/skills.rs`. O layout de `tests/` mudou; ver [Testes unitários no gate, integração no CI](../mechanical-gates.md#testes-unitários-no-gate-integração-no-ci).
 
 ## Drivers
 
@@ -50,11 +54,13 @@ Nenhuma superfície de protocolo a manter, a saída da CLI preservada no primeir
 - O ADR 0004 foi editado no lugar para tirar o MCP da lista de clientes da guarda.
 - Um segundo cliente de agente exigirá nova decisão.
 - **Nota de 2026-11-17 (work item `perf2`).** O `checks.test-suite` local passou a rodar só `cargo test --workspace --lib --locked`, e `tests/skills.rs` saiu do pre-push: roda no CI (`.github/workflows/ci.yml`). A razão da alternativa descartada ("o `checks.test-suite` já roda o teste e reprova") passa a valer no merge, pelo CI e pelo ruleset da `main`, não no push. Follow-up: um check mecânico `before-merge` que consulte o `gh` foi considerado no `perf2` para registrar o CI e ficou fora.
+- **Nota de 2026-11-18 (work item `perf3`).** O `tests/skills.rs` da nota acima agora é `crates/omhl/tests/e2e/skills/`. O layout de `tests/` mudou; ver [Testes unitários no gate, integração no CI](../mechanical-gates.md#testes-unitários-no-gate-integração-no-ci).
 
 ## Entrega
 
 - As quatro skills e os testes `skill_coverage` e `skill_examples` chegaram no PR #16.
 - O teto de `SKILL.md` ficou como constante do teste, `MAX_SKILL_LINES = 80` (`crates/omhl/tests/skills/coverage.rs`), e não como configuração.
+- **Nota de 2026-11-18 (work item `perf3`).** O teto agora mora em `crates/omhl/tests/e2e/skills/coverage.rs`. O layout de `tests/` mudou; ver [Testes unitários no gate, integração no CI](../mechanical-gates.md#testes-unitários-no-gate-integração-no-ci).
 
 ## Follow-ups
 

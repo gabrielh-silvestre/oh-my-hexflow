@@ -98,7 +98,7 @@ O arquivo de saída (`byproduct`) guarda a saída completa do comando, até 4 Mi
 | `push-to-main` | Push com destino `main` | main receives no direct pushes; open a pull request |
 | `parent-gone` | O processo que lançou o `omhl` saiu antes dos checks | the process that started omhl exited before the checks ran; nothing ran; run the same command again |
 
-O teste `crates/omhl/tests/repo_checks.rs` confere que cada código e cada `kind` desta seção aparece na página.
+O teste `crates/omhl/tests/integration/repo_checks.rs` confere que cada código e cada `kind` desta seção aparece na página.
 
 ## 2. Um comando por check
 
@@ -347,16 +347,32 @@ Cada comando aquece um check com prazo: `compile-validate`, `lint`, `compile-bui
 
 ### Testes unitários no gate, integração no CI
 
-O `checks.test-suite` roda `cargo test --workspace --lib --locked`: só os testes unitários de `crates/*/src` (45 em 2026-11-17, nos binários de lib de `hexlog` e `omhl`). Os testes de `crates/*/tests` (integração, e2e, arquitetura, a trava das skills em `tests/skills.rs`) e os doctests rodam só no CI, em `.github/workflows/ci.yml` (decisões `perf2-pre-push-so-unitarios` e `perf2-doctest-roda-no-ci`). O `compile-validate` local ainda checa o tipo de todos os alvos.
+O `checks.test-suite` roda `cargo test --workspace --lib --locked`: só os testes unitários de `crates/*/src` (962 em 2026-11-18: `hexlog` 118 e `omhl` 844, nos binários de lib). Os testes de `crates/*/tests` (integração 879, sendo `hexlog` 145 e `omhl` 734; e2e 785, só no `omhl`; total de 2626 com os unitários; entram arquitetura e a trava das skills em `tests/e2e/skills/`) e os doctests rodam só no CI, em `.github/workflows/ci.yml` (decisões `perf2-pre-push-so-unitarios` e `perf2-doctest-roda-no-ci`). O `compile-validate` local ainda checa o tipo de todos os alvos.
 
-O job `ci` roda, a cada PR (qualquer base) e a cada push na `main`, `cargo fmt`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --workspace --locked` e `cargo test --workspace --locked --no-fail-fast`, cada passo independente dos outros. O último passo prova a cobertura: a contagem de `cargo test --workspace --locked -- --list` tem de ser igual à soma dos `passed` do passo de teste, com 0 `failed` e 0 `ignored`.
+Três perguntas, de cima para baixo, decidem o grupo de um teste; a primeira resposta "sim" vale:
+
+1. Executa o binário `omhl` compilado (`CARGO_BIN_EXE_omhl`) ou um hook git real? É e2e (`crates/omhl/tests/e2e/`).
+2. Chama git, `sh` ou outro processo, ou espera o relógio (`sleep`, timeout)? É integração.
+3. Passa pela fachada (`Hexlog::open`, `Omhl`, `App`)? É integração.
+
+Se as três respostas são não, o teste é unitário: fica num `tests.rs` ao lado da fonte (`src/<modulo>/tests.rs`) e roda no `--lib`. Um teste que atravessa dois módulos também não é unitário: vai para a integração.
+
+Os meta-testes são a exceção. Meta-teste lê a árvore do repositório, os docs, `plugin/*.json` ou o `Cargo.lock`, ou testa um helper do próprio arquivo, e não tem módulo de fonte. Vai para o binário onde moram os helpers do seu arquivo e, sem helper comum, para a integração. Por isso os dois `architecture.rs` e o `plugin.rs` ficam na integração, e os meta de `skills/` ficam no e2e, junto do parser que dividem.
+
+O layout de `tests/` é fixo: cada crate só tem `integration/`, `fixtures/` e, no `omhl`, `e2e/` e `support/` (o `hexlog` ainda guarda as sementes do `proptest` em `proptest-regressions/`). Nenhum `tests/<arquivo>.rs` fica solto: o teste de layout em `tests/integration/architecture.rs` reprova. Para rodar um módulo, use `cargo test -p <crate> --test integration <modulo>::`, `--test e2e <modulo>::` (só o `omhl`) ou `--lib <modulo>::`.
+
+O `support/` tem lugar diferente em cada crate. No `hexlog` fica dentro de `integration/`, porque a regra de API pública (`it_should_keep_integration_tests_on_the_public_api`) recusa `#[path]` em `tests/`. No `omhl` fica ao lado dos binários e cada `main.rs` o inclui por `#[path]`. Se o `hexlog` ganhar um e2e, o `support/` muda de lugar ou a regra relaxa.
+
+A trava de varredura do `/proc` é um flock em `omhl-process-sweep.lock` (em `std::env::temp_dir()`), com dois modos. `serialize_sweeps()` (exclusivo) vale para o teste que varre o `/proc` inteiro: `sweep_strays()`, `omhl check sweep` e os blocos `check sweep` do `skill_examples`. `share_sweeps()` (compartilhado) vale para o teste que só cria órfão de propósito. O guard é a primeira instrução do teste, para ser solto por último.
+
+O job `ci` roda, a cada PR (qualquer base) e a cada push na `main`, `cargo fmt`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --workspace --locked` e `cargo test --workspace --locked --no-fail-fast`, cada passo independente dos outros. O job roda com `CARGO_PROFILE_DEV_DEBUG: line-tables-only` (work item `perf3`, técnica T2). O último passo prova a cobertura: a contagem de `cargo test --workspace --locked -- --list` tem de ser igual à soma dos `passed` do passo de teste, com 0 `failed` e 0 `ignored`.
 
 O merge é bloqueado em duas camadas (decisão `perf2-bloqueio-camada-dupla`):
 
 1. O ruleset `main` do GitHub exige o check `ci` do app do GitHub Actions (`integration_id` 15368) e proíbe deletar a `main` ou reescrevê-la com force-push. O papel admin só contorna as regras no merge de um PR, marcando o bypass de forma explícita (`bypass_mode: pull_request`); um push direto na `main` fica bloqueado para todos.
 2. A attestation manual de `checks.ci-green-before-merge` cita a execução do CI do mesmo commit. Selecione a execução com `gh run list --workflow ci.yml --branch <branch> --event pull_request --limit 1 --json databaseId,headSha,conclusion,url`. Exija `conclusion` igual a `success` e `headSha` igual a `git rev-parse HEAD`, e grave os dois na nota: `omhl attest checks.ci-green-before-merge work-items.<id> --outcome passed --note "<url> <headSha>"`. Depois de um rebase (por exemplo, no merge de pilha do `gh stack`), o SHA muda: espere o CI novo e ateste de novo.
 
-Ao mexer em área coberta por `tests/`, rode na máquina local só o arquivo afetado (`cargo test -p <crate> --test <nome>`). Se o `proptest` gravar uma semente nova em `crates/hexlog/tests/chain_properties.proptest-regressions` (arquivo rastreado) numa rodada local, restaure o arquivo antes do commit, como descreve o [README](../README.md).
+Ao mexer em área coberta por `tests/`, rode na máquina local só o módulo afetado (`cargo test -p <crate> --test integration <modulo>::`, `--test e2e` ou `--lib`, como descrito acima). Se o `proptest` gravar uma semente nova em `crates/hexlog/tests/proptest-regressions/chain_properties.txt` (arquivo rastreado) numa rodada local, restaure o arquivo antes do commit, como descreve o [README](../README.md).
 
 ## 10. Modelo de ameaça do veredito
 

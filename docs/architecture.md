@@ -198,7 +198,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Caixas aninhadas.** `engine`, `catalog`, `store` (3.2 a 3.4), todas privadas em `lib.rs` (`mod engine; mod catalog; mod store;`).
 
-**Profundidade.** Funda. 10 operações e tipos de dado sobre 5,5 mil linhas, com o chamador sem nenhum conhecimento de SQL, hash ou transação. Seams reais (mais de um adapter): `Clock`, `IdGenerator`, `NativeNodes`, cada um com adapter de produção em `omhl` (`SystemClock`, `V7Ids`, `NativeBase`) e fake nos testes (`FixedClock`, `SeqIds`, `FakeNative` em `crates/hexlog/tests/support/mod.rs`).
+**Profundidade.** Funda. 10 operações e tipos de dado sobre 5,5 mil linhas, com o chamador sem nenhum conhecimento de SQL, hash ou transação. Seams reais (mais de um adapter): `Clock`, `IdGenerator`, `NativeNodes`, cada um com adapter de produção em `omhl` (`SystemClock`, `V7Ids`, `NativeBase`) e fake nos testes (`FixedClock`, `SeqIds`, `FakeNative` em `crates/hexlog/tests/integration/support/mod.rs`).
 
 ### 3.2 Aninhada: `hexlog::engine`
 
@@ -327,7 +327,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Escondido.** Agrupamento por work item, truncamento, lock de diretório, arquivos temporários, substituição atômica só do que mudou, remoção de orphans gerados, `.gitignore` da pasta.
 
-**Profundidade.** Funda. O seam entre `build` (puro) e `write` (IO) deixa a montagem testável sem filesystem (`tests/projection_build.rs`, `tests/projection_write.rs`). `tempfile` só entra aqui (travado).
+**Profundidade.** Funda. O seam entre `build` (puro) e `write` (IO) deixa a montagem testável sem filesystem (`src/projection/build/tests.rs`, `src/projection/write/tests.rs`). `tempfile` só entra aqui (travado).
 
 ### 3.15 Aninhada: `omhl::render`
 
@@ -414,7 +414,7 @@ Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/`
 
 O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só onde cada parte mora.
 
-- `workflow/` (`config`, `gap`, `lock`, `matrix`, `names`, `recurrence`, `retro`, `spec`): as regras puras do fluxo. A configuração de `.omhl/workflow.toml`, o estado dos gaps, a decisão do `spec-lock`, a matriz de prefixos do gate de worktree, a gramática da pasta e dos arquivos da spec (`names`), a recorrência de premissas, a retro e o validador de spec. Travado: não importa `ports`, `runner` nem `byproduct` (`WORKFLOW_FORBIDDEN_MODULES` em `crates/omhl/tests/architecture.rs`).
+- `workflow/` (`config`, `gap`, `lock`, `matrix`, `names`, `recurrence`, `retro`, `spec`): as regras puras do fluxo. A configuração de `.omhl/workflow.toml`, o estado dos gaps, a decisão do `spec-lock`, a matriz de prefixos do gate de worktree, a gramática da pasta e dos arquivos da spec (`names`), a recorrência de premissas, a retro e o validador de spec. Travado: não importa `ports`, `runner` nem `byproduct` (`WORKFLOW_FORBIDDEN_MODULES` em `crates/omhl/tests/integration/architecture.rs`).
 - `ports/specs`: `SpecStore` (`has_spec`, `read_folder`, `folder_files`, `file_exists`, `create_first_part`) lê e cria a pasta de spec, com teto por arquivo e por número de entradas.
 - `ports/workflow`: `read_workflow` lê e valida o `.omhl/workflow.toml`.
 - `ports/files`: `list_sorted_capped`, que veio de `extensions/files.rs` (travado por `PORTS_FORBIDDEN_MODULES`).
@@ -428,11 +428,11 @@ O hook impõe a matriz do papel ao `Bash` do agente portado ([ADR 0008](adr/0008
 - `workflow/omhl_leaf` e `workflow/role_allow`: a folha da CLI que o comando chama (com os grupos de subcomandos que o clap informa) e o `omhl-allow` do frontmatter do agente, lido com a `serde-saphyr`.
 - `app/agent_role.rs`: `agent_role(&Value, &AgentRoleEnv) -> RoleVerdict` (`Pass`, `Deny`, `Allow`). Não abre o banco. Lê o arquivo do agente por `ports/files` (`read_regular_utf8`, com teto de 64 KiB).
 - `adapters/hook.rs`: traduz o veredito para o JSON do `PreToolUse`.
-- `guard/role.rs`: a matriz compilada dos sete papéis, que a CLI aplica no `append`. O hook não guarda cópia do dado: lê o `omhl-allow` do agente (`commands`). `ROLE_REFERENCE_COMMANDS` (os `commands`, só de teste) e `ROLE_REFERENCE_MATRIX` (as três colunas do `append`, lida da matriz) servem à paridade com o `omhl-allow` (`tests/agents.rs`) e com a tabela de `directives-flow.md` (`tests/repo_checks.rs`).
+- `guard/role.rs`: a matriz compilada dos sete papéis, que a CLI aplica no `append`. O hook não guarda cópia do dado: lê o `omhl-allow` do agente (`commands`). `ROLE_REFERENCE_COMMANDS` (os `commands`, só de teste) e `ROLE_REFERENCE_MATRIX` (as três colunas do `append`, lida da matriz) servem à paridade com o `omhl-allow` (`tests/integration/agents.rs`) e com a tabela de `directives-flow.md` (`tests/integration/repo_checks.rs`).
 
 ## 4. Regras de dependência e o teste que trava cada uma
 
-### `hexlog` (`crates/hexlog/tests/architecture.rs`)
+### `hexlog` (`crates/hexlog/tests/integration/architecture.rs`)
 
 | Regra | Teste |
 |---|---|
@@ -446,7 +446,7 @@ O hook impõe a matriz do papel ao `Bash` do agente portado ([ADR 0008](adr/0008
 | Testes de integração só usam a API pública | `it_should_keep_integration_tests_on_the_public_api` |
 | Lints de memória do workspace herdados e sem `allow` | `it_should_inherit_the_workspace_lints_in_every_crate`, `it_should_refuse_allow_for_the_memory_lints_and_require_a_registered_reason_on_expect` |
 
-### `omhl` (`crates/omhl/tests/architecture.rs`)
+### `omhl` (`crates/omhl/tests/integration/architecture.rs`)
 
 | Regra | Teste |
 |---|---|
@@ -472,9 +472,9 @@ O hook impõe a matriz do papel ao `Bash` do agente portado ([ADR 0008](adr/0008
 | Sem `mcp`, `tool_call` nem `json-rpc` em `src/` fora de `adapters/` e `main.rs` (ADR 0006) | `it_should_keep_the_removed_mcp_port_out_of_the_src_layers` |
 | `src/app` só tem os cortes numéricos (`.min(`, `.max(`, `.clamp(`, `.take(`, `saturating_`) da lista fechada, 9 ao todo; um corte novo reprova até ser justificado (ver [ADR 0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md)) | `it_should_not_grow_the_numeric_cuts_in_src_app_without_an_inventory_entry` |
 
-### As skills do plugin (`crates/omhl/tests/skills.rs`)
+### As skills do plugin (`crates/omhl/tests/e2e/skills/`)
 
-As seis skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `work-item-closing`, `query-and-integrity`, `plan-consensus` e `review`) não são código, mas um binário de teste as trava. O `skills.rs` é um só (os módulos `coverage`, `examples` e `orchestration` entram por `#[path]`, para o cargo não criar três binários) e roda no CI (`.github/workflows/ci.yml`), que bloqueia o merge; desde o work item `perf2`, o `checks.test-suite` local executa só `cargo test --workspace --lib --locked` e não roda os arquivos de `tests/`. Não há check mecânico dedicado (decisão do [ADR 0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md)).
+As seis skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `work-item-closing`, `query-and-integrity`, `plan-consensus` e `review`) não são código, mas um teste as trava. Os módulos `coverage`, `examples` e `orchestration` ficam em `tests/e2e/skills/` e rodam no binário e2e, no CI (`.github/workflows/ci.yml`), que bloqueia o merge; desde o work item `perf2`, o `checks.test-suite` local executa só `cargo test --workspace --lib --locked` e não roda os arquivos de `tests/`. Não há check mecânico dedicado (decisão do [ADR 0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md)).
 
 | Teste | O que reprova |
 |---|---|
@@ -488,7 +488,7 @@ O `skill_examples` executa `check sweep`, que varre o `/proc` inteiro e vale par
 
 ### Os agentes e o hook do plugin
 
-Os sete agentes de `plugin/agents/` e o hook `agent-role` (seção 3.24) têm cinco arquivos de teste em `crates/omhl/tests/`. Todos rodam no CI.
+Os sete agentes de `plugin/agents/` e o hook `agent-role` (seção 3.24) têm cinco arquivos de teste, em `crates/omhl/tests/integration/` e `crates/omhl/tests/e2e/`. Todos rodam no CI.
 
 | Arquivo | O que reprova |
 |---|---|
@@ -513,12 +513,12 @@ Oito itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 
 3. **Paginação e constantes duplicadas (corte).** O laço de páginas existe em `app/read.rs:nodes_matching` (`PAGE_LIMIT = 50`, `:6`; `all_nodes` e `latest_attestation` o chamam) e em `gate/source.rs:HexlogSource::nodes` (usa `config.limits.page_default`, `facade.rs:69`), e `app/engine.rs:17` tem um terceiro `DEFAULT_PAGE_LIMIT = 50`. A relation `after` aparece como constante em `app/context.rs:10` e `app/load.rs:21` e como literal em `native/mod.rs:88`. Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade (a 14ª), em troca de um só laço.
 
-4. **A sonda do git vive em duas camadas (dívida).** `Engine` guarda o `probe` (`app/mod.rs`, campo `probe: deps.probe`; `app/engine.rs:probe_snapshot`) e `Omhl` guarda outro (`facade.rs:50-55`, usado em `:84` e `:255`). Em `close`, `Engine::close` sonda e `close_work_item` sonda de novo (`facade.rs:255`): dois `git` por fechamento, e a segunda leitura é a que vale. Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito, o que o `tests/pr_gate.rs` aproveita. Vira corte se aparecer um caso em que as duas leituras discordem.
+4. **A sonda do git vive em duas camadas (dívida).** `Engine` guarda o `probe` (`app/mod.rs`, campo `probe: deps.probe`; `app/engine.rs:probe_snapshot`) e `Omhl` guarda outro (`facade.rs:50-55`, usado em `:84` e `:255`). Em `close`, `Engine::close` sonda e `close_work_item` sonda de novo (`facade.rs:255`): dois `git` por fechamento, e a segunda leitura é a que vale. Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito, o que o `tests/integration/pr_gate.rs` aproveita. Vira corte se aparecer um caso em que as duas leituras discordem.
 
 5. **Nome e formato de porta dentro de `app` (corte).** `app` ainda conhece o nome de quem o chama e o formato de uma porta: `Caller::{cli, cli_under_claude_code, hook}` (`app/action.rs:100`), `spec_lock` com o payload do `PreToolUse` (`app/spec.rs:289`) e `invalid_hook_input` (`app/error.rs:150`). Acrescentar uma ação toca 4 pontos: `Action` (`action.rs`), `Engine::run`, `ActionCommand` e `to_action` (`cli.rs`). Corte: o adapter traduz o payload para um struct neutro e passa o `Caller` pronto; `app` deixa de nomear a porta. Trade-off: não medido além de mover os três nomes e o parse do payload.
 
-6. **Contrato de saída sem tipo (dívida).** `App::dispatch` devolve `Result<Value, AppError>` e o hook decodifica por chave de string: `pending_note` lê `created`, `revised`, `relations_created`, `tenant`; `orphan_note` lê `orphans` (e usa `app::ExtensionKind`, reexportado, para ficar só nos checks); `context_for_session` compara com `"no-marker"`; `warning` compara com `"extensions-invalid"` (`adapters/hook.rs`). O texto do `omhl check run` (`adapters/check_run_text.rs`) é um segundo decodificador por chave de string, mas de um relatório só dele (`check run`), então não dispara o corte. As chaves nascem em `app/load.rs`. Hoje só o teste `tests/hook.rs` pega uma divergência. Aceitável porque CLI e hook compartilham um único formato JSON de propósito; vira corte (um `LoadReport` tipado em `app`) quando um segundo consumidor ler o mesmo relatório.
+6. **Contrato de saída sem tipo (dívida).** `App::dispatch` devolve `Result<Value, AppError>` e o hook decodifica por chave de string: `pending_note` lê `created`, `revised`, `relations_created`, `tenant`; `orphan_note` lê `orphans` (e usa `app::ExtensionKind`, reexportado, para ficar só nos checks); `context_for_session` compara com `"no-marker"`; `warning` compara com `"extensions-invalid"` (`adapters/hook.rs`). O texto do `omhl check run` (`adapters/check_run_text.rs`) é um segundo decodificador por chave de string, mas de um relatório só dele (`check run`), então não dispara o corte. As chaves nascem em `app/load.rs`. Hoje só o teste `tests/e2e/hook.rs` pega uma divergência. Aceitável porque CLI e hook compartilham um único formato JSON de propósito; vira corte (um `LoadReport` tipado em `app`) quando um segundo consumidor ler o mesmo relatório.
 
 7. **Helpers no lugar errado (corte pequeno, em parte feito).** `list_sorted_capped` saiu de `extensions/files.rs` para `ports/files.rs` no fluxo de diretivas, e `projection/write.rs` o importa de lá. Falta o resto: `projection/build.rs` importa `render::sort_by_id`, e `project/layout.rs` mistura constantes de `extensions` (`EXT_FILE_MAX_BYTES`, `CHECKS_DIR`), de `projection` (`PROJECTION_*`) e de arquivo temporário (`TMP_*`). Corte: `render::sort_by_id` vai para `project` (que já hospeda `text.rs`).
 
-8. **Superfície pública do `hexlog` maior que o consumo (dívida consciente).** `lib.rs:25-29` exporta 6 funções de `chain` e o `omhl` usa só `fingerprint` (`app/load.rs:1`); `CHECKED_FIELDS` (`lib.rs:9`) só serve a `tests/chain_tamper.rs`; `Hexlog::catalog` (`facade.rs:331`) só tem um chamador, `Omhl::catalog` (`omhl/src/facade.rs:78`). A causa é a regra de que os testes de integração usem só a API pública (`it_should_keep_integration_tests_on_the_public_api`): o que os testes de adulteração precisam vira público. Cortar exige uma feature de cargo para test support. Também é o único conhecimento de host dentro do motor: `SnapshotKind::GitCommit` e `SnapshotKind::GitTree` (`engine/snapshot.rs:8-11`), enum fechado de propósito, assumido e travado por `it_should_mention_git_only_in_engine_snapshot`.
+8. **Superfície pública do `hexlog` maior que o consumo (dívida consciente).** `lib.rs:25-29` exporta 6 funções de `chain` e o `omhl` usa só `fingerprint` (`app/load.rs:1`); `CHECKED_FIELDS` (`lib.rs:9`) só serve a `tests/integration/chain_tamper.rs`; `Hexlog::catalog` (`facade.rs:331`) só tem um chamador, `Omhl::catalog` (`omhl/src/facade.rs:78`). A causa é a regra de que os testes de integração usem só a API pública (`it_should_keep_integration_tests_on_the_public_api`): o que os testes de adulteração precisam vira público. Cortar exige uma feature de cargo para test support. Também é o único conhecimento de host dentro do motor: `SnapshotKind::GitCommit` e `SnapshotKind::GitTree` (`engine/snapshot.rs:8-11`), enum fechado de propósito, assumido e travado por `it_should_mention_git_only_in_engine_snapshot`.

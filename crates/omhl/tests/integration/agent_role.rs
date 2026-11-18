@@ -142,7 +142,7 @@ fn it_should_keep_the_author_client_unchanged_when_omhl_role_is_set() {
     assert_eq!(recorded_author(&project)["client"], json!("cli"));
 }
 
-// Matriz de papéis no `append`, pelo `Omhl` (o mesmo caminho de `tests/guard.rs`)
+// Matriz de papéis no `append`, pelo `Omhl` (o mesmo caminho de `tests/integration/guard.rs`)
 
 const ANALYST: &str = "omhl:analyst";
 const ARCHITECT: &str = "omhl:architect";
