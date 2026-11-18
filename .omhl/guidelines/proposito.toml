@@ -1,0 +1,2 @@
+kind = "business"
+text = "O oh-my-hexflow é um fluxo de desenvolvimento agêntico opinativo e multiagente, construído sobre grafos. O motor HexCore (hoje o crate `hexlog`) é o coração da integração. O projeto é inspirado no oh-my-claudecode."
