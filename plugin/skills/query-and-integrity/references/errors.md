@@ -4,7 +4,7 @@ Vale para todo comando desta skill. A página de cada comando lista só os erros
 
 ## Erros
 
-Um erro sai no stderr com saída 1: em texto (`✘ código · mensagem`) nos comandos que falam `agent` e `human`, e numa linha JSON com `--format json` e nos comandos que ainda só imprimem JSON. Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
+Um erro sai no stderr com saída 1: em texto (`✘ código · mensagem`) nos comandos que falam `agent` e `human`, e numa linha JSON com `--format json` e nos cinco comandos lidos por máquina (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hooks post-commit` e `gate-worktree`), que só imprimem JSON. Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
 
 A ordem das checagens é: uso do clap; argumentos e entrada do comando; existência do `--project-dir`; marcador; `--db`. O primeiro que falha é o que você vê.
 

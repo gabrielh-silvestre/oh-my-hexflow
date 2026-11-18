@@ -171,3 +171,11 @@ _Avoid_: id (sozinho), target, name
 **Record id**:
 O identificador técnico de um record específico, gerado na gravação. Cada revisão de um node tem o seu.
 _Avoid_: id (sozinho), uuid
+
+**Output format**:
+A forma em que um comando do `omhl` imprime o resultado, escolhida pela opção global `--format`: `agent` (texto compacto para o agente, o padrão dos 21 comandos ativos), `human` (os mesmos fatos em blocos, com os rótulos alinhados) e `json` (uma linha, para máquina). Os 5 comandos lidos por máquina seguem em `json` e recusam `agent` e `human`.
+_Avoid_: modo de saída, text (o antigo `--format text` virou `agent`)
+
+**Output vocabulary**:
+O módulo único (`adapters/text/vocab.rs`) que guarda os símbolos, o `Next:`, os separadores, o recuo e o aviso de segredos da saída em texto. O `agent` e o `human` herdam dele e sobrescrevem só o que difere, então mudar um símbolo muda os dois.
+_Avoid_: tema, estilo

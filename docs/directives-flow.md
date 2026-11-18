@@ -52,7 +52,7 @@ Edição direta na `develop` nunca passa pelo gate. A `develop` e a `main` saem 
 
 ## 2. Comandos
 
-Um erro sai no stderr, numa linha JSON, com código de saída 1. Uma saída de sucesso é uma linha JSON no stdout.
+Um erro sai no stderr com código de saída 1, e uma saída de sucesso no stdout. Os 21 comandos ativos imprimem texto `agent` por padrão, com `--format human` (os mesmos fatos em blocos) e `--format json` (uma linha de JSON, a forma de ler por código); um erro sai em texto (`✘ código · mensagem`). Os cinco comandos lidos por máquina (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hooks post-commit` e `gate-worktree`) seguem em JSON e recusam `--format agent|human` com erro de uso (saída 2). A decisão está no [ADR 0009](adr/0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
 
 | Comando | O que faz |
 |---|---|
@@ -532,7 +532,7 @@ Spec aprovada nunca é editada. Para corrigir um erro da spec depois da aprovaç
    {"items":[{"base":"<record_id da revisão atual>","body":{"kind":"node","id":"divergences.row-limit","type":"divergence","data":{"source_ref":"CMP-002","kind":"contradicts","text":"...","evidence":[{"source":"src/export.ts","summary":"MAX_ROWS is 10000."}],"resolution":"spec-stale","work_item":"work-items.w1","amendment":"emenda-01","confirmed_by":{"by":"person:alice","question":"...","answer":"..."}}}}]}
    ```
 
-   O `record_id` da revisão atual vem de `omhl get <id>` (campo `node.record_id`).
+   O `record_id` da revisão atual vem de `omhl get <id>` (a linha `record_id:` do texto `agent`; com `--format json`, o campo `node.record_id`).
 
 Nunca tente editar a spec nem procure como descongelá-la.
 
