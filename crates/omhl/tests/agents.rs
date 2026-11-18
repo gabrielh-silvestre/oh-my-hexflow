@@ -699,8 +699,6 @@ fn it_should_have_a_credits_section_in_the_readme_naming_the_omc_origin() {
     }
 }
 
-// Revisão S4: correções de texto dos prompts (S1 a S6) e testes mais estritos.
-
 const SPEC_READERS: [&str; 4] = ["code-reviewer", "security-reviewer", "verifier", "critic"];
 const HANDOFF_ROLES: [&str; 6] = [
     "analyst",

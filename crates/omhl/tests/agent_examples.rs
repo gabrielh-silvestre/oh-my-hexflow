@@ -132,6 +132,17 @@ fn seed_confirmed_premise(project: &Project, id: &str, work_item: &str) {
     seed(project, None, &[node_item(id, "premise", &data)]);
 }
 
+/// O work item e a premissa confirmada em que o `rests-on` do exemplo se apoia.
+fn seed_rests_on_premise(project: &Project, request: &Value) {
+    let work_item = work_item_of(request);
+    seed_work_item(project, &work_item);
+    seed_confirmed_premise(
+        project,
+        text(&relation(request, "rests-on")["to"]),
+        &work_item,
+    );
+}
+
 /// A diretiva confirmada pelo dono em que o `rests-on` do exemplo se apoia.
 fn seed_guideline(project: &Project, id: &str) {
     let data = json!({
@@ -200,10 +211,6 @@ fn append_example(project: &Project, role: &str, request: &Value) -> Result<usiz
         .len())
 }
 
-fn accepted(count: usize) -> Result<usize, String> {
-    Ok(count)
-}
-
 /// Quantas relations `relation_type` seguem vigentes, lidas do banco do projeto.
 fn current_relations(project: &Project, relation_type: &str) -> usize {
     let (clock, ids, probe) = (FixedClock::default(), SeqIds::new(), FakeProbe::failing());
@@ -235,7 +242,7 @@ fn it_should_accept_the_analyst_append_example() {
 
     let result = append_example(&project, "omhl:analyst", &request);
 
-    assert_eq!(result, accepted(items(&request).len()));
+    assert_eq!(result, Ok(items(&request).len()));
 }
 
 // architect
@@ -244,17 +251,11 @@ fn it_should_accept_the_analyst_append_example() {
 fn it_should_accept_the_architect_append_example() {
     let project = Project::new("acme");
     let request = example("architect", 0);
-    let work_item = work_item_of(&request);
-    seed_work_item(&project, &work_item);
-    seed_confirmed_premise(
-        &project,
-        text(&relation(&request, "rests-on")["to"]),
-        &work_item,
-    );
+    seed_rests_on_premise(&project, &request);
 
     let result = append_example(&project, "omhl:architect", &request);
 
-    assert_eq!(result, accepted(items(&request).len()));
+    assert_eq!(result, Ok(items(&request).len()));
 }
 
 // code-reviewer
@@ -263,17 +264,11 @@ fn it_should_accept_the_architect_append_example() {
 fn it_should_accept_the_code_reviewer_append_example() {
     let project = Project::new("acme");
     let request = example("code-reviewer", 0);
-    let work_item = work_item_of(&request);
-    seed_work_item(&project, &work_item);
-    seed_confirmed_premise(
-        &project,
-        text(&relation(&request, "rests-on")["to"]),
-        &work_item,
-    );
+    seed_rests_on_premise(&project, &request);
 
     let result = append_example(&project, "omhl:code-reviewer", &request);
 
-    assert_eq!(result, accepted(items(&request).len()));
+    assert_eq!(result, Ok(items(&request).len()));
 }
 
 // security-reviewer
@@ -287,7 +282,7 @@ fn it_should_accept_the_security_reviewer_append_example() {
 
     let result = append_example(&project, "omhl:security-reviewer", &request);
 
-    assert_eq!(result, accepted(items(&request).len()));
+    assert_eq!(result, Ok(items(&request).len()));
 }
 
 // critic: decisão ancorada
@@ -296,17 +291,11 @@ fn it_should_accept_the_security_reviewer_append_example() {
 fn it_should_accept_the_critic_decision_append_example() {
     let project = Project::new("acme");
     let request = example("critic", 0);
-    let work_item = work_item_of(&request);
-    seed_work_item(&project, &work_item);
-    seed_confirmed_premise(
-        &project,
-        text(&relation(&request, "rests-on")["to"]),
-        &work_item,
-    );
+    seed_rests_on_premise(&project, &request);
 
     let result = append_example(&project, "omhl:critic", &request);
 
-    assert_eq!(result, accepted(items(&request).len()));
+    assert_eq!(result, Ok(items(&request).len()));
 }
 
 // critic: confirmação de premissa técnica que responde a um gap
@@ -348,7 +337,7 @@ fn it_should_accept_the_critic_confirmation_append_example() {
 
     let result = append_example(&project, "omhl:critic", &request);
 
-    assert_eq!(result, accepted(items(&request).len()));
+    assert_eq!(result, Ok(items(&request).len()));
 }
 
 #[test]
@@ -396,7 +385,7 @@ fn it_should_accept_the_verifier_closing_append_example() {
 
     let result = append_example(&project, "omhl:verifier", &request);
 
-    assert_eq!(result, accepted(items(&request).len()));
+    assert_eq!(result, Ok(items(&request).len()));
 }
 
 #[test]
@@ -495,7 +484,7 @@ fn it_should_accept_the_second_verifier_retirement_call_with_the_base_from_the_r
 
     let result = append_example(&project, "omhl:verifier", &request);
 
-    assert_eq!(result, accepted(items(&request).len()));
+    assert_eq!(result, Ok(items(&request).len()));
 }
 
 #[test]

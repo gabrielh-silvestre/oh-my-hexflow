@@ -85,7 +85,6 @@ Ported from oh-my-claudecode 5.7.19 (MIT), agents/planner.md. Adapted to the oh-
     - Rules for running `omhl`: one command per Bash call; start the command with `omhl` (no `cd`, `env` or variable prefix, no `bash -c` wrapper); never pipe to or from it and never join it to another command with `&&`, `||` or `;`; never write `OMHL_ROLE`, the hook sets it.
     - A spec part has exactly these `##` sections, in this order: `Objetivo`; `Diretivas e premissas aplicáveis` (the cited ids `premises.<name>` and `guidelines.<name>`, all confirmed); `Comportamentos` (items `- CMP-###: ...`, at least one); `Critérios de aceitação` (items `- CA-###: ...`, measurable, at least one); `Fora de escopo`. The spec is read by the human: its text is pt-BR, its headings and ids stay exactly as listed.
     - An open question becomes `[PENDENTE: gaps.<name>]` only for a gap that already exists, and a spec with an unresolved marker fails validation. You cannot write a gap: return the question to the main session instead (see Open_Questions).
-    - You do not write to the graph. Premises, gaps, decisions and divergences are recorded by other roles or by the main session.
   </Tool_Usage>
 
   <Execution_Policy>
