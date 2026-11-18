@@ -125,20 +125,15 @@ impl Specialization for Answers {
 
 fn gap_facts(gap: &Value) -> Vec<Fact> {
     let mut facts = vec![Fact::same("state", text(gap, "state"))];
-    if let Some(premise) = opt_text(gap, "answered_by") {
-        facts.push(Fact {
-            label: "answered by",
-            agent: format!("by {premise}"),
-            human: premise,
-        });
-    }
-    if let Some(answerer) = opt_text(gap, "answerer") {
-        facts.push(Fact {
-            label: "answerer",
-            agent: format!("{answerer} answer"),
-            human: answerer,
-        });
-    }
+    facts.extend(optional_fact(
+        gap,
+        "answered_by",
+        "answered by",
+        |premise| format!("by {premise}"),
+    ));
+    facts.extend(optional_fact(gap, "answerer", "answerer", |answerer| {
+        format!("{answerer} answer")
+    }));
     if let Some(no_criterion) = gap["no_criterion"].as_bool() {
         facts.push(Fact {
             label: "criterion",
@@ -152,15 +147,25 @@ fn gap_facts(gap: &Value) -> Vec<Fact> {
             },
         });
     }
-    if let Some(work_item) = opt_text(gap, "work_item") {
-        facts.push(Fact {
-            label: "work item",
-            agent: format!("of {work_item}"),
-            human: work_item,
-        });
-    }
+    facts.extend(optional_fact(gap, "work_item", "work item", |work_item| {
+        format!("of {work_item}")
+    }));
 
     facts
+}
+
+/// Fato presente só quando `key` é texto; o agente vê `agent(valor)`, o humano o valor.
+fn optional_fact(
+    node: &Value,
+    key: &str,
+    label: &'static str,
+    agent: impl FnOnce(&str) -> String,
+) -> Option<Fact> {
+    opt_text(node, key).map(|human| Fact {
+        label,
+        agent: agent(&human),
+        human,
+    })
 }
 
 pub struct Recurrences;

@@ -201,7 +201,13 @@ impl Specialization for Get {
             .flat_map(|(key, field)| scalar_fields(key, field));
         let data = scalar_fields("", &node["data"]);
 
-        let mut lines: Vec<Line> = identity.map(field).collect();
+        let mut lines: Vec<Line> = identity
+            .map(|(label, value)| Line::Field {
+                depth: 1,
+                label,
+                value,
+            })
+            .collect();
         if !data.is_empty() {
             lines.push(Line::Item {
                 depth: 0,
@@ -209,7 +215,11 @@ impl Specialization for Get {
                 parts: vec!["data".to_owned()],
                 join: Join::Dot,
             });
-            lines.extend(data.into_iter().map(field));
+            lines.extend(data.into_iter().map(|(label, value)| Line::Field {
+                depth: 1,
+                label,
+                value,
+            }));
         }
 
         lines
@@ -223,13 +233,5 @@ impl Specialization for Get {
             ),
             false => Closing::None,
         }
-    }
-}
-
-fn field((label, value): (String, String)) -> Line {
-    Line::Field {
-        depth: 1,
-        label,
-        value,
     }
 }
