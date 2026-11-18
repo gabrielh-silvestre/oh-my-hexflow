@@ -110,7 +110,7 @@ pub trait Renderer {
 /// O único fato guardado por comando: só o `check run` e o `verify` têm renderizador até as ondas seguintes.
 pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     match key {
-        CommandKey::CheckRun => Some(&check_run::CheckRunRenderer),
+        CommandKey::CheckRun => Some(&BaseRenderer(check_run::CheckRun)),
         CommandKey::Verify => Some(&BaseRenderer(verify::Verify)),
         CommandKey::List
         | CommandKey::Get
@@ -139,11 +139,11 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     }
 }
 
-/// A tabela de formas do comando; os comandos de base sem tabela devolvem a vazia, em que toda chave está fora dela.
-/// O `check run` ganha a sua na onda que o leva para a base.
+/// A tabela de formas do comando; os comandos sem tabela devolvem a vazia, em que toda chave está fora dela.
 pub fn profile_for(key: CommandKey) -> &'static Profile {
     match key {
         CommandKey::Verify => &verify::PROFILE,
+        CommandKey::CheckRun => &check_run::PROFILE,
         CommandKey::List
         | CommandKey::Get
         | CommandKey::Append
@@ -154,7 +154,6 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         | CommandKey::Close
         | CommandKey::Load
         | CommandKey::Project
-        | CommandKey::CheckRun
         | CommandKey::CheckSweep
         | CommandKey::CheckRetire
         | CommandKey::GuidelineRetire

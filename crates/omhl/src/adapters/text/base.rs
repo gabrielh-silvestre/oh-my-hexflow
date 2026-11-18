@@ -131,7 +131,7 @@ impl Entry {
 /// Tabela de formas de um comando: o que o teste de folhas cobra do texto e o que o `BaseRenderer` tem de mostrar.
 #[derive(Debug)]
 pub struct Profile {
-    /// Rótulo do comando no cabeçalho.
+    /// Rótulo do comando no cabeçalho; vazio quando o cabeçalho abre direto pelo resumo (o `check run`).
     pub label: &'static str,
     /// `None` nos comandos sem nó.
     pub nodes: Option<NodeContainer>,
@@ -220,7 +220,11 @@ pub struct BaseRenderer<S: Specialization>(pub S);
 impl<S: Specialization> Renderer for BaseRenderer<S> {
     fn success(&self, value: &Value) -> Doc {
         let specialization = &self.0;
-        let mut parts = vec![specialization.profile().label.to_owned()];
+        let mut parts: Vec<String> = Some(specialization.profile().label)
+            .filter(|label| !label.is_empty())
+            .map(str::to_owned)
+            .into_iter()
+            .collect();
         parts.extend(specialization.summary(value));
 
         let mut lines = vec![Line::Header {

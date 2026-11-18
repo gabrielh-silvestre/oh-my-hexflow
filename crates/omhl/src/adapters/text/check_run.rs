@@ -2,72 +2,266 @@
 
 use serde_json::Value;
 
-use super::Renderer;
-use super::doc::{Closing, Doc, Join, Line, Marker, items, one_line, opt_text, text};
+use super::base::{Entry, Profile, Region, Shape, Specialization};
+use super::doc::{Closing, Join, Line, Marker, items, one_line, opt_text, text};
+use super::error::{self, ErrorFacts};
+#[cfg(test)]
+use super::{BaseRenderer, Renderer};
 
 const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
 
-pub struct CheckRunRenderer;
+/// Sem rótulo: o cabeçalho do `check run` abre pelo evento. Sem curinga e tudo `optional` exceto `event` (sucesso)
+/// e `code`/`message` da raiz (erro). O `nothing-to-attest` só tem `event`, `push` e `results: []`; `exit_code` do
+/// sucesso é `Derived` porque o texto só o mostra quando o resultado não passou; a falha lista só o que o texto mostra,
+/// e `Noise` é o que ele nunca mostra (`expected`, `byproduct` e `stored` vêm do `guard-refused`).
+pub static PROFILE: Profile = Profile {
+    label: "",
+    nodes: None,
+    success: &[
+        Entry::new(Region::Root, "event", Shape::Closed),
+        Entry::new(Region::Root, "push", Shape::Derived).optional(),
+        Entry::new(Region::Root, "work_item", Shape::Literal).optional(),
+        Entry::new(Region::Root, "recorded", Shape::Derived).optional(),
+        Entry::new(Region::Root, "checks_planned", Shape::Noise).optional(),
+        Entry::new(Region::Snapshot, "kind", Shape::Closed).optional(),
+        Entry::new(Region::Snapshot, "id", Shape::Hash(7)).optional(),
+        Entry::new(Region::Data, "check", Shape::Literal)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "outcome", Shape::Closed)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "ok", Shape::Derived)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "blocking", Shape::Derived)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "concern", Shape::Closed)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "variant", Shape::Closed)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "exit_code", Shape::Derived)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "duration_ms", Shape::Derived)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "timed_out", Shape::Derived)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "truncated", Shape::Derived)
+            .under("results")
+            .optional(),
+        Entry::new(Region::Data, "code", Shape::Closed)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "check", Shape::Literal)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "hint", Shape::Closed)
+            .under("warnings")
+            .optional(),
+    ],
+    failure: &[
+        Entry::new(Region::Root, "code", Shape::Derived),
+        Entry::new(Region::Root, "message", Shape::Derived),
+        Entry::new(Region::Data, "event", Shape::Derived)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "work_item", Shape::Derived)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "planned", Shape::Noise)
+            .under("summary")
+            .optional(),
+        Entry::new(Region::Data, "passed", Shape::Derived)
+            .under("summary")
+            .optional(),
+        Entry::new(Region::Data, "failed", Shape::Derived)
+            .under("summary")
+            .optional(),
+        Entry::new(Region::Data, "blocking_failed", Shape::Derived)
+            .under("summary")
+            .optional(),
+        Entry::new(Region::Data, "not_run", Shape::Derived)
+            .under("summary")
+            .optional(),
+        Entry::new(Region::Data, "path", Shape::Literal)
+            .under("details")
+            .optional(),
+        Entry::new(Region::Data, "code", Shape::Closed)
+            .under("details")
+            .optional(),
+        Entry::new(Region::Data, "message", Shape::Derived)
+            .under("details")
+            .optional(),
+        Entry::new(Region::Data, "current", Shape::Noise)
+            .under("details")
+            .optional(),
+        Entry::new(Region::Data, "retired", Shape::Noise)
+            .under("details")
+            .optional(),
+        Entry::new(Region::Data, "next_step", Shape::Closed)
+            .under("details")
+            .optional(),
+        Entry::new(Region::Data, "kind", Shape::Derived)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "check", Shape::Literal)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "os_error", Shape::Closed)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "hint", Shape::Closed)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "blocking", Shape::Derived)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "run", Shape::Derived)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "timeout_secs", Shape::Derived)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "concern", Shape::Closed)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "variant", Shape::Closed)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "exit_code", Shape::Literal)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "duration_ms", Shape::Derived)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "timed_out", Shape::Derived)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "truncated", Shape::Derived)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "stdout", Shape::Literal)
+            .under("output_tail")
+            .optional(),
+        Entry::new(Region::Data, "stderr", Shape::Literal)
+            .under("output_tail")
+            .optional(),
+        Entry::new(Region::Data, "branch", Shape::Noise)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "cwd", Shape::Noise)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "argv", Shape::Noise)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "rref", Shape::Noise)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "lref", Shape::Noise)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "expected", Shape::Noise)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "byproduct", Shape::Noise)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "stored", Shape::Noise)
+            .under("context")
+            .optional(),
+        Entry::new(Region::Data, "kind", Shape::Noise)
+            .under("snapshot")
+            .optional(),
+        Entry::new(Region::Data, "id", Shape::Noise)
+            .under("snapshot")
+            .optional(),
+    ],
+};
 
-impl Renderer for CheckRunRenderer {
+pub struct CheckRun;
+
+impl Specialization for CheckRun {
+    fn profile(&self) -> &'static Profile {
+        &PROFILE
+    }
+
     /// `value` é o sucesso do comando.
-    fn success(&self, value: &Value) -> Doc {
+    fn summary(&self, value: &Value) -> Vec<String> {
         let event = text(value, "event");
-        if text(value, "push") == "nothing-to-attest" {
-            return Doc {
-                lines: vec![Line::Header {
-                    symbol: "✔",
-                    parts: vec![
-                        event,
-                        "nothing to attest in this push; no check ran".to_owned(),
-                    ],
-                }],
-                closing: Closing::None,
-            };
+        if nothing_to_attest(value) {
+            return vec![
+                event,
+                "nothing to attest in this push; no check ran".to_owned(),
+            ];
         }
 
-        let mut lines = vec![success_header(value, &event)];
-        lines.extend(items(value, "results").map(result_line));
-        lines.extend(items(value, "warnings").map(|warning| warning_line(warning, &event)));
+        success_summary(value, event)
+    }
 
-        Doc {
-            lines,
-            closing: Closing::NothingBlocked(next_step_after_success(&event).to_owned()),
+    fn detail_lines(&self, value: &Value) -> Vec<Line> {
+        if nothing_to_attest(value) {
+            return Vec::new();
+        }
+        let event = text(value, "event");
+
+        items(value, "results")
+            .map(result_line)
+            .chain(items(value, "warnings").map(|warning| warning_line(warning, &event)))
+            .collect()
+    }
+
+    fn closing(&self, value: &Value) -> Closing {
+        match nothing_to_attest(value) {
+            true => Closing::None,
+            false => {
+                Closing::NothingBlocked(next_step_after_success(&text(value, "event")).to_owned())
+            }
         }
     }
 
-    /// `value` é o `{"error": {...}}` de `AppError::to_json`.
-    fn failure(&self, value: &Value) -> Doc {
-        let error = &value["error"];
-        let code = text(error, "code");
-        let blocked = code == "checks-failed";
-        let mut lines = vec![if blocked {
-            blocked_header(&error["context"])
-        } else {
-            Line::Header {
-                symbol: "✘",
-                parts: vec![code.clone(), text(error, "message")],
-            }
-        }];
-        lines.extend(items(error, "details").flat_map(detail_lines));
-        if blocked
-            || items(error, "details").any(|detail| !detail["context"]["output_tail"].is_null())
-        {
-            lines.push(Line::Raw {
+    fn failure_header(&self, error: &Value) -> Line {
+        match text(error, "code") == "checks-failed" {
+            true => blocked_header(&error["context"]),
+            false => error::header(error),
+        }
+    }
+
+    fn failure_detail_lines(&self, detail: &Value, _facts: &ErrorFacts) -> Vec<Line> {
+        detail_lines(detail)
+    }
+
+    /// O contexto do erro não é impresso (só o cabeçalho `BLOCKED` o usa); sobra o aviso de segredos.
+    fn failure_extras(&self, error: &Value, facts: &ErrorFacts) -> Vec<Line> {
+        let shows_output = facts.code == "checks-failed"
+            || items(error, "details").any(|detail| !detail["context"]["output_tail"].is_null());
+
+        match shows_output {
+            true => vec![Line::Raw {
                 depth: 0,
                 text: SECRET_WARNING.to_owned(),
-            });
+            }],
+            false => Vec::new(),
         }
+    }
 
-        Doc {
-            lines,
-            closing: Closing::Next(next_step_after_error(&code).to_owned()),
-        }
+    fn failure_closing(&self, facts: &ErrorFacts) -> Closing {
+        Closing::Next(next_step_after_error(&facts.code).to_owned())
     }
 }
 
-fn success_header(value: &Value, event: &str) -> Line {
+fn nothing_to_attest(value: &Value) -> bool {
+    text(value, "push") == "nothing-to-attest"
+}
+
+fn success_summary(value: &Value, event: String) -> Vec<String> {
     let work_item = opt_text(value, "work_item").unwrap_or_else(|| "no work item".to_owned());
     let recorded = if value["recorded"] == true {
         "recorded"
@@ -84,10 +278,7 @@ fn success_header(value: &Value, event: &str) -> Line {
         None => String::new(),
     };
 
-    Line::Header {
-        symbol: "✔",
-        parts: vec![event.to_owned(), work_item, format!("{recorded}{snapshot}")],
-    }
+    vec![event, work_item, format!("{recorded}{snapshot}")]
 }
 
 /// `context` é o do erro `checks-failed`: evento, work item (ausente na `develop`) e resumo.
@@ -343,11 +534,11 @@ mod tests {
     use super::*;
 
     fn render_success(value: &Value) -> String {
-        CheckRunRenderer.agent_success(value)
+        BaseRenderer(CheckRun).agent_success(value)
     }
 
     fn render_error(value: &Value) -> String {
-        CheckRunRenderer.agent_failure(value)
+        BaseRenderer(CheckRun).agent_failure(value)
     }
 
     const COMMIT: &str = "c43356d0b9a1e8f47d2a5b6c7e8f9a0b1c2d3e4f";
