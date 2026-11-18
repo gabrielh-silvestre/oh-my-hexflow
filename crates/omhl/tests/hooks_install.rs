@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output as GitOutput, Stdio};
 
 use serde_json::{Value, json};
-use support::child::{Cmd, Output, omhl};
+use support::child::{Cmd, Output, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::{git_in, git_with_env, write_executable};
 use support::omhl::work_item_data;
@@ -242,7 +242,7 @@ impl HookRepo {
     }
 
     fn omhl_in(&self, args: &[&str]) -> Cmd {
-        omhl(args)
+        omhl_json(args)
             .cwd(self.d())
             .xdg(self.x())
             .env("GIT_CONFIG_GLOBAL", "/dev/null")

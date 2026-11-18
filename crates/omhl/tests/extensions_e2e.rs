@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::{Value, json};
-use support::child::{Cmd, Output as Child, omhl};
+use support::child::{Cmd, Output as Child, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::git_in;
 use support::omhl::work_item_data;
@@ -21,7 +21,7 @@ const TONE_TOML: &str = "kind = \"business\"\ntext = \"Keep every answer brief\"
 
 /// Um `omhl` rodando dentro do projeto, com o banco na pasta de dados dele.
 fn in_project(project: &Project, args: &[&str]) -> Cmd {
-    omhl(args).cwd(project.dir()).xdg(project.xdg())
+    omhl_json(args).cwd(project.dir()).xdg(project.xdg())
 }
 
 fn run_ok(project: &Project, args: &[&str]) -> Child {
@@ -94,7 +94,9 @@ fn hook_context(project: &Project) -> String {
         "source": "startup",
     });
 
-    let output = in_project(project, &["hook", "session-start"])
+    let output = omhl(&["hook", "session-start"])
+        .cwd(project.dir())
+        .xdg(project.xdg())
         .stdin(stdin.to_string())
         .run();
 
