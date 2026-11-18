@@ -1390,6 +1390,270 @@ fn attest_absent(value: &Value) -> Vec<String> {
     absent
 }
 
+// ---------------------------------------------------------------- fixtures e fatos de `gate-pr` e `close`
+
+fn gate_state(project: fn() -> Project) -> Fixture {
+    Fixture::spawned(project(), "")
+}
+
+fn gate_approved() -> Fixture {
+    gate_state(cycle::gate_approved)
+}
+
+fn gate_unattested() -> Fixture {
+    gate_state(cycle::gate_unattested)
+}
+
+fn gate_failed() -> Fixture {
+    gate_state(cycle::gate_failed)
+}
+
+fn gate_dirty() -> Fixture {
+    gate_state(cycle::gate_dirty)
+}
+
+fn close_with_retro() -> Fixture {
+    gate_state(cycle::close_with_retro)
+}
+
+fn questions_of(report: &Value) -> &Vec<Value> {
+    report["questions"].as_array().expect("questions is a list")
+}
+
+fn question_passed(question: &Value) -> bool {
+    question["passed"] == true
+}
+
+fn failing_ids(question: &Value) -> Vec<&str> {
+    question["failing"]
+        .as_array()
+        .expect("failing is a list")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect()
+}
+
+/// O `next_step` da primeira pergunta que reprova e traz um: o `gate-pr` o promove a `Next:`.
+fn first_failed_step(report: &Value) -> Option<&str> {
+    questions_of(report)
+        .iter()
+        .filter(|question| !question_passed(question))
+        .find_map(|question| question["next_step"].as_str())
+}
+
+/// `<gate> · passed|not passed · N questions[ · F failed]`.
+fn gate_summary_text(report: &Value) -> String {
+    let questions = questions_of(report);
+    let failed = questions
+        .iter()
+        .filter(|question| !question_passed(question))
+        .count();
+    let verdict = match report["passed"] == true {
+        true => "passed",
+        false => "not passed",
+    };
+    let mut summary = format!(
+        "{} · {verdict} · {}",
+        text_at(report, "gate"),
+        counted(questions.len(), "question")
+    );
+    if failed > 0 {
+        summary.push_str(&format!(" · {failed} failed"));
+    }
+
+    summary
+}
+
+/// Uma linha por pergunta, com o `kind` só quando difere do `label`; o `next_step` vira campo, menos o promovido a `Next:`.
+fn question_facts(report: &Value, promoted: Option<&str>) -> Vec<String> {
+    let mut facts = Vec::new();
+    for question in questions_of(report) {
+        let symbol = match question_passed(question) {
+            true => SYMBOL_OK,
+            false => SYMBOL_ERROR,
+        };
+        let label = text_at(question, "label");
+        let mut parts = vec![label.to_owned()];
+        if text_at(question, "kind") != label {
+            parts.push(text_at(question, "kind").to_owned());
+        }
+        parts.push(format!("matched {}", question["matched"]));
+        let failing = failing_ids(question);
+        if !failing.is_empty() {
+            parts.push(format!("failing {}", failing.join(", ")));
+        }
+        if question["omitted"].as_u64().is_some_and(|count| count > 0) {
+            parts.push(format!("{} omitted", question["omitted"]));
+        }
+        facts.push(format!("{symbol} {}", parts.join(" · ")));
+        if let Some(step) = question["next_step"]
+            .as_str()
+            .filter(|s| promoted != Some(s))
+        {
+            facts.push(format!("next_step: {step}"));
+        }
+    }
+
+    facts
+}
+
+fn gate_pr_facts(value: &Value) -> Vec<String> {
+    let symbol = match value["passed"] == true {
+        true => SYMBOL_OK,
+        false => SYMBOL_ERROR,
+    };
+    let promoted = first_failed_step(value);
+    let mut facts = vec![format!("{symbol} gate-pr · {}", gate_summary_text(value))];
+    facts.extend(question_facts(value, promoted));
+    facts.extend(promoted.map(|step| format!("{NEXT_LABEL} {step}")));
+
+    facts
+}
+
+/// O que o texto de um gate omite: a cabeça da cadeia e as partes que só existem quando há o que mostrar.
+fn gate_absent_facts(report: &Value) -> Vec<String> {
+    let questions = questions_of(report);
+    let mut absent = vec![text_at(&report["chain_head"], "hash").to_owned()];
+    if !questions.iter().any(|q| q["next_step"].is_string()) {
+        absent.push("next_step".to_owned());
+    }
+    if !questions.iter().any(|q| !failing_ids(q).is_empty()) {
+        absent.push("failing".to_owned());
+    }
+    if questions.iter().all(|q| q["omitted"] == 0) {
+        absent.push("omitted".to_owned());
+    }
+    if report["passed"] != true {
+        absent.push(" · passed".to_owned());
+    }
+
+    absent
+}
+
+fn gate_pr_absent(value: &Value) -> Vec<String> {
+    let mut absent = gate_absent_facts(value);
+    if first_failed_step(value).is_none() {
+        absent.push(NEXT_LABEL.to_owned());
+    }
+
+    absent
+}
+
+/// O texto do resumo do retro: contagens por parte, na ordem do renderizador.
+fn retro_summary_text(retro: &Value) -> String {
+    let divergences: usize = retro["divergences"]
+        .as_array()
+        .expect("divergences is a list")
+        .iter()
+        .map(|group| group["ids"].as_array().expect("ids is a list").len())
+        .sum();
+    let parts: Vec<String> = [
+        (divergences, "divergence"),
+        (
+            retro["amendments"]["approved"]
+                .as_array()
+                .map_or(0, Vec::len),
+            "approved amendment",
+        ),
+        (
+            retro["amendments"]["pending"]
+                .as_array()
+                .map_or(0, Vec::len),
+            "pending amendment",
+        ),
+        (
+            retro["no_criterion"].as_array().map_or(0, Vec::len),
+            "no-criterion gap",
+        ),
+        (
+            retro["open_gaps"].as_array().map_or(0, Vec::len),
+            "open gap",
+        ),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, noun)| counted(count, noun))
+    .collect();
+
+    parts.join(" · ")
+}
+
+fn retro_facts_of_close(retro: &Value) -> Vec<String> {
+    let mut facts = vec![format!("{SYMBOL_OK} retro · {}", retro_summary_text(retro))];
+    for group in retro["divergences"]
+        .as_array()
+        .expect("divergences is a list")
+    {
+        let ids: Vec<&str> = group["ids"]
+            .as_array()
+            .expect("ids is a list")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        facts.push(format!(
+            "- divergence · {} · {} · {}",
+            text_at(group, "kind"),
+            text_at(group, "resolution"),
+            ids.join(", ")
+        ));
+    }
+    for answer in retro["no_criterion"]
+        .as_array()
+        .expect("no_criterion is a list")
+    {
+        facts.push(format!(
+            "- no criterion · {} · answered by {}",
+            text_at(answer, "gap"),
+            text_at(answer, "answered_by")
+        ));
+    }
+    facts.push(format!(
+        "{NEXT_LABEL} propose one improvement per item to the owner and change nothing without the answer"
+    ));
+
+    facts
+}
+
+fn close_facts(value: &Value) -> Vec<String> {
+    let report = &value["report"];
+    let symbol = match report["passed"] == true {
+        true => SYMBOL_OK,
+        false => SYMBOL_WARNING,
+    };
+    let records = value["outcome"]["records"]
+        .as_array()
+        .expect("records is a list");
+    let mut facts = vec![format!("{symbol} close · {}", gate_summary_text(report))];
+    facts.extend(question_facts(report, None));
+    facts.push(format!(
+        "{SYMBOL_OK} closed · {}",
+        counted(records.len(), "record")
+    ));
+    facts.extend(
+        records
+            .iter()
+            .map(|record| format!("- {} · seq {}", text_at(record, "id"), record["seq"])),
+    );
+    if !value["retro"].is_null() {
+        facts.extend(retro_facts_of_close(&value["retro"]));
+    }
+
+    facts
+}
+
+/// O gate, o `replayed` do append e, sem retro, o bloco e o `Next:`; as duas cabeças da cadeia só saem no JSON.
+fn close_absent(value: &Value) -> Vec<String> {
+    let mut absent = gate_absent_facts(&value["report"]);
+    absent.push(text_at(&value["outcome"]["chain_head"], "hash").to_owned());
+    absent.push("replayed".to_owned());
+    if value["retro"].is_null() {
+        absent.push("retro".to_owned());
+        absent.push(NEXT_LABEL.to_owned());
+    }
+
+    absent
+}
+
 /// Um estado de fixture de um comando: cada onda das etapas 3 e 4 acrescenta os seus casos.
 struct Case {
     name: &'static str,
@@ -1405,7 +1669,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 64] = [
+const CASES: [Case; 72] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -2078,6 +2342,86 @@ const CASES: [Case; 64] = [
         derived: generic_error_facts,
         absent: no_facts,
     },
+    Case {
+        name: "gate-pr passed",
+        key: CommandKey::GatePr,
+        args: &["gate-pr", cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: gate_approved,
+        derived: gate_pr_facts,
+        absent: gate_pr_absent,
+    },
+    Case {
+        name: "gate-pr failed without next step",
+        key: CommandKey::GatePr,
+        args: &["gate-pr", cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: gate_unattested,
+        derived: gate_pr_facts,
+        absent: gate_pr_absent,
+    },
+    Case {
+        name: "gate-pr failed with two anchor questions",
+        key: CommandKey::GatePr,
+        args: &["gate-pr", cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: gate_failed,
+        derived: gate_pr_facts,
+        absent: gate_pr_absent,
+    },
+    Case {
+        name: "gate-pr snapshot-dirty",
+        key: CommandKey::GatePr,
+        args: &["gate-pr", cycle::WORK_ITEM],
+        outcome: Outcome::Failure,
+        error_code: Some("snapshot-dirty"),
+        fixture: gate_dirty,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "close with a passed gate and no retro",
+        key: CommandKey::Close,
+        args: &["close", cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: gate_approved,
+        derived: close_facts,
+        absent: close_absent,
+    },
+    Case {
+        name: "close with a failed gate and no retro",
+        key: CommandKey::Close,
+        args: &["close", cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: gate_failed,
+        derived: close_facts,
+        absent: close_absent,
+    },
+    Case {
+        name: "close with a passed gate and a retro",
+        key: CommandKey::Close,
+        args: &["close", cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: close_with_retro,
+        derived: close_facts,
+        absent: close_absent,
+    },
+    Case {
+        name: "close snapshot-dirty",
+        key: CommandKey::Close,
+        args: &["close", cycle::WORK_ITEM],
+        outcome: Outcome::Failure,
+        error_code: Some("snapshot-dirty"),
+        fixture: gate_dirty,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
 ];
 
 fn command(case: &Case, format: &str) -> Vec<String> {
@@ -2300,6 +2644,7 @@ fn changes_the_fixture(case: &Case) -> bool {
             | CommandKey::GuidelineRetire
             | CommandKey::SpecInit
             | CommandKey::Append
+            | CommandKey::Close
     ) && case.outcome == Outcome::Success
 }
 

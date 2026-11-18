@@ -267,6 +267,162 @@ pub fn attest_repo() -> Project {
     check_repo(&[("ledger-review", MANUAL_CHECK_TOML)])
 }
 
+// ---------------------------------------------------------------- `gate-pr` e `close`
+
+pub const NATIVE_CHECKS: [&str; 2] = ["checks.run-tests", "checks.ci-green-before-merge"];
+pub const DECISION_UNANCHORED: &str = "decisions.ledger-split";
+pub const DECISION_ON_ASSUMED: &str = "decisions.bonus-cap";
+pub const DIVERGENCE_PARTIAL: &str = "divergences.rounding-drift";
+pub const DIVERGENCE_MISSING: &str = "divergences.overtime-cap";
+pub const GAP_ANSWERED: &str = "gaps.holiday-calendar";
+pub const GAP_ANSWER: &str = "premises.calendar-source";
+
+fn node_wire(id: &str, type_name: &str, data: Value) -> Value {
+    let mut wire = json!({ "body": { "kind": "node", "id": id, "type": type_name } });
+    wire["body"]["data"] = data;
+
+    wire
+}
+
+fn relation_wire(relation_type: &str, from: &str, to: &str) -> Value {
+    json!({ "body": { "kind": "relation", "relation_type": relation_type, "from": from, "to": to } })
+}
+
+fn append_wires(project: &Project, items: &[Value]) {
+    omhl_succeeds(
+        project,
+        &["--format", "json", "append"],
+        &json!({ "items": items }).to_string(),
+    );
+}
+
+/// Os dois checks nativos que o gate cobra, atestados no commit atual.
+fn attest_natives(project: &Project) {
+    for check in NATIVE_CHECKS {
+        omhl_succeeds(
+            project,
+            &[
+                "--format",
+                "json",
+                "attest",
+                check,
+                WORK_ITEM,
+                "--outcome",
+                "passed",
+            ],
+            "",
+        );
+    }
+}
+
+/// Nenhum check atestado: as duas perguntas dos nativos reprovam, sem `next_step`.
+pub fn gate_unattested() -> Project {
+    check_repo(&[])
+}
+
+/// Os nativos atestados, mais um check mecânico que o `check run` gravou com o selo: sete perguntas, todas aprovadas.
+pub fn gate_approved() -> Project {
+    let toml = check_file("style", "format", "exit 0");
+    let project = check_repo(&[("payroll-format", &toml)]);
+    {
+        let _runs = check_run_guard();
+        omhl_succeeds(
+            &project,
+            &["--format", "json", "check", "run", "--event", "before-pr"],
+            "",
+        );
+    }
+    attest_natives(&project);
+
+    project
+}
+
+/// Os nativos atestados; uma decisão sem `rests-on` e outra apoiada numa premissa só assumida: duas perguntas
+/// reprovam, cada uma com o seu `next_step`.
+pub fn gate_failed() -> Project {
+    let project = check_repo(&[]);
+    attest_natives(&project);
+    let evidence = json!([{ "source": "docs", "summary": "the finance docs ask for it" }]);
+    append_wires(
+        &project,
+        &[
+            node_wire(
+                DECISION_UNANCHORED,
+                "decision",
+                json!({ "text": "Split the ledger by region", "work_item": WORK_ITEM, "evidence": evidence }),
+            ),
+            node_wire(
+                DECISION_ON_ASSUMED,
+                "decision",
+                json!({ "text": "Cap the bonus at ten percent", "work_item": WORK_ITEM, "evidence": evidence }),
+            ),
+            node_wire(
+                "premises.rounding-rule",
+                "premise",
+                json!({ "text": "Amounts round half up", "kind": "technical", "work_item": WORK_ITEM, "status": "assumed" }),
+            ),
+        ],
+    );
+    append_wires(
+        &project,
+        &[relation_wire(
+            "rests-on",
+            DECISION_ON_ASSUMED,
+            "premises.rounding-rule",
+        )],
+    );
+
+    project
+}
+
+/// Um arquivo solto na árvore: o gate recusa com `snapshot-dirty`.
+pub fn gate_dirty() -> Project {
+    let project = check_repo(&[]);
+    fs::write(project.dir().join("loose-note.txt"), "not committed\n")
+        .expect("the loose file is written");
+
+    project
+}
+
+/// O gate aprovado e um retro com itens: duas divergências abertas e um gap respondido sem diretiva que o ampare.
+pub fn close_with_retro() -> Project {
+    let project = gate_approved();
+    let divergence = |id: &str, kind: &str| {
+        node_wire(
+            id,
+            "divergence",
+            json!({
+                "source_ref": "CMP-001", "kind": kind, "text": "the code does more than the spec says",
+                "evidence": [{ "source": "docs", "summary": "the docs say so" }],
+                "resolution": "open", "work_item": WORK_ITEM,
+            }),
+        )
+    };
+    append_wires(
+        &project,
+        &[
+            divergence(DIVERGENCE_PARTIAL, "partial"),
+            divergence(DIVERGENCE_MISSING, "missing"),
+            node_wire(
+                GAP_ANSWERED,
+                "gap",
+                json!({ "question": "Which calendar?", "context": "payroll", "work_item": WORK_ITEM }),
+            ),
+            node_wire(
+                GAP_ANSWER,
+                "premise",
+                json!({ "text": "Use the national calendar", "kind": "technical", "work_item": WORK_ITEM, "status": "assumed" }),
+            ),
+        ],
+    );
+    append_wires(
+        &project,
+        &[relation_wire("answers", GAP_ANSWER, GAP_ANSWERED)],
+    );
+
+    project
+}
+
 // ---------------------------------------------------------------- `check sweep`
 
 /// `check run` e `check sweep` varrem o `/proc` inteiro: um `check run` que começa mata o fugido de outro.
