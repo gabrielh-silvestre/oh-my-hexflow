@@ -31,6 +31,8 @@ pub struct CommandLine {
     pub clean_start: bool,
     /// Heredoc sem aspas no terminador cujo corpo tem `$(` ou crase: o bash executa o que está lá dentro.
     pub executes_heredoc: bool,
+    /// O texto cru do comando inteiro tem `omhl`: `$(command -v omhl)` e `P=omhl; $P` também contam.
+    pub mentions_omhl: bool,
 }
 
 /// Um comando simples: o trecho entre separadores, com as palavras sem aspas.
@@ -64,7 +66,8 @@ impl SimpleCommand {
     }
 
     /// Roda o `omhl` ou o leitor não consegue descartar que rode: nega-se em vez de adivinhar.
-    pub fn may_run_omhl(&self) -> bool {
+    /// `mentions_omhl` vem do texto cru do comando inteiro (`CommandLine::mentions_omhl`).
+    pub fn may_run_omhl(&self, mentions_omhl: bool) -> bool {
         match self.resolved.opacity {
             None if self.program() == Some("omhl") => true,
             // O programa é uma expansão (`$X`, `${...}`): o bash decide o que roda, o leitor não sabe.
@@ -72,15 +75,14 @@ impl SimpleCommand {
                 self.resolved
                     .program_at
                     .is_some_and(|at| self.words[at].contains('$'))
-                    && self.mentions_omhl()
+                    && mentions_omhl
             }
-            Some(Opacity::Rewriting) => self.mentions_omhl(),
-            Some(Opacity::UnknownOption) => self.words.iter().any(|word| basename(word) == "omhl"),
+            Some(Opacity::Rewriting) => mentions_omhl,
+            Some(Opacity::UnknownOption) => {
+                self.words.iter().any(|word| basename(word) == "omhl")
+                    || (mentions_omhl && self.words.iter().any(|word| word.contains('$')))
+            }
         }
-    }
-
-    fn mentions_omhl(&self) -> bool {
-        self.words.iter().any(|word| word.contains("omhl"))
     }
 }
 
@@ -111,6 +113,7 @@ pub fn read_command(command: &str) -> Result<CommandLine, ReadError> {
         compound,
         clean_start,
         executes_heredoc: lexed.executes_heredoc,
+        mentions_omhl: command.contains("omhl"),
     })
 }
 
@@ -315,14 +318,20 @@ mod tests {
             let line = read(command);
 
             assert_eq!(line.commands[0].program(), None, "{command}");
-            assert!(line.commands[0].may_run_omhl(), "{command}");
+            assert!(
+                line.commands[0].may_run_omhl(line.mentions_omhl),
+                "{command}"
+            );
         }
     }
 
     #[test]
     fn it_should_stop_at_an_unknown_wrapper_option_and_only_flag_a_word_named_omhl() {
-        assert!(read("nice --adjustment=5 omhl list").commands[0].may_run_omhl());
-        assert!(!read("nice --frobnicate grep omhl-docs").commands[0].may_run_omhl());
+        let flagged = read("nice --adjustment=5 omhl list");
+        let docs = read("nice --frobnicate grep omhl-docs");
+
+        assert!(flagged.commands[0].may_run_omhl(flagged.mentions_omhl));
+        assert!(!docs.commands[0].may_run_omhl(docs.mentions_omhl));
     }
 
     #[test]
@@ -351,13 +360,23 @@ mod tests {
 
     #[test]
     fn it_should_read_up_to_the_depth_limit_and_refuse_one_level_more() {
-        let nested = |depth: usize| format!("{}x{}", "$(".repeat(depth), ")".repeat(depth));
+        for (opening, closing) in [
+            ("$(", ")"),
+            ("${a:-", "}"),
+            ("$((", "))"),
+            ("(", ")"),
+            ("<(", ")"),
+        ] {
+            let nested =
+                |depth: usize| format!("{}x{}", opening.repeat(depth), closing.repeat(depth));
 
-        assert!(read_command(&nested(lexer::MAX_DEPTH)).is_ok());
-        assert_eq!(
-            read_command(&nested(lexer::MAX_DEPTH + 1)).unwrap_err(),
-            ReadError::TooDeep
-        );
+            assert!(read_command(&nested(lexer::MAX_DEPTH)).is_ok(), "{opening}");
+            assert_eq!(
+                read_command(&nested(lexer::MAX_DEPTH + 1)).unwrap_err(),
+                ReadError::TooDeep,
+                "{opening}"
+            );
+        }
     }
 
     #[test]
@@ -367,6 +386,76 @@ mod tests {
             read_command(&"a".repeat(MAX_COMMAND_BYTES + 1)).unwrap_err(),
             ReadError::TooLong
         );
+    }
+
+    #[test]
+    fn it_should_count_the_length_limit_in_bytes_not_characters() {
+        assert!(read_command(&"ã".repeat(MAX_COMMAND_BYTES / 2)).is_ok());
+        assert_eq!(
+            read_command(&"ã".repeat(MAX_COMMAND_BYTES / 2 + 1)).unwrap_err(),
+            ReadError::TooLong
+        );
+    }
+
+    #[test]
+    fn it_should_refuse_a_command_whose_arithmetic_scans_add_up_to_quadratic_work() {
+        // Cada `$((` olha o resto do texto; as aspas escondem o `))` de fora e a varredura só para no fim.
+        let command = "$((\"((\")) ".repeat(MAX_COMMAND_BYTES / 10);
+
+        assert_eq!(read_command(&command).unwrap_err(), ReadError::TooLong);
+    }
+
+    #[test]
+    fn it_should_keep_a_word_for_a_substitution_and_flag_it_only_when_the_command_mentions_omhl() {
+        let line = read("$(which omhl) list");
+        let outer = &line.commands[1];
+
+        assert_eq!(outer.words, ["$", "list"]);
+        assert!(outer.may_run_omhl(true));
+        assert!(!outer.may_run_omhl(false));
+    }
+
+    #[test]
+    fn it_should_flag_an_unknown_wrapper_option_before_an_expansion_when_omhl_is_mentioned() {
+        let line = read("nice --frobnicate $(which omhl) list");
+        let outer = &line.commands[1];
+
+        assert!(line.mentions_omhl);
+        assert!(outer.may_run_omhl(true));
+        assert!(!outer.may_run_omhl(false));
+    }
+
+    #[test]
+    fn it_should_not_run_the_body_of_a_heredoc_whose_terminator_is_quoted_in_any_way() {
+        for command in [
+            "cat <<'EOF'\n$(date)\nEOF\n",
+            "cat <<\"EOF\"\n$(date)\nEOF\n",
+            "cat <<\\EOF\n$(date)\nEOF\n",
+        ] {
+            assert!(!read(command).executes_heredoc, "{command}");
+        }
+    }
+
+    #[test]
+    fn it_should_run_the_body_of_an_unquoted_heredoc_even_when_the_dollar_is_escaped() {
+        // Falso positivo seguro: a barra deixa o `$(date)` literal, mas o leitor não distingue e nega.
+        assert!(read("cat <<EOF\n\\$(date)\nEOF\n").executes_heredoc);
+    }
+
+    #[test]
+    fn it_should_read_two_heredocs_on_one_line_as_one_command() {
+        let line = read("cat <<A <<B\na\nA\nb\nB\n");
+
+        assert_eq!(line.commands.len(), 1);
+        assert!(!line.executes_heredoc);
+    }
+
+    #[test]
+    fn it_should_read_a_quoted_heredoc_inside_a_substitution_as_data() {
+        let command = "echo \"$(cat <<'EOF'\n$(omhl list)\nEOF\n)\"";
+
+        assert_eq!(program_names(command), ["other", "other"]);
+        assert!(!read(command).executes_heredoc);
     }
 
     #[test]

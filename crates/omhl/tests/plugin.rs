@@ -50,7 +50,7 @@ fn it_should_wire_the_session_start_hook_in_exec_form_and_the_pre_tool_use_hooks
                         }],
                     },
                     {
-                        "matcher": "Bash",
+                        "matcher": "Bash|Monitor",
                         "hooks": [{
                             "type": "command",
                             "command": "omhl hook agent-role || exit 1",
@@ -63,20 +63,20 @@ fn it_should_wire_the_session_start_hook_in_exec_form_and_the_pre_tool_use_hooks
     );
 }
 
-/// A entrada de `PreToolUse` do matcher `Bash`, a do `agent-role`.
+/// A entrada de `PreToolUse` do matcher `Bash|Monitor`, a do `agent-role`.
 fn bash_hook(hooks: &Value) -> &Value {
     hooks["hooks"]["PreToolUse"]
         .as_array()
         .and_then(|entries| {
             entries
                 .iter()
-                .find(|entry| entry["matcher"] == json!("Bash"))
+                .find(|entry| entry["matcher"] == json!("Bash|Monitor"))
         })
         .expect("PreToolUse has a Bash entry")
 }
 
 #[test]
-fn it_should_wire_the_agent_role_hook_on_the_bash_matcher_beside_the_spec_lock_hook() {
+fn it_should_wire_the_agent_role_hook_on_the_bash_and_monitor_matcher_beside_the_spec_lock_hook() {
     let hooks = plugin_file("hooks/hooks.json");
 
     let matchers: Vec<&Value> = hooks["hooks"]["PreToolUse"]
@@ -86,7 +86,10 @@ fn it_should_wire_the_agent_role_hook_on_the_bash_matcher_beside_the_spec_lock_h
         .map(|entry| &entry["matcher"])
         .collect();
 
-    assert_eq!(matchers, [&json!("Edit|Write|MultiEdit"), &json!("Bash")]);
+    assert_eq!(
+        matchers,
+        [&json!("Edit|Write|MultiEdit"), &json!("Bash|Monitor")]
+    );
 }
 
 #[test]

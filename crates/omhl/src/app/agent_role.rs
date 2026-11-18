@@ -58,7 +58,7 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
 
     match line {
         // O bash executa `$(...)` e crase no corpo de um heredoc sem aspas, fora do prefixo e da matriz.
-        Ok(line) if line.executes_heredoc && command.contains("omhl") => deny(
+        Ok(line) if line.executes_heredoc && line.mentions_omhl => deny(
             "heredoc-substitution",
             "the heredoc body runs $( ) or backticks; quote the terminator (<<'EOF') so the body stays text",
         ),
@@ -106,7 +106,7 @@ fn ported_agent_verdict(
     let reaching: Vec<&SimpleCommand> = line
         .commands
         .iter()
-        .filter(|simple| simple.may_run_omhl())
+        .filter(|simple| simple.may_run_omhl(line.mentions_omhl))
         .collect();
     if reaching.is_empty() {
         return RoleVerdict::Pass;

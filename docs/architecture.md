@@ -302,7 +302,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** Traduz um protocolo externo (linha de comando, evento de hook) em `Action` e imprime o resultado; não conhece o domínio.
 
-**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`. `main.rs` (25 linhas) só monta o `Env` e chama `cli::run`.
+**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`, `hook::agent_role(stdin, out, err, env, groups) -> ExitCode`. `main.rs` (25 linhas) só monta o `Env` e chama `cli::run`.
 
 **Escondido.** Em `hook.rs`: a saída `hookSpecificOutput` e o aviso de extensions (só códigos e contagens).
 

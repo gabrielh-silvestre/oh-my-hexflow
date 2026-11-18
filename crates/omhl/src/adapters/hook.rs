@@ -1,12 +1,10 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
-use clap::CommandFactory;
 use serde_json::{Value, json};
 
-use super::cli::Cli;
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
@@ -57,22 +55,20 @@ pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Wri
 }
 
 /// Mesmo contrato do `spec_lock`; só o Bash. O que passa segue o fluxo normal de permissão; só o comando dentro da matriz recebe `allow`.
-pub fn agent_role(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
-    let plugin_root = std::env::var_os("CLAUDE_PLUGIN_ROOT").map(PathBuf::from);
-    let cli = Cli::command();
-    // Os comandos com subcomando vêm do clap: o hook não mantém uma segunda lista de folhas.
-    let groups: Vec<&str> = cli
-        .get_subcommands()
-        .filter(|command| command.has_subcommands())
-        .map(clap::Command::get_name)
-        .collect();
-    let env = AgentRoleEnv {
-        plugin_root: plugin_root.as_deref(),
-        groups: &groups,
+pub fn agent_role(
+    stdin: &mut impl Read,
+    out: &mut impl Write,
+    err: &mut impl Write,
+    env: &Env<'_>,
+    groups: &[&str],
+) -> ExitCode {
+    let role_env = AgentRoleEnv {
+        plugin_root: env.plugin_root.map(Path::new),
+        groups,
     };
 
     pre_tool_use(stdin, out, err, |input| {
-        Ok(match check_agent_role(input, &env) {
+        Ok(match check_agent_role(input, &role_env) {
             RoleVerdict::Pass => None,
             RoleVerdict::Deny { reason, .. } => {
                 Some(json!({ "permissionDecision": "deny", "permissionDecisionReason": reason }))

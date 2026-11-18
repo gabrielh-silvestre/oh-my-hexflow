@@ -105,10 +105,34 @@ mod tests {
             "omhl-allow:\n  commands: [append]\n  append:\n    nodes: []\n    relations: []\n    retire: []\n    other: []\n",
             "omhl-allow:\n  commands: [list, 1]\n",
             "name: y\n",
+            "omhl-allow:\n  commands: [list\n  append: {\n",
+            "omhl-allow: list\n",
+            "omhl-allow:\n  other: [list]\n",
+            "omhl-allow:\n  commands: list\n",
         ];
 
         for matrix in bad_matrices {
             assert!(parse_role_allow(&file_with(matrix)).is_err(), "{matrix}");
+        }
+    }
+
+    #[test]
+    fn it_should_refuse_an_append_list_that_is_not_a_list_of_strings() {
+        for key in ["nodes", "relations", "retire"] {
+            for value in ["premise", "[premise, 5]"] {
+                let lists: String = ["nodes", "relations", "retire"]
+                    .iter()
+                    .map(|list| {
+                        format!("    {list}: {}\n", if *list == key { value } else { "[]" })
+                    })
+                    .collect();
+                let matrix = format!("omhl-allow:\n  commands: [append]\n  append:\n{lists}");
+
+                assert!(
+                    parse_role_allow(&file_with(&matrix)).is_err(),
+                    "{key}: {value}"
+                );
+            }
         }
     }
 

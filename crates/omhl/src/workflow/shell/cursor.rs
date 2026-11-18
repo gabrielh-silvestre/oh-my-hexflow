@@ -24,9 +24,10 @@ impl Cursor {
 
     /// Logo depois de `$(`: o `(` seguinte abre uma aritmética `$((...))` quando o primeiro `)` de fora
     /// é seguido de outro `)`; senão é `$(` com um subshell, que executa.
-    pub(super) fn opens_arithmetic(&self) -> bool {
+    /// Devolve também quantos caracteres a varredura leu, para o leitor limitar o custo total.
+    pub(super) fn opens_arithmetic(&self) -> (bool, usize) {
         if self.peek() != Some('(') {
-            return false;
+            return (false, 0);
         }
         let rest = &self.chars[self.at + 1..];
         let mut depth = 0;
@@ -34,12 +35,12 @@ impl Cursor {
             match c {
                 '(' => depth += 1,
                 ')' if depth > 0 => depth -= 1,
-                ')' => return rest.get(offset + 1) == Some(&')'),
+                ')' => return (rest.get(offset + 1) == Some(&')'), offset + 1),
                 _ => {}
             }
         }
 
-        false
+        (false, rest.len())
     }
 
     pub(super) fn bump(&mut self) -> Option<char> {

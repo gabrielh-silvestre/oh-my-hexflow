@@ -1,7 +1,7 @@
 //! A folha da CLI que um comando `omhl` pede: o nome que o `omhl-allow` do papel lista.
 
-const GLOBAL_OPTIONS: [&str; 2] = ["--db", "--project-dir"];
-const INFO_FLAGS: [&str; 4] = ["-h", "--help", "-V", "--version"];
+pub const GLOBAL_OPTIONS: [&str; 2] = ["--db", "--project-dir"];
+pub const INFO_FLAGS: [&str; 4] = ["-h", "--help", "-V", "--version"];
 const HELP_WORD: &str = "help";
 
 #[derive(Debug, Clone, PartialEq, Eq)]

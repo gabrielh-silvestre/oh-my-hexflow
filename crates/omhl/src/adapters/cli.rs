@@ -244,7 +244,16 @@ pub fn run(
         } => hook::spec_lock(stdin, out, err),
         Command::Hook {
             event: HookEvent::AgentRole,
-        } => hook::agent_role(stdin, out, err),
+        } => {
+            let cli = Cli::command();
+            // Os comandos com subcomando vêm do clap: o hook não mantém uma segunda lista de folhas.
+            let groups: Vec<&str> = cli
+                .get_subcommands()
+                .filter(|command| command.has_subcommands())
+                .map(clap::Command::get_name)
+                .collect();
+            hook::agent_role(stdin, out, err, env, &groups)
+        }
         Command::Action(command) => {
             // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
             let silent_without_marker = matches!(command, ActionCommand::GateWorktree { .. });

@@ -1,9 +1,9 @@
 use std::mem;
 
-use super::ReadError;
 use super::cursor::Cursor;
 use super::heredoc::{self, Delimiter};
 use super::redirect::{self, NextWord};
+use super::{MAX_COMMAND_BYTES, ReadError};
 
 /// Os comandos simples na ordem de leitura (cada um é a lista das suas palavras, sem aspas) e se algum separador apareceu.
 pub(super) struct Lexed {
@@ -18,6 +18,10 @@ pub(super) struct Lexed {
 /// Aninhamentos (`$(`, `(`, crase, `${`, `$((`) abertos ao mesmo tempo; acima disso o leitor desiste.
 pub(super) const MAX_DEPTH: usize = 64;
 
+/// Caracteres que as varreduras de `$((` podem ler no total: cada `$((` olha o resto do texto, então sem
+/// o limite um comando de `MAX_COMMAND_BYTES` com muitos `$((` custaria tempo quadrático.
+pub(super) const MAX_SCAN: usize = 4 * MAX_COMMAND_BYTES;
+
 pub(super) fn lex(source: &str) -> Result<Lexed, ReadError> {
     let mut lexer = Lexer {
         cursor: Cursor::new(source),
@@ -26,6 +30,7 @@ pub(super) fn lex(source: &str) -> Result<Lexed, ReadError> {
         word: None,
         word_start: 0,
         depth: 0,
+        scanned: 0,
         next_word: NextWord::Argument,
         heredocs: Vec::new(),
         separated: false,
@@ -71,6 +76,8 @@ struct Lexer {
     /// Caractere em que a palavra em andamento começou.
     word_start: usize,
     depth: usize,
+    /// Caracteres lidos pelas varreduras de `opens_arithmetic` até aqui.
+    scanned: usize,
     next_word: NextWord,
     heredocs: Vec<Delimiter>,
     separated: bool,
@@ -128,7 +135,7 @@ impl Lexer {
         let Some(word) = self.word.take() else {
             return;
         };
-        // Só uma substituição vazia (`$(true)`) deixa palavra sem texto e sem aspas: o shell a descarta.
+        // Palavra sem texto e sem aspas não é argumento: o shell a descarta.
         if word.text.is_empty() && !word.quoted {
             return;
         }
@@ -197,8 +204,7 @@ impl Lexer {
     }
 
     /// Lê uma substituição (`$(...)`, crase, `<(...)`) como comandos próprios; o comando e a palavra
-    /// que a contêm ficam guardados e voltam depois. O que vem colado depois (`$(true)#`) segue na mesma
-    /// palavra, então o `#` ali não abre comentário.
+    /// que a contêm ficam guardados e voltam depois.
     fn nested(&mut self, close: char) -> Result<(), ReadError> {
         let outer_word = self.word.take();
         let outer_start = self.word_start;
@@ -213,7 +219,7 @@ impl Lexer {
         let result = self.run(Some(close));
         self.depth -= 1;
         result?;
-        self.word = outer_word.or_else(|| Some(WordBuilder::default()));
+        self.word = outer_word;
         self.word_start = outer_start;
         self.current = outer_command;
         self.next_word = outer_next;
@@ -221,11 +227,26 @@ impl Lexer {
         Ok(())
     }
 
+    /// `$(...)` e crase: além de ler por dentro, a palavra que os contém ganha um `$`. O leitor não sabe o que o
+    /// shell vai expandir, então a palavra existe e diz que é expansão. O que vem colado depois (`$(true)#`)
+    /// segue na mesma palavra, então o `#` ali não abre comentário.
+    fn substituted(&mut self, close: char) -> Result<(), ReadError> {
+        self.nested(close)?;
+        self.push('$', false);
+
+        Ok(())
+    }
+
     fn dollar(&mut self) -> Result<(), ReadError> {
         let start = self.cursor.at - 1;
         if self.cursor.eat('(') {
-            if !self.cursor.opens_arithmetic() {
-                return self.nested(')');
+            let (opens_arithmetic, scanned) = self.cursor.opens_arithmetic();
+            self.scanned += scanned;
+            if self.scanned > MAX_SCAN {
+                return Err(ReadError::TooLong);
+            }
+            if !opens_arithmetic {
+                return self.substituted(')');
             }
             self.cursor.eat('(');
             return self.expansion(start, Self::arithmetic);
@@ -307,7 +328,7 @@ impl Lexer {
     fn substitution(&mut self, c: char) -> Result<bool, ReadError> {
         match c {
             '$' => self.dollar()?,
-            '`' => self.nested('`')?,
+            '`' => self.substituted('`')?,
             _ => return Ok(false),
         }
 

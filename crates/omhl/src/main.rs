@@ -8,6 +8,7 @@ fn main() -> ExitCode {
     let xdg_data_home = std::env::var_os("XDG_DATA_HOME");
     let home = std::env::var_os("HOME");
     let git_index_file = std::env::var_os("GIT_INDEX_FILE");
+    let plugin_root = std::env::var_os("CLAUDE_PLUGIN_ROOT");
     let env = Env {
         xdg_data_home: xdg_data_home.as_deref(),
         home: home.as_deref(),
@@ -15,6 +16,7 @@ fn main() -> ExitCode {
         parent_pid,
         claude_code: std::env::var_os("CLAUDECODE").is_some_and(|value| value == "1"),
         role: std::env::var_os("OMHL_ROLE").map(|value| value.to_string_lossy().into_owned()),
+        plugin_root: plugin_root.as_deref(),
     };
     cli::run(
         std::env::args_os(),

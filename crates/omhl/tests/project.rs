@@ -287,6 +287,7 @@ fn it_should_use_xdg_data_home_when_absolute() {
         parent_pid: 1,
         claude_code: false,
         role: None,
+        plugin_root: None,
     };
 
     let path = default_db_path(&env);
@@ -303,6 +304,7 @@ fn it_should_ignore_a_relative_or_empty_xdg_data_home() {
         parent_pid: 1,
         claude_code: false,
         role: None,
+        plugin_root: None,
     };
     let empty = Env {
         xdg_data_home: Some(OsStr::new("")),
@@ -311,6 +313,7 @@ fn it_should_ignore_a_relative_or_empty_xdg_data_home() {
         parent_pid: 1,
         claude_code: false,
         role: None,
+        plugin_root: None,
     };
 
     let paths = [default_db_path(&relative), default_db_path(&empty)];
@@ -328,6 +331,7 @@ fn it_should_fail_without_xdg_and_home() {
         parent_pid: 1,
         claude_code: false,
         role: None,
+        plugin_root: None,
     };
 
     let error = default_db_path(&env).expect_err("no location can be derived");
