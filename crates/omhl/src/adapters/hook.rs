@@ -1,16 +1,21 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use clap::CommandFactory;
 use serde_json::{Value, json};
 
+use super::cli::Cli;
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::read_json_input;
 use crate::app::runtime::Runtime;
+use crate::app::{
+    AgentRoleEnv, RoleVerdict, Verdict, agent_role as check_agent_role,
+    spec_lock as check_spec_lock,
+};
 use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
-use crate::app::{Verdict, agent_role as check_agent_role, spec_lock as check_spec_lock};
 use crate::project::Env;
 
 /// Without a marker the hook stays silent; any failure leaves stdout empty so no partial context is injected.
@@ -41,31 +46,61 @@ pub fn session_start(
 
 /// Nunca sai com 2: a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
-    pre_tool_use(stdin, out, err, check_spec_lock)
+    pre_tool_use(stdin, out, err, |input| {
+        Ok(match check_spec_lock(input)? {
+            Verdict::Allow => None,
+            Verdict::Deny { reason, .. } => Some(deny_decision(&reason)),
+        })
+    })
 }
 
-/// Mesmo contrato do `spec_lock`; só o Bash, e só nega: o que passa segue o fluxo normal de permissão.
+/// Mesmo contrato do `spec_lock`; só o Bash. O que passa segue o fluxo normal de permissão; só o comando dentro da matriz recebe `allow`.
 pub fn agent_role(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
-    pre_tool_use(stdin, out, err, |input| Ok(check_agent_role(input)))
+    let plugin_root = std::env::var_os("CLAUDE_PLUGIN_ROOT").map(PathBuf::from);
+    let cli = Cli::command();
+    // Os comandos com subcomando vêm do clap: o hook não mantém uma segunda lista de folhas.
+    let groups: Vec<&str> = cli
+        .get_subcommands()
+        .filter(|command| command.has_subcommands())
+        .map(clap::Command::get_name)
+        .collect();
+    let env = AgentRoleEnv {
+        plugin_root: plugin_root.as_deref(),
+        groups: &groups,
+    };
+
+    pre_tool_use(stdin, out, err, |input| {
+        Ok(match check_agent_role(input, &env) {
+            RoleVerdict::Pass => None,
+            RoleVerdict::Deny { reason, .. } => Some(deny_decision(&reason)),
+            RoleVerdict::Allow {
+                reason,
+                updated_input,
+            } => Some(json!({
+                "permissionDecision": "allow",
+                "permissionDecisionReason": reason,
+                "updatedInput": updated_input,
+            })),
+        })
+    })
 }
 
+fn deny_decision(reason: &str) -> Value {
+    json!({ "permissionDecision": "deny", "permissionDecisionReason": reason })
+}
+
+/// `decide` devolve os campos da decisão (sem o nome do evento); `None` deixa o stdout vazio.
 fn pre_tool_use(
     stdin: &mut impl Read,
     out: &mut impl Write,
     err: &mut impl Write,
-    decide: impl FnOnce(&Value) -> Result<Verdict, AppError>,
+    decide: impl FnOnce(&Value) -> Result<Option<Value>, AppError>,
 ) -> ExitCode {
     match read_json_input(stdin).and_then(|input| decide(&input)) {
-        Ok(Verdict::Allow) => {}
-        Ok(Verdict::Deny { reason, .. }) => {
-            let output = json!({
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": reason,
-                }
-            });
-            let _ = writeln!(out, "{output}");
+        Ok(None) => {}
+        Ok(Some(mut decision)) => {
+            decision["hookEventName"] = json!("PreToolUse");
+            let _ = writeln!(out, "{}", json!({ "hookSpecificOutput": decision }));
         }
         Err(error) => {
             let _ = writeln!(err, "{}", error.to_json());

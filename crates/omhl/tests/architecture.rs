@@ -37,6 +37,7 @@ const EXPECTED_DEPENDENCIES: &[&str] = &[
     "nix",
     "regex",
     "serde",
+    "serde-saphyr",
     "serde_json",
     "sha2",
     "tempfile",
@@ -859,6 +860,7 @@ clap = "1"
 hexlog = { path = "../hexlog" }
 regex = "=1.13.1"
 serde = "1"
+serde-saphyr = "2"
 serde_json = "1"
 sha2 = "=0.11.1"
 tempfile = "3"
