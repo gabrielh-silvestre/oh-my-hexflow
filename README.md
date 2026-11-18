@@ -143,7 +143,7 @@ JSON com `--format json`.
 | `project` | Gera a projeção em Markdown em `.omhl/projection/` |
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
 | `hook spec-lock` | Roda o hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de uma spec congelada |
-| `hook agent-role` | Roda o hook `PreToolUse` do Claude Code para o `Bash`: aplica a matriz do papel ao agente portado |
+| `hook agent-role` | Roda o hook `PreToolUse` do Claude Code para o `Bash` e o `Monitor`: aplica a matriz do papel ao agente portado |
 | `spec init <work-item> <slug>` | Cria a pasta da spec de um work item aberto, com a primeira parte, no diretório principal |
 | `spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
 | `report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |

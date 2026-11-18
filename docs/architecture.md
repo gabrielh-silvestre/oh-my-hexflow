@@ -150,7 +150,7 @@ As decisões estruturais, com o porquê de cada uma:
 
 - [0002](adr/0002-pasta-de-hooks-unica-por-usuario.md): a pasta de hooks do git é única por usuário (3.22, `ports/hooks`).
 - [0003](adr/0003-evento-do-check-fechado-em-tres-eventos-do-git.md): o evento do check é fechado em `before-commit`, `before-pr` e `before-merge` (3.17).
-- [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor`, `loader` e `guideline-retire` são a fronteira da guarda (3.23, `guard`).
+- [0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md): `executor`, `loader` e `guideline-retire` são a fronteira da guarda (3.23, `guard`); consequência atualizada em parte pelo [0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md).
 - [0005](adr/0005-saida-dos-checks-em-blobs-fora-do-banco.md): a saída dos checks fica em blobs fora do banco (3.21, `ports/blob`).
 - [0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md): a CLI é a única interface do agente e o UTCP foi descartado (3.12, seção 5).
 - [0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md): uma opção da CLI é respeitada ou recusada com a regra, nunca cortada ou ignorada em silêncio (3.11, `app`).
@@ -428,7 +428,7 @@ O hook impõe a matriz do papel ao `Bash` do agente portado ([ADR 0008](adr/0008
 - `workflow/omhl_leaf` e `workflow/role_allow`: a folha da CLI que o comando chama (com os grupos de subcomandos que o clap informa) e o `omhl-allow` do frontmatter do agente, lido com a `serde-saphyr`.
 - `app/agent_role.rs`: `agent_role(&Value, &AgentRoleEnv) -> RoleVerdict` (`Pass`, `Deny`, `Allow`). Não abre o banco. Lê o arquivo do agente por `ports/files` (`read_regular_utf8`, com teto de 64 KiB).
 - `adapters/hook.rs`: traduz o veredito para o JSON do `PreToolUse`.
-- `guard/role.rs`: a matriz compilada dos sete papéis, que a CLI aplica no `append`. O hook e a matriz são duas cópias do mesmo dado; o teste `agents` as mantém iguais, e `ROLE_REFERENCE_MATRIX` serve à paridade com a tabela de `directives-flow.md`.
+- `guard/role.rs`: a matriz compilada dos sete papéis, que a CLI aplica no `append`. O hook não guarda cópia do dado: lê o `omhl-allow` do agente (`commands`). `ROLE_REFERENCE_COMMANDS` (os `commands`, só de teste) e `ROLE_REFERENCE_MATRIX` (as três colunas do `append`, lida da matriz) servem à paridade com o `omhl-allow` (`tests/agents.rs`) e com a tabela de `directives-flow.md` (`tests/repo_checks.rs`).
 
 ## 4. Regras de dependência e o teste que trava cada uma
 
@@ -480,7 +480,6 @@ As seis skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `wor
 |---|---|
 | `skill_coverage` | Subcomando folha da CLI sem citação numa skill (as 23 folhas, sem o grupo `hook` e sem o `help` do clap); citação de subcomando que não existe; `SKILL.md` com mais de 80 linhas; `references/<folha>.md` ausente ou sem os cinco títulos (`Quando usar`, `Entradas`, `Saída`, `Erros`, `Exemplos`); opção da CLI (as da folha e as globais) que não aparece em `## Entradas` da página da folha; link ou caminho `.md` (`[x](a.md)` ou `` `references/a.md` ``) que não resolve para um arquivo dentro de `plugin/`; código de erro da seção `Erros` que não é literal em `crates/*/src`. |
 | `skill_examples` | Folha sem nenhum bloco `omhl-example` na própria `references/<folha>.md` (um bloco em outra página não vale); cerca mal formada que parece exemplo e não executa (`omhl-example` recuada, com quatro crases ou til, sem `fixture=` ou sem passo `$ omhl`; tag `omhl*` desconhecida; comando `omhl` em bloco que não é `omhl-example`; `$ omhl` fora de cerca), em toda página; bloco cujo stdout, stderr ou código de saída difere do que o binário real devolve (a mensagem traz arquivo, linha, comando e as duas saídas). Só roda no Linux. |
-
 | `orchestration` | Skill de orquestração (`plan-consensus`, `review`) sem a frase que exige a `directives-flow`, sem o frontmatter da casa, sem o limite de 3 voltas e a escalada ao dono, sem a chamada do verifier antes do `spec validate` e do `gate-pr`, ou com os passos fora de ordem; as referências `cycle.md`, `roles.md` e `tracking-table.md` da base sem os dez passos e seus papéis, sem o link para a tabela de `directives-flow.md` (`roles.md` não copia a matriz) ou sem a regra de quem retira um `contradicts`. É texto de skill: o teste prova que a regra está escrita, não o comportamento do agente. |
 
 Cada bloco `omhl-example` ganha uma fixture nova (`project`, `git`, `spec`, `checks` e outras, montadas em Rust) e roda sem shell. Datas, ids, hashes, durações, pids e caminhos temporários são normalizados dos dois lados antes da comparação.
