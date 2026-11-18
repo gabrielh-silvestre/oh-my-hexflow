@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use std::marker::PhantomData;
 use std::sync::Barrier;

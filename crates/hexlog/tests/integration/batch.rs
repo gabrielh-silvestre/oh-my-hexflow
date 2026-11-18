@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use hexlog::{AppendItem, AppendRequest, Author, Catalog, ErrorCode, HexlogError};
 use serde_json::json;

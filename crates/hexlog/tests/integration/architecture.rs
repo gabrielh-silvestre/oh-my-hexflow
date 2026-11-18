@@ -13,6 +13,7 @@ use std::str::FromStr;
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree, token_stream};
 use serde_json::{Value, json};
+use tempfile::TempDir;
 
 const VOCABULARY: &[&str] = &[
     "decision",
@@ -76,6 +77,20 @@ const MEMORY_LINTS: &[&str] = &[
 ];
 const LINT_LEVELS: &[&str] = &["allow", "warn", "forbid"];
 const REGISTERED_REASON_PREFIX: &str = "memory-exception:";
+const UNIT_TEST_FILE: &str = "tests.rs";
+const UNIT_TEST_SUPPORT_DIR: &str = "test_support";
+const CARGO_BIN_EXE: &str = "CARGO_BIN_EXE";
+/// Caminhos que um unitário não usa: processo, espera por relógio e a fachada. Cada item é uma
+/// sequência de identificadores ligados por `::`.
+const UNIT_FORBIDDEN_PATHS: &[&[&str]] = &[
+    &["process", "Command"],
+    &["Command", "new"],
+    &[CARGO_BIN_EXE],
+    &["thread", "sleep"],
+    &["recv_timeout"],
+    &["Hexlog", "open"],
+];
+const TESTS_LAYOUT: &[&str] = &["integration", "fixtures", "proptest-regressions"];
 
 struct Hit<'a> {
     line: usize,
@@ -121,6 +136,22 @@ fn files_with_extension(dir: &Path, extension: &str) -> Vec<PathBuf> {
     collect_files(dir, extension, &mut files);
     files.sort();
     files
+}
+
+/// Fontes de produção de `dir`: os `.rs` sem os `tests.rs` ao lado da fonte e sem o `test_support/`.
+fn production_sources(dir: &Path) -> Vec<PathBuf> {
+    files_with_extension(dir, "rs")
+        .into_iter()
+        .filter(|path| {
+            let relative = path.strip_prefix(dir).unwrap_or(path);
+            relative
+                .file_name()
+                .is_none_or(|name| name != UNIT_TEST_FILE)
+                && relative
+                    .components()
+                    .all(|part| part.as_os_str() != UNIT_TEST_SUPPORT_DIR)
+        })
+        .collect()
 }
 
 fn collect_files(dir: &Path, extension: &str, files: &mut Vec<PathBuf>) {
@@ -999,7 +1030,121 @@ fn memory_lint_findings(source: &str) -> Result<Vec<Finding>, String> {
 }
 
 fn engine_files() -> Vec<PathBuf> {
-    files_with_extension(&src_dir().join("engine"), "rs")
+    production_sources(&src_dir().join("engine"))
+}
+
+/// Os `tests.rs` e o `test_support/` de `src`: o que `production_sources` descarta.
+fn unit_test_sources() -> Vec<PathBuf> {
+    let production = production_sources(&src_dir());
+    files_with_extension(&src_dir(), "rs")
+        .into_iter()
+        .filter(|path| !production.contains(path))
+        .collect()
+}
+
+/// Identificadores e `:` de `stream`, em ordem, com a linha. Um literal com `CARGO_BIN_EXE`
+/// (o `env!("CARGO_BIN_EXE_x")`) entra como esse identificador.
+fn flatten_tokens(stream: TokenStream, flat: &mut Vec<(String, usize)>) {
+    for tree in stream {
+        match tree {
+            TokenTree::Group(group) => flatten_tokens(group.stream(), flat),
+            TokenTree::Ident(ident) => {
+                let name = ident.to_string();
+                let name = if name.starts_with(CARGO_BIN_EXE) {
+                    CARGO_BIN_EXE.to_owned()
+                } else {
+                    name
+                };
+                flat.push((name, ident.span().start().line));
+            }
+            TokenTree::Punct(punct) if punct.as_char() == ':' => {
+                flat.push((":".to_owned(), punct.span().start().line));
+            }
+            TokenTree::Literal(literal) if literal.to_string().contains(CARGO_BIN_EXE) => {
+                flat.push((CARGO_BIN_EXE.to_owned(), literal.span().start().line));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn boundary_findings(source: &str) -> Result<Vec<Finding>, String> {
+    let mut flat = Vec::new();
+    flatten_tokens(tokenize(source)?, &mut flat);
+    let mut found = Vec::new();
+    for path in UNIT_FORBIDDEN_PATHS {
+        let pattern: Vec<&str> = path
+            .iter()
+            .enumerate()
+            .flat_map(|(index, segment)| {
+                if index == 0 {
+                    vec![*segment]
+                } else {
+                    vec![":", ":", *segment]
+                }
+            })
+            .collect();
+        for window in flat.windows(pattern.len()) {
+            if window
+                .iter()
+                .zip(&pattern)
+                .all(|(token, wanted)| token.0 == *wanted)
+            {
+                found.push(Finding {
+                    line: window[0].1,
+                    what: path.join("::"),
+                });
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// Se `source` declara `#[cfg(test)] mod tests;` no nível da raiz do arquivo.
+fn declares_test_module(source: &str) -> Result<bool, String> {
+    let trees = tokens(tokenize(source)?);
+    Ok(trees.windows(5).any(|window| {
+        matches!(
+            window,
+            [TokenTree::Punct(hash), TokenTree::Group(attribute), module, name, end]
+                if hash.as_char() == '#'
+                    && is_cfg_test(attribute)
+                    && is_ident(module, "mod")
+                    && is_ident(name, "tests")
+                    && is_punct(Some(end), ';')
+        )
+    }))
+}
+
+/// O arquivo do módulo pai de `tests`: `dir/mod.rs` ou `dir.rs`, para `dir/tests.rs`.
+fn parent_module_file(tests: &Path) -> Option<PathBuf> {
+    let dir = tests.parent()?;
+    [dir.join("mod.rs"), dir.with_extension("rs")]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
+/// Entradas de `tests_dir` que não são uma das pastas de `TESTS_LAYOUT`.
+fn layout_findings(tests_dir: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(tests_dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = entries
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| !TESTS_LAYOUT.contains(&name.as_str()))
+        .collect();
+    found.sort();
+    found
+}
+
+fn write_tree(root: &TempDir, files: &[(&str, &str)]) {
+    for (relative, content) in files {
+        let path = root.path().join(relative);
+        fs::create_dir_all(path.parent().expect("a file has a parent"))
+            .expect("directory is created");
+        fs::write(&path, content).expect("file is written");
+    }
 }
 
 fn parse_cases(content: &str) -> Vec<Case<'_>> {
@@ -1038,7 +1183,7 @@ fn expected_words(expectation: &str) -> BTreeSet<&str> {
 
 #[test]
 fn it_should_not_use_domain_vocabulary_in_identifiers_or_string_literals_of_the_hexlog_sources() {
-    let sources = files_with_extension(&src_dir(), "rs");
+    let sources = production_sources(&src_dir());
 
     let mut findings = rust_findings(&sources, VOCABULARY);
     findings.extend(schema_findings(VOCABULARY));
@@ -1049,7 +1194,7 @@ fn it_should_not_use_domain_vocabulary_in_identifiers_or_string_literals_of_the_
 #[test]
 fn it_should_confine_block_on_to_the_sqlite_store() {
     let home = src_dir().join(BLOCKING_HOME);
-    let sources: Vec<PathBuf> = files_with_extension(&src_dir(), "rs")
+    let sources: Vec<PathBuf> = production_sources(&src_dir())
         .into_iter()
         .filter(|path| !path.starts_with(&home))
         .collect();
@@ -1071,7 +1216,7 @@ fn it_should_confine_block_on_to_the_sqlite_store() {
 
 #[test]
 fn it_should_mention_git_only_in_engine_snapshot() {
-    let sources: Vec<PathBuf> = files_with_extension(&src_dir(), "rs")
+    let sources: Vec<PathBuf> = production_sources(&src_dir())
         .into_iter()
         .filter(|path| !path.ends_with(GIT_ONLY_FILE))
         .collect();
@@ -1400,4 +1545,163 @@ fn it_should_refuse_allow_for_the_memory_lints_and_require_a_registered_reason_o
     }
 
     assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_leave_unit_test_sources_out_of_the_production_rules_and_under_the_memory_lint() {
+    let root = TempDir::new().expect("temporary directory is created");
+    write_tree(
+        &root,
+        &[
+            ("engine/a.rs", "fn a() {}"),
+            (
+                "engine/rules/tests.rs",
+                "use crate::store::X;\n#[allow(clippy::mem_forget)] fn f() {}",
+            ),
+            ("test_support/mod.rs", "fn s() {}"),
+            ("engine/tests_helper.rs", "fn b() {}"),
+        ],
+    );
+    let layered = |path: &Path| import_findings(&read(path)).map(|found| found.len());
+
+    let production = production_sources(root.path());
+    let linted = files_with_extension(root.path(), "rs");
+
+    let names = |paths: &[PathBuf]| -> Vec<String> {
+        paths
+            .iter()
+            .map(|path| display(path.strip_prefix(root.path()).unwrap_or(path)))
+            .collect()
+    };
+    assert_eq!(
+        names(&production),
+        ["engine/a.rs", "engine/tests_helper.rs"]
+    );
+    assert_eq!(layered(&root.path().join("engine/rules/tests.rs")), Ok(1));
+    assert_eq!(linted.len(), 4, "the lint of memory reads every source");
+    assert_eq!(
+        memory_lint_findings(&read(&root.path().join("engine/rules/tests.rs")))
+            .map(|found| found.len()),
+        Ok(1)
+    );
+}
+
+#[test]
+fn it_should_keep_unit_test_sources_inside_the_crate_boundary() {
+    let flagged = [
+        "use std::process::Command;",
+        "fn f() { Command::new(\"x\"); }",
+        "fn f() { let _ = env!(\"CARGO_BIN_EXE_omhl\"); }",
+        "fn f() { std::thread::sleep(d); }",
+        "fn f() { receiver.recv_timeout(d); }",
+        "fn f() { Hexlog::open(&config, deps); }",
+    ];
+    let accepted = [
+        "pub enum Command { Run }",
+        "fn f() { thread::spawn(g); }",
+        "fn f() { let open = 1; Hexlog::new(); }",
+        "// Command::new(\"x\") and thread::sleep in a comment",
+        "fn f() { sleep_ms(1); }",
+    ];
+
+    let mut failures = prove_both_sides(
+        |snippet| boundary_findings(snippet).map(|found| found.len()),
+        &flagged,
+        &accepted,
+    );
+    for path in unit_test_sources() {
+        match boundary_findings(&read(&path)) {
+            Ok(found) => failures.extend(
+                found
+                    .iter()
+                    .map(|finding| render(&path, finding.line, &finding.what)),
+            ),
+            Err(error) => failures.push(format!("{}: cannot tokenize: {error}", display(&path))),
+        }
+    }
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_declare_every_tests_file_with_cfg_test_in_its_parent_module() {
+    let flagged = [
+        "mod tests;",
+        "#[cfg(feature = \"x\")] mod tests;",
+        "#[cfg(test)] mod other;",
+        "#[cfg(test)] mod tests { fn f() {} }",
+        "fn f() {}",
+    ];
+    let accepted = [
+        "#[cfg(test)]\nmod tests;",
+        "use a::b;\n\n#[cfg(test)]\nmod tests;\n",
+    ];
+
+    let mut failures = Vec::new();
+    for snippet in flagged {
+        if declares_test_module(snippet) != Ok(false) {
+            failures.push(format!("embedded snippet was accepted: {snippet}"));
+        }
+    }
+    for snippet in accepted {
+        if declares_test_module(snippet) != Ok(true) {
+            failures.push(format!("embedded snippet was refused: {snippet}"));
+        }
+    }
+    for path in unit_test_sources()
+        .into_iter()
+        .filter(|path| path.file_name().is_some_and(|name| name == UNIT_TEST_FILE))
+    {
+        let Some(parent) = parent_module_file(&path) else {
+            failures.push(format!("{}: has no parent module file", display(&path)));
+            continue;
+        };
+        match declares_test_module(&read(&parent)) {
+            Ok(true) => {}
+            Ok(false) => failures.push(format!(
+                "{}: parent {} lacks `#[cfg(test)] mod tests;`",
+                display(&path),
+                display(&parent)
+            )),
+            Err(error) => failures.push(format!("{}: cannot tokenize: {error}", display(&parent))),
+        }
+    }
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_in_tests_only_the_integration_fixtures_and_proptest_regressions_folders() {
+    let accepted = TempDir::new().expect("temporary directory is created");
+    write_tree(
+        &accepted,
+        &[
+            ("integration/main.rs", ""),
+            ("fixtures/a.json", ""),
+            ("proptest-regressions/a.txt", ""),
+        ],
+    );
+    let loose = TempDir::new().expect("temporary directory is created");
+    write_tree(
+        &loose,
+        &[
+            ("integration/main.rs", ""),
+            ("x.rs", ""),
+            ("support/mod.rs", ""),
+        ],
+    );
+
+    let from_accepted = layout_findings(accepted.path());
+    let from_loose = layout_findings(loose.path());
+    let from_real = layout_findings(&crate_dir().join("tests"));
+
+    assert!(
+        from_accepted.is_empty(),
+        "accepted layout flagged: {from_accepted:?}"
+    );
+    assert_eq!(from_loose, ["support", "x.rs"]);
+    assert!(
+        from_real.is_empty(),
+        "unexpected entries in tests/: {from_real:?}"
+    );
 }

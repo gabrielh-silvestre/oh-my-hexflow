@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use hexlog::{Catalog, Hexlog, RelationTypeDef, TypeDef};
 use serde::Deserialize;
@@ -15,8 +15,9 @@ struct ThirdGraph {
 }
 
 fn third_graph_catalog() -> Catalog {
-    let definitions: ThirdGraph = serde_json::from_str(include_str!("fixtures/third_graph.json"))
-        .expect("the third graph definitions are valid JSON");
+    let definitions: ThirdGraph =
+        serde_json::from_str(include_str!("../fixtures/third_graph.json"))
+            .expect("the third graph definitions are valid JSON");
 
     Catalog::new(definitions.types, definitions.relations)
         .expect("the third graph definitions are accepted by the catalog")

@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use hexlog::{Config, ErrorCode, Hexlog, VerifyPolicy};
 use serde_json::json;

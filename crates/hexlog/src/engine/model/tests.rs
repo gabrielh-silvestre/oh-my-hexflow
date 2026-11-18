@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 use super::{BodyAuthor, BodyBatch, BodyLineage, BodySnapshot, RecordBody};
 use crate::chain::hash_record;
+use crate::{ErrorCode, FieldName};
 
 const BODIES: &str = include_str!("../../../tests/fixtures/golden_bodies.json");
 
@@ -127,4 +128,22 @@ fn it_should_refuse_a_body_with_an_unknown_field() {
     let parsed = serde_json::from_str::<RecordBody>(&tampered);
 
     assert!(parsed.is_err());
+}
+
+#[test]
+fn it_should_reject_a_where_field_name_with_json_path_or_sql_metacharacters() {
+    let cases = [
+        "a.b".to_owned(),
+        "a[0]".to_owned(),
+        "a\"b".to_owned(),
+        "a'b".to_owned(),
+        String::new(),
+        "a".repeat(65),
+    ];
+
+    for name in &cases {
+        let error = FieldName::parse(name).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::InvalidInput, "code for {name:?}");
+    }
 }

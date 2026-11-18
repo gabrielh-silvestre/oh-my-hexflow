@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use hexlog::chain::{anchor, anchor_doc};
 use hexlog::{ChainHead, ErrorCode};

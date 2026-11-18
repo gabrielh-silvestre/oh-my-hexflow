@@ -1,5 +1,6 @@
-use hexlog::{ErrorCode, Snapshot, SnapshotKind};
 use serde_json::json;
+
+use crate::{ErrorCode, Snapshot, SnapshotKind};
 
 #[test]
 fn it_should_accept_a_lowercase_hex_snapshot_of_40_or_64_characters() {

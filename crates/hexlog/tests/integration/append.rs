@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use hexlog::chain::{canonical, fingerprint, hash_record};
 use hexlog::{AppendItem, AppendRequest, Author, ChainHead, RecordId};

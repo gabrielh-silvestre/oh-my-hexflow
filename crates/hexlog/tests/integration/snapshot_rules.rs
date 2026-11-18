@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use hexlog::{ErrorCode, ExternalId, SnapshotKind};
 use serde_json::json;
@@ -172,18 +172,6 @@ fn it_should_reject_external_id_on_a_retirement() {
         "external-id-not-allowed",
         "/items/0/external_id",
     );
-}
-
-#[test]
-fn it_should_reject_external_id_that_is_empty_or_longer_than_200_characters() {
-    let too_long_in_utf16_units = format!("{}{}", "a".repeat(199), "\u{1F4A9}");
-    let cases = [String::new(), "a".repeat(201), too_long_in_utf16_units];
-
-    for text in &cases {
-        let error = ExternalId::parse(text).unwrap_err();
-
-        assert_refusal(&error, ErrorCode::InvalidRecord, "external-id-format", "");
-    }
 }
 
 #[test]

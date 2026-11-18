@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use hexlog::{Hexlog, RecordId};
 use proptest::prelude::*;

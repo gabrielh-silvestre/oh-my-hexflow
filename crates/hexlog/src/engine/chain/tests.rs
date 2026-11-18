@@ -1,14 +1,15 @@
-use hexlog::chain::{anchor, anchor_doc, canonical, fingerprint, hash_record, sha256hex};
-use hexlog::{
+use serde_json::{Number, Value, json};
+
+use crate::chain::{anchor, anchor_doc, canonical, fingerprint, hash_record, sha256hex};
+use crate::{
     AppendItem, AppendRequest, Author, ErrorCode, ExternalId, HexlogError, IdempotencyKey,
     ItemBody, Lineage, RecordId, RelationTypeName, SemanticId, Snapshot, SnapshotKind, TenantId,
     TypeName,
 };
-use serde_json::{Number, Value, json};
 
-const VECTORS: &str = include_str!("fixtures/rfc8785_vectors.json");
-const RECORDS: &str = include_str!("fixtures/golden_records.json");
-const FINGERPRINTS: &str = include_str!("fixtures/golden_fingerprints.json");
+const VECTORS: &str = include_str!("../../../tests/fixtures/rfc8785_vectors.json");
+const RECORDS: &str = include_str!("../../../tests/fixtures/golden_records.json");
+const FINGERPRINTS: &str = include_str!("../../../tests/fixtures/golden_fingerprints.json");
 const BASE: &str = "acme:0192a000-0000-7000-8000-000000000001";
 
 fn fixture(source: &str) -> Value {

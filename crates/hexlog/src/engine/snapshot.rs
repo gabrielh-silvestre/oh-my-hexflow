@@ -63,3 +63,6 @@ impl Snapshot {
         &self.id
     }
 }
+
+#[cfg(test)]
+mod tests;

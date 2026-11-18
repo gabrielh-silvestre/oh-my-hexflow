@@ -1,6 +1,6 @@
-mod support;
+use crate::support;
 
-use hexlog::{ErrorCode, FieldName, Hexlog, ListFilter, NodeView, Page, PageRequest, Scalar};
+use hexlog::{ErrorCode, Hexlog, ListFilter, NodeView, Page, PageRequest, Scalar};
 use serde_json::json;
 use support::{
     Harness, all, append_one, assert_refusal, commit, field, node, page, request, tenant,
@@ -110,24 +110,6 @@ fn it_should_match_a_where_field_only_inside_data_even_when_its_name_equals_an_e
 
     assert_eq!(by_data_value, ["a.one"]);
     assert!(by_envelope_value.is_empty());
-}
-
-#[test]
-fn it_should_reject_a_where_field_name_with_json_path_or_sql_metacharacters() {
-    let cases = [
-        "a.b".to_owned(),
-        "a[0]".to_owned(),
-        "a\"b".to_owned(),
-        "a'b".to_owned(),
-        String::new(),
-        "a".repeat(65),
-    ];
-
-    for name in &cases {
-        let error = FieldName::parse(name).unwrap_err();
-
-        assert_eq!(error.code, ErrorCode::InvalidInput, "code for {name:?}");
-    }
 }
 
 #[test]

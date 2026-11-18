@@ -1,4 +1,4 @@
-use hexlog::{Detail, ErrorCode, HexlogError, pointer_segment};
+use crate::{Detail, ErrorCode, HexlogError, pointer_segment};
 
 fn detail_at(path: &str) -> Detail {
     Detail {
