@@ -15,6 +15,9 @@ pub(super) struct Lexed {
     pub(super) executes_heredoc: bool,
 }
 
+/// Aninhamentos (`$(`, `(`, crase, `${`, `$((`) abertos ao mesmo tempo; acima disso o leitor desiste.
+pub(super) const MAX_DEPTH: usize = 64;
+
 pub(super) fn lex(source: &str) -> Result<Lexed, ReadError> {
     let mut lexer = Lexer {
         cursor: Cursor::new(source),
@@ -22,6 +25,7 @@ pub(super) fn lex(source: &str) -> Result<Lexed, ReadError> {
         current: Vec::new(),
         word: None,
         word_start: 0,
+        depth: 0,
         next_word: NextWord::Argument,
         heredocs: Vec::new(),
         separated: false,
@@ -66,6 +70,7 @@ struct Lexer {
     word: Option<WordBuilder>,
     /// Caractere em que a palavra em andamento começou.
     word_start: usize,
+    depth: usize,
     next_word: NextWord,
     heredocs: Vec<Delimiter>,
     separated: bool,
@@ -201,7 +206,7 @@ impl Lexer {
         let outer_command = mem::take(&mut self.current);
         let outer_next = mem::take(&mut self.next_word);
         self.separated = true;
-        self.run(Some(close))?;
+        self.within_depth(|lexer| lexer.run(Some(close)))?;
         self.word = outer_word.or_else(|| Some(WordBuilder::default()));
         self.word_start = outer_start;
         self.current = outer_command;
@@ -210,16 +215,32 @@ impl Lexer {
         Ok(())
     }
 
+    /// Roda `body` um nível mais fundo; o limite protege a pilha de um comando aninhado de propósito.
+    fn within_depth(
+        &mut self,
+        body: impl FnOnce(&mut Self) -> Result<(), ReadError>,
+    ) -> Result<(), ReadError> {
+        if self.depth == MAX_DEPTH {
+            return Err(ReadError::TooDeep);
+        }
+        self.depth += 1;
+        let result = body(self);
+        self.depth -= 1;
+
+        result
+    }
+
     fn dollar(&mut self) -> Result<(), ReadError> {
+        let start = self.cursor.consumed() - 1;
         if self.cursor.eat('(') {
             if !self.cursor.opens_arithmetic() {
                 return self.nested(')');
             }
             self.cursor.eat('(');
-            return self.arithmetic();
+            return self.expansion(start, Self::arithmetic);
         }
         if self.cursor.eat('{') {
-            return self.parameter();
+            return self.expansion(start, Self::parameter);
         }
         // `$'...'` e `$"..."` são só aspas: o `$` não entra na palavra.
         if matches!(self.cursor.peek(), Some('\'' | '"')) {
@@ -231,9 +252,25 @@ impl Lexer {
         Ok(())
     }
 
+    /// `${...}` e `$((...))` ficam na palavra como texto cru, desde o `$` em `start`: o leitor não os expande,
+    /// então a palavra tem de continuar existindo e dizer o que o bash vai ler. O que `scan` empurra por dentro é descartado.
+    fn expansion(
+        &mut self,
+        start: usize,
+        scan: fn(&mut Self) -> Result<(), ReadError>,
+    ) -> Result<(), ReadError> {
+        let outer_word = self.word.take().unwrap_or_default();
+        self.within_depth(scan)?;
+        self.word = Some(outer_word);
+        for c in self.cursor.text_since(start).chars() {
+            self.push(c, false);
+        }
+
+        Ok(())
+    }
+
     /// `${...}` é parte da palavra, não separador: por dentro só importam `$(`, crase e aspas, e `#` não abre comentário.
     fn parameter(&mut self) -> Result<(), ReadError> {
-        self.word.get_or_insert_default();
         while let Some(c) = self.cursor.bump() {
             match c {
                 '}' => break,
@@ -251,7 +288,6 @@ impl Lexer {
 
     /// `$((...))` é parte da palavra; só `$(` e crase por dentro executam.
     fn arithmetic(&mut self) -> Result<(), ReadError> {
-        self.word.get_or_insert_default();
         let mut depth = 0;
         while let Some(c) = self.cursor.bump() {
             match c {

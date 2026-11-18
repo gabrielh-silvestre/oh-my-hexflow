@@ -1533,16 +1533,191 @@ fn it_should_apply_the_matrix_to_an_ansi_c_quoted_program() {
     assert_denied_listing(&output, "verifier", &command);
 }
 
+// R1: o texto de `${...}` e `$((...))` fica na palavra, então o hook vê o que o bash vai expandir
+
+#[test]
+fn it_should_deny_a_parameter_expansion_as_the_leaf_of_an_omhl_command() {
+    let command = "omhl ${X:-attest} list";
+
+    let output = run_as("verifier", command);
+
+    assert_denied_listing(&output, "verifier", command);
+}
+
+#[test]
+fn it_should_deny_an_arithmetic_expansion_as_the_leaf_of_an_omhl_command() {
+    let command = "omhl $((0)) list";
+
+    let output = run_as("verifier", command);
+
+    assert_denied_listing(&output, "verifier", command);
+}
+
+#[test]
+fn it_should_deny_an_expansion_in_the_option_position_of_a_wrapper_before_omhl() {
+    let command = "env ${X:--i} omhl append <<'EOF'\n{\"items\":[]}\nEOF\n";
+
+    let output = run_as("verifier", command);
+
+    assert_denied_mentioning(&output, "wrapper option");
+}
+
+#[test]
+fn it_should_deny_an_expansion_in_the_program_position_when_a_word_mentions_omhl() {
+    for command in [
+        "$X omhl list",
+        "\"${X}\" omhl list",
+        "$((0)) omhl list",
+        "omhl$X list",
+        "nice $N omhl list",
+    ] {
+        let output = run_as("verifier", command);
+
+        assert_denied_mentioning(&output, "wrapper option");
+    }
+}
+
+#[test]
+fn it_should_pass_an_expansion_in_the_program_position_when_no_word_mentions_omhl() {
+    let output = run_as("verifier", "$EDITOR notes.md");
+
+    assert_passed(&output);
+}
+
+#[test]
+fn it_should_pass_an_expansion_in_the_program_position_from_the_main_session() {
+    let output = run_agent_role("$X omhl list", None);
+
+    assert_passed(&output);
+}
+
+#[test]
+fn it_should_let_a_redirection_target_consume_a_parameter_expansion() {
+    assert_for_every_role("check run", "omhl check >${X:-/dev/null} run help");
+}
+
+#[test]
+fn it_should_allow_an_expansion_inside_a_later_argument_value() {
+    for command in [
+        "omhl --db \"${X}\" list",
+        "omhl list --where a=$B",
+        "omhl list $((1 + 1))",
+        "${HOME}/.local/bin/omhl list",
+        "timeout ${T} omhl list",
+        "FOO=${X} omhl list",
+    ] {
+        assert_verifier_allowed(command);
+    }
+}
+
+// Limites do leitor: profundidade e tamanho viram erro de leitura, nunca estouro de pilha
+
+fn deeply_nested(opening: &str, closing: &str) -> String {
+    format!(
+        "omhl list {}{}",
+        opening.repeat(10_000),
+        closing.repeat(10_000)
+    )
+}
+
+#[test]
+fn it_should_deny_a_deeply_nested_command_with_omhl_from_a_ported_agent() {
+    for (opening, closing) in [("$(", ")"), ("${a:-", "}"), ("(", ")")] {
+        let output = run_as("verifier", &deeply_nested(opening, closing));
+
+        assert_denied_mentioning(&output, "too deeply");
+    }
+}
+
+#[test]
+fn it_should_pass_a_deeply_nested_command_with_omhl_from_the_main_session() {
+    let output = run_agent_role(&deeply_nested("$(", ")"), None);
+
+    assert_passed(&output);
+}
+
+#[test]
+fn it_should_pass_a_deeply_nested_command_without_omhl_from_a_ported_agent() {
+    let command = deeply_nested("$(", ")").replace("omhl", "echo");
+
+    let output = run_as("verifier", &command);
+
+    assert_passed(&output);
+}
+
+#[test]
+fn it_should_deny_a_command_over_the_length_limit_with_omhl_from_a_ported_agent() {
+    let command = format!("omhl list # {}", "a".repeat(300 * 1024));
+
+    let output = run_as("verifier", &command);
+
+    assert_denied_mentioning(&output, "too long");
+}
+
+#[test]
+fn it_should_pass_a_command_over_the_length_limit_from_the_main_session() {
+    let command = format!("omhl list # {}", "a".repeat(300 * 1024));
+
+    let output = run_agent_role(&command, None);
+
+    assert_passed(&output);
+}
+
+// N1: `time [-p] --` leva o prefixo para depois do `--`
+
+#[test]
+fn it_should_put_the_prefix_after_the_double_dash_of_time() {
+    for (command, rewritten) in [
+        (
+            "time -- omhl list",
+            "time -- OMHL_ROLE=omhl:verifier omhl list",
+        ),
+        (
+            "time -p -- omhl list",
+            "time -p -- OMHL_ROLE=omhl:verifier omhl list",
+        ),
+    ] {
+        let output = run_as("verifier", command);
+
+        assert_eq!(
+            decision_of(&output)["updatedInput"]["command"],
+            json!(rewritten)
+        );
+    }
+}
+
 // Execução: o comando reescrito roda de verdade com `OMHL_ROLE` no `omhl`
+
+/// Um embrulho de mentira: pula as opções (`-oL`, `-n 5`) e o `proxy` do `rtk` e executa o resto.
+const WRAPPER_FAKE: &str = "#!/bin/sh\nwhile [ \"${1#-}\" != \"$1\" ]; do\n  case $1 in -n) shift ;; esac\n  shift\ndone\n[ \"$1\" = proxy ] && shift\nexec \"$@\"\n";
+
+fn install_script(dir: &Path, name: &str, body: &str) {
+    let script = dir.join(name);
+    fs::write(&script, body).expect("script is written");
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).expect("script is executable");
+}
+
+fn is_on_path(program: &str) -> bool {
+    let path = std::env::var("PATH").expect("PATH is set");
+
+    std::env::split_paths(&path).any(|dir| dir.join(program).is_file())
+}
 
 #[test]
 fn it_should_run_every_allowed_rewritten_command_with_omhl_role_in_the_omhl_environment() {
     let bin = TempDir::new().expect("bin directory is created");
-    let fake_omhl = bin.path().join("omhl");
-    fs::write(&fake_omhl, "#!/bin/sh\nprintf '%s\\n' \"$OMHL_ROLE\"\n")
-        .expect("fake omhl is written");
-    fs::set_permissions(&fake_omhl, fs::Permissions::from_mode(0o755))
-        .expect("fake omhl is executable");
+    install_script(
+        bin.path(),
+        "omhl",
+        "#!/bin/sh\nprintf '%s\\n' \"$OMHL_ROLE\"\n",
+    );
+    // O `rtk` real fica de fora; os outros embrulhos só ganham um falso se a máquina não os tem.
+    install_script(bin.path(), "rtk", WRAPPER_FAKE);
+    for wrapper in ["nice", "nohup", "stdbuf", "xargs"] {
+        if !is_on_path(wrapper) {
+            install_script(bin.path(), wrapper, WRAPPER_FAKE);
+        }
+    }
     let path = format!(
         "{}:{}",
         bin.path().display(),
@@ -1556,6 +1731,15 @@ fn it_should_run_every_allowed_rewritten_command_with_omhl_role_in_the_omhl_envi
         "env omhl list",
         "time omhl list",
         "time -p omhl list",
+        "time -- omhl list",
+        "time -p -- omhl list",
+        "exec omhl list",
+        "command omhl list",
+        "nice -n 5 omhl list",
+        "nohup omhl list",
+        "stdbuf -oL omhl list",
+        "xargs omhl list",
+        "rtk proxy omhl list",
         "  omhl list",
         "omhl list 2>&1",
     ] {
@@ -1567,6 +1751,9 @@ fn it_should_run_every_allowed_rewritten_command_with_omhl_role_in_the_omhl_envi
         let ran = Command::new("bash")
             .args(["-c", &rewritten])
             .env("PATH", &path)
+            .env_remove("OMHL_ROLE")
+            .env_remove("BASH_ENV")
+            .env_remove("ENV")
             .output()
             .expect("bash runs the rewritten command");
 

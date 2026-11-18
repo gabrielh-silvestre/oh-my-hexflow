@@ -67,7 +67,7 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
         // O erro de leitura só pesa para o agente portado, e só se o comando fala de `omhl`.
         Err(_) if command.contains("omhl") => deny(
             "command-unreadable",
-            "the command has an unclosed quote or heredoc and mentions omhl; fix the command",
+            "the command has an unclosed quote or heredoc, is too long or nests too deeply, and mentions omhl; fix the command",
         ),
         Err(_) => RoleVerdict::Pass,
     }
@@ -210,13 +210,15 @@ fn with_role_prefix(input: &Value, role: &str) -> Value {
     tool_input
 }
 
-/// Onde o prefixo entra: na frente, salvo depois da palavra reservada `time` (e do `-p`), que só vale no começo do comando.
+/// Onde o prefixo entra: na frente, salvo depois da palavra reservada `time` (e do `-p` e do `--`), que só vale no começo do comando.
 /// Com o prefixo antes dela o bash chamaria o `/usr/bin/time`, que pode nem existir.
 fn prefix_position(command: &str) -> usize {
     let Some(rest) = after_blank_word(command.trim_start_matches(BLANKS), "time") else {
         return 0;
     };
-    let rest = after_blank_word(rest, "-p").unwrap_or(rest);
+    let rest = ["-p", "--"].iter().fold(rest, |rest, option| {
+        after_blank_word(rest, option).unwrap_or(rest)
+    });
 
     command.len() - rest.len()
 }

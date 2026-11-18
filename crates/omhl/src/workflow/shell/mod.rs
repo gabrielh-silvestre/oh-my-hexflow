@@ -11,11 +11,16 @@ pub use self::wrapper::Opacity;
 
 use self::wrapper::{Resolved, basename};
 
-/// Aspas ou heredoc sem fechar: o leitor não sabe o que o comando faz.
+/// Maior comando que o leitor aceita (256 KiB): acima disso ele não lê.
+const MAX_COMMAND_BYTES: usize = 256 * 1024;
+
+/// O leitor não sabe o que o comando faz: aspas ou heredoc sem fechar, aninhamento ou tamanho acima do limite.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadError {
     UnclosedQuote,
     UnclosedHeredoc,
+    TooDeep,
+    TooLong,
 }
 
 /// O comando da ferramenta Bash como lista de comandos simples.
@@ -68,14 +73,28 @@ impl SimpleCommand {
     /// Roda o `omhl` ou o leitor não consegue descartar que rode: nega-se em vez de adivinhar.
     pub fn may_run_omhl(&self) -> bool {
         match self.resolved.opacity {
-            None => self.program() == Some("omhl"),
-            Some(Opacity::Rewriting) => self.words.iter().any(|word| word.contains("omhl")),
+            None if self.program() == Some("omhl") => true,
+            // O programa é uma expansão (`$X`, `${...}`): o bash decide o que roda, o leitor não sabe.
+            None => {
+                self.resolved
+                    .program_at
+                    .is_some_and(|at| self.words[at].contains('$'))
+                    && self.mentions_omhl()
+            }
+            Some(Opacity::Rewriting) => self.mentions_omhl(),
             Some(Opacity::UnknownOption) => self.words.iter().any(|word| basename(word) == "omhl"),
         }
+    }
+
+    fn mentions_omhl(&self) -> bool {
+        self.words.iter().any(|word| word.contains("omhl"))
     }
 }
 
 pub fn read_command(command: &str) -> Result<CommandLine, ReadError> {
+    if command.len() > MAX_COMMAND_BYTES {
+        return Err(ReadError::TooLong);
+    }
     let lexed = lexer::lex(command)?;
     let compound = lexed.separated || lexed.commands.len() > 1;
     let leading_blanks = command
@@ -104,7 +123,7 @@ pub fn read_command(command: &str) -> Result<CommandLine, ReadError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CommandLine, ReadError, read_command};
+    use super::{CommandLine, MAX_COMMAND_BYTES, ReadError, lexer, read_command};
 
     fn read(command: &str) -> CommandLine {
         read_command(command).expect("the command is readable")
@@ -320,6 +339,41 @@ mod tests {
         assert_eq!(program_names("{ omhl list\n}"), ["omhl"]);
         assert!(line.compound);
         assert!(!read("echo {a,b} '{'").compound);
+    }
+
+    #[test]
+    fn it_should_keep_the_raw_text_of_an_expansion_in_its_word() {
+        for (command, words) in [
+            (
+                "omhl ${X:-attest} list",
+                vec!["omhl", "${X:-attest}", "list"],
+            ),
+            ("omhl $((0)) list", vec!["omhl", "$((0))", "list"]),
+            ("echo \"${X}\"", vec!["echo", "${X}"]),
+            ("echo a${x:-'b'}c", vec!["echo", "a${x:-'b'}c"]),
+        ] {
+            assert_eq!(read(command).commands[0].words(), words, "{command}");
+        }
+    }
+
+    #[test]
+    fn it_should_read_up_to_the_depth_limit_and_refuse_one_level_more() {
+        let nested = |depth: usize| format!("{}x{}", "$(".repeat(depth), ")".repeat(depth));
+
+        assert!(read_command(&nested(lexer::MAX_DEPTH)).is_ok());
+        assert_eq!(
+            read_command(&nested(lexer::MAX_DEPTH + 1)).unwrap_err(),
+            ReadError::TooDeep
+        );
+    }
+
+    #[test]
+    fn it_should_read_up_to_the_length_limit_and_refuse_one_byte_more() {
+        assert!(read_command(&"a".repeat(MAX_COMMAND_BYTES)).is_ok());
+        assert_eq!(
+            read_command(&"a".repeat(MAX_COMMAND_BYTES + 1)).unwrap_err(),
+            ReadError::TooLong
+        );
     }
 
     #[test]

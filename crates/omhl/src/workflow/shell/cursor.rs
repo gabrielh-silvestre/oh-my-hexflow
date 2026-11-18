@@ -21,6 +21,11 @@ impl Cursor {
         self.at
     }
 
+    /// O texto cru lido desde o caractere `start`.
+    pub(super) fn text_since(&self, start: usize) -> String {
+        self.chars[start..self.at].iter().collect()
+    }
+
     /// Logo depois de `$(`: o `(` seguinte abre uma aritmética `$((...))` quando o primeiro `)` de fora
     /// é seguido de outro `)`; senão é `$(` com um subshell, que executa.
     pub(super) fn opens_arithmetic(&self) -> bool {
