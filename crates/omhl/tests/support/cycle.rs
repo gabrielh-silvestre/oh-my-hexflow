@@ -28,9 +28,6 @@ pub const CHECK_WITH_WIDE_LINE: &str = "checks.payroll-wide";
 pub const CHECK_WITHOUT_OUTPUT: &str = "checks.payroll-quiet";
 pub const SPEC_SLUG: &str = "export-reports";
 
-/// O aviso que todo texto de saída guardada de check traz, nos dois layouts (CA-10).
-pub const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
-
 const GENERATED_HEADER: &str = "<!-- omhl: generated file, do not edit -->";
 
 // ---------------------------------------------------------------- git e `omhl` de preparo

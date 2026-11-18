@@ -53,6 +53,8 @@ const SERVICE_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super::"];
 const SPEC_GRAMMAR_LITERALS: &[&str] = &["wi-", "parte-", "emenda-"];
 const SPEC_GRAMMAR_MODULE: &str = "workflow/names.rs";
+const OUTPUT_VOCAB_LITERALS: &[&str] = &["✔", "✘", "⚠", "Next:"];
+const OUTPUT_VOCAB_MODULE: &str = "adapters/text/vocab.rs";
 const REMOVED_PORT_TERMS: &[&str] = &["mcp", "tool_call", "json-rpc"];
 const NUMERIC_CUT_NEEDLES: &[&str] = &[".min(", ".max(", ".clamp(", ".take(", "saturating_"];
 /// Cortes numéricos de `src/app` por arquivo, os únicos justificados; um corte novo entra aqui com a
@@ -360,6 +362,19 @@ fn spec_grammar_refs(source: &str) -> Result<usize, String> {
             SPEC_GRAMMAR_LITERALS
                 .iter()
                 .any(|prefix| text.starts_with(prefix))
+        })
+        .count())
+}
+
+/// Número de literais de string que trazem um glifo de estado ou o `Next:` do fecho.
+fn output_vocab_refs(source: &str) -> Result<usize, String> {
+    Ok(lex(source)?
+        .literals
+        .iter()
+        .filter(|text| {
+            OUTPUT_VOCAB_LITERALS
+                .iter()
+                .any(|needle| text.contains(needle))
         })
         .count())
 }
@@ -1454,6 +1469,33 @@ fn it_should_keep_the_spec_grammar_literals_inside_the_names_module() {
         .collect();
 
     failures.extend(scan_paths(&outside_names, spec_grammar_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_the_output_vocabulary_literals_inside_the_vocab_module() {
+    let mut failures = prove_both_sides(
+        output_vocab_refs,
+        &[
+            "const OK: &str = \"✔\";",
+            "let line = format!(\"✘ {id}\");",
+            "let mark = \"⚠\";",
+            "let closing = \"Next: go on.\";",
+        ],
+        &[
+            "use super::vocab::SYMBOL_OK;",
+            "// const OK: &str = \"✔\";",
+            "/// Fecha com `Next:` e um ✔.",
+            "let text = \"next step\";",
+        ],
+    );
+    let adapters_outside_vocab: Vec<PathBuf> = rust_files(&src_dir().join("adapters"))
+        .into_iter()
+        .filter(|path| !path.ends_with(OUTPUT_VOCAB_MODULE))
+        .collect();
+
+    failures.extend(scan_paths(&adapters_outside_vocab, output_vocab_refs));
 
     assert_no_failures(&failures);
 }

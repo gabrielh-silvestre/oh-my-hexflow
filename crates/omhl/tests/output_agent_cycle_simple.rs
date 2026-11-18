@@ -2,13 +2,12 @@ mod support;
 
 use std::fs;
 
-use ::omhl::adapters::text::{CommandKey, Layout, render_success};
+use ::omhl::adapters::text::{CommandKey, Layout, SECRET_WARNING, render_success};
 use regex::Regex;
 use serde_json::{Value, json};
 use support::child::Output;
 use support::cycle::{
-    self, ORPHAN_CHECK, ORPHAN_GUIDELINE, SECRET_WARNING, SPEC_SLUG, SUCCESSOR_GUIDELINE, State,
-    WORK_ITEM,
+    self, ORPHAN_CHECK, ORPHAN_GUIDELINE, SPEC_SLUG, SUCCESSOR_GUIDELINE, State, WORK_ITEM,
 };
 use support::project::Project;
 

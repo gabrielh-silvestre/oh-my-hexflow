@@ -5,7 +5,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use omhl::adapters::text::{
-    CommandKey, Entry, Layout, NodeContainer, Outcome, Profile, Region, Scope, Shape, WILDCARD,
+    CommandKey, Entry, Layout, NEXT_LABEL, NOTHING_BLOCKED, NodeContainer, Outcome, Profile,
+    Region, SECRET_WARNING, SYMBOL_ERROR, SYMBOL_OK, SYMBOL_WARNING, Scope, Shape, WILDCARD,
     profile_for, render_failure, render_success,
 };
 use regex::Regex;
@@ -595,7 +596,7 @@ fn verify_broken_facts(value: &Value) -> Vec<String> {
         "chain broken".to_owned(),
         format!("{} records", value["total_records"]),
         format!("{} breaks", value["total_breaks"]),
-        "Next: ".to_owned(),
+        format!("{NEXT_LABEL} "),
     ]
 }
 
@@ -674,20 +675,20 @@ fn check_run_ok_facts(value: &Value) -> Vec<String> {
 
     vec![
         format!(
-            "✔ {} · {} · recorded (git-commit {}",
+            "{SYMBOL_OK} {} · {} · recorded (git-commit {}",
             text_at(value, "event"),
             text_at(value, "work_item"),
             &id[..7]
         ),
         format!(
-            "✔ {}  {}/{}  {}  {}ms",
+            "{SYMBOL_OK} {}  {}/{}  {}  {}ms",
             text_at(result, "check"),
             text_at(result, "concern"),
             text_at(result, "variant"),
             text_at(result, "outcome"),
             result["duration_ms"]
         ),
-        "Nothing blocked. Next: go on with the push.".to_owned(),
+        format!("{NOTHING_BLOCKED} {NEXT_LABEL} go on with the push."),
     ]
 }
 
@@ -707,7 +708,7 @@ fn check_run_blocked_facts(value: &Value) -> Vec<String> {
 
     vec![
         format!(
-            "✘ BLOCKED · {} · {} · {} blocking failed, {} passed, {} not run",
+            "{SYMBOL_ERROR} BLOCKED · {} · {} · {} blocking failed, {} passed, {} not run",
             text_at(&value["error"]["context"], "event"),
             text_at(&value["error"]["context"], "work_item"),
             summary["blocking_failed"],
@@ -715,7 +716,7 @@ fn check_run_blocked_facts(value: &Value) -> Vec<String> {
             summary["not_run"]
         ),
         format!(
-            "✘ {} · {}/{} · blocking · timeout {}s · exit {} · {}",
+            "{SYMBOL_ERROR} {} · {}/{} · blocking · timeout {}s · exit {} · {}",
             text_at(&value["error"]["details"][0], "path"),
             text_at(context, "concern"),
             text_at(context, "variant"),
@@ -736,7 +737,7 @@ fn check_run_blocked_facts(value: &Value) -> Vec<String> {
             text_at(&value["error"]["details"][0], "message")
         ),
         "The output may contain secrets".to_owned(),
-        "Next: read the output with the command above".to_owned(),
+        format!("{NEXT_LABEL} read the output with the command above"),
     ]
 }
 
@@ -757,7 +758,7 @@ fn check_run_stale_facts(value: &Value) -> Vec<String> {
 
     vec![
         format!(
-            "✘ {} · {}",
+            "{SYMBOL_ERROR} {} · {}",
             text_at(error, "code"),
             text_at(error, "message")
         ),
@@ -786,7 +787,7 @@ fn check_run_stale_absent(value: &Value) -> Vec<String> {
 
 fn check_run_nothing_facts(value: &Value) -> Vec<String> {
     vec![format!(
-        "✔ {} · nothing to attest in this push; no check ran",
+        "{SYMBOL_OK} {} · nothing to attest in this push; no check ran",
         text_at(value, "event")
     )]
 }
@@ -802,7 +803,7 @@ fn check_run_ambiguous_facts(value: &Value) -> Vec<String> {
 
     vec![
         format!(
-            "✘ {} · {}",
+            "{SYMBOL_ERROR} {} · {}",
             text_at(error, "code"),
             text_at(error, "message")
         ),
@@ -852,7 +853,7 @@ fn list_page_facts(value: &Value) -> Vec<String> {
     vec![
         format!("{} nodes · seq 1–{last}", items.len()),
         format!(
-            "Next: omhl list --after-seq {} with the same filters",
+            "{NEXT_LABEL} omhl list --after-seq {} with the same filters",
             value["next_after_seq"]
         ),
     ]
@@ -867,7 +868,7 @@ fn get_facts(value: &Value, data: &[(&str, &str)]) -> Vec<String> {
     let node = &value["node"];
     let mut facts = vec![
         format!(
-            "✔ get · {} · {} · seq {}",
+            "{SYMBOL_OK} get · {} · {} · seq {}",
             text_at(node, "id"),
             text_at(node, "type"),
             node["seq"]
@@ -920,7 +921,7 @@ fn get_blocking_facts(value: &Value) -> Vec<String> {
 }
 
 fn get_missing_node_facts(_value: &Value) -> Vec<String> {
-    vec!["⚠ get · node not found".to_owned()]
+    vec![format!("{SYMBOL_WARNING} get · node not found")]
 }
 
 /// O erro genérico do app: o cabeçalho `código · mensagem` e a linha do detalhe, que só repete o código se difere.
@@ -938,7 +939,7 @@ fn generic_error_facts(value: &Value) -> Vec<String> {
 
     vec![
         format!(
-            "✘ {} · {}",
+            "{SYMBOL_ERROR} {} · {}",
             text_at(error, "code"),
             text_at(error, "message")
         ),
@@ -1032,7 +1033,7 @@ fn error_header_facts(value: &Value) -> Vec<String> {
     let error = &value["error"];
 
     vec![format!(
-        "✘ {} · {}",
+        "{SYMBOL_ERROR} {} · {}",
         text_at(error, "code"),
         text_at(error, "message")
     )]
@@ -1268,7 +1269,7 @@ fn byproduct_facts(value: &Value) -> Vec<String> {
             text_at(value, "outcome"),
             counted(size_of(value, "lines"), "line")
         ),
-        cycle::SECRET_WARNING.to_owned(),
+        SECRET_WARNING.to_owned(),
     ];
     if let Some(cut) = value["truncated_lines"].as_u64() {
         facts.push(format!(

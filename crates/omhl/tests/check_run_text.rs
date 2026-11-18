@@ -2,6 +2,7 @@ mod support;
 
 use std::fs;
 
+use omhl::adapters::text::{AgentVocabulary, HumanVocabulary, SYMBOL_OK, State, Vocabulary};
 use serde_json::{Value, json};
 use support::child::{Cmd, omhl};
 use support::ext::ExtTree;
@@ -386,7 +387,7 @@ fn it_should_show_concern_and_variant_next_to_the_id_in_the_success_text() {
 
     let line = output.stdout.lines().nth(1).expect("the check line");
     assert!(
-        line.starts_with("  ✔ checks.format  style/format  passed  "),
+        line.starts_with("  ✔ checks.format style/format passed "),
         "{line}"
     );
 }
@@ -468,7 +469,7 @@ fn it_should_print_the_success_text_on_stdout_by_default() {
         "{lines:?}"
     );
     assert!(
-        lines[1].starts_with("  ✔ checks.green  passed  "),
+        lines[1].starts_with("  ✔ checks.green passed "),
         "{lines:?}"
     );
     assert_eq!(
@@ -642,11 +643,11 @@ fn it_should_tell_a_passed_with_warning_check_from_a_passed_one_in_the_success_t
     assert_eq!(output.stderr, "");
     let lines: Vec<&str> = output.stdout.lines().collect();
     assert!(
-        lines[1].starts_with("  ✔ checks.green  passed  "),
+        lines[1].starts_with("  ✔ checks.green passed "),
         "{lines:?}"
     );
     assert!(
-        lines[2].starts_with("  ⚠ checks.warn  passed_with_warning  "),
+        lines[2].starts_with("  ⚠ checks.warn passed_with_warning "),
         "{lines:?}"
     );
     assert!(lines[2].ends_with("ms (exit 1)"), "{lines:?}");
@@ -751,4 +752,97 @@ fn it_should_print_attestation_refused_as_text_when_a_check_stages_a_file_behind
     let output = omhl_in(&p, &["check", "run", "--event", "before-commit"]).run();
 
     assert_text_refusal(&output, "attestation-refused", "snapshot-tree-mismatch");
+}
+
+const SPACED_RED: &str = r#"blocking = true
+how = "Prints a spaced line and fails."
+run = ["sh", "-c", "printf '  a   b  \\n'; exit 1"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }]
+
+[when]
+event = "before-pr"
+"#;
+
+#[test]
+fn it_should_keep_the_interior_spaces_of_the_command_output_in_the_agent_text() {
+    let p = cli_repo(&[("spaced", SPACED_RED)]);
+    git(&p, &["switch", "-q", "-c", "develop"]);
+
+    let output = run_pr(&p, "agent");
+
+    assert_eq!(output.code, Some(1));
+    assert!(
+        output.stderr.contains("      stdout |   a   b\n"),
+        "{}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_trim_only_the_end_of_the_command_output_line_in_the_agent_text() {
+    let p = cli_repo(&[("spaced", SPACED_RED)]);
+    git(&p, &["switch", "-q", "-c", "develop"]);
+
+    let output = run_pr(&p, "agent");
+
+    assert!(
+        output.stderr.lines().all(|line| line == line.trim_end()),
+        "{}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_keep_the_command_output_line_untouched_in_the_human_text() {
+    let p = cli_repo(&[("spaced", SPACED_RED)]);
+    git(&p, &["switch", "-q", "-c", "develop"]);
+
+    let output = run_pr(&p, "human");
+
+    assert_eq!(output.code, Some(1));
+    assert!(
+        output.stderr.contains("      stdout |   a   b  \n"),
+        "{}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_keep_the_two_space_gap_between_the_check_columns_in_the_human_text() {
+    let p = cli_repo(&[("green", GREEN)]);
+
+    let output = run_pr(&p, "human");
+
+    assert!(
+        output
+            .stdout
+            .contains(&format!("\n  {SYMBOL_OK} checks.green  passed  ")),
+        "{}",
+        output.stdout
+    );
+}
+
+#[test]
+fn it_should_open_the_success_text_of_both_layouts_with_the_ok_symbol_of_the_vocabulary() {
+    let p = cli_repo(&[("green", GREEN)]);
+    let symbol = AgentVocabulary.symbol(State::Ok);
+
+    let agent = run_pr(&p, "agent");
+    let human = run_pr(&p, "human");
+
+    assert!(agent.stdout.starts_with(&format!("{symbol} before-pr")));
+    assert!(human.stdout.starts_with(&format!("{symbol} before-pr")));
+}
+
+#[test]
+fn it_should_open_the_failure_text_of_both_layouts_with_the_error_symbol_of_the_vocabulary() {
+    let p = cli_repo(&[("red", NOISY_RED)]);
+    let symbol = HumanVocabulary.symbol(State::Error);
+
+    let agent = run_pr(&p, "agent");
+    let human = run_pr(&p, "human");
+
+    assert!(agent.stderr.starts_with(&format!("{symbol} BLOCKED")));
+    assert!(human.stderr.starts_with(&format!("{symbol} BLOCKED")));
 }
