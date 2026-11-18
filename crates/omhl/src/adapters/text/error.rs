@@ -4,6 +4,7 @@ use serde_json::Value;
 
 use super::base::{Entry, Region, Shape, Specialization};
 use super::doc::{Closing, Doc, Join, Line, Marker, items, opt_text, scalar_fields, text};
+use super::vocab::{State, without_final_period};
 
 /// Tabela de erro compartilhada pelos comandos de base: ruído vazio, tudo opcional exceto `code` e `message` da raiz
 /// (cada comando monta contextos diferentes e o `no-marker` tem `details: []`).
@@ -92,7 +93,7 @@ pub fn failure<S: Specialization>(specialization: &S, value: &Value) -> Doc {
 
 pub fn header(error: &Value) -> Line {
     Line::Header {
-        symbol: "✘",
+        state: State::Error,
         parts: vec![text(error, "code"), text(error, "message")],
     }
 }
@@ -173,7 +174,7 @@ pub fn context_lines(
 
 pub fn closing(facts: &ErrorFacts) -> Closing {
     match &facts.action {
-        Some(action) => Closing::Next(action.trim_end_matches('.').to_owned()),
+        Some(action) => Closing::Next(without_final_period(action)),
         None => Closing::None,
     }
 }

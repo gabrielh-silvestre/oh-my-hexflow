@@ -4,9 +4,9 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::check_run::SECRET_WARNING;
-use super::doc::{Closing, Line, counted, dash, field, items, joined, one_line, opt_text, text};
+use super::doc::{Closing, Line, dash, field, items, joined, one_line, opt_text, text};
 use super::error;
+use super::vocab::{SECRET_WARNING, State, TIMED_OUT, counted, without_final_period};
 
 pub static PROJECT_PROFILE: Profile = Profile {
     label: "project",
@@ -140,10 +140,10 @@ impl Specialization for CheckSweep {
         &CHECK_SWEEP_PROFILE
     }
 
-    fn symbol(&self, value: &Value) -> &'static str {
+    fn state(&self, value: &Value) -> State {
         match scan_timed_out(value) {
-            true => "⚠",
-            false => "✔",
+            true => State::Warning,
+            false => State::Ok,
         }
     }
 
@@ -154,7 +154,7 @@ impl Specialization for CheckSweep {
             format!("{} unreadable", value["unreadable"]),
         ];
         if scan_timed_out(value) {
-            parts.push("scan timed out".to_owned());
+            parts.push(format!("scan {TIMED_OUT}"));
         }
 
         parts
@@ -219,10 +219,10 @@ impl Specialization for HooksInstall {
         &HOOKS_INSTALL_PROFILE
     }
 
-    fn symbol(&self, value: &Value) -> &'static str {
+    fn state(&self, value: &Value) -> State {
         match items(value, "warnings").next() {
-            Some(_) => "⚠",
-            None => "✔",
+            Some(_) => State::Warning,
+            None => State::Ok,
         }
     }
 
@@ -238,9 +238,9 @@ impl Specialization for HooksInstall {
 
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
         let paths = [
-            field("hooks path", text(value, "hooks_path")),
-            field("omhl", text(value, "omhl")),
-            field("scripts", joined(value, "scripts")),
+            field(1, "hooks path", text(value, "hooks_path")),
+            field(1, "omhl", text(value, "omhl")),
+            field(1, "scripts", joined(value, "scripts")),
         ];
         let warnings = items(value, "warnings").map(|warning| {
             dash(vec![
@@ -256,7 +256,7 @@ impl Specialization for HooksInstall {
     /// A dica do aviso é a ação: vai para o fecho, como a dica do erro.
     fn closing(&self, value: &Value) -> Closing {
         match items(value, "warnings").find_map(|warning| opt_text(warning, "hint")) {
-            Some(hint) => Closing::Next(hint.trim_end_matches('.').to_owned()),
+            Some(hint) => Closing::Next(without_final_period(&hint)),
             None => Closing::None,
         }
     }
@@ -275,8 +275,8 @@ impl Specialization for SpecInit {
 
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
         vec![
-            field("dir", text(value, "dir")),
-            field("path", text(value, "path")),
+            field(1, "dir", text(value, "dir")),
+            field(1, "path", text(value, "path")),
         ]
     }
 
@@ -307,7 +307,7 @@ impl Specialization for Byproduct {
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
         items(value, "lines")
             .filter_map(Value::as_str)
-            .map(|line| Line::Raw {
+            .map(|line| Line::Output {
                 depth: 1,
                 text: one_line(line),
             })
@@ -317,13 +317,13 @@ impl Specialization for Byproduct {
     /// O aviso de segredos vale para toda saída guardada de check (CA-10), nos dois layouts.
     fn extras(&self, value: &Value) -> Vec<Line> {
         let truncated = value["truncated_lines"].as_u64().map(|cut| Line::Note {
-            symbol: "⚠",
+            state: State::Warning,
             text: format!("{} cut short", counted(cut as usize, "line")),
         });
 
         truncated
             .into_iter()
-            .chain([Line::Raw {
+            .chain([Line::Output {
                 depth: 0,
                 text: SECRET_WARNING.to_owned(),
             }])

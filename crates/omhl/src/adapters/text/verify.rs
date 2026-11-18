@@ -5,6 +5,7 @@ use serde_json::Value;
 use super::base::{Entry, Profile, Region, Shape, Specialization};
 use super::doc::{Closing, Join, Line, Marker, items, text};
 use super::error;
+use super::vocab::{State, seq_label};
 
 pub static PROFILE: Profile = Profile {
     label: "verify",
@@ -35,10 +36,10 @@ impl Specialization for Verify {
         &PROFILE
     }
 
-    fn symbol(&self, value: &Value) -> &'static str {
+    fn state(&self, value: &Value) -> State {
         match chain_ok(value) {
-            true => "✔",
-            false => "✘",
+            true => State::Ok,
+            false => State::Error,
         }
     }
 
@@ -59,7 +60,7 @@ impl Specialization for Verify {
             .map(|found| {
                 let mut parts = vec![text(found, "reason")];
                 if let Some(seq) = found["seq"].as_u64() {
-                    parts.push(format!("seq {seq}"));
+                    parts.push(seq_label(seq));
                 }
 
                 Line::Item {

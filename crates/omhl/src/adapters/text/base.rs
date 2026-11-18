@@ -5,6 +5,7 @@ use serde_json::Value;
 use super::Renderer;
 use super::doc::{Closing, Doc, Line};
 use super::error::{self, ErrorFacts};
+use super::vocab::State;
 
 /// Onde a chave mora no nó (ou no `Value`, nos comandos sem nó): o mesmo nome vive em regiões diferentes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,8 +184,8 @@ impl Profile {
 pub trait Specialization {
     fn profile(&self) -> &'static Profile;
 
-    fn symbol(&self, _value: &Value) -> &'static str {
-        "✔"
+    fn state(&self, _value: &Value) -> State {
+        State::Ok
     }
 
     /// As partes do cabeçalho depois do rótulo do comando.
@@ -233,7 +234,7 @@ impl<S: Specialization> Renderer for BaseRenderer<S> {
         parts.extend(specialization.summary(value));
 
         let mut lines = vec![Line::Header {
-            symbol: specialization.symbol(value),
+            state: specialization.state(value),
             parts,
         }];
         lines.extend(specialization.detail_lines(value));

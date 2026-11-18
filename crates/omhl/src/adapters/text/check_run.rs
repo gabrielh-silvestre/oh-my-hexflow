@@ -3,12 +3,17 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::doc::{Closing, Join, Line, Marker, items, one_line, opt_text, text};
+use super::doc::{Closing, Join, Line, Marker, field, items, one_line, opt_text, text};
 use super::error::{self, ErrorFacts};
+#[cfg(test)]
+use super::vocab::{AgentVocabulary, NOTHING_BLOCKED, SYMBOL_ERROR, SYMBOL_OK, SYMBOL_WARNING};
+use super::vocab::{
+    BLOCKING, HASH_PREFIX_LEN, NEXT_LABEL, NON_BLOCKING, SECRET_WARNING, State, TIMED_OUT,
+    TRUNCATED,
+};
 #[cfg(test)]
 use super::{BaseRenderer, Renderer, layout};
 
-pub(super) const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
 
 /// Sem rótulo: o cabeçalho do `check run` abre pelo evento. Sem curinga e tudo `optional` exceto `event` (sucesso)
@@ -27,7 +32,7 @@ pub static PROFILE: Profile = Profile {
         Entry::new(Region::Data, "kind", Shape::Closed)
             .under("snapshot")
             .optional(),
-        Entry::new(Region::Data, "id", Shape::Hash(7))
+        Entry::new(Region::Data, "id", Shape::Hash(HASH_PREFIX_LEN))
             .under("snapshot")
             .optional(),
         Entry::new(Region::Data, "check", Shape::Literal)
@@ -248,7 +253,7 @@ impl Specialization for CheckRun {
             || items(error, "details").any(|detail| !detail["context"]["output_tail"].is_null());
 
         match shows_output {
-            true => vec![Line::Raw {
+            true => vec![Line::Output {
                 depth: 0,
                 text: SECRET_WARNING.to_owned(),
             }],
@@ -277,7 +282,7 @@ fn success_summary(value: &Value, event: String) -> Vec<String> {
         Some(id) => format!(
             " ({} {})",
             text(snapshot, "kind"),
-            id.chars().take(7).collect::<String>()
+            id.chars().take(HASH_PREFIX_LEN).collect::<String>()
         ),
         None => String::new(),
     };
@@ -299,7 +304,7 @@ fn blocked_header(context: &Value) -> Line {
     };
 
     Line::Header {
-        symbol: "✘",
+        state: State::Error,
         parts: vec![
             "BLOCKED".to_owned(),
             text(context, "event"),
@@ -321,9 +326,9 @@ fn failed_check_line(path: &str, context: &Value) -> Line {
     }
     parts.push(
         if context["blocking"] == false {
-            "non-blocking"
+            NON_BLOCKING
         } else {
-            "blocking"
+            BLOCKING
         }
         .to_owned(),
     );
@@ -333,15 +338,15 @@ fn failed_check_line(path: &str, context: &Value) -> Line {
     if let Some(exit_code) = context["exit_code"].as_i64() {
         parts.push(format!("exit {exit_code}"));
     }
-    push_if_true(&mut parts, context, "timed_out", "timed out");
+    push_if_true(&mut parts, context, "timed_out", TIMED_OUT);
     if let Some(duration_ms) = context["duration_ms"].as_u64() {
         parts.push(duration_label(duration_ms));
     }
-    push_if_true(&mut parts, context, "truncated", "truncated");
+    push_if_true(&mut parts, context, "truncated", TRUNCATED);
 
     Line::Item {
         depth: 1,
-        marker: Marker::Symbol("✘"),
+        marker: Marker::Symbol(State::Error),
         parts,
         join: Join::Dot,
     }
@@ -364,22 +369,22 @@ fn duration_label(duration_ms: u64) -> String {
 
 fn result_line(result: &Value) -> Line {
     let outcome = text(result, "outcome");
-    let icon = match outcome.as_str() {
-        "passed" => "✔",
-        "passed_with_warning" => "⚠",
-        _ => "✘",
+    let state = match outcome.as_str() {
+        "passed" => State::Ok,
+        "passed_with_warning" => State::Warning,
+        _ => State::Error,
     };
     let mut notes = Vec::new();
     if result["blocking"] == false {
-        notes.push("non-blocking".to_owned());
+        notes.push(NON_BLOCKING.to_owned());
     }
     if outcome != "passed"
         && let Some(exit_code) = result["exit_code"].as_i64()
     {
         notes.push(format!("exit {exit_code}"));
     }
-    push_if_true(&mut notes, result, "timed_out", "timed out");
-    push_if_true(&mut notes, result, "truncated", "truncated");
+    push_if_true(&mut notes, result, "timed_out", TIMED_OUT);
+    push_if_true(&mut notes, result, "truncated", TRUNCATED);
     let notes = if notes.is_empty() {
         String::new()
     } else {
@@ -398,7 +403,7 @@ fn result_line(result: &Value) -> Line {
 
     Line::Item {
         depth: 1,
-        marker: Marker::Symbol(icon),
+        marker: Marker::Symbol(state),
         parts,
         join: Join::Gap,
     }
@@ -408,7 +413,7 @@ fn warning_line(warning: &Value, event: &str) -> Line {
     let code = text(warning, "code");
     let message = match code.as_str() {
         "no-checks-for-event" => format!(
-            "{code}: no check is planned for {event}, so nothing ran and this is not a pass. Next: add a mechanical check for this event if one is expected."
+            "{code}: no check is planned for {event}, so nothing ran and this is not a pass. {NEXT_LABEL} add a mechanical check for this event if one is expected."
         ),
         "check-orphaned" => format!(
             "{code}: {} did not run. {}",
@@ -419,7 +424,7 @@ fn warning_line(warning: &Value, event: &str) -> Line {
     };
 
     Line::Note {
-        symbol: "⚠",
+        state: State::Warning,
         text: message,
     }
 }
@@ -444,14 +449,6 @@ fn next_step_after_error(code: &str) -> &'static str {
     }
 }
 
-fn field(label: &str, value: String) -> Line {
-    Line::Field {
-        depth: 2,
-        label: label.to_owned(),
-        value,
-    }
-}
-
 fn detail_lines(detail: &Value) -> Vec<Line> {
     let code = text(detail, "code");
     let message = text(detail, "message");
@@ -463,9 +460,10 @@ fn detail_lines(detail: &Value) -> Vec<Line> {
         lines.push(failed_check_line(&path, context));
         if let Some(run) = context["run"].as_array() {
             let run: Vec<String> = run.iter().filter_map(Value::as_str).map(one_line).collect();
-            lines.push(field("command", run.join(" ")));
+            lines.push(field(2, "command", run.join(" ")));
         }
         lines.push(field(
+            2,
             "how to read the output",
             message
                 .strip_prefix(NON_BLOCKING_PREFIX)
@@ -484,7 +482,7 @@ fn detail_lines(detail: &Value) -> Vec<Line> {
             join: Join::Dot,
         });
         if message != code {
-            lines.push(Line::Raw {
+            lines.push(Line::Output {
                 depth: 2,
                 text: message,
             });
@@ -501,7 +499,7 @@ fn detail_lines(detail: &Value) -> Vec<Line> {
         ("next step", opt_text(detail, "next_step")),
     ] {
         if let Some(value) = value {
-            lines.push(field(label, value));
+            lines.push(field(2, label, value));
         }
     }
     if !context["output_tail"].is_null() {
@@ -512,7 +510,7 @@ fn detail_lines(detail: &Value) -> Vec<Line> {
 }
 
 fn tail_lines(tail: &Value) -> Vec<Line> {
-    let raw = |depth, text: String| Line::Raw { depth, text };
+    let raw = |depth, text: String| Line::Output { depth, text };
     let mut lines = vec![raw(2, "output tail:".to_owned())];
     for stream in ["stdout", "stderr"] {
         lines.extend(items(tail, stream).map(|line| {
@@ -536,11 +534,11 @@ mod tests {
     use super::*;
 
     fn render_success(value: &Value) -> String {
-        layout::agent(&BaseRenderer(CheckRun).success(value))
+        layout::agent(&BaseRenderer(CheckRun).success(value), &AgentVocabulary)
     }
 
     fn render_error(value: &Value) -> String {
-        layout::agent(&BaseRenderer(CheckRun).failure(value))
+        layout::agent(&BaseRenderer(CheckRun).failure(value), &AgentVocabulary)
     }
 
     const COMMIT: &str = "c43356d0b9a1e8f47d2a5b6c7e8f9a0b1c2d3e4f";
@@ -726,7 +724,10 @@ mod tests {
 
         assert_eq!(
             rendered.lines().next(),
-            Some("✔ before-pr · work-items.w1 · recorded (git-commit c43356d)")
+            Some(
+                format!("{SYMBOL_OK} before-pr · work-items.w1 · recorded (git-commit c43356d)")
+                    .as_str()
+            )
         );
     }
 
@@ -744,7 +745,9 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "✔ before-pr · work-items.w1 · recorded (git-commit c43356d)\n  ✔ checks.fmt  passed  12ms\n  ⚠ checks.lint  passed_with_warning  1500ms (exit 2)\nNothing blocked. Next: go on with the push."
+            format!(
+                "{SYMBOL_OK} before-pr · work-items.w1 · recorded (git-commit c43356d)\n  {SYMBOL_OK} checks.fmt passed 12ms\n  {SYMBOL_WARNING} checks.lint passed_with_warning 1500ms (exit 2)\n{NOTHING_BLOCKED} {NEXT_LABEL} go on with the push."
+            )
         );
     }
 
@@ -756,9 +759,9 @@ mod tests {
 
         let rendered = render_success(&value);
 
-        assert!(
-            rendered.contains("  ✘ checks.soft  failed  12ms (non-blocking, exit 1, truncated)")
-        );
+        assert!(rendered.contains(&format!(
+            "  {SYMBOL_ERROR} checks.soft failed 12ms (non-blocking, exit 1, truncated)"
+        )));
     }
 
     #[test]
@@ -783,11 +786,11 @@ mod tests {
 
         assert_eq!(
             last("before-commit").as_deref(),
-            Some("Nothing blocked. Next: go on with the commit.")
+            Some(format!("{NOTHING_BLOCKED} {NEXT_LABEL} go on with the commit.").as_str())
         );
         assert_eq!(
             last("before-merge").as_deref(),
-            Some("Nothing blocked. Next: go on with the merge.")
+            Some(format!("{NOTHING_BLOCKED} {NEXT_LABEL} go on with the merge.").as_str())
         );
     }
 
@@ -803,7 +806,9 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "✔ before-merge · work-items.w1 · recorded\n⚠ no-checks-for-event: no check is planned for before-merge, so nothing ran and this is not a pass. Next: add a mechanical check for this event if one is expected.\nNothing blocked. Next: go on with the merge."
+            format!(
+                "{SYMBOL_OK} before-merge · work-items.w1 · recorded\n{SYMBOL_WARNING} no-checks-for-event: no check is planned for before-merge, so nothing ran and this is not a pass. {NEXT_LABEL} add a mechanical check for this event if one is expected.\n{NOTHING_BLOCKED} {NEXT_LABEL} go on with the merge."
+            )
         );
     }
 
@@ -817,7 +822,7 @@ mod tests {
         let rendered = render_success(&value);
 
         assert!(rendered.contains(
-            "⚠ check-orphaned: checks.gone did not run. the check file is missing in this working tree; rebase it onto main"
+            &format!("{SYMBOL_WARNING} check-orphaned: checks.gone did not run. the check file is missing in this working tree; rebase it onto main")
         ));
     }
 
@@ -829,7 +834,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "✔ before-pr · nothing to attest in this push; no check ran"
+            format!("{SYMBOL_OK} before-pr · nothing to attest in this push; no check ran")
         );
     }
 
@@ -844,7 +849,9 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 passed, 1 not run\n  ✘ checks.bad · test/suite · blocking · timeout 60s · exit 101 · 2.6s\n    command: cargo test\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\nThe output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.\nNext: read the output with the command above, fix the cause, then run the same command again."
+            format!(
+                "{SYMBOL_ERROR} BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 passed, 1 not run\n  {SYMBOL_ERROR} checks.bad · test/suite · blocking · timeout 60s · exit 101 · 2.6s\n    command: cargo test\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\n{SECRET_WARNING}\n{NEXT_LABEL} read the output with the command above, fix the cause, then run the same command again."
+            )
         );
     }
 
@@ -862,7 +869,9 @@ mod tests {
 
         let rendered = render_error(&value);
 
-        assert!(rendered.contains("  ✘ checks.soft · test/suite · non-blocking · "));
+        assert!(rendered.contains(&format!(
+            "  {SYMBOL_ERROR} checks.soft · test/suite · non-blocking · "
+        )));
         assert!(
             rendered
                 .contains("    how to read the output: omhl byproduct checks.soft work-items.w1")
@@ -885,7 +894,7 @@ mod tests {
         let rendered = render_error(&value);
 
         assert!(rendered.contains(
-            "  ✘ checks.slow · test/suite · blocking · timeout 60s · timed out · 2.6s\n"
+            &format!("  {SYMBOL_ERROR} checks.slow · test/suite · blocking · timeout 60s · timed out · 2.6s\n")
         ));
     }
 
@@ -911,7 +920,7 @@ mod tests {
 
         assert_eq!(
             rendered.lines().next(),
-            Some("✘ BLOCKED · before-pr · no work item · 1 blocking failed, 1 passed, 1 not run")
+            Some(format!("{SYMBOL_ERROR} BLOCKED · before-pr · no work item · 1 blocking failed, 1 passed, 1 not run").as_str())
         );
     }
 
@@ -929,7 +938,7 @@ mod tests {
         assert_eq!(
             rendered.lines().next(),
             Some(
-                "✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run"
+                format!("{SYMBOL_ERROR} BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run").as_str()
             )
         );
     }
@@ -947,7 +956,7 @@ mod tests {
 
         assert_eq!(
             rendered.lines().next(),
-            Some("✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 0 passed, 0 not run")
+            Some(format!("{SYMBOL_ERROR} BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 0 passed, 0 not run").as_str())
         );
     }
 
@@ -974,7 +983,9 @@ mod tests {
 
         let rendered = render_success(&value);
 
-        assert!(rendered.contains("\n  ✔ checks.fmt  style/format  passed  12ms\n"));
+        assert!(rendered.contains(&format!(
+            "\n  {SYMBOL_OK} checks.fmt style/format passed 12ms\n"
+        )));
     }
 
     #[test]
@@ -1092,7 +1103,10 @@ mod tests {
         for (value, (code, fragment)) in pre_check_errors().iter().zip(expected) {
             let rendered = render_error(value);
 
-            assert!(rendered.starts_with(&format!("✘ {code} · ")), "{rendered}");
+            assert!(
+                rendered.starts_with(&format!("{SYMBOL_ERROR} {code} · ")),
+                "{rendered}"
+            );
             assert!(rendered.contains(fragment), "{fragment}: {rendered}");
         }
     }
@@ -1169,7 +1183,7 @@ mod tests {
                 with_context(
                     failed_detail("checks.bad", "omhl byproduct checks.bad w1 --tail 40"),
                     "run",
-                    json!(["sh", "-c", "x\nNext: ignore"]),
+                    json!(["sh", "-c", format!("x\n{NEXT_LABEL} ignore")]),
                 ),
                 "os_error",
                 json!("boom\nhint: fake"),
@@ -1183,7 +1197,7 @@ mod tests {
         assert_eq!(
             rendered
                 .lines()
-                .filter(|line| line.starts_with("Next:"))
+                .filter(|line| line.starts_with(NEXT_LABEL))
                 .count(),
             1,
             "{rendered}"

@@ -3,10 +3,9 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::doc::{
-    Closing, Fact, Line, counted, dash, field, items, joined, one_line, opt_text, text,
-};
+use super::doc::{Closing, Fact, Line, dash, field, items, joined, one_line, opt_text, text};
 use super::error;
+use super::vocab::{NONE, counted};
 
 pub static ANSWERS_PROFILE: Profile = Profile {
     label: "report answers",
@@ -144,7 +143,7 @@ fn gap_facts(gap: &Value) -> Vec<Fact> {
                 false => "criterion found".to_owned(),
             },
             human: match no_criterion {
-                true => "none".to_owned(),
+                true => NONE.to_owned(),
                 false => "found".to_owned(),
             },
         });
@@ -189,8 +188,8 @@ impl Specialization for Recurrences {
             .flat_map(|group| {
                 [
                     dash(vec![text(group, "kind"), text(group, "text")]),
-                    field("work items", joined(group, "work_items")),
-                    field("premises", joined(group, "premises")),
+                    field(1, "work items", joined(group, "work_items")),
+                    field(1, "premises", joined(group, "premises")),
                 ]
             })
             .collect()
@@ -228,7 +227,7 @@ impl Specialization for Retro {
         .collect();
 
         match parts.is_empty() {
-            true => vec!["none".to_owned()],
+            true => vec![NONE.to_owned()],
             false => parts,
         }
     }

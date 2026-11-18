@@ -5,6 +5,7 @@ use serde_json::Value;
 use super::base::{Entry, NodeContainer, Profile, Region, Shape, Specialization, WILDCARD};
 use super::doc::{Closing, Fact, Line, items, opt_text, text};
 use super::error;
+use super::vocab::{BLOCKING, NON_BLOCKING, plural, seq_label, seq_range};
 
 /// O `list` é um resumo por tipo: o que o tipo mostra é `Literal` ou `Closed` e o resto de `data` cai no curinga
 /// `Noise` do tipo (o `get` mostra o nó inteiro). Fora de `data`, `record_id`, `at`, o autor e o snapshot são ruído.
@@ -72,15 +73,12 @@ impl Specialization for List {
         let seqs: Vec<u64> = items(value, "items")
             .filter_map(|node| node["seq"].as_u64())
             .collect();
-        let count = match seqs.len() {
-            1 => "1 node".to_owned(),
-            total => format!("{total} nodes"),
-        };
+        let count = plural(seqs.len(), "node");
         match (seqs.iter().min(), seqs.iter().max()) {
             (Some(first), Some(last)) if first != last => {
-                vec![count, format!("seq {first}–{last}")]
+                vec![count, seq_range(first, last)]
             }
-            (Some(only), _) => vec![count, format!("seq {only}")],
+            (Some(only), _) => vec![count, seq_label(only)],
             (None, _) => vec![count],
         }
     }
@@ -111,7 +109,7 @@ fn node_facts(node: &Value) -> Vec<Fact> {
         Fact::same("type", node_type.clone()),
         Fact {
             label: "seq",
-            agent: format!("seq {}", node["seq"]),
+            agent: seq_label(&node["seq"]),
             human: node["seq"].to_string(),
         },
     ];
@@ -152,8 +150,8 @@ fn check_facts(data: &Value) -> Vec<Fact> {
     facts.push(Fact {
         label: "blocking",
         agent: match blocking {
-            true => "blocking".to_owned(),
-            false => "non-blocking".to_owned(),
+            true => BLOCKING.to_owned(),
+            false => NON_BLOCKING.to_owned(),
         },
         human: match blocking {
             true => "yes".to_owned(),

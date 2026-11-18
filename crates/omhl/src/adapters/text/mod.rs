@@ -11,6 +11,7 @@ mod render;
 mod report;
 mod simple;
 mod verify;
+mod vocab;
 
 use serde_json::Value;
 
@@ -18,6 +19,10 @@ use base::BaseRenderer;
 use doc::Doc;
 
 pub use base::{Entry, NodeContainer, Outcome, Profile, Region, Scope, Shape, WILDCARD};
+pub use vocab::{
+    AgentVocabulary, HumanVocabulary, NEXT_LABEL, NOTHING_BLOCKED, SECRET_WARNING, SYMBOL_ERROR,
+    SYMBOL_OK, SYMBOL_WARNING, State, Vocabulary,
+};
 
 /// Os dois layouts de texto; o JSON não passa por aqui.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,8 +171,8 @@ pub fn render_success(key: CommandKey, value: &Value, layout: Layout) -> String 
         Some(renderer) => {
             let doc = renderer.success(value);
             match layout {
-                Layout::Agent => layout::agent(&doc),
-                Layout::Human => layout::human(&doc),
+                Layout::Agent => layout::agent(&doc, &AgentVocabulary),
+                Layout::Human => layout::human(&doc, &HumanVocabulary),
             }
         }
         None => value.to_string(),
@@ -180,8 +185,8 @@ pub fn render_failure(key: CommandKey, value: &Value, layout: Layout) -> String 
         Some(renderer) => {
             let doc = renderer.failure(value);
             match layout {
-                Layout::Agent => layout::agent(&doc),
-                Layout::Human => layout::human(&doc),
+                Layout::Agent => layout::agent(&doc, &AgentVocabulary),
+                Layout::Human => layout::human(&doc, &HumanVocabulary),
             }
         }
         None => value.to_string(),

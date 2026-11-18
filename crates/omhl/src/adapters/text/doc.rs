@@ -2,30 +2,21 @@
 
 use serde_json::Value;
 
+use super::vocab::State;
+
 /// Como o item abre a linha.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Marker {
     Dash,
-    Symbol(&'static str),
+    Symbol(State),
     None,
 }
 
 /// Separador entre as partes de um cabeçalho ou de um item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Join {
-    /// ` · `
     Dot,
-    /// Dois espaços.
     Gap,
-}
-
-impl Join {
-    pub(super) fn separator(self) -> &'static str {
-        match self {
-            Self::Dot => " · ",
-            Self::Gap => "  ",
-        }
-    }
 }
 
 /// Um fato do nó: o `agent` mostra só `agent` (já com a palavra que o identifica) e o `human` mostra `label: human`.
@@ -51,7 +42,7 @@ impl Fact {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Line {
     Header {
-        symbol: &'static str,
+        state: State,
         parts: Vec<String>,
     },
     Item {
@@ -66,10 +57,16 @@ pub enum Line {
         value: String,
     },
     Note {
-        symbol: &'static str,
+        state: State,
         text: String,
     },
+    /// Texto verbatim, nos dois layouts (o `render`).
     Raw {
+        depth: usize,
+        text: String,
+    },
+    /// Linha de saída de comando: o `agent` só apara o fim da linha.
+    Output {
         depth: usize,
         text: String,
     },
@@ -120,15 +117,6 @@ pub fn opt_text(value: &Value, key: &str) -> Option<String> {
     value[key].as_str().map(one_line)
 }
 
-/// `none` quando vazio; senão "N nouns", com o singular em 1.
-pub fn counted(count: usize, noun: &str) -> String {
-    match count {
-        0 => "none".to_owned(),
-        1 => format!("1 {noun}"),
-        total => format!("{total} {noun}s"),
-    }
-}
-
 /// Item de lista simples (`- a · b`) na raiz.
 pub fn dash(parts: Vec<String>) -> Line {
     Line::Item {
@@ -139,10 +127,10 @@ pub fn dash(parts: Vec<String>) -> Line {
     }
 }
 
-/// Campo `rótulo: valor` logo abaixo da linha anterior.
-pub fn field(label: &str, value: String) -> Line {
+/// Campo `rótulo: valor` no nível `depth`.
+pub fn field(depth: usize, label: &str, value: String) -> Line {
     Line::Field {
-        depth: 1,
+        depth,
         label: label.to_owned(),
         value,
     }

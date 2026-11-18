@@ -1,32 +1,37 @@
 //! Os dois serializadores do `Doc`: `agent` (compacto, sem linha em branco) e `human` (blocos separados e rótulos alinhados).
 
 use super::doc::{Closing, Doc, Join, Line, Marker};
+use super::vocab::Vocabulary;
+#[cfg(test)]
+use super::vocab::{
+    AgentVocabulary, HumanVocabulary, NEXT_LABEL, NOTHING_BLOCKED, SYMBOL_OK, SYMBOL_WARNING, State,
+};
 
-pub fn agent(doc: &Doc) -> String {
+pub fn agent(doc: &Doc, vocabulary: &impl Vocabulary) -> String {
     let mut lines: Vec<String> = doc
         .lines
         .iter()
-        .map(|line| render_line(line, None))
+        .map(|line| render_line(line, None, vocabulary))
         .collect();
-    lines.extend(closing_line(&doc.closing));
+    lines.extend(closing_line(&doc.closing, vocabulary));
 
     lines.join("\n")
 }
 
 /// Um bloco por cabeçalho, nota, item com filhos e fecho, separados por uma linha em branco.
-pub fn human(doc: &Doc) -> String {
+pub fn human(doc: &Doc, vocabulary: &impl Vocabulary) -> String {
     let mut blocks: Vec<String> = blocks(&doc.lines)
         .into_iter()
         .map(|block| {
             let width = label_width(block);
             let lines: Vec<String> = block
                 .iter()
-                .map(|line| render_line(line, Some(width)))
+                .map(|line| render_line(line, Some(width), vocabulary))
                 .collect();
             lines.join("\n")
         })
         .collect();
-    blocks.extend(closing_line(&doc.closing));
+    blocks.extend(closing_line(&doc.closing, vocabulary));
 
     blocks.join("\n\n")
 }
@@ -50,7 +55,7 @@ fn blocks(lines: &[Line]) -> Vec<&[Line]> {
 fn is_child(line: &Line) -> bool {
     match line {
         Line::Field { .. } => true,
-        Line::Raw { depth, .. } => *depth > 0,
+        Line::Raw { depth, .. } | Line::Output { depth, .. } => *depth > 0,
         Line::Header { .. } | Line::Item { .. } | Line::Note { .. } | Line::Node { .. } => false,
     }
 }
@@ -79,10 +84,14 @@ fn label_width(block: &[Line]) -> usize {
 }
 
 /// `label_width` alinha os valores dos campos no `human`; o `agent` passa `None` e escreve `rótulo: valor`.
-fn render_line(line: &Line, label_width: Option<usize>) -> String {
+fn render_line(line: &Line, label_width: Option<usize>, vocabulary: &impl Vocabulary) -> String {
     match line {
-        Line::Header { symbol, parts } => {
-            format!("{symbol} {}", parts.join(Join::Dot.separator()))
+        Line::Header { state, parts } => {
+            format!(
+                "{} {}",
+                vocabulary.symbol(*state),
+                joined(parts, Join::Dot, vocabulary)
+            )
         }
         Line::Item {
             depth,
@@ -91,39 +100,74 @@ fn render_line(line: &Line, label_width: Option<usize>) -> String {
             join,
         } => {
             let marker = match marker {
-                Marker::Dash => "- ".to_owned(),
-                Marker::Symbol(symbol) => format!("{symbol} "),
+                Marker::Dash => vocabulary.dash().to_owned(),
+                Marker::Symbol(state) => format!("{} ", vocabulary.symbol(*state)),
                 Marker::None => String::new(),
             };
-            format!("{}{marker}{}", indent(*depth), parts.join(join.separator()))
+            format!(
+                "{}{marker}{}",
+                vocabulary.indent(*depth),
+                joined(parts, *join, vocabulary)
+            )
         }
         Line::Field {
             depth,
             label,
             value,
         } => {
-            format!("{}{}", indent(*depth), labeled(label, value, label_width))
+            format!(
+                "{}{}",
+                vocabulary.indent(*depth),
+                labeled(label, &vocabulary.clean(value), label_width)
+            )
         }
         Line::Node { depth, id, facts } => match label_width {
             None => {
-                let agent: Vec<&str> = facts.iter().map(|fact| fact.agent.as_str()).collect();
-                let separator = Join::Dot.separator();
-                format!("{}{id}{separator}{}", indent(*depth), agent.join(separator))
+                let agent: Vec<String> = facts
+                    .iter()
+                    .map(|fact| vocabulary.clean(&fact.agent))
+                    .collect();
+                let separator = vocabulary.separator(Join::Dot);
+                format!(
+                    "{}{}{separator}{}",
+                    vocabulary.indent(*depth),
+                    vocabulary.clean(id),
+                    agent.join(separator)
+                )
             }
             Some(_) => {
                 let rows = facts.iter().map(|fact| {
-                    let row = labeled(fact.label, &fact.human, label_width);
-                    format!("{}{row}", indent(depth + 1))
+                    let row = labeled(fact.label, &vocabulary.clean(&fact.human), label_width);
+                    format!("{}{row}", vocabulary.indent(depth + 1))
                 });
-                std::iter::once(format!("{}{id}", indent(*depth)))
-                    .chain(rows)
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                std::iter::once(format!(
+                    "{}{}",
+                    vocabulary.indent(*depth),
+                    vocabulary.clean(id)
+                ))
+                .chain(rows)
+                .collect::<Vec<_>>()
+                .join("\n")
             }
         },
-        Line::Note { symbol, text } => format!("{symbol} {text}"),
-        Line::Raw { depth, text } => format!("{}{text}", indent(*depth)),
+        Line::Note { state, text } => {
+            format!("{} {}", vocabulary.symbol(*state), vocabulary.clean(text))
+        }
+        Line::Raw { depth, text } => format!("{}{text}", vocabulary.indent(*depth)),
+        Line::Output { depth, text } => {
+            format!(
+                "{}{}",
+                vocabulary.indent(*depth),
+                vocabulary.clean_output(text)
+            )
+        }
     }
+}
+
+fn joined(parts: &[String], join: Join, vocabulary: &impl Vocabulary) -> String {
+    let cleaned: Vec<String> = parts.iter().map(|part| vocabulary.clean(part)).collect();
+
+    cleaned.join(vocabulary.separator(join))
 }
 
 fn labeled(label: &str, value: &str, label_width: Option<usize>) -> String {
@@ -135,15 +179,11 @@ fn labeled(label: &str, value: &str, label_width: Option<usize>) -> String {
     format!("{label}:{padding} {value}")
 }
 
-fn indent(depth: usize) -> String {
-    "  ".repeat(depth)
-}
-
-fn closing_line(closing: &Closing) -> Option<String> {
+fn closing_line(closing: &Closing, vocabulary: &impl Vocabulary) -> Option<String> {
     match closing {
         Closing::None => None,
-        Closing::Next(step) => Some(format!("Next: {step}.")),
-        Closing::NothingBlocked(step) => Some(format!("Nothing blocked. Next: {step}.")),
+        Closing::Next(step) => Some(vocabulary.next(&vocabulary.clean(step))),
+        Closing::NothingBlocked(step) => Some(vocabulary.nothing_blocked(&vocabulary.clean(step))),
     }
 }
 
@@ -151,9 +191,17 @@ fn closing_line(closing: &Closing) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn agent(doc: &Doc) -> String {
+        super::agent(doc, &AgentVocabulary)
+    }
+
+    fn human(doc: &Doc) -> String {
+        super::human(doc, &HumanVocabulary)
+    }
+
     fn header(text: &str) -> Line {
         Line::Header {
-            symbol: "✔",
+            state: State::Ok,
             parts: vec![text.to_owned()],
         }
     }
@@ -177,7 +225,7 @@ mod tests {
 
     fn note(text: &str) -> Line {
         Line::Note {
-            symbol: "⚠",
+            state: State::Warning,
             text: text.to_owned(),
         }
     }
@@ -222,7 +270,12 @@ mod tests {
 
         let text = agent(&doc);
 
-        assert_eq!(text, "✔ run\n⚠ careful\n- a\n  k: v\n- b\nNext: go.");
+        assert_eq!(
+            text,
+            format!(
+                "{SYMBOL_OK} run\n{SYMBOL_WARNING} careful\n- a\n  k: v\n- b\n{NEXT_LABEL} go."
+            )
+        );
     }
 
     #[test]
@@ -234,7 +287,7 @@ mod tests {
 
         let text = agent(&doc);
 
-        assert_eq!(text, "✔ run\n  a: 1\n  longer: 2");
+        assert_eq!(text, format!("{SYMBOL_OK} run\n  a: 1\n  longer: 2"));
     }
 
     #[test]
@@ -246,7 +299,7 @@ mod tests {
 
         let text = human(&doc);
 
-        assert_eq!(text, "✔ run\na:      1\nlonger: 2");
+        assert_eq!(text, format!("{SYMBOL_OK} run\na:      1\nlonger: 2"));
     }
 
     #[test]
@@ -263,7 +316,10 @@ mod tests {
 
         let text = human(&doc);
 
-        assert_eq!(text, "✔ one\na: 1\n\n✔ two\nlonger: 2");
+        assert_eq!(
+            text,
+            format!("{SYMBOL_OK} one\na: 1\n\n{SYMBOL_OK} two\nlonger: 2")
+        );
     }
 
     #[test]
@@ -272,7 +328,7 @@ mod tests {
 
         let text = human(&doc);
 
-        assert_eq!(text, "✔ run\n\n⚠ careful");
+        assert_eq!(text, format!("{SYMBOL_OK} run\n\n{SYMBOL_WARNING} careful"));
     }
 
     #[test]
@@ -284,7 +340,7 @@ mod tests {
 
         let text = human(&doc);
 
-        assert_eq!(text, "✔ run\n\n- a\n- b");
+        assert_eq!(text, format!("{SYMBOL_OK} run\n\n- a\n- b"));
     }
 
     #[test]
@@ -308,7 +364,7 @@ mod tests {
 
         let text = human(&doc);
 
-        assert_eq!(text, "✔ run\nk: v\n\nNext: go.");
+        assert_eq!(text, format!("{SYMBOL_OK} run\nk: v\n\n{NEXT_LABEL} go."));
     }
 
     #[test]
@@ -320,7 +376,10 @@ mod tests {
 
         let text = human(&doc);
 
-        assert_eq!(text, "✔ run\nk: v\n\nNothing blocked. Next: go.");
+        assert_eq!(
+            text,
+            format!("{SYMBOL_OK} run\nk: v\n\n{NOTHING_BLOCKED} {NEXT_LABEL} go.")
+        );
     }
 
     #[test]
@@ -329,7 +388,7 @@ mod tests {
 
         let text = agent(&doc);
 
-        assert_eq!(text, "✔ run\n- a");
+        assert_eq!(text, format!("{SYMBOL_OK} run\n- a"));
     }
 
     #[test]
@@ -338,7 +397,7 @@ mod tests {
 
         let text = human(&doc);
 
-        assert_eq!(text, "✔ run\n\n- a");
+        assert_eq!(text, format!("{SYMBOL_OK} run\n\n- a"));
     }
 
     #[test]
@@ -351,12 +410,29 @@ mod tests {
     }
 
     #[test]
-    fn it_should_join_item_parts_with_a_two_space_gap() {
+    fn it_should_join_item_parts_with_a_two_space_gap_in_the_human_layout() {
+        let doc = doc(vec![joined_item(&["a", "b"], Join::Gap)], Closing::None);
+
+        let text = human(&doc);
+
+        assert_eq!(text, "a  b");
+    }
+
+    #[test]
+    fn it_should_join_item_parts_with_one_space_in_the_agent_layout_where_the_gap_is() {
         let doc = doc(vec![joined_item(&["a", "b"], Join::Gap)], Closing::None);
 
         let text = agent(&doc);
 
-        assert_eq!(text, "a  b");
+        assert_eq!(text, "a b");
+    }
+
+    #[test]
+    fn it_should_collapse_repeated_spaces_in_agent_values_only() {
+        let doc = doc(vec![field(1, "k", "  a   b ")], Closing::None);
+
+        assert_eq!(agent(&doc), "  k: a b");
+        assert_eq!(human(&doc), "  k:   a   b ");
     }
 
     #[test]

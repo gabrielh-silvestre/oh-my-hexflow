@@ -66,7 +66,7 @@ Roda o evento `before-pr` (um check passa), depois o `before-merge` (sem check m
 ```omhl-example fixture=checks
 $ omhl check run --event before-pr
 ✔ before-pr · work-items.w1 · recorded (git-commit <snapshot>)
-  ✔ checks.ok  passed  12ms
+  ✔ checks.ok passed 12ms
 Nothing blocked. Next: go on with the push.
 $ omhl check run --event before-merge
 ✔ before-merge · work-items.w1 · recorded
@@ -74,7 +74,7 @@ $ omhl check run --event before-merge
 Nothing blocked. Next: go on with the merge.
 $ omhl check run --check checks.ok
 ✔ before-pr · work-items.w1 · recorded (git-commit <snapshot>)
-  ✔ checks.ok  passed  12ms
+  ✔ checks.ok passed 12ms
 Nothing blocked. Next: go on with the push.
 ```
 

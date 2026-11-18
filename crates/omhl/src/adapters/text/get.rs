@@ -5,6 +5,7 @@ use serde_json::Value;
 use super::base::{Entry, NodeContainer, Profile, Region, Shape, Specialization};
 use super::doc::{Closing, Join, Line, Marker, scalar_fields, text};
 use super::error;
+use super::vocab::{State, seq_label};
 
 /// Sem curinga: toda chave real do catálogo está declarada por tipo, e uma chave nova reprova o teste de folhas.
 /// O `record_id` fica à vista porque é o `base` de uma revisão do nó.
@@ -171,10 +172,10 @@ impl Specialization for Get {
         &PROFILE
     }
 
-    fn symbol(&self, value: &Value) -> &'static str {
+    fn state(&self, value: &Value) -> State {
         match value["node"].is_null() {
-            true => "⚠",
-            false => "✔",
+            true => State::Warning,
+            false => State::Ok,
         }
     }
 
@@ -185,7 +186,7 @@ impl Specialization for Get {
             false => vec![
                 text(node, "id"),
                 text(node, "type"),
-                format!("seq {}", node["seq"]),
+                seq_label(&node["seq"]),
             ],
         }
     }
