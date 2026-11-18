@@ -54,6 +54,16 @@ expect = [{ exit = 0, outcome = "passed" }]
 event = "before-pr"
 "#;
 
+const SOFT_RED: &str = r#"blocking = false
+how = "Fails without blocking."
+run = ["sh", "-c", "exit 1"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }]
+
+[when]
+event = "before-pr"
+"#;
+
 const SLOW: &str = r#"blocking = true
 how = "Never ends in time."
 run = ["sleep", "5"]
@@ -227,8 +237,34 @@ fn it_should_carry_the_event_work_item_and_summary_once_in_the_failure_json() {
         json!({
             "event": "before-pr",
             "work_item": "work-items.w1",
-            "summary": { "planned": 2, "passed": 1, "failed": 1, "not_run": 0 },
+            "summary": { "planned": 2, "passed": 1, "failed": 1, "blocking_failed": 1, "not_run": 0 },
         })
+    );
+}
+
+#[test]
+fn it_should_count_blocking_failures_apart_in_the_failure_json_summary() {
+    let p = cli_repo(&[("suite", SUITE_RED), ("soft", SOFT_RED), ("green", GREEN)]);
+
+    let output = run_pr(&p, "json");
+
+    assert_eq!(
+        failure_error(&output.stderr)["context"]["summary"],
+        json!({ "planned": 3, "passed": 1, "failed": 2, "blocking_failed": 1, "not_run": 0 })
+    );
+}
+
+#[test]
+fn it_should_split_the_failure_text_header_between_blocking_and_non_blocking() {
+    let p = cli_repo(&[("suite", SUITE_RED), ("soft", SOFT_RED), ("green", GREEN)]);
+
+    let output = run_pr(&p, "text");
+
+    assert_eq!(
+        output.stderr.lines().next(),
+        Some(
+            "✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run"
+        )
     );
 }
 
@@ -256,7 +292,7 @@ fn it_should_count_an_orphaned_check_as_not_run_in_the_failure_summary() {
 
     assert_eq!(
         failure_error(&output.stderr)["context"]["summary"],
-        json!({ "planned": 2, "passed": 0, "failed": 1, "not_run": 1 })
+        json!({ "planned": 2, "passed": 0, "failed": 1, "blocking_failed": 1, "not_run": 1 })
     );
 }
 
@@ -284,7 +320,7 @@ fn it_should_open_the_failure_text_with_event_work_item_and_summary() {
 
     assert_eq!(
         output.stderr.lines().next(),
-        Some("✘ BLOCKED · before-pr · work-items.w1 · 1 of 2 checks failed, 0 passed, 1 not run")
+        Some("✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 0 passed, 1 not run")
     );
 }
 
@@ -297,7 +333,7 @@ fn it_should_open_the_failure_text_without_a_work_item_on_develop() {
 
     assert_eq!(
         output.stderr.lines().next(),
-        Some("✘ BLOCKED · before-pr · no work item · 1 of 1 checks failed, 0 passed, 0 not run")
+        Some("✘ BLOCKED · before-pr · no work item · 1 blocking failed, 0 passed, 0 not run")
     );
 }
 
@@ -469,6 +505,40 @@ fn it_should_print_the_failure_text_on_stderr_without_the_check_output() {
         !output.stderr.contains("SECRET-OUT-7a1"),
         "{}",
         output.stderr
+    );
+}
+
+#[test]
+fn it_should_print_the_output_tail_of_a_failed_check_on_develop() {
+    let p = cli_repo(&[("red", NOISY_RED)]);
+    git(&p, &["switch", "-q", "-c", "develop"]);
+
+    let output = run_pr(&p, "text");
+
+    assert_eq!(output.code, Some(1));
+    assert!(
+        output.stderr.contains(
+            "    output tail:\n      stdout | SECRET-OUT-7a1\n      stderr | SECRET-ERR-7a1\n"
+        ),
+        "{}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_warn_in_the_success_text_that_an_orphaned_check_did_not_run() {
+    let p = cli_repo(&[("green", GREEN), ("gone", GREEN)]);
+    drop_check(&p, "gone");
+
+    let output = run_pr(&p, "text");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(
+        output
+            .stdout
+            .contains("⚠ check-orphaned: checks.gone did not run. the check file is missing in this working tree; "),
+        "{}",
+        output.stdout
     );
 }
 

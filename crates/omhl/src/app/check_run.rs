@@ -859,12 +859,14 @@ fn failure_context(scope: &Scope<'_>, results: &[CheckResult], checks_planned: u
         .iter()
         .filter(|result| result.outcome == Outcome::Failed)
         .count();
+    let blocking_failed = summarize(results).blocked.len();
     let mut context = json!({
         "event": scope.event,
         "summary": {
             "planned": checks_planned,
             "passed": results.len() - failed,
             "failed": failed,
+            "blocking_failed": blocking_failed,
             "not_run": checks_planned - results.len(),
         },
     });

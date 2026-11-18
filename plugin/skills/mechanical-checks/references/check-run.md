@@ -27,7 +27,7 @@ No sucesso, o texto sai no stdout, com saída 0 quando nenhum check bloqueante r
 
 Na falha `checks-failed`, o texto sai no stderr, com saída 1:
 
-- A primeira linha diz que o evento está bloqueado e quantos checks reprovaram: `✘ BLOCKED · before-pr · work-items.w1 · 1 of 3 checks failed, 1 passed, 1 not run`. Na `develop` o work item vira `no work item`.
+- A primeira linha diz que o evento está bloqueado e quantos checks reprovaram, separando os bloqueantes dos não bloqueantes: `✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 1 not run`. O trecho `non-blocking failed` some quando é zero. Na `develop` o work item vira `no work item`.
 - Cada check reprovado traz uma linha com o id, `concern/variant` (se declarados), `blocking` ou `non-blocking`, `timeout Ns` (o limite do check), `exit N` ou `timed out`, a duração e `truncated` (se a saída foi cortada). A duração sai em `NNNms` abaixo de 1 segundo e em `N.Ns` a partir dele. Abaixo vêm o `command:` (o `run` do check) e o `how to read the output:` com o `omhl byproduct` exato. Na `develop` não há `byproduct`: o texto mostra a cauda da saída, e só ela.
 - Quando mostra saída de check, o texto avisa que ela pode ter segredos e não deve ser copiada nem repetida ao usuário. Fecha com `Next:`.
 
@@ -39,7 +39,7 @@ Com `--format json`, a saída é uma linha no stdout: `event`, `work_item`, `rec
 
 Um erro sai no stderr com saída 1: texto por padrão, uma linha JSON com `--format json`. Os códigos abaixo valem nos dois formatos. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Isso inclui faltar `--event` e `--check`, e usar `--pre-push` sem `--event before-pr`. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
-- `checks-failed`: um check bloqueante reprovou. Cada `details` com `failed` diz como ler a saída (`omhl byproduct <check> <work-item> --tail 40`). Na `develop` não há `byproduct`: a cauda vem em `context.output_tail`. No JSON, o `error.context` traz `event`, `work_item` (ausente na `develop`) e `summary` (`planned`, `passed`, `failed` e `not_run`), e o `context` de cada `details` com `failed` traz `blocking`, `concern` e `variant` (se declarados), `run`, `timeout_secs`, `exit_code` (ausente sem código), `duration_ms`, `timed_out` e `truncated`. Corrija o código e repita. A saída (inclusive `context.output_tail`) pode ter segredos: não a copie para PR, issue, commit, `--note` nem `omhl append`, e não a repita ao usuário (regra em [byproduct.md](byproduct.md)).
+- `checks-failed`: um check bloqueante reprovou. Cada `details` com `failed` diz como ler a saída (`omhl byproduct <check> <work-item> --tail 40`). Na `develop` não há `byproduct`: a cauda vem em `context.output_tail`. No JSON, o `error.context` traz `event`, `work_item` (ausente na `develop`) e `summary` (`planned`, `passed`, `failed`, `blocking_failed` e `not_run`; `failed` conta todo reprovado, e `blocking_failed` só os bloqueantes), e o `context` de cada `details` com `failed` traz `blocking`, `concern` e `variant` (se declarados), `run`, `timeout_secs`, `exit_code` (ausente sem código), `duration_ms`, `timed_out` e `truncated`. Corrija o código e repita. A saída (inclusive `context.output_tail`) pode ter segredos: não a copie para PR, issue, commit, `--note` nem `omhl append`, e não a repita ao usuário (regra em [byproduct.md](byproduct.md)).
 - `check-not-run`: um problema impediu o veredito, e nada foi gravado para o check. Cada `details` traz o motivo e um `context.kind`: `spawn-failed` (o binário do `run` não existe no `PATH` do git: `context.kind` `spawn-not-found`; sem permissão para executá-lo: `spawn-permission-denied`), `spec-stale` (o TOML diverge do banco: rode `omhl load`), `spec-invalid`, `command-changed-tree` (o check alterou a árvore: mantenha-o somente leitura) ou `not-run` (o check restante não rodou). Siga o `hint` do contexto e repita.
 - `attestation-refused`: a guarda recusou a gravação. O detalhe `outcome-immutable` diz que o mesmo snapshot já tem outro desfecho: mude a árvore (um novo commit) para um veredito novo. Outros motivos: `snapshot-tree-mismatch` e `snapshot-dirty` (não faça stage durante o hook), `work-item-closed`, `probe-failed`.
 - `attestation-not-recorded`: o banco ficou travado ou falhou ao gravar depois do comando. O veredito foi calculado e não gravado: repita o mesmo comando.
@@ -104,7 +104,7 @@ Um check bloqueante que reprova: stdout vazio, saída 1 e o comando exato para l
 
 ```omhl-example fixture=failing-check
 $ omhl check run --event before-pr
-2> ✘ BLOCKED · before-pr · work-items.w1 · 1 of 1 checks failed, 0 passed, 0 not run
+2> ✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 0 passed, 0 not run
 2>   ✘ checks.bad · blocking · timeout 60s · exit 1 · 12ms
 2>     command: sh -c echo first; echo second; echo boom >&2; exit 1
 2>     how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40
@@ -117,7 +117,7 @@ O mesmo erro com `--format json`, com o resumo em `error.context` e os fatos do 
 
 ```omhl-example fixture=failing-check
 $ omhl check run --event before-pr --format json
-2> {"error":{"code":"checks-failed","context":{"event":"before-pr","summary":{"failed":1,"not_run":0,"passed":0,"planned":1},"work_item":"work-items.w1"},"details":[{"code":"failed","context":{"blocking":true,"duration_ms":12,"exit_code":1,"run":["sh","-c","echo first; echo second; echo boom >&2; exit 1"],"timed_out":false,"timeout_secs":60,"truncated":false},"message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
+2> {"error":{"code":"checks-failed","context":{"event":"before-pr","summary":{"blocking_failed":1,"failed":1,"not_run":0,"passed":0,"planned":1},"work_item":"work-items.w1"},"details":[{"code":"failed","context":{"blocking":true,"duration_ms":12,"exit_code":1,"run":["sh","-c","echo first; echo second; echo boom >&2; exit 1"],"timed_out":false,"timeout_secs":60,"truncated":false},"message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
 # exit 1
 ```
 

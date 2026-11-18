@@ -53,7 +53,7 @@ Um check que reprova e imprime: `first` e `second` no stdout, `boom` no stderr. 
 
 ```omhl-example fixture=failing-check
 $ omhl check run --event before-pr --format json
-2> {"error":{"code":"checks-failed","context":{"event":"before-pr","summary":{"failed":1,"not_run":0,"passed":0,"planned":1},"work_item":"work-items.w1"},"details":[{"code":"failed","context":{"blocking":true,"duration_ms":12,"exit_code":1,"run":["sh","-c","echo first; echo second; echo boom >&2; exit 1"],"timed_out":false,"timeout_secs":60,"truncated":false},"message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
+2> {"error":{"code":"checks-failed","context":{"event":"before-pr","summary":{"blocking_failed":1,"failed":1,"not_run":0,"passed":0,"planned":1},"work_item":"work-items.w1"},"details":[{"code":"failed","context":{"blocking":true,"duration_ms":12,"exit_code":1,"run":["sh","-c","echo first; echo second; echo boom >&2; exit 1"],"timed_out":false,"timeout_secs":60,"truncated":false},"message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
 # exit 1
 $ omhl byproduct checks.bad work-items.w1 --tail 2
 {"byproduct":"<hash>","check":"checks.bad","lines":["second","boom"],"outcome":"failed","work_item":"work-items.w1"}
