@@ -45,24 +45,36 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    claude --plugin-dir plugin/
    ```
 
-O plugin liga os hooks `SessionStart` e `PreToolUse` (`hook spec-lock`, em
-`plugin/hooks/hooks.json`). O agente grava e consulta pela CLI, guiado por
-quatro skills em `plugin/skills/`:
+O plugin liga os hooks `SessionStart` e `PreToolUse` (`hook spec-lock` para
+`Edit`, `Write` e `MultiEdit`, e `hook agent-role` para o `Bash`, em
+`plugin/hooks/hooks.json`). O agente grava e consulta pela CLI, guiado por seis
+skills em `plugin/skills/`:
 
 | Skill | O que cobre |
 |---|---|
-| `directives-flow` | O fluxo por diretivas e premissas: `append`, `attest`, `spec init`, `spec validate`, `gate-worktree` e `guideline retire`. |
+| `directives-flow` | O fluxo por diretivas e premissas: `append`, `attest`, `spec init`, `spec validate`, `gate-worktree` e `guideline retire`. Traz também o ciclo com os agentes, os papéis e o template da tabela do PR. |
 | `mechanical-checks` | Os checks mecânicos: `load`, `check run`, `check retire`, `check sweep`, `byproduct`, `hooks install` e `hooks post-commit`. |
 | `work-item-closing` | O fechamento do work item: `gate-pr`, `close` e `report retro`. |
 | `query-and-integrity` | A consulta e a integridade do banco: `get`, `list`, `verify`, `project`, `render`, `report answers` e `report recurrences`. |
+| `plan-consensus` | O consenso do plano: chama o analyst, o planner, o architect e o critic em sequência, limita a 3 voltas, escala o impasse ao dono e retira os `contradicts` resolvidos antes do `spec validate`. |
+| `review` | A revisão da entrega: chama o code-reviewer, o security-reviewer e o verifier, grava os achados, monta a tabela do PR e confere o `gate-pr`. |
 
-Cada skill tem um `SKILL.md` curto e, por subcomando, um
+As quatro primeiras skills têm um `SKILL.md` curto e, por subcomando, um
 `references/<subcomando>.md` com cinco títulos fixos (`Quando usar`, `Entradas`,
-`Saída`, `Erros`, `Exemplos`). Um teste de cobertura exige que todo subcomando
-folha da CLI, exceto o grupo `hook`, seja citado por uma skill e tenha a sua
-`references/`. Outro teste roda os exemplos (`omhl-example`) contra o binário
+`Saída`, `Erros`, `Exemplos`). `plan-consensus` e `review` não têm `references/`
+próprio: usam as páginas de apoio da `directives-flow` (`cycle.md`, `roles.md` e
+`tracking-table.md`), que não seguem os cinco títulos. Um teste de cobertura
+exige que todo subcomando folha da CLI, exceto o grupo `hook`, seja citado por
+uma skill e tenha a sua `references/`. Outro teste roda os exemplos (`omhl-example`) contra o binário
 real e reprova a skill que descreve uma saída que o `omhl` não dá. Os detalhes
 estão em [docs/architecture.md](docs/architecture.md).
+
+O plugin traz também sete agentes em `plugin/agents/` (`analyst`, `planner`,
+`architect`, `critic`, `code-reviewer`, `security-reviewer` e `verifier`), que a
+sessão principal chama como `oh-my-hexflow:<papel>`. Cada um grava só o que a
+matriz do seu papel permite, e o hook `agent-role` impõe essa matriz no `Bash`.
+O ciclo de dez passos, com o diagrama, está em
+[docs/directives-flow.md](docs/directives-flow.md), seção 12.
 
 ## Marcar um projeto
 
@@ -131,6 +143,7 @@ JSON com `--format json`.
 | `project` | Gera a projeção em Markdown em `.omhl/projection/` |
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
 | `hook spec-lock` | Roda o hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de uma spec congelada |
+| `hook agent-role` | Roda o hook `PreToolUse` do Claude Code para o `Bash`: aplica a matriz do papel ao agente portado |
 | `spec init <work-item> <slug>` | Cria a pasta da spec de um work item aberto, com a primeira parte, no diretório principal |
 | `spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
 | `report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |
@@ -275,11 +288,15 @@ O comando atesta a árvore do `HEAD`.
 
 O `omhl attest` à mão é recusado para um check com `run` (`check-run-author`).
 Só o `omhl check run` grava a attestation desse check, e só o `omhl load` grava
-o check. É um freio, não uma parede: o agente que chama a CLI pelo Bash
-continua indistinguível do usuário. Só os agentes portados se distinguem: com
-`OMHL_ROLE=omhl:<papel>` sob o Claude Code, o record sai com `agent`
-`omhl:<papel>`. A variável é autodeclarada, então também é um freio, não uma
-parede.
+o check. É um freio, não uma parede: um agente que escapa do hook
+continua indistinguível da sessão principal. Só os agentes portados se
+distinguem: o hook `agent-role` define `OMHL_ROLE=omhl:<papel>` a partir do
+`agent_type` do evento, e o record sai com `agent` `omhl:<papel>` e com a matriz
+do papel aplicada. O hook protege contra o erro do agente, não contra a má-fé
+(`bash -c`, `sudo`, `cargo run -p omhl` e outros caminhos escapam): o
+[ADR 0008](docs/adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md) tem os
+limites. Fora do Claude Code a CLI grava `user`, então o dono retira um
+`contradicts` só de um terminal externo.
 
 Cada attestation do `omhl check run` leva o `spec_digest` (sha256 de `run`,
 `timeout_secs` e `expect`), e o `gate-pr` só aceita a que bate com a definição

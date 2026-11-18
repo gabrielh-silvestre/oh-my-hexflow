@@ -154,6 +154,7 @@ As decisões estruturais, com o porquê de cada uma:
 - [0005](adr/0005-saida-dos-checks-em-blobs-fora-do-banco.md): a saída dos checks fica em blobs fora do banco (3.21, `ports/blob`).
 - [0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md): a CLI é a única interface do agente e o UTCP foi descartado (3.12, seção 5).
 - [0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md): uma opção da CLI é respeitada ou recusada com a regra, nunca cortada ou ignorada em silêncio (3.11, `app`).
+- [0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md): o papel do agente portado é imposto pelo hook `agent-role` e pela matriz compilada, e o limite é o erro do agente, não a má-fé (3.12, 3.24).
 
 ## 3. Caixas cinzas
 
@@ -185,7 +186,7 @@ Resumo (linhas de `src` sem `tests.rs` embutido; interface = pontos que um chama
 | `omhl::byproduct` | 71 | `trait ByproductStore`, `ByproductHash`, `encode`, `decode` | dado e seam |
 | `omhl::ports` (gates mecânicos) | 846 | `ProcessRunner`, `sweep_strays`, `BlobStore`, `HookInstaller` | adapters |
 
-As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os `.rs` do módulo em `src`, sem os arquivos `tests.rs`; um módulo aninhado entra no total do pai. A linha `omhl::ports` (gates mecânicos) soma `process`, `pipes`, `blob` e `hooks`, que também estão no total de `omhl::ports`; `omhl::mechanical` inclui `branch` e `sweep`.
+As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os `.rs` do módulo em `src`, sem os arquivos `tests.rs`; um módulo aninhado entra no total do pai. A linha `omhl::ports` (gates mecânicos) soma `process`, `pipes`, `blob` e `hooks`, que também estão no total de `omhl::ports`; `omhl::mechanical` inclui `branch` e `sweep`. As linhas não foram refeitas desde então: o hook `agent-role`, o leitor `workflow/shell/` e a matriz de papéis (seção 3.24) não entram nelas.
 
 ### 3.1 Núcleo: `hexlog` (facade `Hexlog`)
 
@@ -302,9 +303,9 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** Traduz um protocolo externo (linha de comando, evento de hook) em `Action` e imprime o resultado; não conhece o domínio.
 
-**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`, `hook::agent_role(stdin, out, err, env, groups) -> ExitCode`. `main.rs` (25 linhas) só monta o `Env` e chama `cli::run`.
+**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`, `hook::spec_lock` e `hook::agent_role(stdin, out, err, env, groups) -> ExitCode` (os dois de `PreToolUse`, ligados a `omhl hook spec-lock` e `omhl hook agent-role`). `main.rs` (28 linhas) só monta o `Env` e chama `cli::run`.
 
-**Escondido.** Em `hook.rs`: a saída `hookSpecificOutput` e o aviso de extensions (só códigos e contagens).
+**Escondido.** Em `hook.rs`: a saída `hookSpecificOutput` e o aviso de extensions (só códigos e contagens). O mesmo arquivo traz os dois hooks `PreToolUse`: `spec_lock` e `agent_role`. O `agent_role` lê o evento, lê `CLAUDE_PLUGIN_ROOT`, pede ao clap os comandos que têm subcomando e responde `allow` (com o `updatedInput`) ou `deny` em JSON, sempre com saída `0`; a decisão em si é de `app::agent_role` (3.24).
 
 **Profundidade.** Funda por adapter: uma função cada. Importam só `app` e `project::Env` (verificado), e o teste `it_should_keep_adapters_free_of_hexlog_imports` impede o resto.
 
@@ -419,6 +420,16 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 - `ports/files`: `list_sorted_capped`, que veio de `extensions/files.rs` (travado por `PORTS_FORBIDDEN_MODULES`).
 - `probe`: `trait GitTopology` (`main_dir`, `branch_exists`, `worktree_branches`, `local_branches`), implementada por `GitProbe` em `ports/git.rs`. O gate de worktree e o `spec-lock` a usam.
 
+#### O hook `agent-role`
+
+O hook impõe a matriz do papel ao `Bash` do agente portado ([ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md); o comportamento, em [directives-flow.md](directives-flow.md), seção 12). Segue as camadas do `spec-lock`: o leitor puro mora em `workflow`, o veredito em `app` e a IO em `adapters` e `ports`.
+
+- `workflow/shell/` (`lexer`, `cursor`, `heredoc`, `redirect`, `wrapper`): o leitor de comando de shell. Puro, sem IO e sem biblioteca de shell. Devolve uma `CommandLine` (comandos simples, se há separador, se o início é limpo, se um heredoc sem aspas executa algo) e um `ReadError` para aspa ou heredoc sem fechar, aninhamento acima de 64 níveis e comando acima de 256 KiB.
+- `workflow/omhl_leaf` e `workflow/role_allow`: a folha da CLI que o comando chama (com os grupos de subcomandos que o clap informa) e o `omhl-allow` do frontmatter do agente, lido com a `serde-saphyr`.
+- `app/agent_role.rs`: `agent_role(&Value, &AgentRoleEnv) -> RoleVerdict` (`Pass`, `Deny`, `Allow`). Não abre o banco. Lê o arquivo do agente por `ports/files` (`read_regular_utf8`, com teto de 64 KiB).
+- `adapters/hook.rs`: traduz o veredito para o JSON do `PreToolUse`.
+- `guard/role.rs`: a matriz compilada dos sete papéis, que a CLI aplica no `append`. O hook e a matriz são duas cópias do mesmo dado; o teste `agents` as mantém iguais, e `ROLE_REFERENCE_MATRIX` serve à paridade com a tabela de `directives-flow.md`.
+
 ## 4. Regras de dependência e o teste que trava cada uma
 
 ### `hexlog` (`crates/hexlog/tests/architecture.rs`)
@@ -446,8 +457,8 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 | `app`, `render`, `project`, `ports` não importam `adapters` | `it_should_not_import_adapters_from_the_inner_layers` |
 | `extensions` e `projection` não importam `adapters`, `app`, `facade` | `it_should_not_import_adapters_app_or_facade_in_extensions_and_projection` |
 | `tempfile` só em `projection/write.rs` | `it_should_use_tempfile_only_in_projection_write` |
-| Dependências diretas exatas (`clap`, `hexlog`, `regex`, `serde`, `serde_json`, `sha2`, `tempfile`, `toml`, `uuid` e, só no Linux, `nix`): o SQLite só chega por `hexlog` | `it_should_declare_exactly_the_expected_direct_dependencies` |
-| Sem async, HTTP, `git2`, `gix*` e `serde_yaml` no lockfile | `it_should_keep_forbidden_crates_out_of_the_lockfile` |
+| Dependências diretas exatas (`clap`, `hexlog`, `regex`, `serde`, `serde-saphyr`, `serde_json`, `sha2`, `tempfile`, `toml`, `uuid` e, só no Linux, `nix`): o SQLite só chega por `hexlog` | `it_should_declare_exactly_the_expected_direct_dependencies` |
+| Sem async, HTTP, `git2`, `gix*` e `serde_yaml` no lockfile (o YAML do `omhl-allow` vem da `serde-saphyr`, ADR 0008) | `it_should_keep_forbidden_crates_out_of_the_lockfile` |
 | Nenhuma escrita em stdout nos fontes (a saída vai pelo `out` recebido) | `it_should_keep_stdout_writes_out_of_every_source_file` |
 | Sem atômicos em `src` | `it_should_not_use_atomics_anywhere_in_src` |
 | O hook não procura o marcador duas vezes | `it_should_not_search_the_marker_twice_in_the_hook` |
@@ -463,16 +474,30 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 
 ### As skills do plugin (`crates/omhl/tests/skills.rs`)
 
-As quatro skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `work-item-closing`, `query-and-integrity`) não são código, mas um binário de teste as trava. O `skills.rs` é um só (os módulos `coverage` e `examples` entram por `#[path]`, para o cargo não criar dois binários) e roda no CI (`.github/workflows/ci.yml`), que bloqueia o merge; desde o work item `perf2`, o `checks.test-suite` local executa só `cargo test --workspace --lib --locked` e não roda os arquivos de `tests/`. Não há check mecânico dedicado (decisão do [ADR 0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md)).
+As seis skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `work-item-closing`, `query-and-integrity`, `plan-consensus` e `review`) não são código, mas um binário de teste as trava. O `skills.rs` é um só (os módulos `coverage`, `examples` e `orchestration` entram por `#[path]`, para o cargo não criar três binários) e roda no CI (`.github/workflows/ci.yml`), que bloqueia o merge; desde o work item `perf2`, o `checks.test-suite` local executa só `cargo test --workspace --lib --locked` e não roda os arquivos de `tests/`. Não há check mecânico dedicado (decisão do [ADR 0006](adr/0006-cli-como-unica-interface-e-utcp-descartado.md)).
 
 | Teste | O que reprova |
 |---|---|
 | `skill_coverage` | Subcomando folha da CLI sem citação numa skill (as 23 folhas, sem o grupo `hook` e sem o `help` do clap); citação de subcomando que não existe; `SKILL.md` com mais de 80 linhas; `references/<folha>.md` ausente ou sem os cinco títulos (`Quando usar`, `Entradas`, `Saída`, `Erros`, `Exemplos`); opção da CLI (as da folha e as globais) que não aparece em `## Entradas` da página da folha; link ou caminho `.md` (`[x](a.md)` ou `` `references/a.md` ``) que não resolve para um arquivo dentro de `plugin/`; código de erro da seção `Erros` que não é literal em `crates/*/src`. |
 | `skill_examples` | Folha sem nenhum bloco `omhl-example` na própria `references/<folha>.md` (um bloco em outra página não vale); cerca mal formada que parece exemplo e não executa (`omhl-example` recuada, com quatro crases ou til, sem `fixture=` ou sem passo `$ omhl`; tag `omhl*` desconhecida; comando `omhl` em bloco que não é `omhl-example`; `$ omhl` fora de cerca), em toda página; bloco cujo stdout, stderr ou código de saída difere do que o binário real devolve (a mensagem traz arquivo, linha, comando e as duas saídas). Só roda no Linux. |
 
+| `orchestration` | Skill de orquestração (`plan-consensus`, `review`) sem a frase que exige a `directives-flow`, sem o frontmatter da casa, sem o limite de 3 voltas e a escalada ao dono, sem a chamada do verifier antes do `spec validate` e do `gate-pr`, ou com os passos fora de ordem; as referências `cycle.md`, `roles.md` e `tracking-table.md` da base sem os dez passos e seus papéis, sem o link para a tabela de `directives-flow.md` (`roles.md` não copia a matriz) ou sem a regra de quem retira um `contradicts`. É texto de skill: o teste prova que a regra está escrita, não o comportamento do agente. |
+
 Cada bloco `omhl-example` ganha uma fixture nova (`project`, `git`, `spec`, `checks` e outras, montadas em Rust) e roda sem shell. Datas, ids, hashes, durações, pids e caminhos temporários são normalizados dos dois lados antes da comparação.
 
 O `skill_examples` executa `check sweep`, que varre o `/proc` inteiro e vale para qualquer raiz da máquina; por isso os campos `swept` e `unreadable` da saída entram na normalização. Pelo mesmo motivo ele pega o flock `omhl-process-sweep.lock` (em `std::env::temp_dir()`, `support/sweep_lock.rs`), o mesmo do `process_sweep`: sem ele, a varredura de um teste poderia matar o processo de outro. O flock só protege contra outro `cargo` concorrente; os binários de um mesmo `cargo test` já rodam em sequência.
+
+### Os agentes e o hook do plugin
+
+Os sete agentes de `plugin/agents/` e o hook `agent-role` (seção 3.24) têm cinco arquivos de teste em `crates/omhl/tests/`. Todos rodam no CI.
+
+| Arquivo | O que reprova |
+|---|---|
+| `agent_role.rs` | A matriz compilada por papel e as condições finas do `append` (`role-record-forbidden`, `role-revision-forbidden`, `role-answer-forbidden`, `role-retirement-forbidden`, `role-unknown`), na guarda e pela CLI. |
+| `agent_role_hook.rs` | O veredito do hook por entrada: passa sem `agent_type` e para agente de outro plugin; nega atribuição de `OMHL_ROLE`, comando composto, expansão na posição do programa, heredoc sem aspas com substituição, embrulho ilegível, comando fora da matriz e leitura que falha; responde `allow` com o prefixo `OMHL_ROLE=omhl:<papel>` na posição certa; roda o comando reescrito no `bash` e confere que o `OMHL_ROLE` chega ao `omhl`. |
+| `agents.rs` | Os sete arquivos: frontmatter (`omhl-allow`, `disallowedTools`, `omitClaudeMd`), paridade do `omhl-allow` com a matriz compilada, tags de topo do original do oh-my-claudecode 5.7.19, aviso de terceiros (`THIRD_PARTY_NOTICES.md`) e a seção "Créditos" do `README.md`. |
+| `agent_examples.rs` | Cada exemplo `omhl append <<'EOF'` dos prompts dos agentes roda pelo hook e pela CLI real, como o papel, sobre um banco que tem só o que o texto manda existir. |
+| `repo_checks.rs` | A tabela de "A matriz por papel" em `docs/directives-flow.md` igual à matriz compilada. |
 
 ### Regras que valem hoje no código mas sem teste
 
