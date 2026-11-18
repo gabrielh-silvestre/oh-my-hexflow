@@ -4,6 +4,7 @@ mod base;
 mod check_run;
 mod doc;
 mod error;
+mod gate;
 mod get;
 mod layout;
 mod list;
@@ -101,7 +102,7 @@ pub trait Renderer {
     fn failure(&self, value: &Value) -> Doc;
 }
 
-/// O único fato guardado por comando: ter renderizador. `gate-pr`, `close`, `load` e `spec validate` ganham o seu nas ondas seguintes; os adiados nunca ganham.
+/// O único fato guardado por comando: ter renderizador. `load` e `spec validate` ganham o seu nas ondas seguintes; os adiados nunca ganham.
 pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     match key {
         CommandKey::CheckRun => Some(&BaseRenderer(check_run::CheckRun)),
@@ -121,9 +122,9 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::Byproduct => Some(&BaseRenderer(simple::Byproduct)),
         CommandKey::Append => Some(&BaseRenderer(simple::Append)),
         CommandKey::Attest => Some(&BaseRenderer(simple::Attest)),
-        CommandKey::GatePr
-        | CommandKey::GateWorktree
-        | CommandKey::Close
+        CommandKey::GatePr => Some(&BaseRenderer(gate::GatePr)),
+        CommandKey::Close => Some(&BaseRenderer(gate::Close)),
+        CommandKey::GateWorktree
         | CommandKey::Load
         | CommandKey::HooksPostCommit
         | CommandKey::SpecValidate
@@ -153,9 +154,9 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::Byproduct => &simple::BYPRODUCT_PROFILE,
         CommandKey::Append => &simple::APPEND_PROFILE,
         CommandKey::Attest => &simple::ATTEST_PROFILE,
-        CommandKey::GatePr
-        | CommandKey::GateWorktree
-        | CommandKey::Close
+        CommandKey::GatePr => &gate::GATE_PR_PROFILE,
+        CommandKey::Close => &gate::CLOSE_PROFILE,
+        CommandKey::GateWorktree
         | CommandKey::Load
         | CommandKey::HooksPostCommit
         | CommandKey::SpecValidate

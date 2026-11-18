@@ -14,22 +14,28 @@ Quando o trabalho do work item terminou e o gate de pull request já foi conferi
 
 - `<WORK_ITEM>`: o id do work item, como `work-items.w1`. Precisa existir e estar aberto.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. Por ora este comando só imprime `json`, o padrão; `agent` e `human` saem com erro de uso (saída 2).
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
 - Precisa de um repositório git com a árvore limpa: o fechamento prende o resultado do gate ao `HEAD`.
 
 ## Saída
 
-Uma linha JSON no stdout, saída 0, com três campos:
+Texto no stdout, saída 0, em até três blocos, nesta ordem:
+
+- o gate: o cabeçalho `close · pull-request · passed|not passed · N questions` (`✔` com o gate aprovado, `⚠` com ele reprovado) e uma linha `✔` ou `✘` por pergunta, as mesmas do [gate-pr.md](gate-pr.md). O `next_step` de cada pergunta que reprova fica no campo abaixo da linha dela;
+- o que foi gravado: `✔ closed · N records` e uma linha `- <id> · seq N` por record, como no `append`;
+- a retro: `✔ retro · <contagens>` e uma linha por item, como no `omhl report retro`. O bloco só aparece quando há retro, e o `Next:` (propor uma melhoria por item ao dono) só quando a retro traz algum item.
+
+Com `--format json` é uma linha JSON com três campos:
 
 - `outcome`: o que foi gravado (`records`, `chain_head`, `replayed`). A gravação é uma revisão do work item com `status: closed` e, em `gate`, o nome do gate, `passed`, o `chain_head_seq` e o snapshot do commit.
 - `report`: o mesmo relatório do `omhl gate-pr` (`gate`, `passed`, `questions`, `chain_head`).
 - `retro`: `null` quando não há divergência nem gap respondido sem critério; senão, o relatório do `omhl report retro`. A retro lê os fatos antes de gravar, então o `close` nunca devolve erro depois de gravar.
 
-**O `close` fecha mesmo com o gate reprovado** (`report.passed: false`): o resultado fica gravado no work item. Depois do fechamento, a premissa do work item sai do contexto de sessão (`omhl render`) e continua na projeção. Quando `retro` vem preenchido, proponha uma melhoria por item, como em [SKILL.md](../SKILL.md).
+**O `close` fecha mesmo com o gate reprovado** (`report.passed: false` no JSON, `⚠` no texto): o resultado fica gravado no work item. Depois do fechamento, a premissa do work item sai do contexto de sessão (`omhl render`) e continua na projeção. Quando `retro` vem preenchido, proponha uma melhoria por item, como em [SKILL.md](../SKILL.md).
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Quando há retro e a leitura dos fatos falha, o `close` recusa sem gravar nada. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Quando há retro e a leitura dos fatos falha, o `close` recusa sem gravar nada. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `work-item-not-found` (saída 1): o work item não existe. O ponteiro é `/work_item`. Confira o id.
 - `invalid-transition` (saída 1): o work item já está fechado. Um work item fechado não fecha de novo.
@@ -48,10 +54,27 @@ Fecha o work item e, em seguida, tenta fechá-lo de novo. O gate reprova (faltam
 
 ```omhl-example fixture=checks
 $ omhl close work-items.w1
-{"outcome":{"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false},"report":{"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]},"retro":null}
+⚠ close · pull-request · not passed · 7 questions · 4 failed
+✘ checks.run-tests · occurred · matched 0
+✘ checks.ci-green-before-merge · occurred · matched 0
+✘ checks.ok · occurred · matched 0
+✘ spec-digest-match:checks.ok · occurred · matched 0
+✔ no-open-contradiction · matched 0
+✔ decisions-anchored · anchored · matched 0
+✔ anchors-confirmed · anchored · matched 0
+✔ closed · 1 record
+- <record-id> · seq 5
 $ omhl close work-items.w1
-2> {"error":{"code":"invalid-transition","details":[{"code":"invalid-transition","message":"invalid-transition","path":"/work_item"}],"message":"invalid-transition at /work_item"}}
+2> ✘ invalid-transition · invalid-transition at /work_item
+2>   - /work_item · invalid-transition
 # exit 1
+```
+
+O mesmo fechamento, em JSON:
+
+```omhl-example fixture=checks
+$ omhl close work-items.w1 --format json
+{"outcome":{"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false},"report":{"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]},"retro":null}
 ```
 
 Com o gate verde (os dois nativos atestados e o check mecânico rodado), o `report.passed` é `true`:
@@ -64,7 +87,16 @@ $ omhl attest checks.ci-green-before-merge work-items.w1 --outcome passed
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":"<ms>","exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl close work-items.w1
-{"outcome":{"chain_head":{"hash":"<hash>","seq":8},"records":[{"id":"<record-id>","seq":8}],"replayed":false},"report":{"chain_head":{"hash":"<hash>","seq":7},"gate":"pull-request","passed":true,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":1,"omitted":0,"passed":true},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":1,"omitted":0,"passed":true},{"failing":[],"kind":"occurred","label":"checks.ok","matched":1,"omitted":0,"passed":true},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":1,"omitted":0,"passed":true},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]},"retro":null}
+✔ close · pull-request · passed · 7 questions
+✔ checks.run-tests · occurred · matched 1
+✔ checks.ci-green-before-merge · occurred · matched 1
+✔ checks.ok · occurred · matched 1
+✔ spec-digest-match:checks.ok · occurred · matched 1
+✔ no-open-contradiction · matched 0
+✔ decisions-anchored · anchored · matched 0
+✔ anchors-confirmed · anchored · matched 0
+✔ closed · 1 record
+- <record-id> · seq 8
 ```
 
 Com uma divergência aberta, a retro vem preenchida (só ids, nunca o texto da divergência):
@@ -76,20 +108,35 @@ EOF
 ✔ append · 1 record
 - <record-id> · seq 5
 $ omhl close work-items.w1
-{"outcome":{"chain_head":{"hash":"<hash>","seq":6},"records":[{"id":"<record-id>","seq":6}],"replayed":false},"report":{"chain_head":{"hash":"<hash>","seq":5},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]},"retro":{"amendments":{"approved":[],"pending":[]},"divergences":[{"ids":["divergences.limit"],"kind":"missing","resolution":"open"}],"no_criterion":[],"open_gaps":[]}}
+⚠ close · pull-request · not passed · 7 questions · 4 failed
+✘ checks.run-tests · occurred · matched 0
+✘ checks.ci-green-before-merge · occurred · matched 0
+✘ checks.ok · occurred · matched 0
+✘ spec-digest-match:checks.ok · occurred · matched 0
+✔ no-open-contradiction · matched 0
+✔ decisions-anchored · anchored · matched 0
+✔ anchors-confirmed · anchored · matched 0
+✔ closed · 1 record
+- <record-id> · seq 6
+✔ retro · 1 divergence
+- divergence · missing · open · divergences.limit
+Next: propose one improvement per item to the owner and change nothing without the answer.
 ```
 
 Recusa: o work item não existe, o id está mal formado e o id é de uma premissa:
 
 ```omhl-example fixture=checks
 $ omhl close work-items.zz
-2> {"error":{"code":"work-item-not-found","details":[{"code":"work-item-not-found","message":"work-item-not-found","path":"/work_item"}],"message":"work-item-not-found at /work_item"}}
+2> ✘ work-item-not-found · work-item-not-found at /work_item
+2>   - /work_item · work-item-not-found
 # exit 1
 $ omhl close Bad_Id
-2> {"error":{"code":"INVALID_INPUT","details":[{"code":"semantic-id-format","message":"invalid semantic id","path":"/work_item"}],"message":"invalid semantic id"}}
+2> ✘ INVALID_INPUT · invalid semantic id
+2>   - /work_item · semantic-id-format
 # exit 1
 $ omhl close premises.p1
-2> {"error":{"code":"work-item-not-found","details":[{"code":"work-item-not-found","message":"work-item-not-found","path":"/work_item"}],"message":"work-item-not-found at /work_item"}}
+2> ✘ work-item-not-found · work-item-not-found at /work_item
+2>   - /work_item · work-item-not-found
 # exit 1
 ```
 
@@ -97,6 +144,7 @@ Recusa: fora de um repositório git (a fixture `project` não tem git):
 
 ```omhl-example fixture=project
 $ omhl close work-items.w1
-2> {"error":{"code":"probe-failed","details":[{"code":"probe-failed","message":"probe-failed","path":"/snapshot"}],"message":"probe-failed at /snapshot: fatal: not a git repository (or any of the parent directories): .git"}}
+2> ✘ probe-failed · probe-failed at /snapshot: fatal: not a git repository (or any of the parent directories): .git
+2>   - /snapshot · probe-failed
 # exit 1
 ```
