@@ -699,13 +699,13 @@ fn it_should_accept_a_valid_omhl_example_and_blocks_that_do_not_run_omhl() {
 fn it_should_report_file_line_command_and_both_outputs_on_a_mismatch() {
     let result = run_block(&one_block(
         "project",
-        "$ omhl get work-items.w1\n{\"node\":1}\n",
+        "$ omhl get work-items.w1 --format json\n{\"node\":1}\n",
     ));
 
     let message = result.expect_err("the output differs");
 
     assert!(
-        message.starts_with("synthetic.md:2: $ omhl get work-items.w1\n  expected exit 0 stdout \"{\\\"node\\\":1}\"")
+        message.starts_with("synthetic.md:2: $ omhl get work-items.w1 --format json\n  expected exit 0 stdout \"{\\\"node\\\":1}\"")
             && message.contains("obtained exit 0 stdout \"{\\\"node\\\":{"),
         "{message}"
     );
@@ -743,7 +743,7 @@ fn it_should_keep_the_snapshot_kind_when_normalizing_the_short_id() {
 fn it_should_assemble_the_project_fixture() {
     assert_runs(
         "project",
-        "$ omhl get work-items.w1\n{\"node\":{\"at\":\"<at>\",\"author\":{\"agent\":\"claude\",\"client\":\"cli\"},\"data\":{\"status\":\"open\",\"title\":\"First item\"},\"id\":\"work-items.w1\",\"record_id\":\"<record-id>\",\"seq\":1,\"shadowed\":false,\"type\":\"work-item\"}}\n",
+        "$ omhl get work-items.w1 --format json\n{\"node\":{\"at\":\"<at>\",\"author\":{\"agent\":\"claude\",\"client\":\"cli\"},\"data\":{\"status\":\"open\",\"title\":\"First item\"},\"id\":\"work-items.w1\",\"record_id\":\"<record-id>\",\"seq\":1,\"shadowed\":false,\"type\":\"work-item\"}}\n",
     );
 }
 

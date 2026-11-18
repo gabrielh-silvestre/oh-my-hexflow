@@ -172,7 +172,7 @@ fn record_id_of(project: &Project, id: &str) -> String {
 }
 
 fn get(project: &Project, id: &str) -> Value {
-    let run = run_omhl(project, &["get", id], "", true, None);
+    let run = run_omhl(project, &["get", id, "--format", "json"], "", true, None);
 
     serde_json::from_str(run.stdout.trim_end())
         .unwrap_or_else(|_| panic!("get {id} failed: {}", run.stderr))

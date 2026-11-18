@@ -28,6 +28,25 @@ impl Join {
     }
 }
 
+/// Um fato do nó: o `agent` mostra só `agent` (já com a palavra que o identifica) e o `human` mostra `label: human`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fact {
+    pub label: &'static str,
+    pub agent: String,
+    pub human: String,
+}
+
+impl Fact {
+    /// O mesmo texto nos dois layouts.
+    pub fn same(label: &'static str, value: String) -> Fact {
+        Fact {
+            label,
+            agent: value.clone(),
+            human: value,
+        }
+    }
+}
+
 /// Uma linha tipada; `depth` é o nível de recuo (2 espaços por nível no `agent`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Line {
@@ -53,6 +72,12 @@ pub enum Line {
     Raw {
         depth: usize,
         text: String,
+    },
+    /// Um nó: o `agent` escreve o id e os fatos numa linha só; o `human` abre um bloco com o id e um rótulo por fato.
+    Node {
+        depth: usize,
+        id: String,
+        facts: Vec<Fact>,
     },
 }
 

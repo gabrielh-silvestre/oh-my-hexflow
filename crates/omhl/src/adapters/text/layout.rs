@@ -3,7 +3,11 @@
 use super::doc::{Closing, Doc, Join, Line, Marker};
 
 pub fn agent(doc: &Doc) -> String {
-    let mut lines: Vec<String> = doc.lines.iter().map(|line| render_line(line, 0)).collect();
+    let mut lines: Vec<String> = doc
+        .lines
+        .iter()
+        .map(|line| render_line(line, None))
+        .collect();
     lines.extend(closing_line(&doc.closing));
 
     lines.join("\n")
@@ -15,7 +19,10 @@ pub fn human(doc: &Doc) -> String {
         .into_iter()
         .map(|block| {
             let width = label_width(block);
-            let lines: Vec<String> = block.iter().map(|line| render_line(line, width)).collect();
+            let lines: Vec<String> = block
+                .iter()
+                .map(|line| render_line(line, Some(width)))
+                .collect();
             lines.join("\n")
         })
         .collect();
@@ -44,7 +51,7 @@ fn is_child(line: &Line) -> bool {
     match line {
         Line::Field { .. } => true,
         Line::Raw { depth, .. } => *depth > 0,
-        Line::Header { .. } | Line::Item { .. } | Line::Note { .. } => false,
+        Line::Header { .. } | Line::Item { .. } | Line::Note { .. } | Line::Node { .. } => false,
     }
 }
 
@@ -64,14 +71,15 @@ fn label_width(block: &[Line]) -> usize {
         .iter()
         .filter_map(|line| match line {
             Line::Field { label, .. } => Some(label.chars().count()),
+            Line::Node { facts, .. } => facts.iter().map(|fact| fact.label.chars().count()).max(),
             _ => None,
         })
         .max()
         .unwrap_or_default()
 }
 
-/// `label_width` alinha os valores dos campos; o `agent` passa 0 e escreve `rótulo: valor`.
-fn render_line(line: &Line, label_width: usize) -> String {
+/// `label_width` alinha os valores dos campos no `human`; o `agent` passa `None` e escreve `rótulo: valor`.
+fn render_line(line: &Line, label_width: Option<usize>) -> String {
     match line {
         Line::Header { symbol, parts } => {
             format!("{symbol} {}", parts.join(Join::Dot.separator()))
@@ -94,12 +102,37 @@ fn render_line(line: &Line, label_width: usize) -> String {
             label,
             value,
         } => {
-            let padding = " ".repeat(label_width.saturating_sub(label.chars().count()));
-            format!("{}{label}:{padding} {value}", indent(*depth))
+            format!("{}{}", indent(*depth), labeled(label, value, label_width))
         }
+        Line::Node { depth, id, facts } => match label_width {
+            None => {
+                let agent: Vec<&str> = facts.iter().map(|fact| fact.agent.as_str()).collect();
+                let separator = Join::Dot.separator();
+                format!("{}{id}{separator}{}", indent(*depth), agent.join(separator))
+            }
+            Some(_) => {
+                let rows = facts.iter().map(|fact| {
+                    let row = labeled(fact.label, &fact.human, label_width);
+                    format!("{}{row}", indent(depth + 1))
+                });
+                std::iter::once(format!("{}{id}", indent(*depth)))
+                    .chain(rows)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+        },
         Line::Note { symbol, text } => format!("{symbol} {text}"),
         Line::Raw { depth, text } => format!("{}{text}", indent(*depth)),
     }
+}
+
+fn labeled(label: &str, value: &str, label_width: Option<usize>) -> String {
+    let padding = " ".repeat(
+        label_width
+            .unwrap_or_default()
+            .saturating_sub(label.chars().count()),
+    );
+    format!("{label}:{padding} {value}")
 }
 
 fn indent(depth: usize) -> String {

@@ -84,6 +84,11 @@ impl Entry {
         }
     }
 
+    /// Chave de `data` de um tipo de nó.
+    pub const fn data(node_type: &'static str, key: &'static str, shape: Shape) -> Entry {
+        Entry::new(Region::Data, key, shape).scoped(node_type)
+    }
+
     pub const fn optional(self) -> Entry {
         Entry {
             optional: true,

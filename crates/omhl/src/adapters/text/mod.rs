@@ -4,7 +4,9 @@ mod base;
 mod check_run;
 mod doc;
 mod error;
+mod get;
 mod layout;
+mod list;
 mod verify;
 
 use serde_json::Value;
@@ -91,14 +93,14 @@ pub trait Renderer {
     fn failure(&self, value: &Value) -> Doc;
 }
 
-/// O único fato guardado por comando: só o `check run` e o `verify` têm renderizador até as ondas seguintes.
+/// O único fato guardado por comando: só o `check run`, o `verify`, o `list` e o `get` têm renderizador até as ondas seguintes.
 pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     match key {
         CommandKey::CheckRun => Some(&BaseRenderer(check_run::CheckRun)),
         CommandKey::Verify => Some(&BaseRenderer(verify::Verify)),
-        CommandKey::List
-        | CommandKey::Get
-        | CommandKey::Append
+        CommandKey::List => Some(&BaseRenderer(list::List)),
+        CommandKey::Get => Some(&BaseRenderer(get::Get)),
+        CommandKey::Append
         | CommandKey::Attest
         | CommandKey::Render
         | CommandKey::GatePr
@@ -128,9 +130,9 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
     match key {
         CommandKey::Verify => &verify::PROFILE,
         CommandKey::CheckRun => &check_run::PROFILE,
-        CommandKey::List
-        | CommandKey::Get
-        | CommandKey::Append
+        CommandKey::List => &list::PROFILE,
+        CommandKey::Get => &get::PROFILE,
+        CommandKey::Append
         | CommandKey::Attest
         | CommandKey::Render
         | CommandKey::GatePr

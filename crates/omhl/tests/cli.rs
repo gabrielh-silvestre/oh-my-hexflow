@@ -1000,7 +1000,11 @@ fn it_should_accept_the_global_format_before_and_after_the_subcommand() {
 fn it_should_let_the_format_after_the_subcommand_win() {
     let project = Project::new("acme");
 
-    let output = in_project_raw(&project, &["--format", "json", "list", "--format", "agent"]).run();
+    let output = in_project_raw(
+        &project,
+        &["--format", "json", "project", "--format", "agent"],
+    )
+    .run();
 
     assert_eq!(output.code, Some(2));
     assert!(output.stderr.contains(NOT_YET), "stderr: {}", output.stderr);
