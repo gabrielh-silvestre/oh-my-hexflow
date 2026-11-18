@@ -90,6 +90,7 @@ Ported from oh-my-claudecode 5.7.19 (MIT), agents/code-reviewer.md. Adapted to t
       - Never pipe to or from `omhl`, and never join it to another command with `&&`, `||` or `;`.
       - Never write `OMHL_ROLE`: the hook sets it, and a value you write is refused.
     - The main session gives you the work item id (`work-items.<id>`); every record you write carries it in `work_item`. Never invent one.
+    - The spec of the work item lives in the main checkout, outside your worktree: `.omhl/specs/wi-<id>__<slug>/`, with `parte-NN.md` and, when amended, `emenda-NN.md`. The main session gives you that folder path in the request; read the parts to find the `CMP-###` and `CA-###` items. Never look for the spec inside the worktree and never invent an id: when the request lacks the path, return to the main session asking for it.
     - A refusal names an `error.code` and a `path`: fix that field and send the request again. Do not switch to another record type or another route to get around a refusal. If the record cannot be written, say so in the final message and return to the main session.
     - Give a request a `key` (1 to 200 characters) when you may have to repeat it: the same `key` with the same items is a safe retry.
     - What you record (the only types your role may write):
@@ -192,6 +193,10 @@ EOF
 
     ### Recommendation
     APPROVE / REQUEST CHANGES / COMMENT
+
+    ### Handoff
+    - Next role: <analyst | planner | architect | critic | code-reviewer | security-reviewer | verifier | none> - why
+    - Open questions for the main session (questions you cannot record yourself, you record no gaps): <question> (suggested kind: technical | business), one per line, or "none"
   </Output_Format>
 
   <Final_Response_Contract>
@@ -199,6 +204,7 @@ EOF
     - Do not put the substantive review only in earlier messages or tool commentary. If you draft findings earlier, repeat the final verdict/findings structure in the LAST message.
     - Never end with a content-free sign-off such as "done", "complete", "nothing further", "looks good", or "no further comments". A final response without the structured deliverable violates this agent contract.
     - The final message lists the records written (their ids), or says that none was written and why.
+    - The final message ends with the Handoff fields: the next role the main session should call (or "none") and the open questions for the main session, each marked `technical` or `business`.
   </Final_Response_Contract>
 
   <Failure_Modes_To_Avoid>

@@ -698,3 +698,221 @@ fn it_should_have_a_credits_section_in_the_readme_naming_the_omc_origin() {
         assert!(section.contains(fragment), "the credits lack '{fragment}'");
     }
 }
+
+// Revisão S4: correções de texto dos prompts (S1 a S6) e testes mais estritos.
+
+const SPEC_READERS: [&str; 4] = ["code-reviewer", "security-reviewer", "verifier", "critic"];
+const HANDOFF_ROLES: [&str; 6] = [
+    "analyst",
+    "architect",
+    "code-reviewer",
+    "security-reviewer",
+    "verifier",
+    "critic",
+];
+const DECISION_ROLES: [&str; 4] = ["architect", "critic", "code-reviewer", "security-reviewer"];
+/// Conceitos que só existem no OMC e virariam instrução quebrada aqui (`ralplan`, `executor` e `qa-tester` seguem permitidos).
+const OMC_ONLY_CONCEPTS: [&str; 5] = ["start-work", "AskUserQuestion", "notepad", "/team", "Task("];
+
+/// O texto de uma tag de topo do prompt, sem as tags de abertura e fechamento.
+fn section(body: &str, tag: &str) -> String {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = body
+        .find(&open)
+        .unwrap_or_else(|| panic!("no <{tag}> section"))
+        + open.len();
+    let end = body[start..]
+        .find(&close)
+        .unwrap_or_else(|| panic!("no </{tag}> closing"));
+
+    body[start..start + end].to_owned()
+}
+
+#[test]
+fn it_should_tell_the_planner_where_the_work_item_id_comes_from() {
+    let tools = squash(&section(&agent(PLANNER).body, "Tool_Usage"));
+
+    for phrase in [
+        "The main session gives you the work item id (`work-items.<id>`)",
+        "`omhl list --type work-item`",
+        "Never invent one.",
+    ] {
+        assert!(tools.contains(phrase), "planner lacks '{phrase}'");
+    }
+}
+
+#[test]
+fn it_should_tell_the_spec_readers_that_the_spec_lives_in_the_main_checkout_and_how_to_find_the_item_ids()
+ {
+    for role in SPEC_READERS {
+        let tools = squash(&section(&agent(role).body, "Tool_Usage"));
+
+        for phrase in [
+            "lives in the main checkout, outside your worktree",
+            "`.omhl/specs/wi-<id>__<slug>/`",
+            "The main session gives you that folder path",
+            "read the parts to find the `CMP-###` and `CA-###` items",
+            "return to the main session asking for it",
+        ] {
+            assert!(tools.contains(phrase), "{role} lacks '{phrase}'");
+        }
+    }
+}
+
+#[test]
+fn it_should_make_the_verifier_ask_the_main_session_for_the_contradicts_pair_to_retire() {
+    let tools = squash(&section(&agent("verifier").body, "Tool_Usage"));
+
+    for phrase in [
+        "come from the request of the main session: the read commands return nodes, not relations",
+        "return to the main session asking for it",
+        "Never guess a pair and never retire a relation it did not name.",
+    ] {
+        assert!(tools.contains(phrase), "verifier lacks '{phrase}'");
+    }
+}
+
+#[test]
+fn it_should_spell_out_the_new_divergence_fields_in_the_verifier_instead_of_pointing_to_the_reviewers()
+ {
+    let tools = squash(&section(&agent("verifier").body, "Tool_Usage"));
+
+    assert!(
+        !tools.contains("example of the reviewers"),
+        "the verifier still points to the reviewers"
+    );
+    for phrase in [
+        "`source_ref` (the `CMP-###` or `CA-###` item, or the id of the premise or directive)",
+        "`kind` (`missing`, `partial`, `contradicts` or `unrequested`)",
+        "`evidence` (1 to 20 items",
+        "and the `work_item`",
+    ] {
+        assert!(tools.contains(phrase), "verifier lacks '{phrase}'");
+    }
+}
+
+#[test]
+fn it_should_not_offer_the_planner_a_restart_it_cannot_perform_and_say_to_return_on_spec_exists() {
+    let body = squash(&agent(PLANNER).body);
+
+    for forbidden in ["\"restart\"", "Discard and start fresh"] {
+        assert!(
+            !body.contains(forbidden),
+            "planner still offers {forbidden}"
+        );
+    }
+    for phrase in [
+        "`spec-exists`",
+        "the work item already has a spec folder",
+        "return to the main session and say so",
+    ] {
+        assert!(body.contains(phrase), "planner lacks '{phrase}'");
+    }
+}
+
+#[test]
+fn it_should_end_the_output_format_of_every_agent_with_the_next_role_and_the_open_questions_fields()
+{
+    for agent in agents() {
+        let output = section(&agent.body, "Output_Format");
+        let last_two: Vec<String> = output
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .rev()
+            .take(2)
+            .map(str::to_owned)
+            .collect();
+
+        assert!(
+            last_two[1].starts_with("- Next role: "),
+            "{}: {last_two:?}",
+            agent.role
+        );
+        assert!(
+            last_two[0].starts_with("- Open questions for the main session"),
+            "{}: {last_two:?}",
+            agent.role
+        );
+        assert!(
+            squash(&output).contains("(suggested kind: technical | business)"),
+            "{}: the questions carry no kind",
+            agent.role
+        );
+    }
+}
+
+#[test]
+fn it_should_name_the_handoff_fields_in_the_final_response_contract_of_the_six_agents_that_have_one()
+ {
+    for role in HANDOFF_ROLES {
+        let contract = squash(&section(&agent(role).body, "Final_Response_Contract"));
+
+        for phrase in [
+            "ends with the Handoff fields",
+            "the next role the main session should call (or \"none\")",
+            "each marked `technical` or `business`",
+        ] {
+            assert!(contract.contains(phrase), "{role} lacks '{phrase}'");
+        }
+    }
+}
+
+#[test]
+fn it_should_cite_the_recurrence_report_in_the_analyst_only_with_flags_the_cli_has() {
+    let analyst = agent("analyst");
+    let body = squash(&analyst.body);
+    let report = Cli::command()
+        .find_subcommand("report")
+        .expect("the report group exists")
+        .clone();
+    let recurrences = report
+        .find_subcommand("recurrences")
+        .expect("the recurrences report exists");
+
+    assert!(body.contains("`omhl report recurrences --min 2`"));
+    assert!(
+        analyst
+            .allow()
+            .commands
+            .contains(&"report recurrences".to_owned())
+    );
+    assert!(recurrences.get_arguments().any(|arg| arg.get_id() == "min"));
+}
+
+#[test]
+fn it_should_not_mention_any_omc_only_concept_that_would_be_a_broken_instruction_here() {
+    for agent in agents() {
+        for concept in OMC_ONLY_CONCEPTS {
+            assert!(
+                !agent.file.contains(concept),
+                "{} mentions {concept}",
+                agent.role
+            );
+        }
+    }
+}
+
+#[test]
+fn it_should_put_the_rests_on_instruction_inside_the_tool_usage_part_that_says_what_the_agent_records()
+ {
+    for role in DECISION_ROLES {
+        let tools = squash(&section(&agent(role).body, "Tool_Usage"));
+        let (_, recording) = tools
+            .split_once("What you record")
+            .unwrap_or_else(|| panic!("{role}: no 'What you record' part"));
+
+        for phrase in [
+            "link it with a `rests-on` relation",
+            "to a confirmed premise or directive",
+            "`work_item`",
+            "cannot anchor",
+        ] {
+            assert!(
+                recording.contains(phrase),
+                "{role}: the recording part lacks '{phrase}'"
+            );
+        }
+    }
+}

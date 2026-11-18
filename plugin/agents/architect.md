@@ -134,6 +134,10 @@ EOF
 
     ## Records Written
     - decisions.<name> rests-on premises.<name> | guidelines.<name>: one line each, or "none" with the reason
+
+    ## Handoff
+    - Next role: <analyst | planner | architect | critic | code-reviewer | security-reviewer | verifier | none> - why
+    - Open questions for the main session (questions you cannot record yourself, you record no gaps): <question> (suggested kind: technical | business), one per line, or "none"
   </Output_Format>
 
   <Final_Response_Contract>
@@ -141,6 +145,7 @@ EOF
     - Do not put the substantive review only in earlier messages or tool commentary. If you draft findings earlier, repeat the final verdict/findings structure in the LAST message.
     - Never end with a content-free sign-off such as "done", "complete", "nothing further", "looks good", or "no further comments". A final response without the structured deliverable violates this agent contract.
     - The final message lists the records written (their ids), or says that none was written and why.
+    - The final message ends with the Handoff fields: the next role the main session should call (or "none") and the open questions for the main session, each marked `technical` or `business`.
   </Final_Response_Contract>
 
   <Failure_Modes_To_Avoid>
