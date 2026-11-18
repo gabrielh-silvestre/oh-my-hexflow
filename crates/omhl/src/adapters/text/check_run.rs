@@ -1,62 +1,70 @@
-//! Texto do `omhl check run` para agentes: lê só o `Value` que o JSON já mostra, nunca o domínio.
+//! Texto do `omhl check run`: lê só o `Value` que o JSON já mostra, nunca o domínio.
 
 use serde_json::Value;
+
+use super::Renderer;
+use super::doc::{Closing, Doc, Join, Line, Marker, one_line};
 
 const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
 
-/// `value` é o sucesso do comando; a linha final não leva quebra.
-pub fn render_success(value: &Value) -> String {
-    let event = text(value, "event");
-    if text(value, "push") == "nothing-to-attest" {
-        return format!("✔ {event} · nothing to attest in this push; no check ran");
+pub struct CheckRunRenderer;
+
+impl Renderer for CheckRunRenderer {
+    /// `value` é o sucesso do comando.
+    fn success(&self, value: &Value) -> Doc {
+        let event = text(value, "event");
+        if text(value, "push") == "nothing-to-attest" {
+            return Doc {
+                lines: vec![Line::Header {
+                    symbol: "✔",
+                    parts: vec![
+                        event,
+                        "nothing to attest in this push; no check ran".to_owned(),
+                    ],
+                }],
+                closing: Closing::None,
+            };
+        }
+
+        let mut lines = vec![success_header(value, &event)];
+        lines.extend(items(value, "results").map(result_line));
+        lines.extend(items(value, "warnings").map(|warning| warning_line(warning, &event)));
+
+        Doc {
+            lines,
+            closing: Closing::NothingBlocked(next_step_after_success(&event).to_owned()),
+        }
     }
 
-    let mut lines = vec![success_header(value, &event)];
-    lines.extend(items(value, "results").map(result_line));
-    lines.extend(items(value, "warnings").map(|warning| warning_line(warning, &event)));
-    lines.push(format!(
-        "Nothing blocked. Next: {}.",
-        next_step_after_success(&event)
-    ));
+    /// `value` é o `{"error": {...}}` de `AppError::to_json`.
+    fn failure(&self, value: &Value) -> Doc {
+        let error = &value["error"];
+        let code = text(error, "code");
+        let blocked = code == "checks-failed";
+        let mut lines = vec![if blocked {
+            blocked_header(&error["context"])
+        } else {
+            Line::Header {
+                symbol: "✘",
+                parts: vec![code.clone(), text(error, "message")],
+            }
+        }];
+        lines.extend(items(error, "details").flat_map(detail_lines));
+        if blocked
+            || items(error, "details").any(|detail| !detail["context"]["output_tail"].is_null())
+        {
+            lines.push(Line::Raw {
+                depth: 0,
+                text: SECRET_WARNING.to_owned(),
+            });
+        }
 
-    lines.join("\n")
-}
-
-/// `value` é o `{"error": {...}}` de `AppError::to_json`; a linha final não leva quebra.
-pub fn render_error(value: &Value) -> String {
-    let error = &value["error"];
-    let code = text(error, "code");
-    let blocked = code == "checks-failed";
-    let mut lines = vec![if blocked {
-        blocked_header(&error["context"])
-    } else {
-        format!("✘ {code} · {}", text(error, "message"))
-    }];
-    lines.extend(items(error, "details").flat_map(detail_lines));
-    if blocked || items(error, "details").any(|detail| !detail["context"]["output_tail"].is_null())
-    {
-        lines.push(SECRET_WARNING.to_owned());
+        Doc {
+            lines,
+            closing: Closing::Next(next_step_after_error(&code).to_owned()),
+        }
     }
-    lines.push(format!("Next: {}.", next_step_after_error(&code)));
-
-    lines.join("\n")
-}
-
-/// Run, hint, cause e cauda vêm do TOML, do SO ou do comando: cada campo fica numa linha só e sem controle.
-/// Quebras de linha viram espaço; os demais controles e os caracteres de formato (zero-width, bidi) somem.
-fn one_line(raw: &str) -> String {
-    raw.chars()
-        .filter_map(|c| match c {
-            '\n' | '\r' | '\t' | '\u{85}' | '\u{2028}' | '\u{2029}' => Some(' '),
-            '\u{200B}'..='\u{200F}'
-            | '\u{202A}'..='\u{202E}'
-            | '\u{2066}'..='\u{2069}'
-            | '\u{FEFF}' => None,
-            c if c.is_control() => None,
-            c => Some(c),
-        })
-        .collect()
 }
 
 fn text(value: &Value, key: &str) -> String {
@@ -71,7 +79,7 @@ fn items<'a>(value: &'a Value, key: &str) -> impl Iterator<Item = &'a Value> {
     value[key].as_array().into_iter().flatten()
 }
 
-fn success_header(value: &Value, event: &str) -> String {
+fn success_header(value: &Value, event: &str) -> Line {
     let work_item = opt_text(value, "work_item").unwrap_or_else(|| "no work item".to_owned());
     let recorded = if value["recorded"] == true {
         "recorded"
@@ -88,11 +96,14 @@ fn success_header(value: &Value, event: &str) -> String {
         None => String::new(),
     };
 
-    format!("✔ {event} · {work_item} · {recorded}{snapshot}")
+    Line::Header {
+        symbol: "✔",
+        parts: vec![event.to_owned(), work_item, format!("{recorded}{snapshot}")],
+    }
 }
 
 /// `context` é o do erro `checks-failed`: evento, work item (ausente na `develop`) e resumo.
-fn blocked_header(context: &Value) -> String {
+fn blocked_header(context: &Value) -> Line {
     let summary = &context["summary"];
     let count = |key: &str| summary[key].as_u64().unwrap_or_default();
 
@@ -104,17 +115,23 @@ fn blocked_header(context: &Value) -> String {
         format!("{non_blocking_failed} non-blocking failed, ")
     };
 
-    format!(
-        "✘ BLOCKED · {} · {} · {blocking_failed} blocking failed, {non_blocking}{} passed, {} not run",
-        text(context, "event"),
-        opt_text(context, "work_item").unwrap_or_else(|| "no work item".to_owned()),
-        count("passed"),
-        count("not_run")
-    )
+    Line::Header {
+        symbol: "✘",
+        parts: vec![
+            "BLOCKED".to_owned(),
+            text(context, "event"),
+            opt_text(context, "work_item").unwrap_or_else(|| "no work item".to_owned()),
+            format!(
+                "{blocking_failed} blocking failed, {non_blocking}{} passed, {} not run",
+                count("passed"),
+                count("not_run")
+            ),
+        ],
+    }
 }
 
 /// Os fatos curtos do check reprovado, depois do id: `test/suite · blocking · exit 101 · 2.6s`.
-fn failed_check_line(path: &str, context: &Value) -> String {
+fn failed_check_line(path: &str, context: &Value) -> Line {
     let mut parts = vec![path.to_owned()];
     if let Some(concern) = opt_text(context, "concern") {
         parts.push(format!("{concern}/{}", text(context, "variant")));
@@ -143,7 +160,12 @@ fn failed_check_line(path: &str, context: &Value) -> String {
         parts.push("truncated".to_owned());
     }
 
-    format!("  ✘ {}", parts.join(" · "))
+    Line::Item {
+        depth: 1,
+        marker: Marker::Symbol("✘"),
+        parts,
+        join: Join::Dot,
+    }
 }
 
 fn duration_label(duration_ms: u64) -> String {
@@ -155,7 +177,7 @@ fn duration_label(duration_ms: u64) -> String {
     format!("{}.{}s", tenths / 10, tenths % 10)
 }
 
-fn result_line(result: &Value) -> String {
+fn result_line(result: &Value) -> Line {
     let outcome = text(result, "outcome");
     let icon = match outcome.as_str() {
         "passed" => "✔",
@@ -183,30 +205,41 @@ fn result_line(result: &Value) -> String {
         format!(" ({})", notes.join(", "))
     };
 
-    let concern = match opt_text(result, "concern") {
-        Some(concern) => format!("  {concern}/{}", text(result, "variant")),
-        None => String::new(),
-    };
-
-    format!(
-        "  {icon} {}{concern}  {outcome}  {}ms{notes}",
-        text(result, "check"),
+    let mut parts = vec![text(result, "check")];
+    if let Some(concern) = opt_text(result, "concern") {
+        parts.push(format!("{concern}/{}", text(result, "variant")));
+    }
+    parts.push(outcome);
+    parts.push(format!(
+        "{}ms{notes}",
         result["duration_ms"].as_u64().unwrap_or_default()
-    )
+    ));
+
+    Line::Item {
+        depth: 1,
+        marker: Marker::Symbol(icon),
+        parts,
+        join: Join::Gap,
+    }
 }
 
-fn warning_line(warning: &Value, event: &str) -> String {
+fn warning_line(warning: &Value, event: &str) -> Line {
     let code = text(warning, "code");
-    match code.as_str() {
+    let message = match code.as_str() {
         "no-checks-for-event" => format!(
-            "⚠ {code}: no check is planned for {event}, so nothing ran and this is not a pass. Next: add a mechanical check for this event if one is expected."
+            "{code}: no check is planned for {event}, so nothing ran and this is not a pass. Next: add a mechanical check for this event if one is expected."
         ),
         "check-orphaned" => format!(
-            "⚠ {code}: {} did not run. {}",
+            "{code}: {} did not run. {}",
             text(warning, "check"),
             text(warning, "hint")
         ),
-        _ => format!("⚠ {code}"),
+        _ => code,
+    };
+
+    Line::Note {
+        symbol: "⚠",
+        text: message,
     }
 }
 
@@ -230,7 +263,15 @@ fn next_step_after_error(code: &str) -> &'static str {
     }
 }
 
-fn detail_lines(detail: &Value) -> Vec<String> {
+fn field(label: &str, value: String) -> Line {
+    Line::Field {
+        depth: 2,
+        label: label.to_owned(),
+        value,
+    }
+}
+
+fn detail_lines(detail: &Value) -> Vec<Line> {
     let code = text(detail, "code");
     let message = text(detail, "message");
     let path = text(detail, "path");
@@ -241,22 +282,31 @@ fn detail_lines(detail: &Value) -> Vec<String> {
         lines.push(failed_check_line(&path, context));
         if let Some(run) = context["run"].as_array() {
             let run: Vec<String> = run.iter().filter_map(Value::as_str).map(one_line).collect();
-            lines.push(format!("    command: {}", run.join(" ")));
+            lines.push(field("command", run.join(" ")));
         }
-        lines.push(format!(
-            "    how to read the output: {}",
+        lines.push(field(
+            "how to read the output",
             message
                 .strip_prefix(NON_BLOCKING_PREFIX)
                 .unwrap_or(&message)
+                .to_owned(),
         ));
     } else {
-        lines.push(if path.is_empty() {
-            format!("  - {code}")
-        } else {
-            format!("  - {code} at {path}")
+        lines.push(Line::Item {
+            depth: 1,
+            marker: Marker::Dash,
+            parts: vec![if path.is_empty() {
+                code.clone()
+            } else {
+                format!("{code} at {path}")
+            }],
+            join: Join::Dot,
         });
         if message != code {
-            lines.push(format!("    {message}"));
+            lines.push(Line::Raw {
+                depth: 2,
+                text: message,
+            });
         }
     }
     for (label, value) in [
@@ -270,7 +320,7 @@ fn detail_lines(detail: &Value) -> Vec<String> {
         ("next step", opt_text(detail, "next_step")),
     ] {
         if let Some(value) = value {
-            lines.push(format!("    {label}: {value}"));
+            lines.push(field(label, value));
         }
     }
     if !context["output_tail"].is_null() {
@@ -280,18 +330,19 @@ fn detail_lines(detail: &Value) -> Vec<String> {
     lines
 }
 
-fn tail_lines(tail: &Value) -> Vec<String> {
-    let mut lines = vec!["    output tail:".to_owned()];
+fn tail_lines(tail: &Value) -> Vec<Line> {
+    let raw = |depth, text: String| Line::Raw { depth, text };
+    let mut lines = vec![raw(2, "output tail:".to_owned())];
     for stream in ["stdout", "stderr"] {
         lines.extend(items(tail, stream).map(|line| {
-            format!(
-                "      {stream} | {}",
-                one_line(line.as_str().unwrap_or_default())
+            raw(
+                3,
+                format!("{stream} | {}", one_line(line.as_str().unwrap_or_default())),
             )
         }));
     }
     if lines.len() == 1 {
-        lines.push("      (empty)".to_owned());
+        lines.push(raw(3, "(empty)".to_owned()));
     }
 
     lines
@@ -302,6 +353,14 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    fn render_success(value: &Value) -> String {
+        CheckRunRenderer.agent_success(value)
+    }
+
+    fn render_error(value: &Value) -> String {
+        CheckRunRenderer.agent_failure(value)
+    }
 
     const COMMIT: &str = "c43356d0b9a1e8f47d2a5b6c7e8f9a0b1c2d3e4f";
 

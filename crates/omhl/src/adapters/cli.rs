@@ -8,9 +8,11 @@ use clap::error::ErrorKind;
 use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
-use super::check_run_text::{render_error, render_success};
 use super::hook;
-use super::text::{CommandKey, deferred, has_renderer, silent_without_marker};
+use super::text::{
+    CommandKey, Layout, deferred, render_failure, render_success, renderer_for,
+    silent_without_marker,
+};
 use crate::app::RUNNABLE_EVENTS;
 use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
@@ -276,7 +278,7 @@ pub fn run(
                 Err(error) if silent_without_marker(key) && error.code() == "no-marker" => {
                     ExitCode::SUCCESS
                 }
-                _ => report(result, format, out, err),
+                _ => report(result, format, key, out, err),
             }
         }
     }
@@ -318,7 +320,9 @@ fn pre_push_misuse(cli: &Cli) -> Option<clap::Error> {
 
 /// `agent` e `human` só existem onde o comando tem renderizador; a recusa sai pelo mesmo caminho do erro de uso.
 fn format_misuse(cli: &Cli, key: CommandKey) -> Option<clap::Error> {
-    if !matches!(cli.format, Some(OutputFormat::Agent | OutputFormat::Human)) || has_renderer(key) {
+    if !matches!(cli.format, Some(OutputFormat::Agent | OutputFormat::Human))
+        || renderer_for(key).is_some()
+    {
         return None;
     }
     let message = match deferred(key) {
@@ -330,7 +334,7 @@ fn format_misuse(cli: &Cli, key: CommandKey) -> Option<clap::Error> {
 }
 
 fn default_format(key: CommandKey) -> OutputFormat {
-    match has_renderer(key) {
+    match renderer_for(key).is_some() {
         true => OutputFormat::Agent,
         false => OutputFormat::Json,
     }
@@ -399,6 +403,7 @@ fn command_key(command: &Command) -> CommandKey {
 fn report(
     result: Result<Value, AppError>,
     format: OutputFormat,
+    key: CommandKey,
     out: &mut impl std::io::Write,
     err: &mut impl std::io::Write,
 ) -> ExitCode {
@@ -407,9 +412,8 @@ fn report(
             let _ = writeln!(out, "{value}");
             ExitCode::SUCCESS
         }
-        // Até a W1.2 o `human` não tem layout próprio e imprime o mesmo texto do `agent`.
         (Ok(value), OutputFormat::Agent | OutputFormat::Human) => {
-            let _ = writeln!(out, "{}", render_success(&value));
+            let _ = writeln!(out, "{}", render_success(key, &value, layout_of(format)));
             ExitCode::SUCCESS
         }
         (Err(error), OutputFormat::Json) => {
@@ -417,9 +421,21 @@ fn report(
             ExitCode::from(1)
         }
         (Err(error), OutputFormat::Agent | OutputFormat::Human) => {
-            let _ = writeln!(err, "{}", render_error(&error.to_json()));
+            let _ = writeln!(
+                err,
+                "{}",
+                render_failure(key, &error.to_json(), layout_of(format))
+            );
             ExitCode::from(1)
         }
+    }
+}
+
+/// O `Json` não passa por aqui: o `report` só chama isto nos braços `Agent` e `Human`.
+fn layout_of(format: OutputFormat) -> Layout {
+    match format {
+        OutputFormat::Human => Layout::Human,
+        OutputFormat::Agent | OutputFormat::Json => Layout::Agent,
     }
 }
 

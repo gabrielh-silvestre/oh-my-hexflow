@@ -1403,12 +1403,7 @@ fn it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_t
             "use crate::{app::Action, project::Env};",
         ],
     );
-    let adapters = [
-        src_dir().join("adapters/check_run_text.rs"),
-        src_dir().join("adapters/cli.rs"),
-        src_dir().join("adapters/hook.rs"),
-        src_dir().join("adapters/text/mod.rs"),
-    ];
+    let adapters = [src_dir().join("adapters")];
 
     failures.extend(scan_paths(&adapters, adapters_inner_refs));
 
