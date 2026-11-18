@@ -154,18 +154,43 @@ fn it_should_carry_the_cycle_the_roles_and_the_tracking_table_template_in_the_ba
 fn it_should_state_that_the_override_replaces_the_default_template_and_that_the_plugin_template_applies_when_the_file_is_absent()
  {
     let template = base_reference("tracking-table.md");
+    let review = read("review/SKILL.md");
 
     assert!(
         line_with(
             &template,
-            &[".omhl/templates/tracking-table.md", "primeiro"]
+            &[
+                ".omhl/templates/tracking-table.md",
+                "primeiro",
+                "vale no lugar"
+            ]
         )
         .is_some(),
-        "the override is read first"
+        "the override is read first and replaces the plugin template"
     );
     assert!(
         line_with(&template, &["ausente", "plugin"]).is_some(),
         "the plugin template applies when the file is absent"
+    );
+    assert!(
+        line_with(
+            &review,
+            &[
+                ".omhl/templates/tracking-table.md",
+                "existir",
+                "vale no lugar"
+            ]
+        )
+        .is_some(),
+        "review: the override replaces the plugin template when the file exists"
+    );
+    assert!(
+        line_with(
+            &review,
+            &["tracking-table.md](", "template do plugin", "existir"]
+        )
+        .is_some(),
+        "review: the plugin template applies otherwise"
     );
 }
 
@@ -247,6 +272,22 @@ fn it_should_tell_review_to_list_decisions_and_critic_confirmed_premises_without
         line_with(&text, &["confirmed_by.by", "critic", "author.agent"]).is_some(),
         "the rows come from the critic: decisions by author.agent, premises by confirmed_by.by"
     );
+    assert!(
+        line_with(&text, &["author.agent", "igual a `claude`", "reinstalar"]).is_some(),
+        "a decision recorded as claude means the role hook failed open: stop"
+    );
+    assert!(
+        line_with(
+            &text,
+            &[
+                "`omhl:code-reviewer`",
+                "`omhl:security-reviewer`",
+                "vigente"
+            ]
+        )
+        .is_some(),
+        "the reviewers' decisions with a live contradicts also enter the table"
+    );
 }
 
 const NEGATIONS: [&str; 3] = ["não", "nunca", "sem "];
@@ -282,6 +323,8 @@ fn it_should_order_the_plan_consensus_steps_by_number_and_never_negate_the_verif
             "oh-my-hexflow:critic",
             "premissas técnicas",
             "ainda não há plano",
+            "ausência da pasta",
+            "VERDICT",
         ],
     )
     .expect("a step where the critic confirms the technical premises before any plan exists");
@@ -338,9 +381,17 @@ fn it_should_define_acceptance_and_the_loop_exits_in_plan_consensus() {
         "impasse",
         "dono",
         "gate-pr",
+        "`REJECT`",
+        "`REVISE`",
+        "outra volta",
+        "devolva as objeções ao architect",
     ] {
         assert!(rounds.contains(phrase), "the rounds step lacks '{phrase}'");
     }
+    assert!(
+        rounds.contains("o dono os retira") && rounds.contains("o verifier retira"),
+        "at the deadlock the owner retires the contradicts or orders a revision that the verifier closes"
+    );
     assert!(
         step_with(
             &text,
@@ -414,13 +465,22 @@ fn it_should_tell_roles_md_where_the_from_to_pair_is_read_and_who_can_read_it() 
 #[test]
 fn it_should_state_each_cycle_step_with_its_role() {
     let cycle = base_reference("cycle.md");
-    let expectations: [(usize, &[&str]); 8] = [
+    let expectations: [(usize, &[&str]); 9] = [
         (2, &["oh-my-hexflow:analyst"]),
-        (3, &["oh-my-hexflow:critic", "técnico"]),
+        (
+            3,
+            &[
+                "oh-my-hexflow:critic",
+                "técnico",
+                "humano",
+                "Gap sem `kind`",
+            ],
+        ),
         (4, &["oh-my-hexflow:planner", "omhl spec init"]),
         (5, &["oh-my-hexflow:architect", "rests-on"]),
         (6, &["oh-my-hexflow:critic", "contradicts"]),
         (7, &["3 voltas", "dono"]),
+        (8, &["verifier", "omhl spec validate", "omhl gate-worktree"]),
         (
             9,
             &[
@@ -445,6 +505,20 @@ fn it_should_state_each_cycle_step_with_its_role() {
             );
         }
     }
+}
+
+#[test]
+fn it_should_retire_the_contradicts_before_the_final_spec_validate_in_cycle_md() {
+    let cycle = base_reference("cycle.md");
+    let step = cycle
+        .lines()
+        .find(|line| line.starts_with("8. "))
+        .expect("cycle.md step 8");
+
+    assert!(
+        step.find("verifier") < step.find("omhl spec validate"),
+        "the verifier retires first, then the final validate"
+    );
 }
 
 #[test]
@@ -520,17 +594,28 @@ fn it_should_point_review_findings_to_a_decision_that_rests_on_a_guideline_or_pr
     );
     assert!(line_with(&text, &["`source_ref` no `CA-###`", "`resolution` `open`"]).is_some());
     assert!(line_with(&text, &["o resto", "só na mensagem"]).is_some());
+    assert!(
+        line_with(&text, &["CRITICAL ou HIGH", "corpo do PR", "ao dono"]).is_some(),
+        "a CRITICAL or HIGH security finding without a target goes to the owner and to the PR body"
+    );
 }
 
 #[test]
 fn it_should_close_the_review_loop_when_the_verifier_fails_or_leaves_a_divergence_open() {
     let text = read("review/SKILL.md");
     let steps = numbered_steps(&text);
-    let loop_step = step_with(&text, &["`FAIL`", "`open`", "volte ao passo 3"])
-        .expect("a step that loops back to step 3");
+    let loop_step = step_with(
+        &text,
+        &["`FAIL`", "`INCOMPLETE`", "`open`", "volte ao passo 3"],
+    )
+    .expect("a step that loops back to step 3");
     let fix = step_with(&text, &["Corrija o código"]).expect("the fix step");
 
     assert!(steps[loop_step].contains("chame-o de novo"));
+    assert!(
+        steps[loop_step].contains("`PASS`"),
+        "only a PASS verdict lets the review go on"
+    );
     assert_eq!(fix + 1, 3, "the loop target is the fix step");
 }
 
@@ -554,6 +639,13 @@ fn it_should_give_the_pr_table_recipe_its_header_the_critic_path_and_the_paginat
     assert!(line_with(&template, &["**Item:**", "`data.text`"]).is_some());
     assert!(line_with(&template, &["**Evidência:**", "mensagem do verifier"]).is_some());
     assert!(line_with(&template, &["**ID:**", "texto simples"]).is_some());
+    for (name, text) in [("review", &review), ("tracking-table", &template)] {
+        assert!(
+            text.contains("byproduct.md"),
+            "{name}: command output stays out of the PR"
+        );
+        assert!(text.contains("`\\|`"), "{name}: the pipe is escaped");
+    }
 }
 
 #[test]
@@ -575,5 +667,69 @@ fn it_should_keep_the_two_fixed_reply_fields_and_the_gap_recording_rule_in_both_
             .is_some(),
             "{skill}: open questions become gaps with the suggested kind"
         );
+        assert!(
+            line_with(&text, &["Sem `kind`", "vai ao humano"]).is_some(),
+            "{skill}: a gap without kind goes to the human"
+        );
     }
+}
+
+#[test]
+fn it_should_send_a_gap_without_kind_to_the_human_in_roles_md() {
+    let roles = base_reference("roles.md");
+
+    assert!(line_with(&roles, &["Sem `kind`", "vai ao humano"]).is_some());
+}
+
+#[test]
+fn it_should_send_business_premises_and_gaps_without_kind_to_the_human_in_plan_consensus_step_2() {
+    let text = read("plan-consensus/SKILL.md");
+    let steps = numbered_steps(&text);
+
+    let step = step_with(&text, &["Leve ao humano", "`business`", "sem `kind`"]).expect("step 2");
+
+    assert_eq!(step + 1, 2);
+    assert!(!steps[step].contains("critic"));
+}
+
+#[test]
+fn it_should_not_let_the_main_session_record_again_as_claude_what_a_role_refused_in_plan_consensus()
+{
+    let text = read("plan-consensus/SKILL.md");
+
+    assert!(
+        line_with(
+            &text,
+            &["`role-record-forbidden`", "não regrave", "`claude`"]
+        )
+        .is_some(),
+        "a refusal by the role matrix is the answer, not an order to record it as claude"
+    );
+}
+
+#[test]
+fn it_should_order_the_review_steps_by_number() {
+    let text = read("review/SKILL.md");
+    let steps = numbered_steps(&text);
+
+    let reviewers = step_with(
+        &text,
+        &[
+            "oh-my-hexflow:code-reviewer",
+            "oh-my-hexflow:security-reviewer",
+        ],
+    )
+    .expect("the step that calls both reviewers");
+    let fix = step_with(&text, &["Corrija o código"]).expect("the fix step");
+    let verifier = step_with(&text, &["oh-my-hexflow:verifier", "contexto isolado"])
+        .expect("the verifier step");
+    let table = step_with(&text, &["Monte a tabela do PR"]).expect("the table step");
+    let gate = step_with(&text, &["omhl gate-pr"]).expect("the gate step");
+
+    assert!(reviewers < fix && fix < verifier && verifier < table && table < gate);
+    let step = &steps[reviewers];
+    assert!(
+        step.find("oh-my-hexflow:code-reviewer") < step.find("oh-my-hexflow:security-reviewer"),
+        "the code-reviewer comes before the security-reviewer"
+    );
 }

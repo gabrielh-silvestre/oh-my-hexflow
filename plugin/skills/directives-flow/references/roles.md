@@ -13,9 +13,9 @@ A chamada é `oh-my-hexflow:<papel>`. Todo agente recebe o id do work item (`wor
 | Agente | Passe também |
 |---|---|
 | `oh-my-hexflow:analyst` | Nada além do id; o pedido do humano, se houver |
-| `oh-my-hexflow:planner` | O slug da spec; as perguntas abertas do analyst |
-| `oh-my-hexflow:architect` | Nada além do id; a objeção do critic, nas voltas seguintes |
-| `oh-my-hexflow:critic` | O caminho absoluto da pasta da spec |
+| `oh-my-hexflow:planner` | O slug da spec na primeira chamada, a pasta absoluta da spec nas seguintes; o modo consenso (RALPLAN-DR), SHORT (DELIBERATE só a pedido do humano ou item de alto risco); as perguntas abertas do analyst |
+| `oh-my-hexflow:architect` | O resumo RALPLAN-DR e o ADR do planner; o modo "revisão de consenso (ralplan), SHORT" (ou DELIBERATE); a objeção do critic, nas voltas seguintes |
+| `oh-my-hexflow:critic` | O caminho absoluto da pasta da spec; o modo "revisão de consenso (ralplan), SHORT" (ou DELIBERATE) e o pedido da linha-resumo ralplan |
 | `oh-my-hexflow:code-reviewer` | A pasta da spec e a mudança a revisar |
 | `oh-my-hexflow:security-reviewer` | A pasta da spec e a mudança a revisar |
 | `oh-my-hexflow:verifier` | A pasta da spec; o id da divergência a conferir; o par `from`/`to` de cada `contradicts` a retirar |
@@ -44,5 +44,5 @@ Toda `decision` (do architect, do critic ou de um revisor) leva `rests-on` para 
 
 - Só o `oh-my-hexflow:verifier` (isolado, sem o contexto do autor) e o dono retiram um `contradicts`. Ninguém retira o que ele mesmo gravou. A sessão principal (`claude`) não retira: a guarda recusa com `role-retirement-forbidden`.
 - O verifier retira em duas chamadas ao `omhl append` e dá a razão na mensagem dele, porque o grafo só guarda a retirada. Não repasse a ele um par que ele não deva retirar.
-- O dono (`user`) é a CLI fora do Claude Code, então o dono retira um `contradicts` só num terminal externo, fora do Claude Code. `! omhl ...` dentro do Claude Code grava `claude` e é recusado.
+- O dono (`user`) é a CLI fora do Claude Code, então o dono retira um `contradicts` só num terminal externo, fora do Claude Code. `! omhl ...` dentro do Claude Code grava `claude` e é recusado. A receita (corpo `retirement` e o `base` em duas chamadas) está em [append.md](append.md#entradas). Como a sessão principal não sabe os ids, passe ao dono o par `from`/`to` copiado das linhas `contradicts: <from> -> <to>` ou da seção `## Relations` da projeção.
 - Uma `divergence` de revisor sai de `open` só pelo verifier, para `code-fixed`, com evidência nova. `accepted` e `spec-stale` são respostas do humano.
