@@ -22,6 +22,7 @@ pub struct Cmd {
     stdin: Vec<u8>,
     cwd: Option<PathBuf>,
     env: Vec<(OsString, OsString)>,
+    program: Option<PathBuf>,
 }
 
 /// O binário `omhl` de `CARGO_BIN_EXE_omhl` com os argumentos dados.
@@ -31,6 +32,7 @@ pub fn omhl(args: &[&str]) -> Cmd {
         stdin: Vec::new(),
         cwd: None,
         env: Vec::new(),
+        program: None,
     }
 }
 
@@ -44,6 +46,12 @@ pub fn omhl_json(args: &[&str]) -> Cmd {
 impl Cmd {
     pub fn stdin(mut self, bytes: impl AsRef<[u8]>) -> Cmd {
         self.stdin = bytes.as_ref().to_vec();
+        self
+    }
+
+    /// Roda este executável no lugar do `omhl` do cargo (uma cópia em outra pasta).
+    pub fn program(mut self, path: &Path) -> Cmd {
+        self.program = Some(path.to_path_buf());
         self
     }
 
@@ -67,7 +75,10 @@ impl Cmd {
     /// Passados 30 s, mata o filho e falha o teste.
     pub fn run(self) -> Output {
         let home = TempDir::new().expect("home directory is created");
-        let mut command = Command::new(env!("CARGO_BIN_EXE_omhl"));
+        let mut command = match &self.program {
+            Some(program) => Command::new(program),
+            None => Command::new(env!("CARGO_BIN_EXE_omhl")),
+        };
         command
             .args(&self.args)
             .env_clear()

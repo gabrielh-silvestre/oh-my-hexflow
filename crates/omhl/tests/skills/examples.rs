@@ -743,6 +743,30 @@ fn it_should_keep_the_snapshot_kind_when_normalizing_the_short_id() {
 }
 
 #[test]
+fn it_should_match_check_sweep_text_pids_and_counts_against_placeholders() {
+    let expected = "✔ check sweep · <n> swept · <n> unreadable\n- sleep · pid <pid> · owner <pid>";
+    let obtained = "✔ check sweep · 2 swept · 33 unreadable\n- sleep · pid 4242 · owner 4100";
+
+    assert!(text_normalizer().same(expected, obtained));
+}
+
+#[test]
+fn it_should_keep_the_process_name_when_normalizing_check_sweep_text() {
+    let expected = "- sleep · pid <pid> · owner <pid>";
+    let obtained = "- sh · pid 4242 · owner 4100";
+
+    assert!(!text_normalizer().same(expected, obtained));
+}
+
+#[test]
+fn it_should_keep_counts_that_are_not_swept_or_unreadable() {
+    let expected = "✔ hooks install · 4 scripts";
+    let obtained = "✔ hooks install · 5 scripts";
+
+    assert!(!text_normalizer().same(expected, obtained));
+}
+
+#[test]
 fn it_should_assemble_the_project_fixture() {
     assert_runs(
         "project",

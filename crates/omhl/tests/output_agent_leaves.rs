@@ -1,18 +1,20 @@
 mod support;
 
+use std::any::Any;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use omhl::adapters::text::{
     CommandKey, Entry, Layout, NodeContainer, Outcome, Profile, Region, Scope, Shape, WILDCARD,
     profile_for, render_failure, render_success,
 };
+use regex::Regex;
 use serde_json::{Value, json};
 use support::child::{Output, omhl as binary};
+use support::cycle::{self, Program, State, check_file, check_repo, git};
 use support::ext::ExtTree;
-use support::git::git_in;
 use support::inproc::{run_inproc, run_inproc_at};
-use support::omhl::{decision_data, work_item_data};
+use support::omhl::decision_data;
 use support::project::Project;
 use support::query;
 use support::report;
@@ -418,6 +420,10 @@ struct Fixture {
     /// `Some(stdin)`: o comando roda pelo binário, com a pasta do projeto como cwd (o `check run` precisa de git e
     /// de processo próprio); `None`: roda em processo, com `--project-dir`.
     spawned_with: Option<String>,
+    /// A cópia do binário que o comando grava (`hooks install`); `Some` roda sempre pelo binário.
+    program: Option<Program>,
+    /// Quem criou um fugido vivo segura o guarda até o `check sweep` rodar.
+    sweep_guard: Option<Box<dyn Any>>,
 }
 
 impl Fixture {
@@ -428,6 +434,8 @@ impl Fixture {
             project,
             project_dir,
             spawned_with: None,
+            program: None,
+            sweep_guard: None,
         }
     }
 
@@ -438,13 +446,35 @@ impl Fixture {
         }
     }
 
+    fn from_state(state: State) -> Fixture {
+        Fixture {
+            spawned_with: Some(String::new()),
+            program: state.program,
+            ..Fixture::of(state.project)
+        }
+    }
+
+    fn sweeping(project: Project, guard: cycle::SweepGuard) -> Fixture {
+        Fixture {
+            sweep_guard: Some(Box::new(guard)),
+            ..Fixture::spawned(project, "")
+        }
+    }
+
     /// O binário com o ambiente do projeto; o `check run` nunca roda no processo do teste (varre os próprios filhos).
     fn spawn(&self, args: &[&str]) -> Output {
-        binary(args)
+        let _sweeps = self.sweep_guard.is_none().then(cycle::check_run_guard);
+        let command = binary(args)
             .cwd(&self.project_dir)
             .xdg(self.project.xdg())
-            .stdin(self.spawned_with.as_deref().unwrap_or_default())
-            .run()
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .stdin(self.spawned_with.as_deref().unwrap_or_default());
+
+        match &self.program {
+            Some(program) => command.program(program.path()).run(),
+            None => command.run(),
+        }
     }
 
     fn run(&self, args: &[&str]) -> Run {
@@ -457,6 +487,34 @@ impl Fixture {
             stdout: output.stdout,
             stderr: output.stderr,
         }
+    }
+
+    /// O texto sem o que muda a cada fixture: as pastas temporárias, as durações e os números do `check sweep`.
+    fn scrub(&self, text: &str) -> String {
+        let mut places: Vec<(String, &str)> = vec![
+            (self.project.xdg().display().to_string(), "<xdg>"),
+            (self.project_dir.display().to_string(), "<repo>"),
+        ];
+        places.extend(
+            self.program
+                .iter()
+                .map(|program| (program.dir().display().to_string(), "<bin>")),
+        );
+        let canonical: Vec<(String, &str)> = places
+            .iter()
+            .filter_map(|(path, label)| {
+                fs::canonicalize(path)
+                    .ok()
+                    .map(|path| (path.display().to_string(), *label))
+            })
+            .collect();
+        places.extend(canonical);
+        places.sort_by_key(|(path, _)| std::cmp::Reverse(path.len()));
+        let placed = places.iter().fold(text.to_owned(), |text, (path, label)| {
+            text.replace(path, label)
+        });
+
+        mask_volatile(&placed)
     }
 }
 
@@ -547,78 +605,15 @@ fn no_facts(_value: &Value) -> Vec<String> {
 
 // ---------------------------------------------------------------- fixtures do `check run` (sempre pelo binário)
 
-const WORK_ITEM: &str = "work-items.payroll";
-const WORK_BRANCH: &str = "feat/wi-payroll__x";
 const CHECK_RUN: &[&str] = &["check", "run", "--event", "before-pr"];
 const CHECK_RUN_ON_PUSH: &[&str] = &["check", "run", "--event", "before-pr", "--pre-push"];
 /// Um push que só apaga uma ref: não há nada a atestar.
 const DELETE_ONLY_PUSH: &str = "(delete) 0000000000000000000000000000000000000000 refs/heads/old bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n";
 
-fn git(dir: &Path, args: &[&str]) {
-    let output = git_in(dir, args);
-
-    assert!(
-        output.status.success(),
-        "git {args:?} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-fn omhl_succeeds(project: &Project, args: &[&str], stdin: &str) {
-    let output = binary(args)
-        .cwd(project.dir())
-        .xdg(project.xdg())
-        .stdin(stdin)
-        .run();
-
-    assert_eq!(
-        output.code,
-        Some(0),
-        "omhl {args:?} failed: {}",
-        output.stderr
-    );
-}
-
-/// TOML de um check `before-pr` bloqueante que roda `command` num shell.
-fn check_file(concern: &str, variant: &str, command: &str) -> String {
-    let run = serde_json::to_string(&["sh", "-c", command]).expect("the argv serializes");
-
-    format!(
-        "blocking = true\nhow = \"Guards the payroll.\"\nconcern = \"{concern}\"\nvariant = \"{variant}\"\nrun = {run}\ntimeout_secs = 60\nexpect = [{{ exit = 0, outcome = \"passed\" }}]\n\n[when]\nevent = \"before-pr\"\n"
-    )
-}
-
-/// Repositório git na branch do work item, com o check no commit base, o work item gravado e o `load` feito.
-fn check_repo(slug: &str, check_toml: &str) -> Project {
-    let project = Project::new("acme");
-    let dir = project.dir();
-    git(dir, &["init", "-q", "-b", "main"]);
-    git(dir, &["config", "user.name", "Test Author"]);
-    git(dir, &["config", "user.email", "author@example.com"]);
-    ExtTree::at(dir).check(slug, check_toml);
-    git(dir, &["add", "-A"]);
-    git(dir, &["commit", "-q", "-m", "base"]);
-    git(dir, &["switch", "-q", "-c", WORK_BRANCH]);
-    let work_item = json!({
-        "items": [{ "body": {
-            "kind": "node", "id": WORK_ITEM, "type": "work-item",
-            "data": work_item_data("Payroll rollout"),
-        } }]
-    });
-    omhl_succeeds(
-        &project,
-        &["--format", "json", "append"],
-        &work_item.to_string(),
-    );
-    omhl_succeeds(&project, &["--format", "json", "load"], "");
-
-    project
-}
-
 fn check_run_ok() -> Fixture {
     let toml = check_file("style", "format", "exit 0");
 
-    Fixture::spawned(check_repo("payroll-format", &toml), "")
+    Fixture::spawned(check_repo(&[("payroll-format", &toml)]), "")
 }
 
 /// O comando sai com 7 e escreve nas duas saídas: o check reprova e o `checks-failed` mostra o resumo.
@@ -629,12 +624,12 @@ fn check_run_blocked() -> Fixture {
         "echo emitted-on-stdout; echo emitted-on-stderr >&2; exit 7",
     );
 
-    Fixture::spawned(check_repo("payroll-suite", &toml), "")
+    Fixture::spawned(check_repo(&[("payroll-suite", &toml)]), "")
 }
 
 /// O arquivo commitado difere da definição guardada no banco: o check não roda.
 fn check_run_stale() -> Fixture {
-    let project = check_repo("payroll-gate", &check_file("compile", "build", "exit 0"));
+    let project = check_repo(&[("payroll-gate", &check_file("compile", "build", "exit 0"))]);
     ExtTree::at(project.dir()).check("payroll-gate", &check_file("compile", "build", "exit 3"));
     git(project.dir(), &["add", "-A"]);
     git(project.dir(), &["commit", "-q", "-m", "edit gate"]);
@@ -645,13 +640,13 @@ fn check_run_stale() -> Fixture {
 fn check_run_nothing_to_attest() -> Fixture {
     let toml = check_file("style", "format", "exit 0");
 
-    Fixture::spawned(check_repo("payroll-format", &toml), DELETE_ONLY_PUSH)
+    Fixture::spawned(check_repo(&[("payroll-format", &toml)]), DELETE_ONLY_PUSH)
 }
 
 /// HEAD solto contido em duas branches: não há branch do work item para resolver.
 fn check_run_head_ambiguous() -> Fixture {
     let toml = check_file("style", "format", "exit 0");
-    let project = check_repo("payroll-format", &toml);
+    let project = check_repo(&[("payroll-format", &toml)]);
     git(project.dir(), &["branch", "payroll-copy"]);
     git(project.dir(), &["switch", "-q", "--detach"]);
 
@@ -1043,6 +1038,261 @@ fn error_header_facts(value: &Value) -> Vec<String> {
     )]
 }
 
+// ---------------------------------------------------------------- fixtures e fatos dos comandos simples do ciclo
+
+fn project_first() -> Fixture {
+    Fixture::of(cycle::project_first())
+}
+
+fn project_mixed() -> Fixture {
+    Fixture::of(cycle::project_mixed())
+}
+
+fn project_blocked() -> Fixture {
+    Fixture::of(cycle::project_blocked())
+}
+
+fn sweep_empty() -> Fixture {
+    Fixture::spawned(Project::new("acme"), "")
+}
+
+fn sweep_with_stray() -> Fixture {
+    let (project, guard) = cycle::sweep_stray();
+
+    Fixture::sweeping(project, guard)
+}
+
+fn retire_check_orphaned() -> Fixture {
+    Fixture::of(cycle::retire_check())
+}
+
+fn retire_guidelines() -> Fixture {
+    Fixture::of(cycle::retire_guidelines())
+}
+
+fn without_stored_extensions() -> Fixture {
+    Fixture::of(Project::new("acme"))
+}
+
+fn hooks_clean() -> Fixture {
+    Fixture::from_state(cycle::hooks_clean())
+}
+
+fn hooks_in_build_dir() -> Fixture {
+    Fixture::from_state(cycle::hooks_in_build_dir())
+}
+
+fn hooks_foreign() -> Fixture {
+    Fixture::from_state(cycle::hooks_foreign())
+}
+
+fn spec_repo() -> Fixture {
+    Fixture::of(cycle::spec_repo())
+}
+
+fn byproduct_state() -> Fixture {
+    Fixture::of(cycle::byproduct_repo())
+}
+
+/// O tamanho de uma lista do `Value`, como o texto o conta.
+fn size_of(value: &Value, key: &str) -> usize {
+    value[key].as_array().map_or(0, Vec::len)
+}
+
+fn joined_names(value: &Value, key: &str) -> String {
+    value[key]
+        .as_array()
+        .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .join(", ")
+}
+
+/// `N written · N unchanged · N removed` e a linha de cada lista que tem nomes; os `unchanged` só entram na contagem.
+fn project_facts(value: &Value) -> Vec<String> {
+    let mut facts = vec![format!(
+        "✔ project · {} · {} written · {} unchanged · {} removed",
+        text_at(value, "dir"),
+        size_of(value, "written"),
+        size_of(value, "unchanged"),
+        size_of(value, "removed"),
+    )];
+    for key in ["written", "removed"] {
+        if size_of(value, key) > 0 {
+            facts.push(format!("- {key} · {}", joined_names(value, key)));
+        }
+    }
+
+    facts
+}
+
+/// Os nomes `unchanged` e as listas vazias não ganham linha.
+fn project_absent(value: &Value) -> Vec<String> {
+    let mut absent = vec!["- unchanged".to_owned()];
+    absent.extend(
+        value["unchanged"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned),
+    );
+    absent.extend(
+        ["written", "removed"]
+            .into_iter()
+            .filter(|key| size_of(value, key) == 0)
+            .map(|key| format!("- {key}")),
+    );
+
+    absent
+}
+
+fn sweep_facts(value: &Value) -> Vec<String> {
+    let mut facts = vec![format!(
+        "✔ check sweep · {} swept · {} unreadable",
+        size_of(value, "swept"),
+        value["unreadable"]
+    )];
+    facts.extend(
+        value["swept"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|process| {
+                format!(
+                    "- {} · pid {} · owner {}",
+                    text_at(process, "comm"),
+                    process["pid"],
+                    process["owner_pid"]
+                )
+            }),
+    );
+
+    facts
+}
+
+fn sweep_absent(_value: &Value) -> Vec<String> {
+    ["scan timed out", "Next:"].map(str::to_owned).to_vec()
+}
+
+fn check_retire_facts(value: &Value) -> Vec<String> {
+    vec![format!(
+        "✔ check retire · retired {}",
+        text_at(value, "retired")
+    )]
+}
+
+fn guideline_retire_facts(value: &Value) -> Vec<String> {
+    let retired = text_at(value, "retired");
+
+    match value["superseded_by"].as_str() {
+        Some(successor) => vec![format!(
+            "✔ guideline retire · retired {retired} · superseded by {successor}"
+        )],
+        None => vec![format!("✔ guideline retire · retired {retired}")],
+    }
+}
+
+fn guideline_retire_alone_absent(_value: &Value) -> Vec<String> {
+    vec!["superseded".to_owned()]
+}
+
+/// O erro genérico e o `Next:` da `next_step` do detalhe, que o texto fecha com ponto.
+fn error_with_next_step_facts(value: &Value) -> Vec<String> {
+    let mut facts = generic_error_facts(value);
+    facts.push(format!(
+        "Next: {}",
+        text_at(&value["error"]["details"][0], "next_step")
+    ));
+
+    facts
+}
+
+fn hooks_install_facts(value: &Value) -> Vec<String> {
+    let warnings = size_of(value, "warnings");
+    let scripts = counted(size_of(value, "scripts"), "script");
+    let header = match warnings {
+        0 => format!("✔ hooks install · {scripts}"),
+        count => format!(
+            "⚠ hooks install · {scripts} · {}",
+            counted(count, "warning")
+        ),
+    };
+    let mut facts = vec![
+        header,
+        format!("hooks path: {}", text_at(value, "hooks_path")),
+        format!("omhl: {}", text_at(value, "omhl")),
+        format!("scripts: {}", joined_names(value, "scripts")),
+    ];
+    for warning in value["warnings"].as_array().into_iter().flatten() {
+        facts.push(format!(
+            "- warning · {} · {}",
+            text_at(warning, "code"),
+            text_at(warning, "path")
+        ));
+        facts.push(format!("Next: {}", text_at(warning, "hint")));
+    }
+
+    facts
+}
+
+fn hooks_install_clean_absent(_value: &Value) -> Vec<String> {
+    ["warning", "Next:"].map(str::to_owned).to_vec()
+}
+
+fn hooks_existing_facts(value: &Value) -> Vec<String> {
+    let mut facts = error_header_facts(value);
+    facts.push("- hooks-existing".to_owned());
+
+    facts
+}
+
+fn spec_init_facts(value: &Value) -> Vec<String> {
+    let work_item = text_at(value, "work_item");
+
+    vec![
+        format!("✔ spec init · {work_item} · {}", text_at(value, "slug")),
+        format!("dir: {}", text_at(value, "dir")),
+        format!("path: {}", text_at(value, "path")),
+        format!(
+            "Next: fill in the five sections of the part file, then run omhl spec validate {work_item}"
+        ),
+    ]
+}
+
+fn byproduct_facts(value: &Value) -> Vec<String> {
+    let mut facts = vec![
+        format!(
+            "✔ byproduct · {} · {} · {} · {}",
+            text_at(value, "check"),
+            text_at(value, "work_item"),
+            text_at(value, "outcome"),
+            counted(size_of(value, "lines"), "line")
+        ),
+        cycle::SECRET_WARNING.to_owned(),
+    ];
+    if let Some(cut) = value["truncated_lines"].as_u64() {
+        facts.push(format!(
+            "⚠ {} cut short",
+            counted(usize::try_from(cut).expect("a small count"), "line")
+        ));
+    }
+
+    facts
+}
+
+fn byproduct_whole_absent(_value: &Value) -> Vec<String> {
+    vec!["cut short".to_owned()]
+}
+
+/// `none` quando vazio; senão "N nouns", com o singular em 1.
+fn counted(count: usize, noun: &str) -> String {
+    match count {
+        0 => "none".to_owned(),
+        1 => format!("1 {noun}"),
+        total => format!("{total} {noun}s"),
+    }
+}
+
 /// Um estado de fixture de um comando: cada onda das etapas 3 e 4 acrescenta os seus casos.
 struct Case {
     name: &'static str,
@@ -1058,7 +1308,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 36] = [
+const CASES: [Case; 55] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -1419,6 +1669,202 @@ const CASES: [Case; 36] = [
         derived: generic_error_facts,
         absent: no_facts,
     },
+    Case {
+        name: "project writes the new files",
+        key: CommandKey::Project,
+        args: &["project"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: project_first,
+        derived: project_facts,
+        absent: project_absent,
+    },
+    Case {
+        name: "project writes, keeps and removes files",
+        key: CommandKey::Project,
+        args: &["project"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: project_mixed,
+        derived: project_facts,
+        absent: project_absent,
+    },
+    Case {
+        name: "project not-generated file",
+        key: CommandKey::Project,
+        args: &["project"],
+        outcome: Outcome::Failure,
+        error_code: Some("projection-failed"),
+        fixture: project_blocked,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "check sweep with nothing to sweep",
+        key: CommandKey::CheckSweep,
+        args: &["check", "sweep"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: sweep_empty,
+        derived: sweep_facts,
+        absent: sweep_absent,
+    },
+    Case {
+        name: "check sweep with a swept stray",
+        key: CommandKey::CheckSweep,
+        args: &["check", "sweep"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: sweep_with_stray,
+        derived: sweep_facts,
+        absent: sweep_absent,
+    },
+    Case {
+        name: "check retire an orphaned check",
+        key: CommandKey::CheckRetire,
+        args: &["check", "retire", cycle::ORPHAN_CHECK],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: retire_check_orphaned,
+        derived: check_retire_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "check retire check-not-found",
+        key: CommandKey::CheckRetire,
+        args: &["check", "retire", "checks.ghost-one"],
+        outcome: Outcome::Failure,
+        error_code: Some("check-not-found"),
+        fixture: without_stored_extensions,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "guideline retire without a successor",
+        key: CommandKey::GuidelineRetire,
+        args: &["guideline", "retire", cycle::ORPHAN_GUIDELINE],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: retire_guidelines,
+        derived: guideline_retire_facts,
+        absent: guideline_retire_alone_absent,
+    },
+    Case {
+        name: "guideline retire with a successor",
+        key: CommandKey::GuidelineRetire,
+        args: &[
+            "guideline",
+            "retire",
+            cycle::ORPHAN_GUIDELINE,
+            "--by",
+            cycle::SUCCESSOR_GUIDELINE,
+        ],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: retire_guidelines,
+        derived: guideline_retire_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "guideline retire guideline-not-found",
+        key: CommandKey::GuidelineRetire,
+        args: &["guideline", "retire", "guidelines.ghost-one"],
+        outcome: Outcome::Failure,
+        error_code: Some("guideline-not-found"),
+        fixture: without_stored_extensions,
+        derived: error_with_next_step_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "hooks install without warnings",
+        key: CommandKey::HooksInstall,
+        args: &["hooks", "install"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: hooks_clean,
+        derived: hooks_install_facts,
+        absent: hooks_install_clean_absent,
+    },
+    Case {
+        name: "hooks install with a build-dir warning",
+        key: CommandKey::HooksInstall,
+        args: &["hooks", "install"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: hooks_in_build_dir,
+        derived: hooks_install_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "hooks install hooks-existing",
+        key: CommandKey::HooksInstall,
+        args: &["hooks", "install"],
+        outcome: Outcome::Failure,
+        error_code: Some("hooks-existing"),
+        fixture: hooks_foreign,
+        derived: hooks_existing_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "spec init creates the first part",
+        key: CommandKey::SpecInit,
+        args: &["spec", "init", cycle::WORK_ITEM, cycle::SPEC_SLUG],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: spec_repo,
+        derived: spec_init_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "spec init spec-slug-invalid",
+        key: CommandKey::SpecInit,
+        args: &["spec", "init", cycle::WORK_ITEM, "Bad_Slug"],
+        outcome: Outcome::Failure,
+        error_code: Some("spec-slug-invalid"),
+        fixture: spec_repo,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "byproduct shows the stored lines",
+        key: CommandKey::Byproduct,
+        args: &["byproduct", cycle::CHECK_WITH_LINES, cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: byproduct_state,
+        derived: byproduct_facts,
+        absent: byproduct_whole_absent,
+    },
+    Case {
+        name: "byproduct cuts a line over the limit",
+        key: CommandKey::Byproduct,
+        args: &["byproduct", cycle::CHECK_WITH_WIDE_LINE, cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: byproduct_state,
+        derived: byproduct_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "byproduct without output lines",
+        key: CommandKey::Byproduct,
+        args: &["byproduct", cycle::CHECK_WITHOUT_OUTPUT, cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: byproduct_state,
+        derived: byproduct_facts,
+        absent: byproduct_whole_absent,
+    },
+    Case {
+        name: "byproduct check-not-found",
+        key: CommandKey::Byproduct,
+        args: &["byproduct", "checks.ghost-one", cycle::WORK_ITEM],
+        outcome: Outcome::Failure,
+        error_code: Some("check-not-found"),
+        fixture: without_stored_extensions,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
 ];
 
 fn command(case: &Case, format: &str) -> Vec<String> {
@@ -1610,6 +2056,16 @@ fn mask_durations(text: &str) -> String {
     masked
 }
 
+/// Troca por marcadores o que muda a cada execução: durações, pids e as contagens do `check sweep`.
+fn mask_volatile(text: &str) -> String {
+    let pids = Regex::new(r"\b(pid|owner) \d+\b").expect("the pid pattern compiles");
+    let counts = Regex::new(r"\b\d+ (swept|unreadable)\b").expect("the count pattern compiles");
+    let timed = mask_durations(text);
+    let masked = pids.replace_all(&timed, "$1 <pid>");
+
+    counts.replace_all(&masked, "<n> $1").into_owned()
+}
+
 /// O `report` fecha o texto com uma quebra de linha; o `render` não: o `text` do contexto já termina nos seus bytes.
 fn line_break(case: &Case) -> &'static str {
     match (case.key, case.outcome) {
@@ -1618,24 +2074,43 @@ fn line_break(case: &Case) -> &'static str {
     }
 }
 
+/// O comando muda a fixture (grava, aposenta, cria): rodá-lo de novo na mesma fixture não repete o `Value`.
+fn changes_the_fixture(case: &Case) -> bool {
+    matches!(
+        case.key,
+        CommandKey::Project
+            | CommandKey::CheckSweep
+            | CommandKey::CheckRetire
+            | CommandKey::GuidelineRetire
+            | CommandKey::SpecInit
+    ) && case.outcome == Outcome::Success
+}
+
 fn assert_command_prints_the_renderer_output(layout: Layout) {
     for case in &CASES {
         let fixture = (case.fixture)();
         let value = json_of(case, &fixture);
-        let expected = format!("{}{}", text_of(case, &value, layout), line_break(case));
+        // As pastas e os pids saem do texto, como no runner de exemplos: a 2ª fixture tem as suas.
+        let expected = fixture.scrub(&format!(
+            "{}{}",
+            text_of(case, &value, layout),
+            line_break(case)
+        ));
 
-        let run = run_case(case, &fixture, layout_name(layout));
+        let printing = match changes_the_fixture(case) {
+            true => {
+                drop(fixture);
+                (case.fixture)()
+            }
+            false => fixture,
+        };
+        let run = run_case(case, &printing, layout_name(layout));
 
         let (printed, silent) = match case.outcome {
             Outcome::Success => (run.stdout, run.stderr),
             Outcome::Failure => (run.stderr, run.stdout),
         };
-        assert_eq!(
-            mask_durations(&printed),
-            mask_durations(&expected),
-            "{}",
-            case.name
-        );
+        assert_eq!(printing.scrub(&printed), expected, "{}", case.name);
         assert_eq!(silent, "", "{}", case.name);
     }
 }

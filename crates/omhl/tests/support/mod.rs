@@ -3,6 +3,7 @@
 pub mod appfx;
 pub mod busy;
 pub mod child;
+pub mod cycle;
 pub mod ext;
 pub mod forge;
 pub mod gate;
