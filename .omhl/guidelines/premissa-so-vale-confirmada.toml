@@ -1,0 +1,2 @@
+kind = "business"
+text = "Nenhuma premissa sustenta uma decisão, uma spec ou uma entrega enquanto um humano não a confirmar, com a pergunta e a resposta literais registradas. O código recusa o que depende de premissa não confirmada; diante da recusa, o agente pede a confirmação ao humano e só então segue."
