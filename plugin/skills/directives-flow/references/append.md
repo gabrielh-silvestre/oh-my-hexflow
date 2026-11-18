@@ -13,7 +13,7 @@ Para gravar no banco do projeto: work item, premissa, gap, divergência, diretiv
 ## Entradas
 
 - O pedido é um JSON no stdin: `{"key": "<texto>", "items": [...]}`. `items` tem de um a cinquenta itens. Cada item tem `body` e, opcionalmente, `base` (o `record_id` que ele revisa), `snapshot` e `external_id`. Qualquer outra chave no topo do pedido é `append-invalid`.
-- `body` é `{"kind":"node","id":"<namespace>.<nome>","type":"<tipo>","data":{...}}` ou `{"kind":"relation","relation_type":"<nome>","from":"<id>","to":"<id>"}`.
+- `body` é `{"kind":"node","id":"<namespace>.<nome>","type":"<tipo>","data":{...}}`, `{"kind":"relation","relation_type":"<nome>","from":"<id>","to":"<id>"}` ou `{"kind":"retirement","lineage":{"kind":"relation","relation_type":"contradicts","from":"<id>","to":"<id>"}}`, que retira uma relação vigente. A retirada exige o `base` da relação (o `record_id` vigente) e nenhum comando `omhl` o lê: mande o pedido sem `base`, a resposta é `FORK_REJECTED` com `not-current` e `details[0].current` é o `base`; repita o pedido com esse valor em `base` no item. Outro erro na primeira chamada quer dizer que a relação não existe, já foi retirada ou é sua: não repita. Só o verifier e o dono retiram.
 - Premissa `confirmed` leva `confirmed_by` com `by` (`person:<nome>`), `question` e `answer` literais, copiados da resposta real do humano.
 - Diretiva nova ou revisada leva `kind`: `business` ou `architecture`.
 - Opções: `--db <caminho>` (um caminho novo cria o banco) e `--project-dir <pasta>` (a pasta onde a busca do marcador `.omhl.toml` começa; precisa existir).
