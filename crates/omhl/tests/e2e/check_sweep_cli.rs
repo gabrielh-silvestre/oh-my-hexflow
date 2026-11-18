@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -210,11 +210,7 @@ fn wait_exit(child: &mut Child, within: Duration) -> ExitStatus {
 
 #[test]
 fn it_should_sweep_a_stray_of_a_finished_run_when_check_run_starts() {
-    let lock = std::fs::File::create(
-        std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("check_sweep_cli.lock"),
-    )
-    .expect("the sweep lock file opens");
-    lock.lock().expect("the sweep lock is taken");
+    let _sweep = support::sweep_lock::serialize_sweeps();
     let tmp = TempDir::new().expect("temp dir");
     let pidfile = tmp.path().join("stray.pid");
     let owner = tmp.path().join("stray.pid.owner");
@@ -261,16 +257,11 @@ fn it_should_sweep_a_stray_of_a_finished_run_when_check_run_starts() {
     let s2 = read_pid(&pidfile, Duration::from_secs(5));
     assert_ne!(s2, s1);
     kill_stray(s2);
-    drop(lock);
 }
 
 #[test]
 fn it_should_not_sweep_the_stray_of_a_check_run_still_in_progress() {
-    let lock = std::fs::File::create(
-        std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("check_sweep_cli.lock"),
-    )
-    .expect("the sweep lock file opens");
-    lock.lock().expect("the sweep lock is taken");
+    let _sweep = support::sweep_lock::serialize_sweeps();
     let tmp = TempDir::new().expect("temp dir");
     let pidfile = tmp.path().join("stray.pid");
     let go = tmp.path().join("go");
@@ -294,16 +285,11 @@ fn it_should_not_sweep_the_stray_of_a_check_run_still_in_progress() {
     let status = wait_exit(&mut background, Duration::from_secs(30));
     assert_eq!(status.code(), Some(0), "the background check run passes");
     kill_stray(s1);
-    drop(lock);
 }
 
 #[test]
 fn it_should_print_the_swept_processes_as_json_in_check_sweep() {
-    let lock = std::fs::File::create(
-        std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("check_sweep_cli.lock"),
-    )
-    .expect("the sweep lock file opens");
-    lock.lock().expect("the sweep lock is taken");
+    let _sweep = support::sweep_lock::serialize_sweeps();
     let p = cli_repo(&[]);
 
     let output = omhl_in(&p, &["check", "sweep"]).run();
@@ -331,16 +317,11 @@ fn it_should_print_the_swept_processes_as_json_in_check_sweep() {
         "unreadable is an integer >= 0: {report}"
     );
     assert_eq!(report["scan_timed_out"], json!(false));
-    drop(lock);
 }
 
 #[test]
 fn it_should_run_the_checks_when_the_sweep_log_cannot_be_written() {
-    let lock = std::fs::File::create(
-        std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("check_sweep_cli.lock"),
-    )
-    .expect("the sweep lock file opens");
-    lock.lock().expect("the sweep lock is taken");
+    let _sweep = support::sweep_lock::serialize_sweeps();
     let tmp = TempDir::new().expect("temp dir");
     let pidfile = tmp.path().join("stray.pid");
     let owner = tmp.path().join("stray.pid.owner");
@@ -372,16 +353,11 @@ fn it_should_run_the_checks_when_the_sweep_log_cannot_be_written() {
     let s2 = read_pid(&pidfile, Duration::from_secs(5));
     assert_ne!(s2, s1);
     kill_stray(s2);
-    drop(lock);
 }
 
 #[test]
 fn it_should_append_the_swept_stray_to_the_sweep_log_through_check_sweep() {
-    let lock = std::fs::File::create(
-        std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("check_sweep_cli.lock"),
-    )
-    .expect("the sweep lock file opens");
-    lock.lock().expect("the sweep lock is taken");
+    let _sweep = support::sweep_lock::serialize_sweeps();
     let tmp = TempDir::new().expect("temp dir");
     let pidfile = tmp.path().join("stray.pid");
     let p = cli_repo(&[("stray", &stray(&pidfile))]);
@@ -416,5 +392,4 @@ fn it_should_append_the_swept_stray_to_the_sweep_log_through_check_sweep() {
         "the line sweeps {s1}: {last}"
     );
     kill_stray(s1);
-    drop(lock);
 }

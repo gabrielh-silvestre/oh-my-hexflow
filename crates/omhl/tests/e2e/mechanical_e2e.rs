@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use std::ffi::OsString;
 use std::fs;
@@ -938,6 +938,7 @@ fn it_should_block_a_push_to_main_and_allow_a_push_of_the_work_item_branch() {
 
 #[test]
 fn it_should_leave_no_orphan_when_the_hook_is_interrupted() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let e = E2e::new(&[slow_signal("307")]);
     e.stage(&e.r, "s", "s\n");
     let argv = b"sleep\x00307\x00";
@@ -974,6 +975,7 @@ fn it_should_leave_no_orphan_when_the_hook_is_interrupted() {
 
 #[test]
 fn it_should_leave_no_orphan_when_the_git_process_is_killed_during_the_hook() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let e = E2e::new(&[slow_signal("308")]);
     e.stage(&e.r, "s", "s\n");
     let argv = b"sleep\x00308\x00";

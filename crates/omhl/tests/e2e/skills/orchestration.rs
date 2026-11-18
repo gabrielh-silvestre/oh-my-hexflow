@@ -5,7 +5,7 @@
 
 use std::fs;
 
-use crate::coverage::skills_dir;
+use crate::skills::coverage::skills_dir;
 
 const BASE_SENTENCE: &str =
     "Esta skill exige a `directives-flow`. Se não estiver carregada, carregue-a";

@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use std::fs;
 use std::path::Path;
@@ -774,6 +774,7 @@ fn it_should_answer_branch_name_invalid_for_a_branch_outside_the_pattern_through
 
 #[test]
 fn it_should_leave_no_orphan_and_no_attestation_when_the_binary_is_interrupted() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let tmp = TempDir::new().expect("temp dir");
     let pids = tmp.path().join("pids");
     let pids_arg = pids.to_str().expect("the path is UTF-8");

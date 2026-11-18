@@ -85,9 +85,24 @@ const UNIT_FORBIDDEN_WHOLE: &[&str] = &[
 ];
 /// Chamada que termina em `(` e prefixo de variável de ambiente: não exigem fim de identificador.
 const UNIT_FORBIDDEN_PREFIX: &[&str] = &["Command::new(", CARGO_BIN_EXE];
+const TESTS_LAYOUT: &[&str] = &["integration", "e2e", "support", "fixtures"];
 
 fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+}
+
+/// Entradas de `tests_dir` que não são uma das pastas de `TESTS_LAYOUT`.
+fn layout_findings(tests_dir: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(tests_dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = entries
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| !TESTS_LAYOUT.contains(&name.as_str()))
+        .collect();
+    found.sort();
+    found
 }
 
 fn read(path: &Path) -> String {
@@ -1783,4 +1798,41 @@ fn it_should_declare_every_tests_file_with_cfg_test_in_its_parent_module() {
     }
 
     assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_in_tests_only_the_integration_e2e_support_and_fixtures_folders() {
+    let accepted = tempfile::tempdir().expect("temporary directory");
+    write_tree(
+        accepted.path(),
+        &[
+            ("integration/main.rs", ""),
+            ("e2e/main.rs", ""),
+            ("support/mod.rs", ""),
+            ("fixtures/a.json", ""),
+        ],
+    );
+    let loose = tempfile::tempdir().expect("temporary directory");
+    write_tree(
+        loose.path(),
+        &[
+            ("integration/main.rs", ""),
+            ("x.rs", ""),
+            ("proptest-regressions/a.txt", ""),
+        ],
+    );
+
+    let from_accepted = layout_findings(accepted.path());
+    let from_loose = layout_findings(loose.path());
+    let from_real = layout_findings(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests"));
+
+    assert!(
+        from_accepted.is_empty(),
+        "accepted layout flagged: {from_accepted:?}"
+    );
+    assert_eq!(from_loose, ["proptest-regressions", "x.rs"]);
+    assert!(
+        from_real.is_empty(),
+        "unexpected entries in tests/: {from_real:?}"
+    );
 }

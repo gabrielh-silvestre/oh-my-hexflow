@@ -1,0 +1,29 @@
+#[path = "../support/mod.rs"]
+mod support;
+
+mod acceptance;
+mod agent_examples;
+mod agent_role_hook;
+mod byproduct_action;
+mod check_run_cli;
+mod check_run_text;
+mod check_run_tree;
+mod check_sweep_cli;
+mod cli;
+mod close_retro;
+mod directives_flow_e2e;
+mod extensions_e2e;
+mod gate_worktree;
+mod guideline_retire;
+mod hook;
+mod hooks_install;
+mod mechanical_e2e;
+mod repo_checks;
+mod report_answers;
+mod report_recurrences;
+mod skills;
+mod spec_amendment;
+mod spec_init;
+mod spec_lock;
+mod spec_validate;
+mod spec_validate_graph;

@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-mod support;
+use crate::support;
 
 use std::env;
 use std::fs;

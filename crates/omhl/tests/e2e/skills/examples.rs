@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 use serde_json::Value;
 
-use crate::coverage::{leaf_commands, read_docs, repo_root, skills_dir, starts_with_path};
+use crate::skills::coverage::{leaf_commands, read_docs, repo_root, skills_dir, starts_with_path};
 use crate::support::child::omhl;
 use crate::support::git::git_command_with_env;
 use crate::support::project::Project;
@@ -527,6 +527,7 @@ fn leaves_without_example(blocks: &[Block], leaves: Vec<String>) -> Vec<String> 
 
 #[test]
 fn skill_examples() {
+    let _serial = serialize_sweeps();
     let blocks = real_blocks();
 
     let missing = leaves_without_example(&blocks, leaf_commands());
@@ -536,7 +537,6 @@ fn skill_examples() {
         "subcommands without an omhl-example block in their own page under {}: {missing:?}",
         repo_root().join("plugin/skills").display()
     );
-    let _serial = serialize_sweeps();
     let failures: Vec<String> = blocks
         .iter()
         .filter_map(|block| run_block(block).err())
