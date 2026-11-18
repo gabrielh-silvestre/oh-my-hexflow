@@ -568,3 +568,193 @@ pub fn hooks_foreign() -> State {
 
     state
 }
+
+// ---------------------------------------------------------------- `spec validate`
+
+pub const SPEC_PREMISE: &str = "premises.payroll-rule";
+pub const SPEC_DIVERGENCE: &str = "divergences.payroll-cmp-001";
+const SPEC_FOLDER: &str = ".omhl/specs/wi-payroll__export-reports";
+
+fn confirmed_by_wire() -> Value {
+    json!({ "by": "person:ana", "question": "Is this right?", "answer": "Yes, this is right." })
+}
+
+fn spec_part(item: u8) -> String {
+    format!(
+        "## Objetivo\n\nPagar a folha.\n\n## Diretivas e premissas aplicáveis\n\n- {SPEC_PREMISE}\n\n## Comportamentos\n\n- CMP-00{item}: o sistema paga a folha.\n\n## Critérios de aceitação\n\n- CA-00{item}: a folha paga fecha o mês.\n\n## Fora de escopo\n\nDecimo terceiro.\n"
+    )
+}
+
+fn spec_amendment(divergence: &str, item: u8) -> String {
+    format!(
+        "## Divergência\n\n{divergence}\n\n## Correções\n\n- EMD-00{item} CMP-001: o sistema paga a folha e registra o pagamento.\n\n## Motivo\n\nA spec omitia o registro do pagamento.\n"
+    )
+}
+
+fn write_spec_file(project: &Project, name: &str, text: &str) {
+    let dir = project.dir().join(SPEC_FOLDER);
+    fs::create_dir_all(&dir).expect("the spec folder is created");
+    fs::write(dir.join(name), text).expect("the spec file is written");
+}
+
+/// Repositório com o work item, a premissa de negócio confirmada e a divergência aberta, sem pasta de spec.
+fn spec_graph() -> Project {
+    let project = spec_repo();
+    append_wires(
+        &project,
+        &[
+            node_wire(
+                SPEC_PREMISE,
+                "premise",
+                json!({
+                    "text": "Payroll closes on the last day", "kind": "business", "work_item": WORK_ITEM,
+                    "status": "confirmed", "confirmed_by": confirmed_by_wire(),
+                }),
+            ),
+            node_wire(
+                SPEC_DIVERGENCE,
+                "divergence",
+                json!({
+                    "source_ref": "CMP-001", "kind": "partial", "text": "the code records the payment and the spec is silent",
+                    "evidence": [{ "source": "docs", "summary": "the docs say so" }],
+                    "resolution": "open", "work_item": WORK_ITEM,
+                }),
+            ),
+        ],
+    );
+
+    project
+}
+
+/// Aprova a emenda: nova revisão da divergência em `spec-stale`, apoiada na revisão vigente.
+fn approve_amendment(project: &Project, amendment: &str) {
+    let current = run_inproc(project, &["--format", "json", "get", SPEC_DIVERGENCE], "");
+    let base = serde_json::from_str::<Value>(current.stdout.trim_end())
+        .expect("the get prints JSON")["node"]["record_id"]
+        .clone();
+    let mut revision = node_wire(
+        SPEC_DIVERGENCE,
+        "divergence",
+        json!({
+            "source_ref": "CMP-001", "kind": "partial", "text": "the code records the payment and the spec is silent",
+            "evidence": [{ "source": "docs", "summary": "the docs say so" }],
+            "resolution": "spec-stale", "work_item": WORK_ITEM,
+            "confirmed_by": confirmed_by_wire(), "amendment": amendment,
+        }),
+    );
+    revision["base"] = base;
+    append_wires(project, &[revision]);
+}
+
+/// Uma parte e nenhuma emenda.
+pub fn spec_one_part() -> Project {
+    let project = spec_graph();
+    write_spec_file(&project, "parte-01.md", &spec_part(1));
+
+    project
+}
+
+/// Duas partes, uma emenda aprovada e outra pendente com violação (divergência que não existe).
+pub fn spec_with_amendments() -> Project {
+    let project = spec_graph();
+    write_spec_file(&project, "parte-01.md", &spec_part(1));
+    write_spec_file(&project, "parte-02.md", &spec_part(2));
+    write_spec_file(
+        &project,
+        "emenda-01.md",
+        &spec_amendment(SPEC_DIVERGENCE, 1),
+    );
+    write_spec_file(
+        &project,
+        "emenda-02.md",
+        &spec_amendment("divergences.ghost-split", 2),
+    );
+    approve_amendment(&project, "emenda-01");
+
+    project
+}
+
+/// Duas partes reprovadas: uma cita um id que não existe, a outra deixa um marcador de trabalho.
+pub fn spec_broken() -> Project {
+    let project = spec_graph();
+    write_spec_file(
+        &project,
+        "parte-01.md",
+        &spec_part(1).replace(SPEC_PREMISE, "premises.ghost-rule"),
+    );
+    write_spec_file(
+        &project,
+        "parte-02.md",
+        &spec_part(2).replace("Decimo terceiro.", "Decimo terceiro TODO."),
+    );
+
+    project
+}
+
+// ---------------------------------------------------------------- `load`
+
+/// TOML de um check manual (sem `run`); `after` cria a relação com os checks citados.
+fn manual_check(how: &str, after: &[&str]) -> String {
+    let after_line = match after {
+        [] => String::new(),
+        ids => {
+            let targets: Vec<String> = ids.iter().map(|id| format!("\"{id}\"")).collect();
+            format!("after = [{}]\n", targets.join(", "))
+        }
+    };
+
+    format!("blocking = true\nhow = \"{how}\"\n{after_line}\n[when]\nevent = \"before-commit\"\n")
+}
+
+/// Arquivos novos ainda não carregados: um check e outro que vem depois dele.
+pub fn load_fresh() -> Project {
+    let project = Project::new("acme");
+    let tree = ExtTree::at(project.dir());
+    tree.check("payroll-base", &manual_check("Guards the base", &[]));
+    tree.check(
+        "payroll-extra",
+        &manual_check("Guards the extra", &["checks.payroll-base"]),
+    );
+
+    project
+}
+
+/// Tudo o que o relatório do `load` conta numa execução só: criado, revisado, pulado (aposentado), órfão,
+/// relação criada, relação órfã, não mudado e um aviso (arquivo escondido).
+pub fn load_full() -> Project {
+    let project = Project::new("acme");
+    let tree = ExtTree::at(project.dir());
+    let keep = "checks.payroll-keep";
+    tree.check("payroll-keep", &manual_check("Guards the keep", &[]));
+    tree.check(
+        "payroll-revise",
+        &manual_check("Guards the first draft", &[]),
+    );
+    tree.check("payroll-retire", &manual_check("Guards the retire", &[]));
+    tree.check("payroll-orphan", &manual_check("Guards the orphan", &[]));
+    tree.check("payroll-linked", &manual_check("Guards the link", &[keep]));
+    run_ok(&project, &["load"], "");
+
+    let checks = project.dir().join(".omhl/checks");
+    fs::remove_file(checks.join("payroll-retire.toml")).expect("the file is removed");
+    run_ok(&project, &["check", "retire", "checks.payroll-retire"], "");
+    tree.check("payroll-retire", &manual_check("Guards the retire", &[]));
+    fs::remove_file(checks.join("payroll-orphan.toml")).expect("the file is removed");
+    tree.check(
+        "payroll-revise",
+        &manual_check("Guards the second draft", &[]),
+    );
+    tree.check("payroll-linked", &manual_check("Guards the link", &[]));
+    tree.check("payroll-new", &manual_check("Guards the new", &[keep]));
+    tree.file(".omhl/checks/.gitkeep", "");
+
+    project
+}
+
+/// Uma diretiva sem `kind`: o `load` recusa e não grava nada.
+pub fn load_invalid() -> Project {
+    let project = Project::new("acme");
+    ExtTree::at(project.dir()).guideline("payroll-tone", "text = \"Be brief\"\n");
+
+    project
+}

@@ -1294,6 +1294,193 @@ fn counted(count: usize, noun: &str) -> String {
     }
 }
 
+// ---------------------------------------------------------------- fixtures e fatos de `spec validate` e `load`
+
+fn spec_validate_one_part() -> Fixture {
+    Fixture::of(cycle::spec_one_part())
+}
+
+fn spec_validate_with_amendments() -> Fixture {
+    Fixture::of(cycle::spec_with_amendments())
+}
+
+fn spec_validate_broken() -> Fixture {
+    Fixture::of(cycle::spec_broken())
+}
+
+fn load_full() -> Fixture {
+    Fixture::of(cycle::load_full())
+}
+
+fn load_fresh() -> Fixture {
+    Fixture::of(cycle::load_fresh())
+}
+
+fn load_invalid() -> Fixture {
+    Fixture::of(cycle::load_invalid())
+}
+
+/// Os escalares de texto de uma lista do `Value`, na ordem em que vêm.
+fn strings_of(value: &Value, key: &str) -> Vec<String> {
+    value[key]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn objects_of<'a>(value: &'a Value, key: &str) -> impl Iterator<Item = &'a Value> {
+    value[key].as_array().into_iter().flatten()
+}
+
+/// `⚠` quando uma emenda traz violação, `✔` senão; uma linha por parte e por emenda, e a violação logo abaixo da emenda.
+fn spec_validate_facts(value: &Value) -> Vec<String> {
+    let violations: usize = objects_of(value, "amendments")
+        .map(|amendment| size_of(amendment, "violations"))
+        .sum();
+    let symbol = match violations {
+        0 => SYMBOL_OK,
+        _ => SYMBOL_WARNING,
+    };
+    let mut facts = vec![format!(
+        "{symbol} spec validate · {} · {}",
+        plural(size_of(value, "parts"), "part"),
+        plural(size_of(value, "amendments"), "amendment"),
+    )];
+    facts.extend(
+        strings_of(value, "parts")
+            .into_iter()
+            .map(|name| format!("- part · {name}")),
+    );
+    for amendment in objects_of(value, "amendments") {
+        facts.push(format!(
+            "- amendment · {} · {}",
+            text_at(amendment, "name"),
+            text_at(amendment, "state")
+        ));
+        facts.extend(objects_of(amendment, "violations").map(|violation| {
+            format!(
+                "- {} · {}",
+                text_at(violation, "path"),
+                text_at(violation, "code")
+            )
+        }));
+    }
+
+    facts
+}
+
+fn spec_validate_absent(_value: &Value) -> Vec<String> {
+    ["Next:", "ok ·"].map(str::to_owned).to_vec()
+}
+
+fn plural(count: usize, noun: &str) -> String {
+    match count {
+        1 => format!("1 {noun}"),
+        total => format!("{total} {noun}s"),
+    }
+}
+
+/// O cabeçalho conta cada grupo (os de lista vazia que não são os três primeiros ficam de fora) e o `⚠` vem do aviso.
+fn load_facts(value: &Value) -> Vec<String> {
+    let mode = match value["dry_run"] == json!(true) {
+        true => "dry run",
+        false => "loaded",
+    };
+    let symbol = match size_of(value, "warnings") {
+        0 => SYMBOL_OK,
+        _ => SYMBOL_WARNING,
+    };
+    let mut header = format!(
+        "{symbol} {mode} · {} created · {} revised · {} unchanged",
+        size_of(value, "created"),
+        size_of(value, "revised"),
+        size_of(value, "unchanged"),
+    );
+    if size_of(value, "skipped") > 0 {
+        header.push_str(&format!(" · {} skipped", size_of(value, "skipped")));
+    }
+    for (key, noun) in [
+        ("relations_created", "relation"),
+        ("orphans", "orphan"),
+        ("orphan_relations", "orphan relation"),
+        ("warnings", "warning"),
+    ] {
+        if size_of(value, key) > 0 {
+            header.push_str(&format!(" · {}", plural(size_of(value, key), noun)));
+        }
+    }
+    let mut facts = vec![header];
+    for (key, label) in [
+        ("created", "created"),
+        ("revised", "revised"),
+        ("orphans", "orphan"),
+    ] {
+        if size_of(value, key) > 0 {
+            facts.push(format!("- {label} · {}", joined_names(value, key)));
+        }
+    }
+    facts.extend(objects_of(value, "skipped").map(|entry| {
+        format!(
+            "- skipped · {} · {}",
+            text_at(entry, "id"),
+            text_at(entry, "code")
+        )
+    }));
+    for (key, label) in [
+        ("relations_created", "relation"),
+        ("orphan_relations", "orphan relation"),
+    ] {
+        facts.extend(objects_of(value, key).map(|relation| {
+            format!(
+                "- {label} · {} after {}",
+                text_at(relation, "from"),
+                text_at(relation, "to")
+            )
+        }));
+    }
+    facts.extend(objects_of(value, "warnings").map(|warning| {
+        format!(
+            "- warning · {} · {} · {}",
+            text_at(warning, "path"),
+            text_at(warning, "code"),
+            text_at(warning, "message")
+        )
+    }));
+
+    facts
+}
+
+/// Os ids que não mudaram (a menos que outro grupo cite o id), o tenant e as listas vazias não ganham linha;
+/// sem aviso o texto não diz `warning`.
+fn load_absent(value: &Value) -> Vec<String> {
+    let mut others = value.clone();
+    others
+        .as_object_mut()
+        .expect("the load report is an object")
+        .remove("unchanged");
+    let cited = others.to_string();
+    let mut absent: Vec<String> = strings_of(value, "unchanged")
+        .into_iter()
+        .filter(|id| !cited.contains(id.as_str()))
+        .collect();
+    absent.push("- unchanged".to_owned());
+    absent.push(text_at(value, "tenant").to_owned());
+    absent.extend(
+        ["created", "revised", "orphans", "skipped"]
+            .into_iter()
+            .filter(|key| size_of(value, key) == 0)
+            .map(|key| format!("- {key}")),
+    );
+    if size_of(value, "warnings") == 0 {
+        absent.push("- warning".to_owned());
+    }
+
+    absent
+}
+
 // ---------------------------------------------------------------- fixtures e fatos de `append` e `attest`
 
 /// O pedido vai no stdin: o `append` roda sempre pelo binário.
@@ -1669,7 +1856,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 72] = [
+const CASES: [Case; 80] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -2422,6 +2609,86 @@ const CASES: [Case; 72] = [
         derived: generic_error_facts,
         absent: no_facts,
     },
+    Case {
+        name: "spec validate with a single part",
+        key: CommandKey::SpecValidate,
+        args: &["spec", "validate", cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: spec_validate_one_part,
+        derived: spec_validate_facts,
+        absent: spec_validate_absent,
+    },
+    Case {
+        name: "spec validate with an approved and a pending amendment",
+        key: CommandKey::SpecValidate,
+        args: &["spec", "validate", cycle::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: spec_validate_with_amendments,
+        derived: spec_validate_facts,
+        absent: spec_validate_absent,
+    },
+    Case {
+        name: "spec validate spec-invalid",
+        key: CommandKey::SpecValidate,
+        args: &["spec", "validate", cycle::WORK_ITEM],
+        outcome: Outcome::Failure,
+        error_code: Some("spec-invalid"),
+        fixture: spec_validate_broken,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "spec validate spec-not-found",
+        key: CommandKey::SpecValidate,
+        args: &["spec", "validate", cycle::WORK_ITEM],
+        outcome: Outcome::Failure,
+        error_code: Some("spec-not-found"),
+        fixture: spec_repo,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "load reports every group and a warning",
+        key: CommandKey::Load,
+        args: &["load"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: load_full,
+        derived: load_facts,
+        absent: load_absent,
+    },
+    Case {
+        name: "load dry run",
+        key: CommandKey::Load,
+        args: &["load", "--dry-run"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: load_fresh,
+        derived: load_facts,
+        absent: load_absent,
+    },
+    Case {
+        name: "load creates the new files without warnings",
+        key: CommandKey::Load,
+        args: &["load"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: load_fresh,
+        derived: load_facts,
+        absent: load_absent,
+    },
+    Case {
+        name: "load extensions-invalid",
+        key: CommandKey::Load,
+        args: &["load"],
+        outcome: Outcome::Failure,
+        error_code: Some("extensions-invalid"),
+        fixture: load_invalid,
+        derived: error_with_next_step_facts,
+        absent: no_facts,
+    },
 ];
 
 fn command(case: &Case, format: &str) -> Vec<String> {
@@ -2645,6 +2912,7 @@ fn changes_the_fixture(case: &Case) -> bool {
             | CommandKey::SpecInit
             | CommandKey::Append
             | CommandKey::Close
+            | CommandKey::Load
     ) && case.outcome == Outcome::Success
 }
 
