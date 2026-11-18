@@ -378,25 +378,32 @@ impl Engine<'_> {
                 context,
             })
         };
-        let verdict = |failed: Option<CheckDetail>| Step::Verdict {
-            result: CheckResult {
-                id: check.id.clone(),
-                outcome,
-                blocking: check.blocking,
-            },
-            output: with_concern(
-                with_run_fields(
-                    json!({
-                        "check": check.id,
-                        "outcome": outcome_name(outcome),
-                        "ok": outcome != Outcome::Failed,
-                        "blocking": check.blocking,
-                    }),
-                    &report,
-                ),
-                check,
-            ),
-            failed,
+        let verdict = |failed: Option<CheckDetail>| {
+            let mut output = with_run_fields(
+                json!({
+                    "check": check.id,
+                    "outcome": outcome_name(outcome),
+                    "ok": outcome != Outcome::Failed,
+                    "blocking": check.blocking,
+                }),
+                &report,
+            );
+            // `concern` e `variant` só entram quando o check os declara.
+            for (key, field) in [("concern", &check.concern), ("variant", &check.variant)] {
+                if let Some(field) = field {
+                    output[key] = json!(field);
+                }
+            }
+
+            Step::Verdict {
+                result: CheckResult {
+                    id: check.id.clone(),
+                    outcome,
+                    blocking: check.blocking,
+                },
+                output,
+                failed,
+            }
         };
 
         let Some(work_item) = scope.work_item else {
@@ -868,30 +875,21 @@ fn failure_context(scope: &Scope<'_>, results: &[CheckResult], checks_planned: u
     context
 }
 
-/// `concern` e `variant` só entram quando o check os declara.
-fn with_concern(mut value: Value, check: &PlannedCheck) -> Value {
+/// Campos curtos de um check reprovado, sem a saída do comando nem o `how`.
+fn failure_fields(check: &PlannedCheck, spec: &CheckSpec, report: &RunReport) -> Value {
+    let mut fields = json!({
+        "blocking": check.blocking,
+        "run": spec.run,
+        "timeout_secs": spec.timeout_secs,
+    });
+    // `concern` e `variant` só entram quando o check os declara.
     for (key, field) in [("concern", &check.concern), ("variant", &check.variant)] {
         if let Some(field) = field {
-            value[key] = json!(field);
+            fields[key] = json!(field);
         }
     }
 
-    value
-}
-
-/// Campos curtos de um check reprovado, sem a saída do comando nem o `how`.
-fn failure_fields(check: &PlannedCheck, spec: &CheckSpec, report: &RunReport) -> Value {
-    with_run_fields(
-        with_concern(
-            json!({
-                "blocking": check.blocking,
-                "run": spec.run,
-                "timeout_secs": spec.timeout_secs,
-            }),
-            check,
-        ),
-        report,
-    )
+    with_run_fields(fields, report)
 }
 
 /// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context`.
