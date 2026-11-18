@@ -313,3 +313,7 @@ O workspace proíbe `unsafe` e os tipos de memória compartilhada listados em
 `clippy.toml`. Os testes de arquitetura em `crates/*/tests/architecture.rs`
 travam as regras de dependência entre os módulos. O mapa dos módulos e dessas
 regras está em [docs/architecture.md](docs/architecture.md).
+
+## Créditos
+
+Os sete agentes de `plugin/agents/` (analyst, planner, architect, critic, code-reviewer, security-reviewer e verifier) derivam do oh-my-claudecode 5.7.19, de Yeachan Heo, distribuído sob a licença MIT. O copyright, o texto da licença e a lista do que deriva dele estão em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
