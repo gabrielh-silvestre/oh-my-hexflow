@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
-use support::child::{Cmd, omhl};
+use support::child::{Cmd, omhl_json};
 use support::ext::ExtTree;
 use support::git::git_in;
 use support::project::Project;
@@ -56,7 +56,7 @@ fn git(p: &Project, args: &[&str]) {
 }
 
 fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
-    omhl(args).cwd(p.dir()).xdg(p.xdg())
+    omhl_json(args).cwd(p.dir()).xdg(p.xdg())
 }
 
 /// Repositório git limpo na branch `feat/wi-w1__x`, com o work item `w1` e os checks carregados.

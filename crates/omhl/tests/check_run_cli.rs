@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use support::assert_resolved_command;
-use support::child::{Cmd, omhl};
+use support::child::{Cmd, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::git_in;
 use support::project::Project;
@@ -116,6 +116,11 @@ fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
     omhl(args).cwd(p.dir()).xdg(p.xdg())
 }
 
+/// Como `omhl_in`, pedindo a saída em JSON: para as chamadas que leem a saída e não são `check run`.
+fn omhl_json_in(p: &Project, args: &[&str]) -> Cmd {
+    omhl_json(args).cwd(p.dir()).xdg(p.xdg())
+}
+
 /// Repositório git limpo na branch `feat/wi-w1__x`, com o work item `w1` e os checks carregados.
 fn cli_repo(checks: &[(&str, &str)]) -> Project {
     let p = Project::new("acme");
@@ -132,7 +137,7 @@ fn cli_repo(checks: &[(&str, &str)]) -> Project {
 
     let appended = omhl_in(&p, &["append"]).stdin(WORK_ITEM_APPEND).run();
     assert_eq!(appended.code, Some(0), "append stderr: {}", appended.stderr);
-    let loaded = omhl_in(&p, &["load"]).run();
+    let loaded = omhl_json_in(&p, &["load"]).run();
     assert_eq!(loaded.code, Some(0), "load stderr: {}", loaded.stderr);
 
     p
@@ -183,7 +188,7 @@ fn error_of(stderr: &str) -> Value {
 }
 
 fn attestations(p: &Project) -> Vec<Value> {
-    let listed = omhl_in(p, &["list", "--type", "attestation"]).run();
+    let listed = omhl_json_in(p, &["list", "--type", "attestation"]).run();
     assert_eq!(listed.code, Some(0), "list stderr: {}", listed.stderr);
     json_line(&listed.stdout)["items"]
         .as_array()
@@ -641,7 +646,7 @@ fn it_should_run_the_new_command_after_load() {
     ExtTree::at(p.dir()).check("gate", GATE_V2);
     git(&p, &["add", "-A"]);
     git(&p, &["commit", "-q", "-m", "edit gate"]);
-    let loaded = omhl_in(&p, &["load"]).run();
+    let loaded = omhl_json_in(&p, &["load"]).run();
     assert_eq!(loaded.code, Some(0), "load stderr: {}", loaded.stderr);
     assert_eq!(json_line(&loaded.stdout)["revised"], json!(["checks.gate"]));
 
@@ -695,7 +700,7 @@ fn it_should_leave_omhl_verify_passing_after_a_check_run() {
     .run();
     assert_eq!(run.code, Some(0), "check run stderr: {}", run.stderr);
 
-    let verified = omhl_in(&p, &["verify"]).run();
+    let verified = omhl_json_in(&p, &["verify"]).run();
 
     assert_eq!(verified.code, Some(0), "stderr: {}", verified.stderr);
     assert_eq!(json_line(&verified.stdout)["ok"], json!(true));
@@ -811,7 +816,7 @@ fn it_should_leave_no_orphan_and_no_attestation_when_the_binary_is_interrupted()
         wait_dead(sleeper, Duration::from_secs(4)),
         "the sleep {sleeper} died"
     );
-    let listed = omhl_in(&p, &["list", "--type", "attestation"]).run();
+    let listed = omhl_json_in(&p, &["list", "--type", "attestation"]).run();
     assert_eq!(json_line(&listed.stdout), json!({ "items": [] }));
 }
 
@@ -965,7 +970,7 @@ fn it_should_refuse_a_pre_push_input_larger_than_the_input_limit() {
 
 /// A pergunta do `gate-pr` com o `label` dado.
 fn gate_question(p: &Project, label: &str) -> Value {
-    let gate = omhl_in(p, &["gate-pr", "work-items.w1"]).run();
+    let gate = omhl_json_in(p, &["gate-pr", "work-items.w1"]).run();
     json_line(&gate.stdout)["questions"]
         .as_array()
         .expect("the gate has questions")
@@ -978,7 +983,7 @@ fn gate_question(p: &Project, label: &str) -> Value {
 /// Troca o TOML do `gate` no banco por `toml` e volta a árvore para o `HEAD`, sem mudar o commit.
 fn load_then_restore_tree(p: &Project, toml: &str) {
     ExtTree::at(p.dir()).check("gate", toml);
-    let loaded = omhl_in(p, &["load"]).run();
+    let loaded = omhl_json_in(p, &["load"]).run();
     assert_eq!(loaded.code, Some(0), "load stderr: {}", loaded.stderr);
     git(p, &["checkout", "--", ".omhl/checks"]);
 }
@@ -1018,7 +1023,7 @@ fn it_should_refuse_in_the_gate_an_attestation_sealed_with_an_old_definition() {
 #[test]
 fn it_should_refuse_in_the_gate_a_hand_made_attestation_after_a_load_gives_the_run_back() {
     let p = cli_repo(&[("gate", TEXT_ONLY)]);
-    let attested = omhl_in(
+    let attested = omhl_json_in(
         &p,
         &[
             "attest",
@@ -1053,13 +1058,13 @@ fn it_should_retire_an_orphaned_check_and_stop_warning_about_it() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     drop_check_file(&p, "gate");
 
-    let retired = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
+    let retired = omhl_json_in(&p, &["check", "retire", "checks.gate"]).run();
     let run = omhl_in(
         &p,
         &["check", "run", "--format", "json", "--event", "before-pr"],
     )
     .run();
-    let node = omhl_in(&p, &["get", "checks.gate"]).run();
+    let node = omhl_json_in(&p, &["get", "checks.gate"]).run();
 
     assert_eq!(retired.code, Some(0), "stderr: {}", retired.stderr);
     assert_eq!(json_line(&retired.stdout)["retired"], json!("checks.gate"));
@@ -1076,12 +1081,12 @@ fn it_should_retire_an_orphaned_check_and_stop_warning_about_it() {
 fn it_should_keep_the_chain_valid_after_retiring_a_check() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     drop_check_file(&p, "gate");
-    let before = json_line(&omhl_in(&p, &["verify"]).run().stdout)["total_records"]
+    let before = json_line(&omhl_json_in(&p, &["verify"]).run().stdout)["total_records"]
         .as_u64()
         .expect("verify counts the records");
 
-    let retired = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
-    let verified = omhl_in(&p, &["verify"]).run();
+    let retired = omhl_json_in(&p, &["check", "retire", "checks.gate"]).run();
+    let verified = omhl_json_in(&p, &["verify"]).run();
 
     assert_eq!(retired.code, Some(0), "stderr: {}", retired.stderr);
     let report = json_line(&verified.stdout);
@@ -1094,7 +1099,7 @@ fn it_should_stop_the_gate_from_asking_for_a_retired_check() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     drop_check_file(&p, "gate");
     let asked = |p: &Project| -> Vec<String> {
-        let gate = omhl_in(p, &["gate-pr", "work-items.w1"]).run();
+        let gate = omhl_json_in(p, &["gate-pr", "work-items.w1"]).run();
         json_line(&gate.stdout)["questions"]
             .as_array()
             .expect("the gate has questions")
@@ -1104,7 +1109,7 @@ fn it_should_stop_the_gate_from_asking_for_a_retired_check() {
     };
     assert!(asked(&p).contains(&"checks.gate".to_owned()));
 
-    let retired = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
+    let retired = omhl_json_in(&p, &["check", "retire", "checks.gate"]).run();
 
     assert_eq!(retired.code, Some(0), "stderr: {}", retired.stderr);
     let labels = asked(&p);
@@ -1118,13 +1123,13 @@ fn it_should_stop_the_gate_from_asking_for_a_retired_check() {
 fn it_should_refuse_to_retire_a_check_whose_file_still_exists() {
     let p = cli_repo(&[("gate", GATE_V1)]);
 
-    let output = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
+    let output = omhl_json_in(&p, &["check", "retire", "checks.gate"]).run();
 
     assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
     let error = error_of(&output.stderr);
     assert_eq!(error["code"], json!("check-not-orphaned"));
     assert_eq!(error["details"][0]["path"], json!("/check"));
-    let node = omhl_in(&p, &["get", "checks.gate"]).run();
+    let node = omhl_json_in(&p, &["get", "checks.gate"]).run();
     assert_ne!(json_line(&node.stdout)["node"], Value::Null);
 }
 
@@ -1132,10 +1137,10 @@ fn it_should_refuse_to_retire_a_check_whose_file_still_exists() {
 fn it_should_refuse_to_retire_an_unknown_or_already_retired_check() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     drop_check_file(&p, "gate");
-    let first = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
+    let first = omhl_json_in(&p, &["check", "retire", "checks.gate"]).run();
 
-    let again = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
-    let unknown = omhl_in(&p, &["check", "retire", "checks.nope"]).run();
+    let again = omhl_json_in(&p, &["check", "retire", "checks.gate"]).run();
+    let unknown = omhl_json_in(&p, &["check", "retire", "checks.nope"]).run();
 
     assert_eq!(first.code, Some(0), "stderr: {}", first.stderr);
     assert_eq!(again.code, Some(1), "stderr: {}", again.stderr);
@@ -1148,10 +1153,10 @@ fn it_should_refuse_to_retire_an_unknown_or_already_retired_check() {
 fn it_should_report_a_retired_check_as_skipped_when_its_file_comes_back() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     drop_check_file(&p, "gate");
-    let retired = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
+    let retired = omhl_json_in(&p, &["check", "retire", "checks.gate"]).run();
     ExtTree::at(p.dir()).check("gate", GATE_V1);
 
-    let loaded = omhl_in(&p, &["load"]).run();
+    let loaded = omhl_json_in(&p, &["load"]).run();
 
     assert_eq!(retired.code, Some(0), "stderr: {}", retired.stderr);
     assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
