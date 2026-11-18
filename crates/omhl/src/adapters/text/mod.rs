@@ -7,6 +7,8 @@ mod error;
 mod get;
 mod layout;
 mod list;
+mod render;
+mod report;
 mod verify;
 
 use serde_json::Value;
@@ -93,16 +95,19 @@ pub trait Renderer {
     fn failure(&self, value: &Value) -> Doc;
 }
 
-/// O único fato guardado por comando: só o `check run`, o `verify`, o `list` e o `get` têm renderizador até as ondas seguintes.
+/// O único fato guardado por comando: os comandos de consulta (`list`, `get`, `render`, `report *`), o `verify` e o `check run` já têm renderizador; os demais ativos ganham o seu nas ondas seguintes.
 pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     match key {
         CommandKey::CheckRun => Some(&BaseRenderer(check_run::CheckRun)),
         CommandKey::Verify => Some(&BaseRenderer(verify::Verify)),
         CommandKey::List => Some(&BaseRenderer(list::List)),
         CommandKey::Get => Some(&BaseRenderer(get::Get)),
+        CommandKey::Render => Some(&render::Render),
+        CommandKey::ReportAnswers => Some(&BaseRenderer(report::Answers)),
+        CommandKey::ReportRecurrences => Some(&BaseRenderer(report::Recurrences)),
+        CommandKey::ReportRetro => Some(&BaseRenderer(report::Retro)),
         CommandKey::Append
         | CommandKey::Attest
-        | CommandKey::Render
         | CommandKey::GatePr
         | CommandKey::GateWorktree
         | CommandKey::Close
@@ -116,9 +121,6 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         | CommandKey::HooksPostCommit
         | CommandKey::SpecInit
         | CommandKey::SpecValidate
-        | CommandKey::ReportAnswers
-        | CommandKey::ReportRecurrences
-        | CommandKey::ReportRetro
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole => None,
@@ -132,9 +134,12 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::CheckRun => &check_run::PROFILE,
         CommandKey::List => &list::PROFILE,
         CommandKey::Get => &get::PROFILE,
+        CommandKey::Render => &render::PROFILE,
+        CommandKey::ReportAnswers => &report::ANSWERS_PROFILE,
+        CommandKey::ReportRecurrences => &report::RECURRENCES_PROFILE,
+        CommandKey::ReportRetro => &report::RETRO_PROFILE,
         CommandKey::Append
         | CommandKey::Attest
-        | CommandKey::Render
         | CommandKey::GatePr
         | CommandKey::GateWorktree
         | CommandKey::Close
@@ -148,9 +153,6 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         | CommandKey::HooksPostCommit
         | CommandKey::SpecInit
         | CommandKey::SpecValidate
-        | CommandKey::ReportAnswers
-        | CommandKey::ReportRecurrences
-        | CommandKey::ReportRetro
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole => &Profile::EMPTY,

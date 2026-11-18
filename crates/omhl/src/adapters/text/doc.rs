@@ -120,6 +120,15 @@ pub fn opt_text(value: &Value, key: &str) -> Option<String> {
     value[key].as_str().map(one_line)
 }
 
+/// `none` quando vazio; senão "N nouns", com o singular em 1.
+pub fn counted(count: usize, noun: &str) -> String {
+    match count {
+        0 => "none".to_owned(),
+        1 => format!("1 {noun}"),
+        total => format!("{total} {noun}s"),
+    }
+}
+
 pub fn items<'a>(value: &'a Value, key: &str) -> impl Iterator<Item = &'a Value> {
     value[key].as_array().into_iter().flatten()
 }

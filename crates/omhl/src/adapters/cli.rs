@@ -412,7 +412,12 @@ fn report(
             ExitCode::SUCCESS
         }
         (Ok(value), OutputFormat::Agent | OutputFormat::Human) => {
-            let _ = writeln!(out, "{}", render_success(key, &value, layout_of(format)));
+            let text = render_success(key, &value, layout_of(format));
+            // O `text` do `render` já termina em quebra de linha: sai byte a byte, sem quebra extra.
+            let _ = match key {
+                CommandKey::Render => write!(out, "{text}"),
+                _ => writeln!(out, "{text}"),
+            };
             ExitCode::SUCCESS
         }
         (Err(error), OutputFormat::Json) => {
