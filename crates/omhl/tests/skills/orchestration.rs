@@ -28,7 +28,6 @@ fn base_reference(name: &str) -> String {
     read(&format!("directives-flow/references/{name}"))
 }
 
-/// Índice (0-based) da primeira linha de `text` que contém todos os `needles`.
 fn line_with(text: &str, needles: &[&str]) -> Option<usize> {
     text.lines()
         .position(|line| needles.iter().all(|needle| line.contains(needle)))
@@ -43,7 +42,6 @@ fn body(skill: &str) -> String {
         .to_owned()
 }
 
-/// A primeira linha de texto depois do título `# ` da skill.
 fn first_sentence_after_heading(skill: &str) -> String {
     skill
         .lines()
@@ -251,11 +249,8 @@ fn it_should_tell_review_to_list_decisions_and_critic_confirmed_premises_without
     );
 }
 
-// --- Endurecimento da revisão da S5: testes por regra, ancorados no passo numerado e sem negação ---
-
 const NEGATIONS: [&str; 3] = ["não", "nunca", "sem "];
 
-/// As linhas numeradas (`N. ...`) do corpo, na ordem em que aparecem.
 fn numbered_steps(text: &str) -> Vec<String> {
     let step = regex::Regex::new(r"^\d+\. ").expect("regex");
     body(text)
@@ -265,7 +260,6 @@ fn numbered_steps(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Índice do primeiro passo numerado que contém todos os `needles`.
 fn step_with(text: &str, needles: &[&str]) -> Option<usize> {
     numbered_steps(text)
         .iter()

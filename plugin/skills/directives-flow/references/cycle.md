@@ -2,7 +2,7 @@
 
 Quando consultar: antes de começar um work item que vai passar pelos agentes do plugin, ou para saber em que passo do ciclo você está. Quem faz cada papel e o que a sessão principal passa a cada um está em [roles.md](roles.md). Os passos 2 a 8 têm a skill [plan-consensus](../../plan-consensus/SKILL.md); os passos 9 e 10, a skill [review](../../review/SKILL.md).
 
-O ciclo tem dez passos. A sessão principal chama cada agente como `oh-my-hexflow:<papel>`, um por vez.
+O ciclo tem dez passos.
 
 1. **Work item.** A sessão principal grava `work-items.<id>` com `omhl append`, com o prefixo e o slug escolhidos.
 2. **Analyst.** O `oh-my-hexflow:analyst` grava premissas `assumed` e gaps, cada gap com `kind` (`technical` ou `business`).
@@ -15,8 +15,4 @@ O ciclo tem dez passos. A sessão principal chama cada agente como `oh-my-hexflo
 9. **Revisão.** O `oh-my-hexflow:code-reviewer`, o `oh-my-hexflow:security-reviewer` e o `oh-my-hexflow:verifier` revisam a entrega.
 10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic ([tracking-table.md](tracking-table.md)); depois vêm `omhl gate-pr` e `omhl close`, pela skill [work-item-closing](../../work-item-closing/SKILL.md).
 
-## O que cada passo grava
-
-- Os agentes gravam com o próprio papel no campo `agent` (`omhl:<papel>`). A sessão principal grava `claude`; o dono, fora do Claude Code, grava `user`.
-- Um agente nunca grava o que está fora da matriz do papel dele (veja [roles.md](roles.md)). O que ele não pode gravar volta na mensagem final, e a sessão principal decide o que fazer.
-- O que a spec congelada, a divergência e a emenda pedem em qualquer passo continua no [SKILL.md](../SKILL.md).
+O que a spec congelada, a divergência e a emenda pedem em qualquer passo continua no [SKILL.md](../SKILL.md).
