@@ -24,3 +24,6 @@ pub fn order(ids: &[SemanticId], after: &[(SemanticId, SemanticId)]) -> Vec<Sema
     }
     ordered
 }
+
+#[cfg(test)]
+mod tests;

@@ -277,3 +277,6 @@ fn orphan_relations(
     orphans.sort();
     orphans
 }
+
+#[cfg(test)]
+mod tests;

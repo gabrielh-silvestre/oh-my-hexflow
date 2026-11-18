@@ -276,3 +276,6 @@ pub fn spec_digest(data: &Value) -> String {
         .as_str()
         .to_owned()
 }
+
+#[cfg(test)]
+mod tests;

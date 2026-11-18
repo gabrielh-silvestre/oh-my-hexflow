@@ -133,20 +133,4 @@ fn contradicts_a_confirmed_directive(facts: &GapFacts, premise: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::is_confirmed_premise;
-
-    #[test]
-    fn it_should_confirm_a_premise_only_with_confirmed_status_and_confirmed_by() {
-        let by = json!({"by": "person:ana"});
-        let confirmed = json!({"status": "confirmed", "confirmed_by": by});
-        let legacy = json!({"status": "confirmed"});
-        let assumed_with_confirmation = json!({"status": "assumed", "confirmed_by": by});
-
-        assert!(is_confirmed_premise(&confirmed));
-        assert!(!is_confirmed_premise(&legacy));
-        assert!(!is_confirmed_premise(&assumed_with_confirmation));
-    }
-}
+mod tests;

@@ -50,3 +50,6 @@ pub fn format_utc(secs: u64, millis: u32) -> String {
     );
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
 }
+
+#[cfg(test)]
+mod tests;

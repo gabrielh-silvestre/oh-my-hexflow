@@ -6,7 +6,7 @@ use hexlog::{
     SemanticId, Snapshot, SnapshotKind,
 };
 use omhl::graphs;
-use omhl::native::{NATIVE_CATALOG_VERSION, NativeBase, NativeCheck, NativeGuideline};
+use omhl::native::{NativeBase, NativeCheck, NativeGuideline};
 use omhl::pr_gate::{REQUIRED_EVENTS, required_checks};
 use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::{Value, json};
@@ -155,96 +155,6 @@ fn native_content(native: &NativeBase) -> NativeContent {
 }
 
 #[test]
-fn it_should_reserve_each_native_id_with_its_type() {
-    let native = NativeBase;
-    let expected: Vec<Option<NativeNode>> = native_ids_with_types()
-        .iter()
-        .map(|(_, type_name)| {
-            Some(NativeNode {
-                type_name: tname(type_name),
-            })
-        })
-        .collect();
-
-    let found: Vec<Option<NativeNode>> = native_ids_with_types()
-        .iter()
-        .map(|(id, _)| native.lookup(&sid(id)))
-        .collect();
-
-    assert_eq!(found, expected);
-}
-
-#[test]
-fn it_should_not_reserve_an_unknown_id() {
-    let native = NativeBase;
-    let unknown = ["checks.unknown", "checks.run-test", "guidelines.run-tests"];
-
-    let found: Vec<Option<NativeNode>> = unknown.iter().map(|id| native.lookup(&sid(id))).collect();
-
-    assert_eq!(found, vec![None, None, None]);
-}
-
-#[test]
-fn it_should_expose_the_ci_after_run_tests_native_relation() {
-    let native = NativeBase;
-
-    let pairs = native.native_relations(&rty("after"));
-
-    assert_eq!(pairs, vec![(sid(CI_GREEN), sid(RUN_TESTS))]);
-}
-
-#[test]
-fn it_should_return_no_pairs_for_other_relation_types() {
-    let native = NativeBase;
-
-    let pairs: Vec<Vec<(SemanticId, SemanticId)>> = ["supports", "contradicts", "answers"]
-        .iter()
-        .map(|relation_type| native.native_relations(&rty(relation_type)))
-        .collect();
-
-    assert_eq!(pairs, vec![Vec::new(), Vec::new(), Vec::new()]);
-}
-
-#[test]
-fn it_should_list_the_native_ids_in_the_contract_order() {
-    let native = NativeBase;
-
-    let check_ids: Vec<&str> = native.checks().iter().map(|check| check.id).collect();
-    let guideline_ids: Vec<&str> = native
-        .guidelines()
-        .iter()
-        .map(|guideline| guideline.id)
-        .collect();
-
-    assert_eq!(
-        (check_ids, guideline_ids),
-        (CHECK_IDS.to_vec(), GUIDELINE_IDS.to_vec())
-    );
-}
-
-#[test]
-fn it_should_mark_the_three_native_checks_blocking_with_the_contract_events() {
-    let native = NativeBase;
-    let expected = vec![
-        (RUN_TESTS, "before-commit", true),
-        (CI_GREEN, "before-merge", true),
-        (
-            "checks.verify-review-comment-anchoring",
-            "before-publishing-review-comments",
-            true,
-        ),
-    ];
-
-    let found: Vec<(&str, &str, bool)> = native
-        .checks()
-        .iter()
-        .map(|check| (check.id, check.event, check.blocking))
-        .collect();
-
-    assert_eq!(found, expected);
-}
-
-#[test]
 fn it_should_validate_every_native_check_but_the_review_one_against_the_check_type() {
     let native = NativeBase;
     let catalog = catalog();
@@ -291,15 +201,6 @@ fn it_should_validate_every_native_guideline_against_the_guideline_type() {
         .collect();
 
     assert_eq!(rejected, Vec::new());
-}
-
-#[test]
-fn it_should_expose_the_native_catalog_version() {
-    let native = NativeBase;
-
-    let versions = (native.catalog_version(), NATIVE_CATALOG_VERSION);
-
-    assert_eq!(versions, ("1.0.0", "1.0.0"));
 }
 
 #[test]
@@ -436,25 +337,6 @@ fn it_should_reject_a_cycle_that_runs_through_the_native_relation() {
     let error = refusal(&mut hexlog, vec![after_item(LINT_DOCS, CI_GREEN)]);
 
     assert_eq!(error.code, ErrorCode::CycleRejected);
-}
-
-#[test]
-fn it_should_expose_the_guideline_and_check_data_as_non_empty_texts_without_carriage_returns() {
-    let native = NativeBase;
-
-    let texts: Vec<&str> = native
-        .checks()
-        .iter()
-        .map(|check| check.how)
-        .chain(native.guidelines().iter().map(|guideline| guideline.text))
-        .collect();
-
-    let malformed: Vec<&str> = texts
-        .iter()
-        .copied()
-        .filter(|text| text.is_empty() || text.contains('\r'))
-        .collect();
-    assert_eq!((texts.len(), malformed), (5, Vec::new()));
 }
 
 #[test]

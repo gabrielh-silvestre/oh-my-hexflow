@@ -161,3 +161,6 @@ impl RuleCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

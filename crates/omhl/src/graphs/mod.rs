@@ -72,3 +72,6 @@ fn invalid_schema(error: &serde_json::Error) -> HexlogError {
         message,
     }
 }
+
+#[cfg(test)]
+mod tests;

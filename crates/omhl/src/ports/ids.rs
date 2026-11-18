@@ -8,3 +8,6 @@ impl IdGenerator for V7Ids {
         Uuid::now_v7()
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -72,3 +72,6 @@ pub fn summarize(results: &[CheckResult]) -> RunSummary {
             .collect(),
     }
 }
+
+#[cfg(test)]
+mod tests;

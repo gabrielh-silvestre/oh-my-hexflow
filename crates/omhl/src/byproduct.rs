@@ -69,3 +69,6 @@ pub trait ByproductStore: Send + Sync {
     /// Confere que o sha256 dos bytes é o próprio hash.
     fn get(&self, hash: &ByproductHash) -> Result<Option<Vec<u8>>, ByproductError>;
 }
+
+#[cfg(test)]
+mod tests;

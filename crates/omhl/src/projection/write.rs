@@ -256,3 +256,6 @@ fn remove_orphans(
     }
     Ok(removed)
 }
+
+#[cfg(test)]
+mod tests;

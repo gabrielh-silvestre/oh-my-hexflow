@@ -9,7 +9,7 @@ use omhl::app::action::{Action, Caller};
 use omhl::app::retry::RetryPolicy;
 use omhl::error::{OmhlError, RuleCode};
 use omhl::facade::{Omhl, OmhlDeps};
-use omhl::guard::attestation_id;
+
 use omhl::ports::git::GitProbe;
 use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::{Value, json};
@@ -24,7 +24,7 @@ use support::pr_gate::{close, snapshots};
 use support::raw::RawHarness;
 use support::{
     FakeProbe, agent_author, cli_author, executor_attestation_data, executor_author, loader_author,
-    sid, snap, snap64, tname,
+    sid, snap, tname,
 };
 
 const ITEM_ID_POINTER: &str = "/items/0/body/id";
@@ -295,42 +295,6 @@ fn it_should_accept_a_revision_that_keeps_the_work_item_open() {
     )]));
 
     assert_eq!(result.map(|outcome| outcome.records.len()), Ok(1));
-}
-
-#[test]
-fn it_should_derive_the_attestation_id_from_snapshot_check_and_work_item() {
-    let expected = format!(
-        "attestations.{}.{}.checks.run-tests.work-items.pr-7",
-        "a".repeat(32),
-        "a".repeat(8)
-    );
-
-    let id = attestation_id(&snap('a'), &sid(RUN_TESTS), &sid(PR_7));
-
-    assert_eq!(id, Ok(sid(&expected)));
-}
-
-#[test]
-fn it_should_split_a_sha256_snapshot_into_two_segments_of_32() {
-    let expected = format!(
-        "attestations.{}.{}.checks.run-tests.work-items.pr-7",
-        "b".repeat(32),
-        "b".repeat(32)
-    );
-
-    let id = attestation_id(&snap64('b'), &sid(RUN_TESTS), &sid(PR_7));
-
-    assert_eq!(id, Ok(sid(&expected)));
-}
-
-#[test]
-fn it_should_refuse_an_attestation_id_above_200_characters() {
-    let check = sid(&format!("checks.{}", "c".repeat(63)));
-    let work_item = sid(&format!("work-items.{}", "w".repeat(63)));
-
-    let id = attestation_id(&snap64('b'), &check, &work_item);
-
-    assert_eq!(id, Err(rule(RuleCode::AttestationIdTooLong, "")));
 }
 
 #[test]

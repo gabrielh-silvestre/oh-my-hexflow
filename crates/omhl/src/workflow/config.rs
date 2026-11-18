@@ -212,3 +212,6 @@ pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, Proje
 
     Ok(config)
 }
+
+#[cfg(test)]
+mod tests;

@@ -800,3 +800,6 @@ fn cites_business_premise(doc: &Doc, work_item: &str, facts: &impl SpecFacts) ->
             && facts.work_item(id).as_deref() == Some(work_item)
     })
 }
+
+#[cfg(test)]
+mod tests;

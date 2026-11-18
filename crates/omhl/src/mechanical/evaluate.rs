@@ -58,3 +58,6 @@ fn pattern_matches(pattern: Option<&StreamPattern>, observed: &Observation<'_>) 
         Some(StreamPattern::Stderr(regex)) => regex.is_match(observed.stderr),
     }
 }
+
+#[cfg(test)]
+mod tests;

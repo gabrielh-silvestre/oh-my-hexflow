@@ -102,3 +102,6 @@ impl NativeNodes for NativeBase {
         NATIVE_CATALOG_VERSION
     }
 }
+
+#[cfg(test)]
+mod tests;

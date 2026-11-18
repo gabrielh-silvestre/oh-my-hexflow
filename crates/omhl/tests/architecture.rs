@@ -70,6 +70,21 @@ const NUMERIC_CUTS_IN_APP: &[(&str, usize)] = &[
     ("load.rs", 1),
 ];
 const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
+const UNIT_TEST_FILE: &str = "tests.rs";
+const UNIT_TEST_SUPPORT_DIR: &str = "test_support";
+const CARGO_BIN_EXE: &str = "CARGO_BIN_EXE";
+/// Caminhos e identificadores que um unitário não usa: processo, espera por relógio e a fachada.
+/// Casam por identificador inteiro (`App` não acusa `AppError`, `Command` solto não acusa o enum da CLI).
+const UNIT_FORBIDDEN_WHOLE: &[&str] = &[
+    "process::Command",
+    "thread::sleep",
+    "recv_timeout",
+    "Hexlog::open",
+    "Omhl",
+    "App",
+];
+/// Chamada que termina em `(` e prefixo de variável de ambiente: não exigem fim de identificador.
+const UNIT_FORBIDDEN_PREFIX: &[&str] = &["Command::new(", CARGO_BIN_EXE];
 
 fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
@@ -80,11 +95,38 @@ fn read(path: &Path) -> String {
         .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()))
 }
 
-fn rust_files(dir: &Path) -> Vec<PathBuf> {
+/// Todo `.rs` de `dir`, inclusive os `tests.rs` e o `test_support/` ao lado da fonte.
+fn all_rust_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     collect_rust_files(dir, &mut files);
     files.sort();
     files
+}
+
+fn is_unit_test_source(dir: &Path, path: &Path) -> bool {
+    let relative = path.strip_prefix(dir).unwrap_or(path);
+    relative
+        .file_name()
+        .is_some_and(|name| name == UNIT_TEST_FILE)
+        || relative
+            .components()
+            .any(|part| part.as_os_str() == UNIT_TEST_SUPPORT_DIR)
+}
+
+/// Fontes de produção de `dir`: os `.rs` sem os `tests.rs` ao lado da fonte e sem o `test_support/`.
+fn rust_files(dir: &Path) -> Vec<PathBuf> {
+    all_rust_files(dir)
+        .into_iter()
+        .filter(|path| !is_unit_test_source(dir, path))
+        .collect()
+}
+
+/// Os `tests.rs` e o `test_support/` de `dir`: o que `rust_files` descarta.
+fn unit_test_sources(dir: &Path) -> Vec<PathBuf> {
+    all_rust_files(dir)
+        .into_iter()
+        .filter(|path| is_unit_test_source(dir, path))
+        .collect()
 }
 
 fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
@@ -1581,4 +1623,164 @@ fn prove_synthetic_dir_is_flagged() -> Vec<String> {
     }
 
     Vec::new()
+}
+
+// ------------------------------------------------ fontes dos unitários em `src`
+
+/// Número de usos proibidos a um unitário: processo, espera por relógio, fachada e o binário do cargo.
+fn unit_boundary_refs(source: &str) -> Result<usize, String> {
+    let lexed = lex(source)?;
+    let code = tighten(&lexed.code);
+    let whole: usize = UNIT_FORBIDDEN_WHOLE
+        .iter()
+        .map(|needle| occurrences(&code, needle, true))
+        .sum();
+    let prefix: usize = UNIT_FORBIDDEN_PREFIX
+        .iter()
+        .map(|needle| occurrences(&code, needle, false))
+        .sum();
+    let in_literals = lexed
+        .literals
+        .iter()
+        .filter(|text| text.contains(CARGO_BIN_EXE))
+        .count();
+
+    Ok(whole + prefix + in_literals)
+}
+
+/// Se `source` declara `#[cfg(test)] mod tests;` (atributo e `mod` colados, com qualquer quebra de linha).
+fn declares_test_module(source: &str) -> Result<bool, String> {
+    let code = tighten(&lex(source)?.code);
+
+    Ok(occurrences(&code, "#[cfg(test)] mod tests;", false) > 0)
+}
+
+/// O arquivo do módulo pai de `tests`: `dir/mod.rs` ou `dir.rs`, para `dir/tests.rs`.
+fn parent_module_file(tests: &Path) -> Option<PathBuf> {
+    let dir = tests.parent()?;
+    [dir.join("mod.rs"), dir.with_extension("rs")]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
+fn write_tree(root: &Path, files: &[(&str, &str)]) {
+    for (relative, content) in files {
+        let path = root.join(relative);
+        fs::create_dir_all(path.parent().expect("file below the root")).expect("create the folder");
+        fs::write(path, content).expect("write the synthetic source");
+    }
+}
+
+#[test]
+fn it_should_leave_unit_test_sources_out_of_the_production_rules_and_under_the_memory_lint() {
+    let root = tempfile::tempdir().expect("temporary directory");
+    write_tree(
+        root.path(),
+        &[
+            ("app/a.rs", "fn a() {}"),
+            ("app/rules/tests.rs", "use tempfile::tempdir;"),
+            ("test_support/mod.rs", "use tempfile::tempdir;"),
+            ("app/tests_helper.rs", "fn b() {}"),
+        ],
+    );
+    let names = |paths: &[PathBuf]| -> Vec<String> {
+        paths
+            .iter()
+            .map(|path| {
+                path.strip_prefix(root.path())
+                    .unwrap_or(path)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect()
+    };
+
+    let production = rust_files(root.path());
+    let linted = all_rust_files(root.path());
+    let production_findings = scan_dir(root.path(), tempfile_refs);
+
+    assert_eq!(names(&production), ["app/a.rs", "app/tests_helper.rs"]);
+    assert_eq!(linted.len(), 4, "the lint of memory reads every source");
+    assert_eq!(
+        names(&unit_test_sources(root.path())),
+        ["app/rules/tests.rs", "test_support/mod.rs"]
+    );
+    assert!(
+        production_findings.is_empty(),
+        "unit test sources reached the production rules: {production_findings:?}"
+    );
+}
+
+#[test]
+fn it_should_keep_unit_test_sources_inside_the_crate_boundary() {
+    let mut failures = prove_both_sides(
+        unit_boundary_refs,
+        &[
+            "use std::process::Command;",
+            "fn f() { Command::new(\"x\"); }",
+            "fn f() { let _ = env!(\"CARGO_BIN_EXE_omhl\"); }",
+            "fn f() { std::thread::sleep(d); }",
+            "fn f() { receiver.recv_timeout(d); }",
+            "fn f() { Hexlog::open(&config, deps); }",
+            "fn f(omhl: Omhl<'_>) {}",
+            "fn f(app: &App) {}",
+        ],
+        &[
+            "pub enum Command { Run }",
+            "fn f() { thread::spawn(g); }",
+            "fn f() { let open = 1; Hexlog::new(); }",
+            "// Command::new(\"x\") and thread::sleep in a comment",
+            "fn f() { sleep_ms(1); }",
+            "fn f(error: AppError, deps: OmhlDeps) {}",
+        ],
+    );
+    let sources = unit_test_sources(&src_dir());
+    if sources.is_empty() {
+        failures.push(format!(
+            "no unit test sources under {}",
+            src_dir().display()
+        ));
+    }
+
+    failures.extend(scan_paths(&sources, unit_boundary_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_declare_every_tests_file_with_cfg_test_in_its_parent_module() {
+    let mut failures = prove_both_sides(
+        |snippet| declares_test_module(snippet).map(|declared| usize::from(!declared)),
+        &[
+            "mod tests;",
+            "#[cfg(feature = \"x\")] mod tests;",
+            "#[cfg(test)] mod other;",
+            "#[cfg(test)] mod tests { fn f() {} }",
+            "fn f() {}",
+        ],
+        &[
+            "#[cfg(test)]\nmod tests;",
+            "use a::b;\n\n#[cfg(test)]\nmod tests;\n",
+        ],
+    );
+    for path in unit_test_sources(&src_dir())
+        .into_iter()
+        .filter(|path| path.file_name().is_some_and(|name| name == UNIT_TEST_FILE))
+    {
+        let Some(parent) = parent_module_file(&path) else {
+            failures.push(format!("{}: has no parent module file", path.display()));
+            continue;
+        };
+        match declares_test_module(&read(&parent)) {
+            Ok(true) => {}
+            Ok(false) => failures.push(format!(
+                "{}: parent {} lacks `#[cfg(test)] mod tests;`",
+                path.display(),
+                parent.display()
+            )),
+            Err(error) => failures.push(format!("{}: {error}", parent.display())),
+        }
+    }
+
+    assert_no_failures(&failures);
 }
