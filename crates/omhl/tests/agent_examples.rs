@@ -447,7 +447,10 @@ fn current_of(refusal: &Value) -> &str {
 /// A segunda chamada do texto: o mesmo pedido, com o `base` lido da recusa da primeira.
 fn second_retirement_request(refusal: &Value) -> Value {
     let mut request = example("verifier", 2);
-    request["items"][0]["base"] = json!(current_of(refusal));
+    let base = request["items"][0]
+        .get_mut("base")
+        .expect("the second retirement example carries a `base` to replace");
+    *base = json!(current_of(refusal));
 
     request
 }
@@ -466,6 +469,13 @@ fn it_should_refuse_the_first_verifier_retirement_call_as_not_current() {
         ),
         (&json!("FORK_REJECTED"), &json!("not-current"))
     );
+}
+
+#[test]
+fn it_should_send_the_first_verifier_retirement_call_without_base() {
+    let first = example("verifier", 1);
+
+    assert!(first["items"][0].get("base").is_none());
 }
 
 #[test]

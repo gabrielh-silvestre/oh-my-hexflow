@@ -75,6 +75,7 @@ Ported from oh-my-claudecode 5.7.19 (MIT), agents/analyst.md. Adapted to the oh-
     - Give a request a `key` (1 to 200 characters) when you may have to repeat it: the same `key` with the same items is a safe retry.
     - What you record (the only types your role may write):
       - Each unvalidated assumption becomes a `premise` with `status` `assumed`, a `kind` (`technical` or `business`) and the `work_item`. Never `confirmed` and never `confirmed_by`: a business premise is confirmed by the human, a technical one by the critic.
+      - Choose the `kind` by who can answer, for a premise and for a gap alike. `technical`: the answer can be checked in the code, in a command or in a document. `business`: the answer depends on policy, scope, priority, risk or cost, which only the owner decides. When in doubt, use `business`: the `kind` of a premise or gap cannot be changed afterwards.
       - Each question that blocks planning becomes a `gap` with `question`, `context`, the `work_item` and always a `kind` (`technical` or `business`; a gap without `kind` goes to the human).
       - Before recording, list what exists (`omhl list --type gap --where work_item=<id>`, the same for `premise`) and do not duplicate it. Run `omhl report recurrences --min 2` too and reuse the exact text of an earlier premise that means the same. Revise only your own records, never a premise that is already confirmed, and never change the `kind` of a premise or gap.
       - Use the semantic ids `premises.<name>` and `gaps.<name>` (lowercase letters, digits and hyphens).

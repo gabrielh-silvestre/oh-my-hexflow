@@ -709,8 +709,16 @@ const HANDOFF_ROLES: [&str; 6] = [
     "critic",
 ];
 const DECISION_ROLES: [&str; 4] = ["architect", "critic", "code-reviewer", "security-reviewer"];
-/// Conceitos que só existem no OMC e virariam instrução quebrada aqui (`ralplan`, `executor` e `qa-tester` seguem permitidos).
-const OMC_ONLY_CONCEPTS: [&str; 5] = ["start-work", "AskUserQuestion", "notepad", "/team", "Task("];
+/// Conceitos que só existem no OMC e virariam instrução quebrada aqui (`ralplan` segue permitido; `executor` e `qa-tester` só como descrição de papel, nunca no handoff).
+const OMC_ONLY_CONCEPTS: [&str; 7] = [
+    "start-work",
+    "AskUserQuestion",
+    "notepad",
+    "/team",
+    "Task(",
+    "lsp_",
+    "ast_grep",
+];
 
 /// O texto de uma tag de topo do prompt, sem as tags de abertura e fechamento.
 fn section(body: &str, tag: &str) -> String {
@@ -802,8 +810,9 @@ fn it_should_not_offer_the_planner_a_restart_it_cannot_perform_and_say_to_return
     }
     for phrase in [
         "`spec-exists`",
-        "the work item already has a spec folder",
-        "return to the main session and say so",
+        "do not run `omhl spec init`",
+        "you cannot create a second spec",
+        "edit them with Edit/Write",
     ] {
         assert!(body.contains(phrase), "planner lacks '{phrase}'");
     }
@@ -837,6 +846,100 @@ fn it_should_end_the_output_format_of_every_agent_with_the_next_role_and_the_ope
             squash(&output).contains("(suggested kind: technical | business)"),
             "{}: the questions carry no kind",
             agent.role
+        );
+    }
+}
+
+/// As opções do campo `- Next role: <a | b | none>` do `Output_Format`, sem o `none`.
+fn next_role_options(body: &str) -> BTreeSet<String> {
+    let output = section(body, "Output_Format");
+    let line = output
+        .lines()
+        .find(|line| line.trim_start().starts_with("- Next role: <"))
+        .expect("the output format has a Next role field");
+    let (_, rest) = line.split_once('<').expect("the field opens with <");
+    let (options, _) = rest.split_once('>').expect("the field closes with >");
+
+    options
+        .split('|')
+        .map(str::trim)
+        .filter(|role| *role != "none")
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn it_should_offer_in_the_next_role_field_only_the_seven_roles_and_the_analyst_and_the_critic_for_the_planner()
+ {
+    for agent in agents() {
+        let expected = if agent.role == PLANNER {
+            set(&["analyst", "critic"])
+        } else {
+            strings(roles().into_iter().map(str::to_owned).collect())
+        };
+
+        assert_eq!(
+            next_role_options(&agent.body),
+            expected,
+            "{}: the Next role field",
+            agent.role
+        );
+    }
+}
+
+#[test]
+fn it_should_not_name_qa_tester_or_executor_in_the_handoff_instruction_of_any_agent() {
+    for agent in agents() {
+        for line in agent
+            .body
+            .lines()
+            .filter(|line| line.contains("Hand off by naming the next role"))
+        {
+            for outsider in ["qa-tester", "executor"] {
+                assert!(
+                    !line.contains(outsider),
+                    "{}: the handoff names {outsider}",
+                    agent.role
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn it_should_tell_the_analyst_to_choose_the_kind_by_who_can_answer_and_to_default_to_business() {
+    let body = squash(&agent("analyst").body);
+
+    for phrase in [
+        "Choose the `kind` by who can answer",
+        "policy, scope, priority, risk or cost",
+        "When in doubt, use `business`",
+    ] {
+        assert!(body.contains(phrase), "analyst lacks '{phrase}'");
+    }
+}
+
+#[test]
+fn it_should_tell_the_critic_not_to_confirm_a_technical_premise_that_is_a_business_decision() {
+    let body = squash(&agent("critic").body);
+
+    for phrase in [
+        "judge its content, not only its label",
+        "is in fact a business decision",
+        "do not confirm it",
+    ] {
+        assert!(body.contains(phrase), "critic lacks '{phrase}'");
+    }
+}
+
+#[test]
+fn it_should_forbid_copying_a_secret_value_into_the_graph_in_every_agent_that_records_evidence() {
+    assert!(squash(&agent("security-reviewer").body).contains("Never copy the value of a secret"));
+
+    for role in ["code-reviewer", "critic", "verifier"] {
+        assert!(
+            squash(&agent(role).body).contains("never copy a secret value found in it"),
+            "{role} lacks the secret rule"
         );
     }
 }
