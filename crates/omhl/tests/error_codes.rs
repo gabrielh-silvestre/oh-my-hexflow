@@ -43,6 +43,14 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
             RuleCode::GuidelineRetireByCommand,
             "guideline-retire-by-command",
         ),
+        (RuleCode::RoleUnknown, "role-unknown"),
+        (RuleCode::RoleRecordForbidden, "role-record-forbidden"),
+        (RuleCode::RoleRevisionForbidden, "role-revision-forbidden"),
+        (
+            RuleCode::RoleRetirementForbidden,
+            "role-retirement-forbidden",
+        ),
+        (RuleCode::RoleAnswerForbidden, "role-answer-forbidden"),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected
@@ -131,6 +139,7 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
         RuleCode::RestsOnArchitecture,
         RuleCode::RestsOnTargetType,
         RuleCode::GuidelineRetireByCommand,
+        RuleCode::RoleUnknown,
     ];
 
     let incomplete: Vec<&str> = new_codes

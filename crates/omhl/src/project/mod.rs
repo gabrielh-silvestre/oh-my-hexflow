@@ -10,6 +10,8 @@ pub struct Env<'e> {
     pub git_index_file: Option<&'e std::ffi::OsStr>,
     pub parent_pid: u32,
     pub claude_code: bool,
+    /// Valor cru do `OMHL_ROLE`: vazio é um valor (recusado), não ausência.
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

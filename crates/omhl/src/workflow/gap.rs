@@ -5,6 +5,9 @@ const GUIDELINE: &str = "guideline";
 const ANSWERS: &str = "answers";
 const SUPPORTS: &str = "supports";
 const CONTRADICTS: &str = "contradicts";
+pub const PERSON_PREFIX: &str = "person:";
+/// `confirmed_by.by` da premissa técnica que o `omhl:critic` confirma.
+pub const CRITIC_CONFIRMATION: &str = "critic";
 
 /// Um node do grafo; `data` é `Null` quando o node é nativo.
 #[derive(Debug, Clone)]
@@ -31,9 +34,11 @@ pub struct GapFacts {
     pub edges: Vec<Edge>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Em ordem de preferência: com várias respostas, vale a de quem vem primeiro aqui.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Answerer {
     Human,
+    Critic,
     Autonomous,
 }
 
@@ -48,17 +53,13 @@ pub fn gap_state(facts: &GapFacts, gap: &str) -> GapState {
     let Some(premise) = answering_premise(facts, gap) else {
         return GapState::Open;
     };
-    let human = is_confirmed_premise(&premise.data);
-    if !human && contradicts_a_confirmed_directive(facts, &premise.id) {
+    let by = answerer_of(&premise.data);
+    if by != Answerer::Human && contradicts_a_confirmed_directive(facts, &premise.id) {
         return GapState::NeedsHuman;
     }
 
     GapState::Answered {
-        by: if human {
-            Answerer::Human
-        } else {
-            Answerer::Autonomous
-        },
+        by,
         criterion: is_supported_by_a_confirmed_directive(facts, &premise.id),
     }
 }
@@ -68,23 +69,32 @@ pub fn answered_by(facts: &GapFacts, gap: &str) -> Option<String> {
     answering_premise(facts, gap).map(|premise| premise.id.clone())
 }
 
-/// Vale a primeira confirmada; sem nenhuma, a primeira gravada.
+/// Vale a resposta de pessoa, depois a do critic; empatando, a primeira gravada.
 fn answering_premise<'a>(facts: &'a GapFacts, gap: &str) -> Option<&'a Fact> {
-    let mut answers = facts
+    facts
         .edges
         .iter()
         .filter(|edge| edge.relation == ANSWERS && edge.to == gap)
         .filter_map(|edge| node(facts, &edge.from))
-        .filter(|fact| fact.type_name == PREMISE);
-    let first = answers.next()?;
+        .filter(|fact| fact.type_name == PREMISE)
+        .min_by_key(|fact| answerer_of(&fact.data))
+}
 
-    Some(if is_confirmed_premise(&first.data) {
-        first
-    } else {
-        answers
-            .find(|fact| is_confirmed_premise(&fact.data))
-            .unwrap_or(first)
-    })
+/// Só `person:` conta como humano; o critic só vale confirmado por ele mesmo.
+fn answerer_of(data: &Value) -> Answerer {
+    let by = is_confirmed_premise(data)
+        .then(|| confirmer(data))
+        .flatten();
+    match by {
+        Some(by) if by.starts_with(PERSON_PREFIX) => Answerer::Human,
+        Some(CRITIC_CONFIRMATION) => Answerer::Critic,
+        _ => Answerer::Autonomous,
+    }
+}
+
+/// `confirmed_by.by` do node, quando existe.
+pub fn confirmer(data: &Value) -> Option<&str> {
+    data.get("confirmed_by")?.get("by")?.as_str()
 }
 
 fn node<'a>(facts: &'a GapFacts, id: &str) -> Option<&'a Fact> {

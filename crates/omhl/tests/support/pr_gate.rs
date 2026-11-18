@@ -9,16 +9,17 @@ use hexlog::{
 use serde_json::{Value, json};
 
 use super::omhl::{
-    PR_7, RUN_TESTS, acme, append_ok, attestation_data, attestation_id_for, check_data,
-    decision_data, node_item, premise_data, with_snapshot,
+    PR_7, RUN_TESTS, acme, append_ok, append_ok_as, attestation_data, attestation_id_for,
+    check_data, decision_data, node_item, premise_data, with_snapshot,
 };
-use super::{DEFAULT_INSTANT, author, loader_author, rty, sid, tname};
+use super::{DEFAULT_INSTANT, author, loader_author, role_author, rty, sid, tname};
 
 pub const CI_GREEN: &str = "checks.ci-green-before-merge";
 pub const FEATURE_1: &str = "work-items.feature-1";
 pub const PREMISE: &str = "premises.sqlite-is-fast";
 pub const DECISION: &str = "decisions.use-sqlite";
 pub const ANCHOR: &str = "premises.users-pay-monthly";
+pub const CRITIC_DECISION: &str = "decisions.use-postgres";
 pub const NO_OPEN_CONTRADICTION: &str = "no-open-contradiction";
 pub const DECISIONS_ANCHORED: &str = "decisions-anchored";
 pub const ANCHORS_CONFIRMED: &str = "anchors-confirmed";
@@ -197,6 +198,61 @@ pub fn seed_contradicted_decision(omhl: &mut Omhl<'_>) -> RecordId {
     anchor_decision(omhl);
 
     append_ok(omhl, vec![relation_item("contradicts", PREMISE, DECISION)]).records[0]
+        .id
+        .clone()
+}
+
+/// `DECISION` do architect e `CRITIC_DECISION` do critic, ambas de `work-items.pr-7` e ancoradas em `ANCHOR`
+/// (a do critic só se `critic_anchored`); o critic grava `contradicts` da sua para a do architect, a única
+/// direção que a matriz deixa. Devolve o record da relation `contradicts`. O work item já deve existir.
+pub fn seed_critic_contradiction(omhl: &mut Omhl<'_>, critic_anchored: bool) -> RecordId {
+    let architect = role_author("omhl:architect");
+    let critic = role_author("omhl:critic");
+    append_ok(
+        omhl,
+        vec![node_item(
+            ANCHOR,
+            "premise",
+            confirmed_premise_data("Users pay monthly"),
+        )],
+    );
+    append_ok_as(
+        omhl,
+        architect.clone(),
+        vec![node_item(
+            DECISION,
+            "decision",
+            decision_data("Use SQLite", Some(PR_7)),
+        )],
+    );
+    append_ok_as(
+        omhl,
+        architect,
+        vec![relation_item("rests-on", DECISION, ANCHOR)],
+    );
+    append_ok_as(
+        omhl,
+        critic.clone(),
+        vec![node_item(
+            CRITIC_DECISION,
+            "decision",
+            decision_data("Use Postgres", Some(PR_7)),
+        )],
+    );
+    if critic_anchored {
+        append_ok_as(
+            omhl,
+            critic.clone(),
+            vec![relation_item("rests-on", CRITIC_DECISION, ANCHOR)],
+        );
+    }
+
+    append_ok_as(
+        omhl,
+        critic,
+        vec![relation_item("contradicts", CRITIC_DECISION, DECISION)],
+    )
+    .records[0]
         .id
         .clone()
 }

@@ -71,6 +71,11 @@ pub enum RuleCode {
     RestsOnArchitecture,
     RestsOnTargetType,
     GuidelineRetireByCommand,
+    RoleUnknown,
+    RoleRecordForbidden,
+    RoleRevisionForbidden,
+    RoleAnswerForbidden,
+    RoleRetirementForbidden,
 }
 
 impl RuleCode {
@@ -102,6 +107,11 @@ impl RuleCode {
             RuleCode::RestsOnArchitecture => "rests-on-architecture",
             RuleCode::RestsOnTargetType => "rests-on-target-type",
             RuleCode::GuidelineRetireByCommand => "guideline-retire-by-command",
+            RuleCode::RoleUnknown => "role-unknown",
+            RuleCode::RoleRecordForbidden => "role-record-forbidden",
+            RuleCode::RoleRevisionForbidden => "role-revision-forbidden",
+            RuleCode::RoleAnswerForbidden => "role-answer-forbidden",
+            RuleCode::RoleRetirementForbidden => "role-retirement-forbidden",
         }
     }
 
@@ -126,6 +136,26 @@ impl RuleCode {
             RuleCode::GuidelineRetireByCommand => Some(Guidance {
                 cause: "a guideline can only be retired by the retire command",
                 next_step: "retire a guideline with omhl guideline retire",
+            }),
+            RuleCode::RoleUnknown => Some(Guidance {
+                cause: "OMHL_ROLE must be one of the seven omhl roles and is only accepted under Claude Code",
+                next_step: "unset OMHL_ROLE, or set it to a valid omhl role while running under Claude Code",
+            }),
+            RuleCode::RoleRecordForbidden => Some(Guidance {
+                cause: "the role is not allowed to record this node or relation type, or this content (a divergence is created open), or the relation origin does not exist or is not its own",
+                next_step: "append only the types and content the role may write, or leave this record to the role that owns it",
+            }),
+            RuleCode::RoleRevisionForbidden => Some(Guidance {
+                cause: "the role may only revise nodes it recorded, and never change a premise or gap kind, accept a divergence, or move a contradicted node out of its work item; a confirmed premise or a closed divergence is not revised again",
+                next_step: "append a new node of your own instead, or ask the owner to make the change",
+            }),
+            RuleCode::RoleAnswerForbidden => Some(Guidance {
+                cause: "the critic answers only a gap whose kind is technical; a business gap, a gap without kind or a node that is not a gap is not its to answer",
+                next_step: "leave the gap to the owner, or point the answers relation at a technical gap",
+            }),
+            RuleCode::RoleRetirementForbidden => Some(Guidance {
+                cause: "this caller may not retire this node or relation",
+                next_step: "ask the verifier or the owner to retire the contradicts relation; nobody retires what they recorded",
             }),
             _ => None,
         }

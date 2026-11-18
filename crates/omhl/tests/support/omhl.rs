@@ -1,7 +1,10 @@
 use ::omhl::error::OmhlError;
 use ::omhl::facade::{Omhl, OmhlDeps};
+use ::omhl::graphs;
+use ::omhl::native::NativeBase;
 use hexlog::{
-    AppendItem, AppendOutcome, AppendRequest, ItemBody, Lineage, RecordId, Snapshot, TenantId,
+    AppendItem, AppendOutcome, AppendRequest, Author, ItemBody, Lineage, RecordId, Snapshot,
+    TenantId,
 };
 use serde_json::{Value, json};
 
@@ -47,6 +50,18 @@ impl OmhlHarness {
         omhl.ensure_tenant(&acme()).expect("the tenant is created");
 
         omhl
+    }
+
+    /// Grava direto no `hexlog`, sem a guarda do `omhl`: fixture de um record que a guarda impede de gravar
+    /// (autor fora da matriz do papel). O banco é o mesmo do `open`.
+    pub fn forge(&self, req: &AppendRequest) -> AppendOutcome {
+        let native = NativeBase;
+        let catalog = graphs::catalog().expect("the embedded catalogs build");
+
+        self.raw
+            .hexlog(catalog, &native)
+            .append(req)
+            .expect("the forged append is accepted")
     }
 }
 
@@ -234,6 +249,40 @@ pub fn append_ok(omhl: &mut Omhl<'_>, items: Vec<AppendItem>) -> AppendOutcome {
 pub fn refusal(omhl: &mut Omhl<'_>, items: Vec<AppendItem>) -> OmhlError {
     omhl.append(&request(items))
         .expect_err("the append is refused")
+}
+
+/// Como `append_ok`, com o autor dado; devolve o erro em vez de falhar o teste.
+pub fn append_as(
+    omhl: &mut Omhl<'_>,
+    author: Author,
+    items: Vec<AppendItem>,
+) -> Result<AppendOutcome, OmhlError> {
+    omhl.append(&AppendRequest {
+        author,
+        ..request(items)
+    })
+}
+
+/// Como `append_as`, falhando o teste se a guarda recusar.
+pub fn append_ok_as(omhl: &mut Omhl<'_>, author: Author, items: Vec<AppendItem>) -> AppendOutcome {
+    append_as(omhl, author, items).expect("the append is accepted")
+}
+
+/// String kebab do código de uma recusa de regra; falha o teste se o erro vier do `hexlog`.
+/// Compara-se por texto para os testes compilarem antes de o código existir no `RuleCode`.
+pub fn rule_code(error: &OmhlError) -> &'static str {
+    match error {
+        OmhlError::Rule { code, .. } => code.as_str(),
+        OmhlError::Hexlog(other) => panic!("expected a rule refusal, got a hexlog error: {other}"),
+    }
+}
+
+/// Record corrente do node, a `base` das revisões e retiradas.
+pub fn record_id_of(omhl: &mut Omhl<'_>, id: &str) -> RecordId {
+    omhl.get(&acme(), &sid(id))
+        .expect("the node is read")
+        .expect("the node exists")
+        .record_id
 }
 
 /// Grava o pull request `work-items.pr-7` aberto e devolve o id do record.

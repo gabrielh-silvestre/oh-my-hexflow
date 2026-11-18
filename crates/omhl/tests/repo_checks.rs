@@ -1,8 +1,10 @@
 mod support;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use ::omhl::guard::{ROLE_REFERENCE_COMMANDS, ROLE_REFERENCE_MATRIX};
 use ::omhl::mechanical::plan::{CheckNode, plan_run};
 use ::omhl::mechanical::spec::snapshot_for;
 use hexlog::SnapshotKind;
@@ -202,6 +204,62 @@ fn missing_from<'a>(page: &str, wanted: &[&'a str]) -> Vec<&'a str> {
         .iter()
         .copied()
         .filter(|item| !page.contains(&format!("`{item}`")))
+        .collect()
+}
+
+/// Colunas da matriz por papel: `commands`, `append.nodes`, `append.relations`, `append.retire`.
+type RoleColumns = Vec<BTreeSet<String>>;
+
+fn cell_items(cell: &str) -> BTreeSet<String> {
+    cell.split(',')
+        .map(|item| item.trim().trim_matches('`').to_string())
+        .filter(|item| !item.is_empty())
+        .collect()
+}
+
+/// Primeira tabela da seção `### A matriz por papel`, por papel (sem cabeçalho e separador).
+fn documented_role_matrix(page: &str) -> BTreeMap<String, RoleColumns> {
+    page.lines()
+        .skip_while(|line| *line != "### A matriz por papel")
+        .skip(1)
+        .skip_while(|line| !line.starts_with('|'))
+        .take_while(|line| line.starts_with('|'))
+        .skip(2)
+        .map(|row| {
+            let mut cells = row.trim().trim_matches('|').split('|');
+            let role = cells.next().expect("the row has a role cell");
+
+            (
+                role.trim().trim_matches('`').to_string(),
+                cells.map(cell_items).collect(),
+            )
+        })
+        .collect()
+}
+
+fn set_of(items: &[&str]) -> BTreeSet<String> {
+    items.iter().map(|item| item.to_string()).collect()
+}
+
+fn compiled_role_matrix() -> BTreeMap<String, RoleColumns> {
+    ROLE_REFERENCE_COMMANDS
+        .iter()
+        .map(|(role, commands)| {
+            let (_, nodes, relations, retire) = ROLE_REFERENCE_MATRIX
+                .iter()
+                .find(|(matrix_role, ..)| matrix_role == role)
+                .expect("the matrix covers the role");
+
+            (
+                role.to_string(),
+                vec![
+                    set_of(commands),
+                    set_of(nodes),
+                    set_of(relations),
+                    set_of(retire),
+                ],
+            )
+        })
         .collect()
 }
 
@@ -446,4 +504,13 @@ fn it_should_cover_every_required_anchor_in_the_directives_flow_skill() {
     let missing = missing_from(&skill, &SKILL_ANCHORS);
 
     assert_eq!(missing, Vec::<&str>::new());
+}
+
+#[test]
+fn it_should_keep_the_matrix_table_in_docs_directives_flow_equal_to_the_compiled_matrix() {
+    let page = read_repo_file(DIRECTIVES_FLOW_PAGE);
+
+    let documented = documented_role_matrix(&page);
+
+    assert_eq!(documented, compiled_role_matrix());
 }

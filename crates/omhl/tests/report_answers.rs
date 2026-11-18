@@ -40,6 +40,16 @@ fn human_premise(id: &str) -> Fact {
     fact(id, "premise", false, data)
 }
 
+/// Premissa técnica que o critic confirma: `confirmed_by.by` é `critic`, não uma pessoa.
+fn critic_premise(id: &str) -> Fact {
+    let data = json!({
+        "text": "t", "status": "confirmed", "kind": "technical", "work_item": W1,
+        "confirmed_by": { "by": "critic", "question": "q", "answer": "a" },
+    });
+
+    fact(id, "premise", false, data)
+}
+
 fn agent_premise(id: &str) -> Fact {
     let data = json!({ "text": "t", "status": "assumed", "kind": "technical", "work_item": W1 });
 
@@ -307,6 +317,42 @@ fn it_should_not_need_a_human_when_the_contradicted_directive_has_no_confirmed_b
 }
 
 #[test]
+fn it_should_need_a_human_when_a_critic_confirmed_answer_contradicts_a_confirmed_directive() {
+    let nodes = vec![critic_premise(ANSWER), confirmed_directive(DIRECTIVE)];
+    let edges = vec![
+        edge("answers", ANSWER, GAP),
+        edge("contradicts", ANSWER, DIRECTIVE),
+    ];
+
+    let state = state_of(nodes, edges);
+
+    assert_eq!(state, GapState::NeedsHuman);
+}
+
+#[test]
+fn it_should_take_a_later_person_confirmed_answer_over_an_earlier_critic_answer_that_needs_the_human()
+ {
+    let nodes = vec![
+        critic_premise("premises.p2"),
+        human_premise(ANSWER),
+        confirmed_directive(DIRECTIVE),
+    ];
+    let edges = vec![
+        edge("answers", "premises.p2", GAP),
+        edge("contradicts", "premises.p2", DIRECTIVE),
+        edge("answers", ANSWER, GAP),
+    ];
+    let facts = facts(nodes, edges);
+
+    let taken = (gap_state(&facts, GAP), answered_by(&facts, GAP));
+
+    assert_eq!(
+        taken,
+        (answered(Answerer::Human, false), Some(ANSWER.to_owned()))
+    );
+}
+
+#[test]
 fn it_should_keep_a_gap_open_when_a_premise_answers_another_premise() {
     let nodes = vec![agent_premise(ANSWER), agent_premise("premises.p2")];
     let edges = vec![edge("answers", "premises.p2", ANSWER)];
@@ -439,6 +485,22 @@ fn directive_node(id: &str) -> Value {
     )
 }
 
+fn technical_gap(id: &str, work_item: &str) -> Value {
+    let data =
+        json!({ "question": "q", "context": "c", "work_item": work_item, "kind": "technical" });
+
+    node(id, "gap", data)
+}
+
+fn critic_premise_node(id: &str) -> Value {
+    let data = json!({
+        "text": "t", "status": "confirmed", "kind": "technical", "work_item": W1,
+        "confirmed_by": { "by": "critic", "question": "q", "answer": "a" },
+    });
+
+    node(id, "premise", data)
+}
+
 fn work_item_nodes() -> Vec<Value> {
     [W1, W2]
         .iter()
@@ -455,9 +517,22 @@ fn json_line(text: &str) -> Value {
 }
 
 fn append(project: &Project, items: Vec<Value>) {
+    append_with(project, items, omhl(&["append"]));
+}
+
+/// `append` sob o Claude Code com `OMHL_ROLE=omhl:critic`: o autor gravado é o critic.
+fn append_as_critic(project: &Project, items: Vec<Value>) {
+    let critic = omhl(&["append"])
+        .env("CLAUDECODE", "1")
+        .env("OMHL_ROLE", "omhl:critic");
+
+    append_with(project, items, critic);
+}
+
+fn append_with(project: &Project, items: Vec<Value>, command: support::child::Cmd) {
     let mut request = json!({});
     request["items"] = Value::Array(items);
-    let appended = omhl(&["append"])
+    let appended = command
         .cwd(project.dir())
         .xdg(project.xdg())
         .stdin(request.to_string())
@@ -571,6 +646,48 @@ fn it_should_report_a_premise_with_confirmed_by_as_answered_by_a_human() {
     let report = report(&project);
 
     assert_eq!(entry(&report, GAP)["answerer"], json!("human"));
+}
+
+/// Gap técnico `GAP` respondido pelo critic com `ANSWER`; `directives` entram antes, como o dono os gravou,
+/// e `contradicting` lista os destinos que a premissa do critic contradiz.
+fn seed_answered_by_critic(project: &Project, directives: Vec<Value>, contradicting: &[&str]) {
+    let mut nodes = vec![technical_gap(GAP, W1)];
+    nodes.extend(directives);
+    seed(project, nodes, vec![]);
+    append_as_critic(project, vec![critic_premise_node(ANSWER)]);
+    let mut relations = vec![relation("answers", ANSWER, GAP)];
+    relations.extend(
+        contradicting
+            .iter()
+            .map(|target| relation("contradicts", ANSWER, target)),
+    );
+    append_as_critic(project, relations);
+}
+
+#[test]
+fn it_should_report_a_critic_confirmed_answer_as_critic_in_report_answers() {
+    let project = Project::new("acme");
+    seed_answered_by_critic(&project, vec![], &[]);
+
+    let report = report(&project);
+
+    assert_eq!(entry(&report, GAP)["answerer"], json!("critic"));
+}
+
+#[test]
+fn it_should_report_needs_human_when_a_critic_confirmed_answer_contradicts_a_confirmed_directive() {
+    let project = Project::new("acme");
+    seed_answered_by_critic(&project, vec![directive_node(DIRECTIVE)], &[DIRECTIVE]);
+
+    let report = report(&project);
+
+    assert_eq!(
+        entry(&report, GAP),
+        json!({
+            "id": GAP, "work_item": W1, "state": "needs-human", "answered_by": ANSWER,
+            "author": { "agent": "omhl:critic", "client": "cli" },
+        })
+    );
 }
 
 #[test]

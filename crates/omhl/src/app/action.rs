@@ -1,7 +1,8 @@
 use hexlog::Author;
 use serde_json::Value;
 
-use crate::guard::GUIDELINE_RETIRE_CLIENT;
+use crate::error::{OmhlError, RuleCode};
+use crate::guard::{GUIDELINE_RETIRE_CLIENT, known_role};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -111,6 +112,22 @@ impl Caller {
         Caller {
             client: "cli",
             agent: "claude",
+        }
+    }
+
+    /// `OMHL_ROLE` válido troca só o `agent`; valor fora dos sete papéis, ou fora do Claude Code, é recusado
+    /// (ADR 0007: a opção é respeitada ou recusada, nunca ignorada).
+    pub fn cli_with_role(claude_code: bool, role: Option<&str>) -> Result<Caller, OmhlError> {
+        match (claude_code, role) {
+            (true, None) => Ok(Caller::cli_under_claude_code()),
+            (false, None) => Ok(Caller::cli()),
+            (true, Some(role)) => known_role(role)
+                .map(|agent| Caller {
+                    agent,
+                    ..Caller::cli()
+                })
+                .ok_or_else(|| OmhlError::rule(RuleCode::RoleUnknown, "")),
+            (false, Some(_)) => Err(OmhlError::rule(RuleCode::RoleUnknown, "")),
         }
     }
 

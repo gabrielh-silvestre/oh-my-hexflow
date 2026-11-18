@@ -324,11 +324,7 @@ fn execute(
 ) -> Result<Value, AppError> {
     let action = to_action(command, stdin, env)?;
 
-    let caller = if env.claude_code {
-        Caller::cli_under_claude_code()
-    } else {
-        Caller::cli()
-    };
+    let caller = Caller::cli_with_role(env.claude_code, env.role.as_deref())?;
 
     run_action(start, db, env, &caller, &action)
 }

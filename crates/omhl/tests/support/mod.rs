@@ -236,6 +236,33 @@ pub fn author() -> Author {
     }
 }
 
+/// A sessão principal sob o Claude Code: `claude` pelo client `cli`.
+pub fn agent_author() -> Author {
+    Author {
+        agent: "claude".to_owned(),
+        model: None,
+        client: "cli".to_owned(),
+    }
+}
+
+/// O dono num terminal fora do Claude Code: `user` pelo client `cli`.
+pub fn cli_author() -> Author {
+    Author {
+        agent: "user".to_owned(),
+        model: None,
+        client: "cli".to_owned(),
+    }
+}
+
+/// Um papel portado como o `OMHL_ROLE` o grava: `role` inteiro (`omhl:critic`) no agent, client `cli`.
+pub fn role_author(role: &str) -> Author {
+    Author {
+        agent: role.to_owned(),
+        model: None,
+        client: "cli".to_owned(),
+    }
+}
+
 pub fn loader_author() -> Author {
     Author {
         agent: "loader".to_owned(),

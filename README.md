@@ -274,7 +274,10 @@ O comando atesta a árvore do `HEAD`.
 O `omhl attest` à mão é recusado para um check com `run` (`check-run-author`).
 Só o `omhl check run` grava a attestation desse check, e só o `omhl load` grava
 o check. É um freio, não uma parede: o agente que chama a CLI pelo Bash
-continua indistinguível do usuário.
+continua indistinguível do usuário. Só os agentes portados se distinguem: com
+`OMHL_ROLE=omhl:<papel>` sob o Claude Code, o record sai com `agent`
+`omhl:<papel>`. A variável é autodeclarada, então também é um freio, não uma
+parede.
 
 Cada attestation do `omhl check run` leva o `spec_digest` (sha256 de `run`,
 `timeout_secs` e `expect`), e o `gate-pr` só aceita a que bate com a definição

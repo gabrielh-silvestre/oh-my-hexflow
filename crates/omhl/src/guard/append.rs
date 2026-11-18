@@ -69,9 +69,9 @@ impl<'i> NodeItem<'i> {
 
 /// Tipo e `kind` de um node, lidos do lote ou do banco.
 #[derive(Clone)]
-struct Endpoint {
-    type_name: String,
-    kind: Option<String>,
+pub(super) struct Endpoint {
+    pub(super) type_name: String,
+    pub(super) kind: Option<String>,
 }
 
 pub(super) struct Guard<'a, 'd> {
@@ -82,7 +82,7 @@ pub(super) struct Guard<'a, 'd> {
     probed: Option<Result<ProbeOutcome, ProbeError>>,
     probed_index_tree: Option<Result<ProbeOutcome, ProbeError>>,
     /// Nodes já vistos no lote, na ordem dos itens; prevalecem sobre o banco.
-    batch: HashMap<SemanticId, Endpoint>,
+    pub(super) batch: HashMap<SemanticId, Endpoint>,
 }
 
 /// Valida o lote inteiro, lendo só o banco; o primeiro achado encerra com erro.
@@ -101,6 +101,7 @@ pub(crate) fn check_append(
         batch: HashMap::new(),
     };
     for (index, item) in req.items.iter().enumerate() {
+        guard.check_role(index, item)?;
         if let Some(node) = NodeItem::from_item(index, item) {
             guard.check_node(&node)?;
         } else if let ItemBody::Retirement {
@@ -215,7 +216,7 @@ impl Guard<'_, '_> {
             return Ok(());
         }
 
-        check_confirmation(node)
+        check_confirmation(node, &self.author.agent)
     }
 
     /// Fechar só por `close_work_item`, e work item fechado é definitivo.
@@ -287,7 +288,7 @@ impl Guard<'_, '_> {
             .map_err(|code| OmhlError::rule(code, &format!("/items/{index}/body/to")))
     }
 
-    fn endpoint_of(&mut self, id: &SemanticId) -> Result<Option<Endpoint>, OmhlError> {
+    pub(super) fn endpoint_of(&mut self, id: &SemanticId) -> Result<Option<Endpoint>, OmhlError> {
         if let Some(node) = self.batch.get(id) {
             return Ok(Some(node.clone()));
         }
