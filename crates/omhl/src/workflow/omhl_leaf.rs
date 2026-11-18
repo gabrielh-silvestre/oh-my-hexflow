@@ -1,6 +1,6 @@
 //! A folha da CLI que um comando `omhl` pede: o nome que o `omhl-allow` do papel lista.
 
-pub const GLOBAL_OPTIONS: [&str; 2] = ["--db", "--project-dir"];
+pub const GLOBAL_OPTIONS: [&str; 3] = ["--db", "--project-dir", "--format"];
 pub const INFO_FLAGS: [&str; 4] = ["-h", "--help", "-V", "--version"];
 const HELP_WORD: &str = "help";
 
@@ -45,7 +45,7 @@ pub fn resolve_leaf(args: &[String], groups: &[&str]) -> Option<Leaf> {
     }
 }
 
-/// `--db=x`, `--project-dir=x`.
+/// `--db=x`, `--project-dir=x`, `--format=x`.
 fn is_global_assignment(arg: &str) -> bool {
     GLOBAL_OPTIONS.iter().any(|option| {
         arg.strip_prefix(option)
@@ -76,6 +76,24 @@ mod tests {
             leaf_of(&["--db=x", "--project-dir=.", "list"]),
             named("list")
         );
+    }
+
+    #[test]
+    fn it_should_skip_the_format_option_given_as_two_words_before_the_leaf() {
+        let args = ["--format", "json", "list"];
+
+        let leaf = leaf_of(&args);
+
+        assert_eq!(leaf, named("list"));
+    }
+
+    #[test]
+    fn it_should_skip_the_format_option_given_as_an_assignment_before_the_leaf() {
+        let args = ["--format=json", "list"];
+
+        let leaf = leaf_of(&args);
+
+        assert_eq!(leaf, named("list"));
     }
 
     #[test]
