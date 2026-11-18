@@ -6,7 +6,7 @@ Vale para todo comando desta skill. A página de cada comando lista só os erros
 
 Um erro sai no stderr, numa linha JSON, com saída 1. Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
 
-A ordem das checagens é: uso do clap; argumentos e entrada do comando; existência do `--project-dir`; marcador; `--db`. O primeiro que falha é o que você vê.
+A ordem das checagens é: uso do clap; argumentos e entrada do comando; `OMHL_ROLE`; existência do `--project-dir`; marcador; `--db`. O primeiro que falha é o que você vê.
 
 - `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
 - `role-unknown` (saída 1): o `OMHL_ROLE` tem um valor fora dos sete papéis, ou foi definido fora do Claude Code. Corrija ou remova a variável.

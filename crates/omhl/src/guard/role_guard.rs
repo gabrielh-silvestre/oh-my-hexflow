@@ -6,8 +6,8 @@ use serde_json::Value;
 
 use super::append::Guard;
 use super::role::{
-    CLAUDE, CRITIC, Revision, contradicts_retirement_allowed, known_role, matrix_lists,
-    node_allowed, revision_allowed,
+    CLAUDE, CRITIC, Revision, contradicts_retirement_allowed, creation_allowed, known_role,
+    matrix_lists, node_allowed, revision_allowed,
 };
 use crate::error::{OmhlError, RuleCode};
 
@@ -59,8 +59,25 @@ impl Guard<'_, '_> {
             return Err(refusal(RuleCode::RoleRecordForbidden, index, "body/type"));
         }
         if base.is_none() {
+            if role.is_some() && !creation_allowed(type_name, data) {
+                let pointer = "body/data/resolution";
+                return Err(refusal(RuleCode::RoleRecordForbidden, index, pointer));
+            }
             return Ok(());
         }
+
+        self.check_role_revision(index, id, type_name, data, role)
+    }
+
+    /// Revisão de node existente: regras do papel portado e, para qualquer autor, o `work_item` de node em contradição.
+    fn check_role_revision(
+        &mut self,
+        index: usize,
+        id: &SemanticId,
+        type_name: &str,
+        data: &Value,
+        role: Option<&'static str>,
+    ) -> Result<(), OmhlError> {
         let Some(current) = self.hexlog.get(self.tenant, id)? else {
             return Ok(());
         };

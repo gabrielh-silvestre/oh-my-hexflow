@@ -144,6 +144,11 @@ pub(super) fn node_allowed(role: &str, type_name: &str, data: &Value) -> bool {
     listed && content_ok
 }
 
+/// Papel portado cria divergência só `open`; as demais resoluções vêm de revisão (verifier) ou do humano.
+pub(super) fn creation_allowed(type_name: &str, data: &Value) -> bool {
+    type_name != "divergence" || resolution_of(data) == Some("open")
+}
+
 fn confirmed_by_critic(data: &Value) -> bool {
     is_confirmed_premise(data) && confirmer(data) == Some(CRITIC_CONFIRMATION)
 }
@@ -157,9 +162,10 @@ pub(super) struct Revision<'a> {
     pub(super) revised: &'a Value,
 }
 
-/// Só o próprio papel revisa o que gravou; `kind` de premissa e gap não muda e divergência não vira `accepted`.
+/// Só o próprio papel revisa o que gravou; `kind` de premissa e gap não muda, divergência não vira `accepted`
+/// e premissa confirmada ou divergência já resolvida não são revisadas, nem pelo autor.
 pub(super) fn revision_allowed(revision: &Revision<'_>) -> bool {
-    if changes_kind(revision) || accepts_divergence(revision) {
+    if changes_kind(revision) || accepts_divergence(revision) || is_settled(revision) {
         return false;
     }
 
@@ -171,6 +177,14 @@ pub(super) fn revision_allowed(revision: &Revision<'_>) -> bool {
 fn changes_kind(revision: &Revision<'_>) -> bool {
     matches!(revision.type_name, "premise" | "gap")
         && revision.current.get("kind") != revision.revised.get("kind")
+}
+
+fn is_settled(revision: &Revision<'_>) -> bool {
+    match revision.type_name {
+        "premise" => is_confirmed_premise(revision.current),
+        "divergence" => resolution_of(revision.current) != Some("open"),
+        _ => false,
+    }
 }
 
 fn resolution_of(data: &Value) -> Option<&str> {
@@ -194,6 +208,7 @@ fn verifier_closes_divergence(revision: &Revision<'_>) -> bool {
         && resolution_of(revision.current) == Some("open")
         && resolution_of(revision.revised) == Some("code-fixed")
         && evidence_of(revised).starts_with(evidence_of(current))
+        && evidence_of(revised).len() > evidence_of(current).len()
         && fields_except(current, &["resolution", "evidence"])
             == fields_except(revised, &["resolution", "evidence"])
 }

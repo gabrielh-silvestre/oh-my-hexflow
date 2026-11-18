@@ -1,6 +1,7 @@
 mod support;
 
 use std::ffi::OsString;
+use std::fs;
 
 use hexlog::{AppendItem, AppendRequest, Author, RecordId};
 use omhl::adapters::cli;
@@ -126,6 +127,47 @@ fn it_should_refuse_an_omhl_role_outside_claude_code() {
     assert_eq!(
         json_line(&appended.stderr)["error"]["code"],
         json!("role-unknown")
+    );
+}
+
+#[test]
+fn it_should_refuse_an_empty_omhl_role_under_claude_code() {
+    let project = Project::new("acme");
+
+    let appended = append_decision(&project, true, Some(""));
+
+    assert_eq!(
+        json_line(&appended.stderr)["error"]["code"],
+        json!("role-unknown")
+    );
+}
+
+/// Carrega uma diretiva e apaga o arquivo: o node segue vigente, órfão, pronto para o `guideline retire`.
+fn seed_orphaned_guideline(project: &Project, slug: &str) {
+    let dir = project.dir().join(".omhl/guidelines");
+    fs::create_dir_all(&dir).expect("the guidelines directory is created");
+    let file = dir.join(format!("{slug}.toml"));
+    fs::write(&file, "kind = \"business\"\ntext = \"Be brief\"\n").expect("the file is written");
+    run_omhl(project, &["load"], "", false, None);
+    fs::remove_file(file).expect("the file is removed");
+}
+
+#[test]
+fn it_should_refuse_guideline_retire_when_omhl_role_is_set() {
+    let project = Project::new("acme");
+    seed_orphaned_guideline(&project, "brief");
+
+    let retired = run_omhl(
+        &project,
+        &["guideline", "retire", "guidelines.brief"],
+        "",
+        true,
+        Some("omhl:critic"),
+    );
+
+    assert_eq!(
+        json_line(&retired.stderr)["error"]["code"],
+        json!("role-retirement-forbidden")
     );
 }
 
@@ -1306,4 +1348,294 @@ fn it_should_accept_an_answers_relation_from_omhl_critic_to_a_technical_gap() {
     let result = appended_count(&mut omhl, role_author(CRITIC), vec![answers]);
 
     assert_eq!(result, Ok(1));
+}
+
+// Divergência criada por papel portado: só `open`
+
+#[test]
+fn it_should_refuse_a_ported_role_creating_a_divergence_that_is_not_open() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let closed = [
+        divergence_data("accepted"),
+        fixed_divergence_data(),
+        spec_stale_divergence_data(),
+    ];
+    let reviewers = [CODE_REVIEWER, "omhl:security-reviewer", VERIFIER];
+
+    let codes: Vec<&str> = reviewers
+        .iter()
+        .flat_map(|role| closed.iter().map(move |data| (role, data)))
+        .map(|(role, data)| {
+            let divergence = node_item(DIVERGENCE, "divergence", data.clone());
+
+            refused_code(&mut omhl, role_author(role), vec![divergence])
+        })
+        .collect();
+
+    assert_eq!(codes, vec![RECORD_FORBIDDEN; 9]);
+}
+
+// Dono depois de confirmar ou fechar: o critic e o verifier não reescrevem
+
+#[test]
+fn it_should_refuse_omhl_critic_rewriting_a_premise_it_only_confirmed() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        ANALYST,
+        node_item(PREMISE, "premise", technical_premise_data()),
+    );
+    confirm_as_critic(&mut omhl).expect("the critic confirms the premise of the analyst");
+    let base = record_id_of(&mut omhl, PREMISE);
+    let rewritten = with_field(
+        confirmed_technical_premise_data("critic"),
+        "text",
+        json!("The queue is lossy"),
+    );
+    let revision = revision_item(PREMISE, "premise", rewritten, &base);
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![revision]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_omhl_critic_revising_a_confirmed_premise_it_created() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_critic_premise(&mut omhl);
+    let base = record_id_of(&mut omhl, PREMISE);
+    let rewritten = with_field(
+        confirmed_technical_premise_data("critic"),
+        "text",
+        json!("The queue is lossy"),
+    );
+    let revision = revision_item(PREMISE, "premise", rewritten, &base);
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![revision]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_omhl_verifier_rewriting_a_divergence_it_closed_as_code_fixed() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        CODE_REVIEWER,
+        node_item(DIVERGENCE, "divergence", divergence_data("open")),
+    );
+    let open_base = record_id_of(&mut omhl, DIVERGENCE);
+    seed(
+        &mut omhl,
+        VERIFIER,
+        revision_item(
+            DIVERGENCE,
+            "divergence",
+            fixed_divergence_data(),
+            &open_base,
+        ),
+    );
+    let closed_base = record_id_of(&mut omhl, DIVERGENCE);
+    let rewritten = with_field(fixed_divergence_data(), "text", json!("a different claim"));
+    let revision = revision_item(DIVERGENCE, "divergence", rewritten, &closed_base);
+
+    let code = refused_code(&mut omhl, role_author(VERIFIER), vec![revision]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
+fn it_should_accept_omhl_analyst_revising_its_own_assumed_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        ANALYST,
+        node_item(PREMISE, "premise", technical_premise_data()),
+    );
+    let base = record_id_of(&mut omhl, PREMISE);
+    let reworded = with_field(
+        technical_premise_data(),
+        "text",
+        json!("The queue is durable on disk"),
+    );
+    let revision = revision_item(PREMISE, "premise", reworded, &base);
+
+    let result = appended_count(&mut omhl, role_author(ANALYST), vec![revision]);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_accept_a_reviewer_adding_evidence_to_its_own_open_divergence() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        CODE_REVIEWER,
+        node_item(DIVERGENCE, "divergence", divergence_data("open")),
+    );
+    let base = record_id_of(&mut omhl, DIVERGENCE);
+    let mut more_evidence = divergence_data("open");
+    more_evidence["evidence"]
+        .as_array_mut()
+        .expect("evidence is a list")
+        .push(json!({ "source": "git", "summary": "seen in the last commit" }));
+    let revision = revision_item(DIVERGENCE, "divergence", more_evidence, &base);
+
+    let result = appended_count(&mut omhl, role_author(CODE_REVIEWER), vec![revision]);
+
+    assert_eq!(result, Ok(1));
+}
+
+// O verifier fecha com evidência nova
+
+#[test]
+fn it_should_refuse_omhl_verifier_closing_a_divergence_without_new_evidence() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        CODE_REVIEWER,
+        node_item(DIVERGENCE, "divergence", divergence_data("open")),
+    );
+    let base = record_id_of(&mut omhl, DIVERGENCE);
+    let closed = with_field(divergence_data("open"), "resolution", json!("code-fixed"));
+    let revision = revision_item(DIVERGENCE, "divergence", closed, &base);
+
+    let code = refused_code(&mut omhl, role_author(VERIFIER), vec![revision]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+// Regras sem teste até aqui
+
+#[test]
+fn it_should_refuse_omhl_critic_confirming_a_premise_of_another_author_while_changing_its_text() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        ANALYST,
+        node_item(PREMISE, "premise", technical_premise_data()),
+    );
+    let base = record_id_of(&mut omhl, PREMISE);
+    let rewritten = with_field(
+        confirmed_technical_premise_data("critic"),
+        "text",
+        json!("The queue is lossy"),
+    );
+    let revision = revision_item(PREMISE, "premise", rewritten, &base);
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![revision]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_omhl_critic_confirming_a_premise_already_confirmed_by_a_person() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    append_ok_as(
+        &mut omhl,
+        agent_author(),
+        vec![node_item(
+            PREMISE,
+            "premise",
+            confirmed_technical_premise_data("person:ana"),
+        )],
+    );
+    let base = record_id_of(&mut omhl, PREMISE);
+    let reconfirmed = revision_item(
+        PREMISE,
+        "premise",
+        confirmed_technical_premise_data("critic"),
+        &base,
+    );
+
+    let code = refused_code(&mut omhl, role_author(CRITIC), vec![reconfirmed]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
+fn it_should_accept_a_relation_from_a_node_created_earlier_in_the_same_batch() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        ANALYST,
+        node_item(PREMISE, "premise", technical_premise_data()),
+    );
+    append_ok(
+        &mut omhl,
+        vec![node_item(GAP, "gap", gap_data(Some("technical")))],
+    );
+    let base = record_id_of(&mut omhl, PREMISE);
+    let confirmed = revision_item(
+        PREMISE,
+        "premise",
+        confirmed_technical_premise_data("critic"),
+        &base,
+    );
+    let answers = relation_item("answers", PREMISE, GAP);
+
+    let result = appended_count(&mut omhl, role_author(CRITIC), vec![confirmed, answers]);
+
+    assert_eq!(result, Ok(2));
+}
+
+#[test]
+fn it_should_refuse_omhl_verifier_closing_a_divergence_whose_resolution_is_not_open() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let more_evidence = {
+        let mut data = fixed_divergence_data();
+        data["evidence"]
+            .as_array_mut()
+            .expect("evidence is a list")
+            .push(json!({ "source": "ci", "summary": "green after the fix" }));
+        data
+    };
+    let cases = [
+        ("divergences.accepted", divergence_data("accepted")),
+        ("divergences.fixed", fixed_divergence_data()),
+    ];
+    let bases: Vec<(&str, RecordId)> = cases
+        .into_iter()
+        .map(|(id, data)| {
+            append_ok_as(
+                &mut omhl,
+                agent_author(),
+                vec![node_item(id, "divergence", data)],
+            );
+
+            (id, record_id_of(&mut omhl, id))
+        })
+        .collect();
+
+    let codes: Vec<&str> = bases
+        .iter()
+        .map(|(id, base)| {
+            let revision = revision_item(id, "divergence", more_evidence.clone(), base);
+
+            refused_code(&mut omhl, role_author(VERIFIER), vec![revision])
+        })
+        .collect();
+
+    assert_eq!(codes, vec![REVISION_FORBIDDEN; 2]);
 }

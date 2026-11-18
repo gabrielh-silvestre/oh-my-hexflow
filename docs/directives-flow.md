@@ -103,7 +103,7 @@ A confirmação é a aprovação do humano dentro da sessão. O registro leva o 
 ```
 
 - `by` tem de 1 a 100 caracteres e começa com `person:`, seguido de ao menos um caractere.
-- Exceção: o `omhl:critic` confirma premissa técnica com `"by": "critic"`. Vale só quando o autor é `omhl:critic`, o tipo é `premise`, o `kind` é `technical` e `question` e `answer` literais estão presentes e não vazios. Qualquer outro autor, tipo ou `kind` com `by: "critic"` é `confirmation-invalid`.
+- Exceção: o `omhl:critic` confirma premissa técnica com `"by": "critic"`. Vale só quando o autor é `omhl:critic`, o tipo é `premise`, o `kind` é `technical` e `question` e `answer` literais estão presentes e não vazios. Outro autor com `by: "critic"`, ou o critic numa premissa de negócio que ele cria, é `confirmation-invalid`. O critic gravando diretiva ou divergência responde antes `role-record-forbidden`, e revisando premissa de negócio alheia, `role-revision-forbidden`.
 - `question` e `answer` têm de 1 a 2000 caracteres. Um texto maior é recusado, nunca truncado: o literal não pode mudar.
 - O campo é opcional em `premise`, `guideline` e `divergence`. Um record antigo, sem ele, continua válido.
 - `premise` ganha também o `kind` (`technical` ou `business`).
@@ -410,7 +410,7 @@ Sete papéis portados gravam com `agent: "omhl:<papel>"`. Cada um grava só os t
 
 `commands` é a referência dos comandos de cada papel, com a leitura que vale para os sete. A CLI só confere as três colunas de `append`. Um teste mantém esta tabela igual à matriz compilada no `omhl`.
 
-**Como o papel chega.** A variável `OMHL_ROLE=omhl:<papel>` troca o `agent` do record e vale só sob o Claude Code. Valor vazio ou fora dos sete papéis, ou a variável fora do Claude Code, é recusado com `role-unknown` em qualquer comando. Sem `OMHL_ROLE`, a sessão principal grava `claude`. Fora do Claude Code a CLI grava `user`, o dono. Por isso o dono retira um `contradicts` (abaixo) só num terminal fora do Claude Code: `! omhl ...` dentro dele grava `claude`.
+**Como o papel chega.** A variável `OMHL_ROLE=omhl:<papel>` troca o `agent` do record e vale só sob o Claude Code. Valor vazio ou fora dos sete papéis, ou a variável fora do Claude Code, é recusado com `role-unknown` em qualquer comando que lê o banco (não em `omhl hook *`, `--help`, `--version` nem em erro de uso do clap). Sem `OMHL_ROLE`, a sessão principal grava `claude`. Fora do Claude Code a CLI grava `user`, o dono. Por isso o dono retira um `contradicts` (abaixo) só num terminal fora do Claude Code: `! omhl ...` dentro dele grava `claude`.
 
 **Condições finas.** A tabela diz quais tipos; estas regras dizem em que condição:
 
@@ -419,6 +419,9 @@ Sete papéis portados gravam com `agent: "omhl:<papel>"`. Cada um grava só os t
 - A origem de uma relação é um node cuja revisão vigente é do próprio papel; um node do mesmo pedido conta. O critic aponta `contradicts` do seu `decision`, não do de outro. Depois de confirmar a premissa do analyst, o critic é o autor vigente dela e pode ligar o `answers` dela ao gap.
 - A revisão é só de node cuja revisão vigente é do próprio papel. Há duas exceções: o critic confirma premissa técnica ainda não confirmada, de qualquer autor (só `status` e `confirmed_by` mudam); o verifier leva a divergência de qualquer autor de `open` para `code-fixed`, só acrescentando `evidence`, sem mudar mais nada.
 - Nenhum papel muda o `kind` de premissa ou gap, nem leva uma divergência a `accepted` (essa é a resposta do humano).
+- O papel cria divergência só com `resolution: open`; qualquer outra resolução na criação é `role-record-forbidden`.
+- O papel não revisa premissa cuja versão vigente já está confirmada, nem divergência cuja `resolution` vigente não é `open`, mesmo sendo o autor vigente: é `role-revision-forbidden`. As duas exceções acima seguem valendo, porque partem de premissa não confirmada e de divergência `open`.
+- O fechamento do verifier para `code-fixed` exige ao menos um item novo em `evidence`: a lista cresce, não fica igual.
 - Nenhum papel retira node. A única retirada de relação é a de `contradicts` pelo verifier. O verifier e o dono (`user`) retiram um `contradicts`; `claude` e os demais papéis não. Ninguém retira o que ele mesmo gravou, o dono inclusive.
 - `claude` também não retira um node que é ponta de um `contradicts` vigente contra uma `decision`: isso fecharia o gate sem tocar na contradição.
 - Mudar o `work_item` de um node em `contradicts` vigente é recusado a qualquer autor, porque esconderia a contradição do gate daquele work item.
@@ -426,8 +429,8 @@ Sete papéis portados gravam com `agent: "omhl:<papel>"`. Cada um grava só os t
 | Código | Quando |
 |---|---|
 | `role-unknown` | `OMHL_ROLE` traz um valor fora dos sete papéis, ou foi definido fora do Claude Code |
-| `role-record-forbidden` | O papel grava um tipo de node, relação ou retirada fora da sua linha, um conteúdo fora das condições acima, ou uma relação a partir de node que não é dele |
-| `role-revision-forbidden` | O papel revisa node de outro, muda o `kind` de premissa ou gap, leva divergência a `accepted`, ou qualquer autor muda o `work_item` de node em contradição vigente |
+| `role-record-forbidden` | O papel grava um tipo de node ou relação fora da sua linha, um conteúdo fora das condições acima, ou uma relação a partir de node que não é dele ou que não existe |
+| `role-revision-forbidden` | O papel revisa node de outro, premissa já confirmada ou divergência já resolvida, muda o `kind` de premissa ou gap, leva divergência a `accepted`, ou qualquer autor muda o `work_item` de node em contradição vigente |
 | `role-answer-forbidden` | O critic liga `answers` a um destino que não é gap `technical` |
 | `role-retirement-forbidden` | O papel retira node ou relação fora de `retire`; `claude` retira `contradicts` ou a ponta de uma contradição contra `decision`; o verifier ou o dono retira o `contradicts` que ele mesmo gravou |
 

@@ -142,11 +142,11 @@ impl RuleCode {
                 next_step: "unset OMHL_ROLE, or set it to a valid omhl role while running under Claude Code",
             }),
             RuleCode::RoleRecordForbidden => Some(Guidance {
-                cause: "the role is not allowed to record this node or relation type, or this content",
+                cause: "the role is not allowed to record this node or relation type, or this content (a divergence is created open), or the relation origin does not exist or is not its own",
                 next_step: "append only the types and content the role may write, or leave this record to the role that owns it",
             }),
             RuleCode::RoleRevisionForbidden => Some(Guidance {
-                cause: "the role may only revise nodes it recorded, and never change a premise or gap kind, accept a divergence, or move a contradicted node out of its work item",
+                cause: "the role may only revise nodes it recorded, and never change a premise or gap kind, accept a divergence, or move a contradicted node out of its work item; a confirmed premise or a closed divergence is not revised again",
                 next_step: "append a new node of your own instead, or ask the owner to make the change",
             }),
             RuleCode::RoleAnswerForbidden => Some(Guidance {
