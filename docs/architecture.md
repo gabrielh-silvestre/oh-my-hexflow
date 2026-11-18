@@ -305,7 +305,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`, `hook::spec_lock` e `hook::agent_role(stdin, out, err, env, groups) -> ExitCode` (os dois de `PreToolUse`, ligados a `omhl hook spec-lock` e `omhl hook agent-role`). `main.rs` (28 linhas) só monta o `Env` e chama `cli::run`.
 
-**Escondido.** Em `hook.rs`: a saída `hookSpecificOutput` e o aviso de extensions (só códigos e contagens). O mesmo arquivo traz os dois hooks `PreToolUse`: `spec_lock` e `agent_role`. O `agent_role` lê o evento, lê `CLAUDE_PLUGIN_ROOT`, pede ao clap os comandos que têm subcomando e responde `allow` (com o `updatedInput`) ou `deny` em JSON, sempre com saída `0`; a decisão em si é de `app::agent_role` (3.24).
+**Escondido.** Em `hook.rs`: a saída `hookSpecificOutput` e o aviso de extensions (só códigos e contagens). O `agent_role` lê o evento, lê `CLAUDE_PLUGIN_ROOT`, pede ao clap os comandos que têm subcomando e responde `allow` (com o `updatedInput`) ou `deny` em JSON, sempre com saída `0`; a decisão em si é de `app::agent_role` (3.24).
 
 **Profundidade.** Funda por adapter: uma função cada. Importam só `app` e `project::Env` (verificado), e o teste `it_should_keep_adapters_free_of_hexlog_imports` impede o resto.
 

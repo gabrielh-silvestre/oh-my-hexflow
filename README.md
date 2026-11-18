@@ -292,8 +292,7 @@ o check. É um freio, não uma parede: um agente que escapa do hook
 continua indistinguível da sessão principal. Só os agentes portados se
 distinguem: o hook `agent-role` define `OMHL_ROLE=omhl:<papel>` a partir do
 `agent_type` do evento, e o record sai com `agent` `omhl:<papel>` e com a matriz
-do papel aplicada. O hook protege contra o erro do agente, não contra a má-fé
-(`bash -c`, `sudo`, `cargo run -p omhl` e outros caminhos escapam): o
+do papel aplicada. O hook protege contra o erro do agente, não contra a má-fé: o
 [ADR 0008](docs/adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md) tem os
 limites. Fora do Claude Code a CLI grava `user`, então o dono retira um
 `contradicts` só de um terminal externo.
