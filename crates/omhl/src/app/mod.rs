@@ -1,3 +1,4 @@
+mod agent_role;
 mod attest;
 mod byproduct_tail;
 mod check_retire;
@@ -28,6 +29,7 @@ pub use crate::mechanical::RUNNABLE_EVENTS;
 pub use crate::workflow::config::INVALID_WORKFLOW_CONFIG;
 pub use crate::workflow::lock::Verdict;
 
+pub use self::agent_role::agent_role;
 pub use self::spec::spec_lock;
 
 use std::path::{Path, PathBuf};

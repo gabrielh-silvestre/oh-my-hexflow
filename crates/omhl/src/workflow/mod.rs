@@ -5,4 +5,5 @@ pub mod matrix;
 pub mod names;
 pub mod recurrence;
 pub mod retro;
+pub mod shell;
 pub mod spec;

@@ -10,7 +10,7 @@ use crate::app::error::AppError;
 use crate::app::input::read_json_input;
 use crate::app::runtime::Runtime;
 use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
-use crate::app::{Verdict, spec_lock as check_spec_lock};
+use crate::app::{Verdict, agent_role as check_agent_role, spec_lock as check_spec_lock};
 use crate::project::Env;
 
 /// Without a marker the hook stays silent; any failure leaves stdout empty so no partial context is injected.
@@ -41,7 +41,21 @@ pub fn session_start(
 
 /// Nunca sai com 2: a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
-    match read_json_input(stdin).and_then(|input| check_spec_lock(&input)) {
+    pre_tool_use(stdin, out, err, check_spec_lock)
+}
+
+/// Mesmo contrato do `spec_lock`; só o Bash, e só nega: o que passa segue o fluxo normal de permissão.
+pub fn agent_role(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
+    pre_tool_use(stdin, out, err, |input| Ok(check_agent_role(input)))
+}
+
+fn pre_tool_use(
+    stdin: &mut impl Read,
+    out: &mut impl Write,
+    err: &mut impl Write,
+    decide: impl FnOnce(&Value) -> Result<Verdict, AppError>,
+) -> ExitCode {
+    match read_json_input(stdin).and_then(|input| decide(&input)) {
         Ok(Verdict::Allow) => {}
         Ok(Verdict::Deny { reason, .. }) => {
             let output = json!({
