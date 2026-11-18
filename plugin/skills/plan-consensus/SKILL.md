@@ -12,7 +12,7 @@ Você é a sessão principal: chama cada agente como `oh-my-hexflow:<papel>`, um
 ## Antes de começar
 
 - O work item está gravado e aberto (`work-items.<id>`), com o prefixo e o slug escolhidos. Em `feat` e `fix` ele veio da [interview](../interview/SKILL.md): o negócio já está confirmado e os agentes cobrem só o técnico.
-- Chame cada `oh-my-hexflow:*` **sem** `name`. Com `name`, o agente roda sem a matriz `omhl-allow` e sem a vista pré-carregada (a skill dele não chega), e o que ele gravar sai como `claude`.
+- Chame cada `oh-my-hexflow:*` **sem** `name`. Com `name`, o agente roda sem a matriz `omhl-allow` e sem a vista pré-carregada (a skill dele não chega), e, pelo desenho do hook `agent-role`, o que ele gravar deve sair como `claude`.
 - Cada chamada leva o id do work item. Quem lê a spec leva também o caminho **absoluto** da pasta dela, no checkout principal: o `dir` do `spec init`, que o planner repete em "Spec written to". Um caminho relativo não existe dentro da worktree.
 
 ## Os passos

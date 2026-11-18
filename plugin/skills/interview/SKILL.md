@@ -20,7 +20,7 @@ Você é a sessão principal e conduz a entrevista sozinha. Não escreve spec: a
 - **Parada.** A entrevista termina quando a ambiguidade chega a **20% ou menos**. O limiar é fixo, sem configuração. Da rodada 3 em diante o dono pode encerrar antes: avise a ambiguidade que sobra. Na rodada 10, pergunte se segue; na 20, pare com a clareza que houver.
 - **Pergunta.** Uma por mensagem, sobre a dimensão mais fraca (diga qual e por quê, em uma frase), com 2 a 4 opções, a recomendada primeiro, de modo que "sim" a aceite. Pergunte as suposições do dono, não uma lista de funcionalidades.
 - **Fato do código.** Leia você mesma, antes de perguntar, e cite o arquivo ou o símbolo que motivou a pergunta. Não há agente de busca no plugin.
-- **Estado.** Fica em `.omhl/notes/interview-<slug>.md`, no checkout principal, sobrescrito a cada rodada (perguntas, respostas, placar, dimensão mais fraca); se a sessão cair, retome dali. O estado não vira registro: nenhuma rodada, nota ou placar vai ao banco, e a pasta fica fora de `.omhl/specs/`, para o `spec-lock` não congelar.
+- **Estado.** Fica em `.omhl/notes/interview-<slug>.md`, no checkout principal, sobrescrito a cada rodada (perguntas, respostas, placar, dimensão mais fraca); se a sessão cair, retome dali. O estado não vira registro: nenhuma rodada, nota ou placar vai ao banco, e a pasta fica fora de `.omhl/specs/`, para o `spec-lock` não congelar. O `<slug>` é provisório até o passo 1; se o do work item diferir, renomeie o arquivo.
 
 ## Modos de desafio (só quando o dono pedir)
 

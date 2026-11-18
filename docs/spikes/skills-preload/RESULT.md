@@ -18,7 +18,7 @@ Plugin `spikeplug` com dois agentes (`model: haiku`, `omitClaudeMd: true`, sem `
 | r3 | `[spikeplug:role-probe]` | sem `name` | sim | `spikeplug:probe-q` | `background` |
 | r4 | `[spikeplug:role-probe]` | `name: probe-q-named` | sim | `spikeplug:probe-q` | `foreground` |
 
-Todas as execuções tiveram `requestNonInteractive: true` e nenhum `taskKind`. Arquivos: [out/](spike1/out/), [meta/](spike1/meta/), [VERSION.txt](spike1/VERSION.txt).
+Todas as execuções tiveram `requestNonInteractive: true` e nenhum `taskKind`. O campo `requestNonInteractive` não distingue headless de interativo (vale `true` nos dois, inclusive nos `meta.json` da parte B); o critério usado é o do roteiro (`claude` com ou sem `-p`) e o `taskKind`. Arquivos: [out/](spike1/out/), [meta/](spike1/meta/), [VERSION.txt](spike1/VERSION.txt).
 
 **Sustenta:** em headless e sem time, o canário chegou nas quatro respostas e o `agent_type` dos dois hooks foi `<plugin>:<agente>`, com e sem `name`.
 
@@ -43,9 +43,9 @@ Plugin `omhlprobe` com cinco agentes `haiku`, a skill `role-probe` com o canári
 | B4 | `oh-my-hexflow:planner`, sem `name`, interativa | n/a | `oh-my-hexflow:planner` | - | - | `background` |
 | B5 | `oh-my-hexflow:planner`, `name: g1-planner-named`, interativa | n/a | `g1-planner-named` | `in_process_teammate` | `oh-my-hexflow:planner` | `background` |
 
-Fontes por linha: [g1/out/](g1/out/) (respostas, logs de hooks e [b.analysis.txt](g1/out/b.analysis.txt)), [g1/meta/](g1/meta/) e [g1/transcripts/](g1/transcripts/).
+Nas linhas B, a coluna Canário vem do marcador de pré-carga nas transcrições ([g1/transcripts/b*.summary.txt](g1/transcripts/)) e de [g1/RESULT-g1.md](g1/RESULT-g1.md); a resposta literal do subagente não foi guardada. Fontes por linha: [g1/out/](g1/out/) (respostas, logs de hooks e [b.analysis.txt](g1/out/b.analysis.txt)), [g1/meta/](g1/meta/) e [g1/transcripts/](g1/transcripts/).
 
-**Marcador de pré-carga.** Nas transcrições, a pré-carga aparece como um registro `user` com `<command-message>role-probe` (na grafia qualificada, `<command-message>omhlprobe:role-probe`) **antes** do primeiro `tool_use`. Os `*.summary.txt` numeram os registros a partir de 0: o marcador é o registro 3 em A1, A2, A5, A6 e B1; o primeiro `tool_use` vem no registro 17 (A1, A2, A5) ou 18 (A6, B1). A3, A4, B2, B3a, B3b, B4 e B5 não têm marcador. Nenhum subagente chamou `Skill`, `Read`, `Grep` ou `Glob`; só rodaram `echo g1` no `Bash` e, na parte B, as tools de devolução do harness (`SubagentHandback`, `SendMessage`). Nos logs, a sessão principal não chamou `Skill` e o prompt do `Agent` nunca trouxe o canário.
+**Marcador de pré-carga.** Nas transcrições, a pré-carga aparece como um registro `user` com `<command-message>role-probe` (na grafia qualificada, `<command-message>omhlprobe:role-probe`) **antes** do primeiro `tool_use`. Os `*.summary.txt` numeram os registros a partir de 0: o marcador é o registro 3 em A1, A2, A5, A6 e B1; o primeiro `tool_use` vem no registro 17 (A1, A2, A5) ou 18 (A6, B1). A3, A4, B2, B3a, B3b, B4 e B5 não têm marcador. Nenhum subagente chamou `Skill`, `Read`, `Grep` ou `Glob`; só rodaram `echo g1` no `Bash` e, na parte B, as tools de devolução do harness (`SubagentHandback`, `SendMessage`). No log da parte B (extrato da sessão principal), a sessão não chamou `Skill` e `prompt_has_canary` é falso nas seis chamadas; na parte A a linha da sessão principal não entra no repositório (redação), e essa conferência foi feita sobre a pasta crua.
 
 ## Leitura pelo critério de cinco condições
 
@@ -60,7 +60,7 @@ Pré-carga provada sem `name` (B1 com o controle B3a), `agent_type` = nome gerad
 
 - **Canal:** `CHANNEL` = `skills:` (não o plano B, que poria a vista no corpo do agente).
 - **Grafia:** `SKILLS_SPELLING` = qualificada, `oh-my-hexflow:role-<papel>`; provada em interativo (B1).
-- **Regra de uso:** as skills de workflow chamam `oh-my-hexflow:*` **sem** `name`. Com `name`, o agente roda sem a matriz `omhl-allow` e sem a vista pré-carregada, e o que gravar sai como `claude`.
+- **Regra de uso:** as skills de workflow chamam `oh-my-hexflow:*` **sem** `name`. Com `name`, o agente roda sem a matriz `omhl-allow` e sem a vista pré-carregada, e o que gravar deve sair como `claude` (consequência do hook `agent-role`, ADR 0008; o G1 não gravou registros).
 - **Fix do hook:** um `PreToolUse` do plugin nega `name` nas chamadas a `oh-my-hexflow:*`, em work item `fix` próprio.
 
 ## Resposta do dono à pergunta 4

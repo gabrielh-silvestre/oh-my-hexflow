@@ -1,6 +1,6 @@
 #!/bin/sh
 # Redação da evidência do G1: lê a pasta crua (fora do repositório, ignorada pelo Git) e escreve a cópia
-# redigida neste diretório. Regras: tabela "Redação do que vai ao repositório" do plano omc-port.
+# redigida neste diretório. As regras estão resumidas em "Redação" no RESULT.md (../RESULT.md).
 # Uso, da raiz do repositório: sh docs/spikes/skills-preload/g1/redact.sh [PASTA_CRUA [DESTINO]]
 # Requer jq. Nunca copia: transcrições cruas (*.jsonl), *.err.txt e as pastas .omc/ de estado de hooks.
 # Os colchetes nos padrões ([o], [l]) impedem que as conferências do critério A1 casem com este script.
@@ -20,6 +20,9 @@ redact_text() {
       -e 's|/h[o]me/[^ "]*|<redigido>|g' "$1" > "$2"
 }
 
+# Rede de segurança dos logs de hooks: qualquer caminho de usuário fora dos campos nomeados também some.
+scrub_home() { sed -e 's|/h[o]me/[^"]*|<redigido>|g'; }
+
 # Log de hooks (<evento>TAB<json>): fica o que tem agent_id e as linhas META.
 # Sem agent_id (sessão principal): com $3 = extract vira um extrato; senão é descartada.
 redact_hooks_log() {
@@ -30,14 +33,14 @@ redact_hooks_log() {
     elif printf '%s' "$json" | jq -e 'has("agent_id")' > /dev/null; then
       { printf '%s\t' "$event"
         printf '%s' "$json" | jq -c --argjson f "$REDACTED_FIELDS" \
-          'with_entries(if .key as $k | $f | index($k) then .value = "<redigido>" else . end)'
+          'with_entries(if .key as $k | $f | index($k) then .value = "<redigido>" else . end)' | scrub_home
       } >> "$2"
     elif [ "${3:-}" = extract ]; then
       { printf '%s\t' "$event"
         printf '%s' "$json" | jq -c --arg c "$CANARY" \
           '{tool_name, subagent_type: .tool_input.subagent_type, name: .tool_input.name}
            + (if .tool_name == "Skill" then {skill: .tool_input.skill} else {} end)
-           + {prompt_has_canary: ((.tool_input.prompt // "") | contains($c))}'
+           + {prompt_has_canary: ((.tool_input.prompt // "") | contains($c))}' | scrub_home
       } >> "$2"
     fi
   done < "$1"

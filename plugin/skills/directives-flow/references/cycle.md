@@ -19,6 +19,6 @@ O ciclo tem dez passos.
 
 **Caminho leve (`chore` e `docs`).** Não há spec: o consenso fica nos passos 2 e 3 (o critic só no modo do passo 3), sem planner nem voltas e sem os passos 4 a 7, e o passo 8 se reduz ao `omhl gate-worktree`. A skill [plan-consensus](../../plan-consensus/SKILL.md) descreve o caminho na seção "Caminho leve".
 
-**Sem `name`.** A sessão principal chama os agentes `oh-my-hexflow:*` sem o parâmetro `name`. Com `name`, o agente roda sem a matriz `omhl-allow` e sem a vista pré-carregada (a skill dele não chega), e o que ele gravar sai como `claude`.
+**Sem `name`.** A sessão principal chama os agentes `oh-my-hexflow:*` sem o parâmetro `name`. Com `name`, o agente roda sem a matriz `omhl-allow` e sem a vista pré-carregada (a skill dele não chega), e, pelo desenho do hook `agent-role`, o que ele gravar deve sair como `claude`.
 
 O que a spec congelada, a divergência e a emenda pedem em qualquer passo continua no [SKILL.md](../SKILL.md).
