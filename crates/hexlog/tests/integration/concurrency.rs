@@ -101,7 +101,7 @@ fn stored_records(tamper: &mut Tamper) -> Vec<String> {
 
 #[test]
 fn it_should_accept_only_one_of_two_concurrent_revisions_of_the_same_base() {
-    let harness = Harness::new();
+    let harness = Harness::new_in(env!("CARGO_TARGET_TMPDIR"));
     let config = patient(&harness);
     let mut hexlog = harness.open_acme_with(&config, reference_catalog());
     append_one(&mut hexlog, node("a.one", "note", json!({})));
@@ -144,7 +144,7 @@ fn it_should_accept_only_one_of_two_concurrent_revisions_of_the_same_base() {
 
 #[test]
 fn it_should_write_once_when_the_same_key_races() {
-    let harness = Harness::new();
+    let harness = Harness::new_in(env!("CARGO_TARGET_TMPDIR"));
     let config = patient(&harness);
     drop(harness.open_acme_with(&config, reference_catalog()));
     let instances = vec![
@@ -173,7 +173,7 @@ fn it_should_write_once_when_the_same_key_races() {
 
 #[test]
 fn it_should_keep_seq_contiguous_when_many_threads_append() {
-    let harness = Harness::new();
+    let harness = Harness::new_in(env!("CARGO_TARGET_TMPDIR"));
     let config = patient(&harness);
     drop(harness.open_acme_with(&config, reference_catalog()));
     let instances = (0..APPENDERS)
@@ -293,7 +293,7 @@ fn it_should_fail_with_chain_broken_on_write_for_a_tampered_middle_record_under_
 #[test]
 fn it_should_open_a_fresh_database_from_many_threads_without_error() {
     for round in 0..ROUNDS {
-        let harness = Harness::new();
+        let harness = Harness::new_in(env!("CARGO_TARGET_TMPDIR"));
         let config = patient(&harness);
         let barrier = Barrier::new(OPENERS);
 
