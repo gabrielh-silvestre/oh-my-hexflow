@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-mod support;
+use crate::support;
 
 use support::scan::prove_both_sides;
 

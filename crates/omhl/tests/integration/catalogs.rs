@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use std::collections::BTreeSet;
 
@@ -10,11 +10,11 @@ use support::omhl::{acme, check_data, node_item, request};
 use support::raw::RawHarness;
 use support::{EmptyNative, sid, tname};
 
-const OLD_CHECKS_CATALOG: &str = include_str!("fixtures/checks_catalog_free_events.json");
+const OLD_CHECKS_CATALOG: &str = include_str!("../fixtures/checks_catalog_free_events.json");
 const OLD_VOCABULARY: &str = "free";
-const OLD_DECISIONS_CATALOG: &str = include_str!("fixtures/decisions_catalog_v1.json");
-const PREVIOUS_DECISIONS_CATALOG: &str = include_str!("fixtures/decisions_catalog_v2.json");
-const PREVIOUS_DECISIONS_CATALOG_V3: &str = include_str!("fixtures/decisions_catalog_v3.json");
+const OLD_DECISIONS_CATALOG: &str = include_str!("../fixtures/decisions_catalog_v1.json");
+const PREVIOUS_DECISIONS_CATALOG: &str = include_str!("../fixtures/decisions_catalog_v2.json");
+const PREVIOUS_DECISIONS_CATALOG_V3: &str = include_str!("../fixtures/decisions_catalog_v3.json");
 
 fn catalog() -> Catalog {
     graphs::catalog().expect("the embedded catalogs build")

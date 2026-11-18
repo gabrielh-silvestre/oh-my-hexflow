@@ -1,17 +1,22 @@
 #![allow(dead_code)]
 
+pub mod agent_examples;
 pub mod appfx;
 pub mod busy;
+pub mod check_run_tree;
 pub mod child;
+pub mod directives_flow_e2e;
 pub mod ext;
 pub mod gate;
 pub mod git;
+pub mod guideline_retire;
 pub mod hook;
 pub mod legacy;
 pub mod omhl;
 pub mod pr_gate;
 pub mod project;
 pub mod raw;
+pub mod repo_checks;
 pub mod run;
 pub mod runner;
 pub mod scan;

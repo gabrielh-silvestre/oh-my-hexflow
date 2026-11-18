@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use hexlog::{AppendItem, AppendRequest, ErrorCode, RecordId};
 use omhl::app::App;

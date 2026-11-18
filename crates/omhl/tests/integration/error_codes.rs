@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use omhl::extensions::model::{ExtensionKind, RawExtension};
 use omhl::extensions::parse::parse;

@@ -13,7 +13,7 @@ use ::omhl::runner::{CommandRunner, RunErrorKind, RunReport, RunSpec};
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 
 /// Nome do `#[test]` auxiliar de cada binário; o `spawn_role` o relança com `--exact`.
-pub const ROLE_TEST: &str = "helper_role";
+pub const ROLE_TEST: &str = "proc_roles::helper_role";
 
 /// Começo de `/proc/<G>/cmdline` do guardião.
 pub const GUARDIAN_PREFIX: &[u8] = b"sh\0-c\0trap \"\" INT TERM HUP QUIT TTIN TTOU;";
@@ -111,8 +111,13 @@ pub fn spawn_role(
         .expect("the role process starts")
 }
 
-/// Corpo do `#[test]` auxiliar: sem `OMHL_TEST_ROLE` volta na hora.
-pub fn helper_role() {
+/// `#[test]` auxiliar do binário: sem `OMHL_TEST_ROLE` volta na hora.
+#[test]
+fn helper_role() {
+    run_role();
+}
+
+fn run_role() {
     let Some(role) = std::env::var_os("OMHL_TEST_ROLE") else {
         return;
     };

@@ -1,8 +1,5 @@
 #![cfg(target_os = "linux")]
 
-mod proc_roles;
-mod support;
-
 use std::fs::{self, OpenOptions};
 use std::os::unix::fs::{OpenOptionsExt, symlink};
 use std::path::Path;
@@ -20,6 +17,8 @@ use nix::errno::Errno;
 use nix::sys::signal::{Signal, kill};
 use nix::sys::stat::Mode;
 use nix::unistd::{Pid, mkfifo};
+
+use crate::{proc_roles, support};
 use proc_roles::{
     GUARDIAN_PREFIX, assert_dead_since, guardian_of, is_dead, kind_name, pid_file, proc_state,
     run_ok, spawn_role, spec, stat_field, wait_child_exit, wait_file, wait_until,
@@ -71,11 +70,6 @@ fn stray_of_a_gone_runner(dir: &Path, cmd: &str) -> u32 {
         "precondition: the grandchild carries the marker of the runner {r}, got {marker:?}"
     );
     n
-}
-
-#[test]
-fn helper_role() {
-    proc_roles::helper_role();
 }
 
 #[test]

@@ -1,7 +1,5 @@
 #![cfg(target_os = "linux")]
 
-mod proc_roles;
-
 use std::fs;
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
@@ -17,6 +15,8 @@ use ::omhl::ports::process::ProcessRunner;
 use ::omhl::runner::{CommandRunner, RunErrorKind};
 use nix::sys::signal::{Signal, kill, killpg};
 use nix::unistd::Pid;
+
+use crate::{proc_roles, support};
 use proc_roles::{
     assert_dead_since, command_line, guardian_of, is_dead, kind_name, pid_file, proc_state, run_ok,
     spawn_role, spec, stat_field, wait_child_exit, wait_file, wait_guardian_armed, wait_until,
@@ -38,11 +38,6 @@ fn flock_exit_code(lock: &Path) -> Option<i32> {
         .status()
         .expect("flock starts")
         .code()
-}
-
-#[test]
-fn helper_role() {
-    proc_roles::helper_role();
 }
 
 // Execução comum (1 a 16)
@@ -377,6 +372,7 @@ fn it_should_close_stdin() {
 
 #[test]
 fn it_should_stop_the_command_and_its_grandchild_when_the_runner_group_receives_sigint() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut runner = spawn_role("runner", dir.path(), "plain", &[], Stdio::null());
     let r = runner.id();
@@ -393,6 +389,7 @@ fn it_should_stop_the_command_and_its_grandchild_when_the_runner_group_receives_
 
 #[test]
 fn it_should_stop_the_command_and_its_grandchild_when_the_runner_receives_sigterm() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut runner = spawn_role("runner", dir.path(), "plain", &[], Stdio::null());
     let r = runner.id();
@@ -409,6 +406,7 @@ fn it_should_stop_the_command_and_its_grandchild_when_the_runner_receives_sigter
 
 #[test]
 fn it_should_stop_the_command_and_its_grandchild_when_the_runner_is_killed() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut runner = spawn_role("runner", dir.path(), "plain", &[], Stdio::null());
     let r = runner.id();
@@ -425,6 +423,7 @@ fn it_should_stop_the_command_and_its_grandchild_when_the_runner_is_killed() {
 
 #[test]
 fn it_should_release_a_lock_held_by_the_command_after_an_interruption() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let lock = dir.path().join("lock");
     let mut runner = spawn_role("runner", dir.path(), "flock", &[], Stdio::null());
@@ -468,6 +467,7 @@ fn it_should_leave_no_guardian_process_after_a_normal_run() {
 
 #[test]
 fn it_should_ignore_sigterm_sent_to_the_guardian_alone() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut runner = spawn_role("runner", dir.path(), "plain", &[], Stdio::null());
     let r = runner.id();
@@ -496,6 +496,7 @@ fn it_should_ignore_sigterm_sent_to_the_guardian_alone() {
 
 #[test]
 fn it_should_let_a_cooperative_command_clean_its_own_process_group_after_an_interruption() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut runner = spawn_role("runner", dir.path(), "coop", &[], Stdio::null());
     let r = runner.id();
@@ -564,6 +565,7 @@ fn it_should_kill_a_command_that_ignores_sigterm_after_the_grace_period() {
 
 #[test]
 fn it_should_not_hold_the_output_pipe_of_the_caller_in_the_guardian() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut runner = spawn_role("runner", dir.path(), "plain", &[], Stdio::piped());
     let mut stderr = runner.stderr.take().expect("the runner stderr is piped");
@@ -596,6 +598,7 @@ fn it_should_not_hold_the_output_pipe_of_the_caller_in_the_guardian() {
 
 #[test]
 fn it_should_stop_everything_when_the_parent_of_the_runner_dies() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut parent = spawn_role(
         "parent",
@@ -624,6 +627,7 @@ fn it_should_stop_everything_when_the_parent_of_the_runner_dies() {
 
 #[test]
 fn it_should_refuse_to_run_when_the_parent_exited_before_the_runner_bound_to_it() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut parent = spawn_role(
         "parent",
@@ -696,6 +700,7 @@ fn it_should_continue_a_stopped_command_on_timeout_so_its_grandchild_is_cleaned_
 
 #[test]
 fn it_should_stop_the_guardian_group_after_sigttin_when_the_runner_dies_under_a_subreaper() {
+    let _sweep = support::sweep_lock::share_sweeps();
     let dir = TempDir::new().expect("work directory is created");
     let mut reaper = spawn_role("reaper", dir.path(), "coop", &[], Stdio::null());
     let r = pid_file(dir.path(), "runner.pid");

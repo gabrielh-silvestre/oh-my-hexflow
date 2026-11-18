@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use ::omhl::gate::{Question, QuestionKind};
 use hexlog::{FieldName, ListFilter, Scalar};

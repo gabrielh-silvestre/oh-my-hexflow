@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use ::omhl::facade::{Omhl, OmhlDeps};
 use ::omhl::ports::clock::SystemClock;

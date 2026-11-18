@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use hexlog::{
     Author, FieldName, ListFilter, Scalar, Snapshot, SnapshotKind, SnapshotKind::GitCommit,
