@@ -1,4 +1,0 @@
-The probe agent is still running in the background. I'll print its final reply verbatim when the completion notification arrives.
-
-SKILLCANARY=SKILLCANARY-7f3a91
-HOOKCANARY=HOOKCANARY agent_type=spikeplug:probe-q

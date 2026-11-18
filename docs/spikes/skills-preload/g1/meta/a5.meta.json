@@ -1,1 +1,0 @@
-{"agentType":"omhlprobe:probe-qual","isBuiltIn":false,"description":"Run probe-qual probe","name":"g1-a-named","toolUseId":"toolu_012MXhYxSKkb6C3zcZr96xCm","spawnDepth":1,"requestShape":"foreground","requestNonInteractive":true,"model":"claude-haiku-5-5","pickedEffortModel":"claude-haiku-5-5","finished":true}

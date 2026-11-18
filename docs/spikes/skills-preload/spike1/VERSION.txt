@@ -1,3 +1,0 @@
-2.1.327 (Claude Code)
-2026-11-18
-comando: ver run.sh (claude -p --plugin-dir ... --model haiku --no-session-persistence --permission-mode dontAsk --allowedTools "Agent" "Bash(echo *)")

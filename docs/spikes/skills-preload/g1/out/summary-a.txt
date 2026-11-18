@@ -1,7 +1,0 @@
-a1 omhlprobe:probe-bare name=[] exit=0
-a2 omhlprobe:probe-qual name=[] exit=0
-a3 omhlprobe:probe-none name=[] exit=0
-a4 omhlprobe:probe-missing name=[] exit=0
-a6 omhlprobe:probe-qual-skill name=[] exit=0
-a5 omhlprobe:probe-qual name=[g1-a-named] exit=0
-done

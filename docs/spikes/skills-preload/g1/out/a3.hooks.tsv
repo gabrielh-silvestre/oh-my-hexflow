@@ -1,3 +1,0 @@
-SubagentStart	{"session_id":"<redigido>","transcript_path":"<redigido>","cwd":"<redigido>","prompt_id":"<redigido>","agent_id":"a40caaf2f92a46c15","agent_type":"omhlprobe:probe-none","hook_event_name":"SubagentStart"}
-PreToolUse	{"session_id":"<redigido>","transcript_path":"<redigido>","cwd":"<redigido>","prompt_id":"<redigido>","permission_mode":"dontAsk","agent_id":"a40caaf2f92a46c15","agent_type":"omhlprobe:probe-none","effort":{"level":"medium"},"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo g1","description":"Print probe marker g1"},"tool_use_id":"toolu_01RP5baKjLDrncELnTpRrrrj"}
-META	a40caaf2f92a46c15	found

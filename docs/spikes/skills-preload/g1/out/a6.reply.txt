@@ -1,3 +1,0 @@
-The Agent call was launched in the background (agent `probe-qual-skill`, no name). Its final reply hasn't arrived yet, so there is nothing to print verbatim yet. I'll print the reply when the completion notification comes in.
-
-SKILLCANARY=SKILLCANARY-7a4d7a18

@@ -1,4 +1,0 @@
-O subagente `spikeplug:probe` ainda está rodando em background. Assim que ele terminar, imprimo a resposta final dele, sem mais nada.
-
-SKILLCANARY=SKILLCANARY-7f3a91
-HOOKCANARY=HOOKCANARY agent_type=spikeplug:probe

@@ -1,2 +1,0 @@
-SKILLCANARY=SKILLCANARY-7f3a91
-HOOKCANARY=HOOKCANARY agent_type=spikeplug:probe-q

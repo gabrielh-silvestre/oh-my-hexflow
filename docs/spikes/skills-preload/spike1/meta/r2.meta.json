@@ -1,1 +1,0 @@
-{"agentType":"spikeplug:probe","isBuiltIn":false,"launchedWithDefaults":true,"description":"Run spike probe","name":"probe-named","toolUseId":"toolu_01DpzdsoqQwzjk3L4VJYb8qW","spawnDepth":1,"requestShape":"background","requestNonInteractive":true,"model":"claude-haiku-5-5","pickedEffortModel":"claude-haiku-5-5","finished":true}
