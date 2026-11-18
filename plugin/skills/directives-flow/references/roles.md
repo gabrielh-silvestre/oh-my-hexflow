@@ -12,7 +12,7 @@ A chamada é `oh-my-hexflow:<papel>`. Todo agente recebe o id do work item (`wor
 
 | Agente | Passe também |
 |---|---|
-| `oh-my-hexflow:analyst` | Nada além do id; o pedido do humano, se houver |
+| `oh-my-hexflow:analyst` | Nada além do id; o pedido do humano, se houver; o que a entrevista já confirmou (em `feat` e `fix`), para ele cobrir só o técnico |
 | `oh-my-hexflow:planner` | O slug da spec na primeira chamada, a pasta absoluta da spec nas seguintes; o modo consenso (RALPLAN-DR), SHORT (DELIBERATE só a pedido do humano ou item de alto risco); as perguntas abertas do analyst |
 | `oh-my-hexflow:architect` | O resumo RALPLAN-DR e o ADR do planner; o modo "revisão de consenso (ralplan), SHORT" (ou DELIBERATE); a objeção do critic, nas voltas seguintes |
 | `oh-my-hexflow:critic` | O caminho absoluto da pasta da spec; o modo "revisão de consenso (ralplan), SHORT" (ou DELIBERATE) e o pedido da linha-resumo ralplan |

@@ -17,6 +17,8 @@ O humano define diretivas (`guideline`) e premissas (`premise`). Você escolhe o
 
 ## A ordem do protocolo
 
+0. Em `feat` e `fix`, comece pela entrevista de negócio, antes do work item: a skill [interview](../interview/SKILL.md) esclarece o pedido, propõe o prefixo, o id e o slug e grava o work item e as premissas de negócio confirmadas (passos 1 a 4); depois siga do passo 5.
+   - Nos demais prefixos a entrevista só roda a pedido do dono. Em `chore` e `docs`, o consenso segue o caminho leve da [plan-consensus](../plan-consensus/SKILL.md).
 1. Escolha o prefixo (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` ou `docs`), o id e o slug. A branch será `tipo/wi-<id>__<slug>`.
 2. Grave o work item com `omhl append`: `work-items.<id>`, tipo `work-item`, `title` e `status` `open`. A guarda recusa premissa sem um work item aberto.
 3. Sugira as premissas (`kind` `business` ou `technical`, com o `work_item`).
