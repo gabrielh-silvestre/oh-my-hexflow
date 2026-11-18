@@ -1,7 +1,8 @@
 /// Posição de leitura sobre o texto do comando, caractere a caractere.
 pub(super) struct Cursor {
     chars: Vec<char>,
-    at: usize,
+    /// Quantos caracteres já foram consumidos.
+    pub(super) at: usize,
 }
 
 impl Cursor {
@@ -14,11 +15,6 @@ impl Cursor {
 
     pub(super) fn peek(&self) -> Option<char> {
         self.chars.get(self.at).copied()
-    }
-
-    /// Quantos caracteres já foram consumidos.
-    pub(super) fn consumed(&self) -> usize {
-        self.at
     }
 
     /// O texto cru lido desde o caractere `start`.

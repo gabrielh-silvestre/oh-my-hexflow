@@ -94,7 +94,7 @@ impl Lexer {
 
     fn step(&mut self, c: char) -> Result<(), ReadError> {
         if self.word.is_none() {
-            self.word_start = self.cursor.consumed() - 1;
+            self.word_start = self.cursor.at - 1;
         }
         match c {
             ' ' | '\t' => self.end_word(),
@@ -109,9 +109,8 @@ impl Lexer {
             '<' | '>' => self.redirect(c)?,
             '\'' => self.single_quoted()?,
             '"' => self.double_quoted()?,
-            '`' => self.nested('`')?,
-            '$' => self.dollar()?,
             '\\' => self.escape(),
+            _ if self.substitution(c)? => {}
             _ => self.push(c, false),
         }
 
@@ -206,7 +205,14 @@ impl Lexer {
         let outer_command = mem::take(&mut self.current);
         let outer_next = mem::take(&mut self.next_word);
         self.separated = true;
-        self.within_depth(|lexer| lexer.run(Some(close)))?;
+        // O limite protege a pilha de um comando aninhado de propósito.
+        if self.depth == MAX_DEPTH {
+            return Err(ReadError::TooDeep);
+        }
+        self.depth += 1;
+        let result = self.run(Some(close));
+        self.depth -= 1;
+        result?;
         self.word = outer_word.or_else(|| Some(WordBuilder::default()));
         self.word_start = outer_start;
         self.current = outer_command;
@@ -215,23 +221,8 @@ impl Lexer {
         Ok(())
     }
 
-    /// Roda `body` um nível mais fundo; o limite protege a pilha de um comando aninhado de propósito.
-    fn within_depth(
-        &mut self,
-        body: impl FnOnce(&mut Self) -> Result<(), ReadError>,
-    ) -> Result<(), ReadError> {
-        if self.depth == MAX_DEPTH {
-            return Err(ReadError::TooDeep);
-        }
-        self.depth += 1;
-        let result = body(self);
-        self.depth -= 1;
-
-        result
-    }
-
     fn dollar(&mut self) -> Result<(), ReadError> {
-        let start = self.cursor.consumed() - 1;
+        let start = self.cursor.at - 1;
         if self.cursor.eat('(') {
             if !self.cursor.opens_arithmetic() {
                 return self.nested(')');
@@ -260,7 +251,13 @@ impl Lexer {
         scan: fn(&mut Self) -> Result<(), ReadError>,
     ) -> Result<(), ReadError> {
         let outer_word = self.word.take().unwrap_or_default();
-        self.within_depth(scan)?;
+        if self.depth == MAX_DEPTH {
+            return Err(ReadError::TooDeep);
+        }
+        self.depth += 1;
+        let result = scan(self);
+        self.depth -= 1;
+        result?;
         self.word = Some(outer_word);
         for c in self.cursor.text_since(start).chars() {
             self.push(c, false);
@@ -274,12 +271,12 @@ impl Lexer {
         while let Some(c) = self.cursor.bump() {
             match c {
                 '}' => break,
-                '$' => self.dollar()?,
-                '`' => self.nested('`')?,
                 '\\' => self.escape(),
                 '\'' => self.single_quoted()?,
                 '"' => self.double_quoted()?,
-                _ => {}
+                _ => {
+                    self.substitution(c)?;
+                }
             }
         }
 
@@ -297,13 +294,24 @@ impl Lexer {
                     self.cursor.eat(')');
                     break;
                 }
-                '$' => self.dollar()?,
-                '`' => self.nested('`')?,
-                _ => {}
+                _ => {
+                    self.substitution(c)?;
+                }
             }
         }
 
         Ok(())
+    }
+
+    /// `$` e crase abrem o que o shell executa; devolve se `c` era um deles.
+    fn substitution(&mut self, c: char) -> Result<bool, ReadError> {
+        match c {
+            '$' => self.dollar()?,
+            '`' => self.nested('`')?,
+            _ => return Ok(false),
+        }
+
+        Ok(true)
     }
 
     fn escape(&mut self) {
@@ -332,9 +340,11 @@ impl Lexer {
                 None => return Err(ReadError::UnclosedQuote),
                 Some('"') => return Ok(()),
                 Some('\\') => self.escape(),
-                Some('$') => self.dollar()?,
-                Some('`') => self.nested('`')?,
-                Some(c) => self.push(c, true),
+                Some(c) => {
+                    if !self.substitution(c)? {
+                        self.push(c, true);
+                    }
+                }
             }
         }
     }
