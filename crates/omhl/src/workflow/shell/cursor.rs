@@ -16,6 +16,31 @@ impl Cursor {
         self.chars.get(self.at).copied()
     }
 
+    /// Quantos caracteres já foram consumidos.
+    pub(super) fn consumed(&self) -> usize {
+        self.at
+    }
+
+    /// Logo depois de `$(`: o `(` seguinte abre uma aritmética `$((...))` quando o primeiro `)` de fora
+    /// é seguido de outro `)`; senão é `$(` com um subshell, que executa.
+    pub(super) fn opens_arithmetic(&self) -> bool {
+        if self.peek() != Some('(') {
+            return false;
+        }
+        let rest = &self.chars[self.at + 1..];
+        let mut depth = 0;
+        for (offset, c) in rest.iter().enumerate() {
+            match c {
+                '(' => depth += 1,
+                ')' if depth > 0 => depth -= 1,
+                ')' => return rest.get(offset + 1) == Some(&')'),
+                _ => {}
+            }
+        }
+
+        false
+    }
+
     pub(super) fn bump(&mut self) -> Option<char> {
         let next = self.peek();
         self.at += usize::from(next.is_some());

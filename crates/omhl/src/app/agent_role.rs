@@ -15,6 +15,7 @@ const ROLE_PREFIX: &str = "omhl:";
 const ROLE_VARIABLE: &str = "OMHL_ROLE";
 const ASSIGNING_PROGRAMS: [&str; 6] = ["export", "env", "declare", "typeset", "readonly", "local"];
 const AGENT_FILE_MAX_BYTES: u64 = 64 * 1024;
+const BLANKS: [char; 2] = [' ', '\t'];
 
 /// O que o hook decide: `Pass` deixa o fluxo normal de permissão; `Allow` troca o `tool_input` pelo reescrito.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +58,11 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
     };
 
     match line {
+        // O bash executa `$(...)` e crase no corpo de um heredoc sem aspas, fora do prefixo e da matriz.
+        Ok(line) if line.executes_heredoc && command.contains("omhl") => deny(
+            "heredoc-substitution",
+            "the heredoc body runs $( ) or backticks; quote the terminator (<<'EOF') so the body stays text",
+        ),
         Ok(line) => ported_agent_verdict(role, &line, input, env),
         // O erro de leitura só pesa para o agente portado, e só se o comando fala de `omhl`.
         Err(_) if command.contains("omhl") => deny(
@@ -80,9 +86,15 @@ fn assigns_role_variable(line: &CommandLine) -> bool {
     })
 }
 
+/// `OMHL_ROLE`, `OMHL_ROLE=`, `OMHL_ROLE+=` e o nome atrás de `env -u` / `env --unset=` (inclusive grudado).
 fn names_role_variable(word: &str) -> bool {
-    word.strip_prefix(ROLE_VARIABLE)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('='))
+    let name = word
+        .strip_prefix("--unset=")
+        .or_else(|| word.strip_prefix("-u"))
+        .unwrap_or(word);
+
+    name.strip_prefix(ROLE_VARIABLE)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('=') || rest.starts_with("+="))
 }
 
 /// Regras 4 a 6: papel fora da lista, comando sem `omhl`, comando composto e embrulho que o leitor não pula.
@@ -109,7 +121,7 @@ fn ported_agent_verdict(
 
     match reaching.as_slice() {
         [simple] if !line.compound && simple.program() == Some("omhl") => {
-            role_matrix_verdict(role, simple, input, env)
+            role_matrix_verdict(role, line, simple, input, env)
         }
         [_] if !line.compound => deny(
             "wrapper-unreadable",
@@ -122,30 +134,22 @@ fn ported_agent_verdict(
     }
 }
 
-/// Regras 7 a 10: a matriz `omhl-allow` do papel decide o único comando `omhl`.
+/// Regras 7 a 10: a matriz `omhl-allow` do papel decide o único comando `omhl`; o `allow` só sai
+/// quando o prefixo chega ao `omhl`.
 fn role_matrix_verdict(
     role: &str,
+    line: &CommandLine,
     simple: &SimpleCommand,
     input: &Value,
     env: &AgentRoleEnv<'_>,
 ) -> RoleVerdict {
-    let allow = match read_role_allow(role, env.plugin_root) {
-        Ok(allow) => allow,
-        Err(problem) => {
-            return deny(
-                "role-matrix-unreadable",
-                &format!("a ported role without a valid omhl-allow runs no omhl: {problem}"),
-            );
-        }
-    };
-    let leaf = resolve_leaf(simple.split().2, env.groups);
-    if !leaf.as_ref().is_some_and(|leaf| allow.permits(leaf)) {
+    if let Some(denial) = matrix_denial(role, simple, env) {
+        return denial;
+    }
+    if !line.clean_start || simple.follows_keyword() {
         return deny(
-            "command-outside-matrix",
-            &format!(
-                "{ROLE_PREFIX}{role} may run only these omhl commands (plus --help, -V and help): {}",
-                allow.commands.join(", ")
-            ),
+            "role-prefix-unreachable",
+            "start the command with omhl (after spaces or env/timeout/time only): no comment, blank line, redirection, `!` or control keyword before it",
         );
     }
 
@@ -153,6 +157,34 @@ fn role_matrix_verdict(
         reason: format!("the command is inside the {ROLE_PREFIX}{role} matrix"),
         updated_input: with_role_prefix(input, role),
     }
+}
+
+/// O motivo de negar quando a matriz do papel não cobre o comando; `None` quando cobre.
+fn matrix_denial(
+    role: &str,
+    simple: &SimpleCommand,
+    env: &AgentRoleEnv<'_>,
+) -> Option<RoleVerdict> {
+    let allow = match read_role_allow(role, env.plugin_root) {
+        Ok(allow) => allow,
+        Err(problem) => {
+            return Some(deny(
+                "role-matrix-unreadable",
+                &format!("a ported role without a valid omhl-allow runs no omhl: {problem}"),
+            ));
+        }
+    };
+    let leaf = resolve_leaf(simple.split().2, env.groups);
+
+    (!leaf.as_ref().is_some_and(|leaf| allow.permits(leaf))).then(|| {
+        deny(
+            "command-outside-matrix",
+            &format!(
+                "{ROLE_PREFIX}{role} may run only these omhl commands (plus --help, -V and help): {}",
+                allow.commands.join(", ")
+            ),
+        )
+    })
 }
 
 /// Regra 8: `${CLAUDE_PLUGIN_ROOT}/agents/<papel>.md`; o papel já passou pela lista fechada, então não vira caminho solto.
@@ -169,10 +201,31 @@ fn read_role_allow(role: &str, plugin_root: Option<&Path>) -> Result<RoleAllow, 
 fn with_role_prefix(input: &Value, role: &str) -> Value {
     let mut tool_input = input["tool_input"].clone();
     if let Some(command) = input["tool_input"]["command"].as_str() {
-        tool_input["command"] = json!(format!("{ROLE_VARIABLE}={ROLE_PREFIX}{role} {command}"));
+        let (before, after) = command.split_at(prefix_position(command));
+        tool_input["command"] = json!(format!(
+            "{before}{ROLE_VARIABLE}={ROLE_PREFIX}{role} {after}"
+        ));
     }
 
     tool_input
+}
+
+/// Onde o prefixo entra: na frente, salvo depois da palavra reservada `time` (e do `-p`), que só vale no começo do comando.
+/// Com o prefixo antes dela o bash chamaria o `/usr/bin/time`, que pode nem existir.
+fn prefix_position(command: &str) -> usize {
+    let Some(rest) = after_blank_word(command.trim_start_matches(BLANKS), "time") else {
+        return 0;
+    };
+    let rest = after_blank_word(rest, "-p").unwrap_or(rest);
+
+    command.len() - rest.len()
+}
+
+/// O que sobra depois da palavra `word` e dos espaços que a seguem; `None` se o texto não começa por ela.
+fn after_blank_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
+    text.strip_prefix(word)
+        .filter(|rest| rest.starts_with(BLANKS))
+        .map(|rest| rest.trim_start_matches(BLANKS))
 }
 
 fn deny(code: &'static str, reason: &str) -> RoleVerdict {

@@ -22,6 +22,8 @@ struct Wrapper {
     valued: &'static [&'static str],
     /// Prefixos de opção que mudam o que roda; uma opção de 1 caractere só vale por igualdade (`env -`).
     rewriting: &'static [&'static str],
+    /// Opções que só consultam o que o nome resolve, sem executar nada (`command -v`).
+    lookups: &'static [&'static str],
     /// Palavras posicionais antes do comando embrulhado (a duração do `timeout`).
     positionals: usize,
     /// Subcomando opcional entre o embrulho e o comando (`rtk proxy`).
@@ -33,12 +35,22 @@ const PLAIN: Wrapper = Wrapper {
     flags: &[],
     valued: &[],
     rewriting: &[],
+    lookups: &[],
     positionals: 0,
     subcommand: None,
 };
 
 /// Palavras reservadas do shell que antecedem um comando (`if omhl ...; then omhl ...`).
 const KEYWORDS: [&str; 8] = ["if", "then", "elif", "else", "while", "until", "do", "!"];
+
+const NO_PROGRAM: Resolved = Resolved {
+    program_at: None,
+    opacity: None,
+};
+
+pub(super) fn is_keyword(word: &str) -> bool {
+    KEYWORDS.contains(&basename(word))
+}
 
 const WRAPPERS: [Wrapper; 10] = [
     Wrapper {
@@ -71,6 +83,7 @@ const WRAPPERS: [Wrapper; 10] = [
     Wrapper {
         name: "command",
         flags: &["-p"],
+        lookups: &["-v", "-V"],
         ..PLAIN
     },
     Wrapper {
@@ -121,15 +134,18 @@ const WRAPPERS: [Wrapper; 10] = [
 enum Skipped {
     Words(usize),
     Opaque(Opacity),
+    Lookup,
 }
 
 pub(super) fn basename(word: &str) -> &str {
     word.rsplit('/').next().unwrap_or(word)
 }
 
-/// `NOME=valor` com nome de variável válido.
+/// `NOME=valor` ou `NOME+=valor` com nome de variável válido.
 fn is_assignment(word: &str) -> bool {
     word.split_once('=').is_some_and(|(name, _)| {
+        let name = name.strip_suffix('+').unwrap_or(name);
+
         !name.is_empty()
             && !name.starts_with(|c: char| c.is_ascii_digit())
             && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -142,16 +158,13 @@ pub(super) fn resolve(words: &[String]) -> Resolved {
     loop {
         at += words[at..].iter().take_while(|w| is_assignment(w)).count();
         let Some(word) = words.get(at) else {
-            return Resolved {
-                program_at: None,
-                opacity: None,
-            };
+            return NO_PROGRAM;
         };
-        let name = basename(word);
-        if KEYWORDS.contains(&name) {
+        if is_keyword(word) {
             at += 1;
             continue;
         }
+        let name = basename(word);
         let Some(wrapper) = WRAPPERS.iter().find(|wrapper| wrapper.name == name) else {
             return Resolved {
                 program_at: Some(at),
@@ -160,6 +173,7 @@ pub(super) fn resolve(words: &[String]) -> Resolved {
         };
         match wrapper.skip(&words[at + 1..]) {
             Skipped::Words(count) => at += 1 + count,
+            Skipped::Lookup => return NO_PROGRAM,
             Skipped::Opaque(opacity) => {
                 return Resolved {
                     program_at: None,
@@ -178,6 +192,9 @@ impl Wrapper {
             if word == "--" {
                 at += 1;
                 break;
+            }
+            if self.lookups.contains(&word.as_str()) {
+                return Skipped::Lookup;
             }
             if self.is_rewriting(word) {
                 return Skipped::Opaque(Opacity::Rewriting);

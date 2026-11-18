@@ -5,26 +5,31 @@ use super::cursor::Cursor;
 pub(super) struct Delimiter {
     pub(super) tag: String,
     pub(super) strip_tabs: bool,
+    /// Terminador com aspas ou barra: o bash não expande o corpo.
+    pub(super) quoted: bool,
 }
 
 /// O corpo é dado, não comando: consome as linhas de cada heredoc pendente, na ordem, até a linha do terminador.
+/// Devolve se algum corpo sem aspas tem `$(` ou crase, que o bash executa.
 pub(super) fn skip_bodies(
     cursor: &mut Cursor,
     pending: &mut Vec<Delimiter>,
-) -> Result<(), ReadError> {
+) -> Result<bool, ReadError> {
+    let mut executes = false;
     for delimiter in pending.drain(..) {
         loop {
             let line = cursor.read_line().ok_or(ReadError::UnclosedHeredoc)?;
-            let line = if delimiter.strip_tabs {
+            let closing = if delimiter.strip_tabs {
                 line.trim_start_matches('\t')
             } else {
                 &line
             };
-            if line == delimiter.tag {
+            if closing == delimiter.tag {
                 break;
             }
+            executes |= !delimiter.quoted && (line.contains("$(") || line.contains('`'));
         }
     }
 
-    Ok(())
+    Ok(executes)
 }

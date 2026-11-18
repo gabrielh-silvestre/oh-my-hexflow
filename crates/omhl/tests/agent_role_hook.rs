@@ -1,7 +1,9 @@
 mod support;
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use omhl::guard::{ROLE_REFERENCE_COMMANDS, ROLE_REFERENCE_MATRIX};
 use serde_json::{Value, json};
@@ -902,9 +904,17 @@ fn it_should_apply_the_matrix_to_timeout_30_omhl() {
     assert_wrapper_applies_matrix("timeout 30");
 }
 
+/// `time` é palavra reservada do bash: o prefixo vem depois dela (e do `-p`), senão vira o `/usr/bin/time`.
 #[test]
-fn it_should_apply_the_matrix_to_time_omhl() {
-    assert_wrapper_applies_matrix("time");
+fn it_should_apply_the_matrix_to_time_omhl_with_the_prefix_after_the_keyword() {
+    let allowed = run_as("verifier", "time omhl list");
+    let denied = run_as("verifier", &format!("time {ATTEST}"));
+
+    assert_eq!(
+        decision_of(&allowed)["updatedInput"]["command"],
+        json!("time OMHL_ROLE=omhl:verifier omhl list")
+    );
+    assert_denied_listing(&denied, "verifier", &format!("time {ATTEST}"));
 }
 
 #[test]
@@ -1244,5 +1254,326 @@ fn it_should_keep_every_agent_fixture_equal_to_the_reference_role_matrix() {
         assert_eq!(flow_list(&file, "nodes"), sorted(nodes), "{role}");
         assert_eq!(flow_list(&file, "relations"), sorted(relations), "{role}");
         assert_eq!(flow_list(&file, "retire"), sorted(retire), "{role}");
+    }
+}
+
+// Revisão S3: o prefixo só vale quando o `omhl` é provadamente o comando que o recebe
+
+fn assert_denied_mentioning(output: &Child, fragment: &str) {
+    assert_denied(output);
+    let decision = decision_of(output);
+    let reason = decision["permissionDecisionReason"]
+        .as_str()
+        .unwrap_or_default();
+
+    assert!(
+        reason.contains(fragment),
+        "the reason mentions {fragment}: {reason}"
+    );
+}
+
+fn assert_denied_from_any_origin(command: &str) {
+    assert_denied(&run_as("verifier", command));
+    assert_denied(&run_agent_role(command, None));
+}
+
+// B1: nada além de espaço e tab antes do primeiro comando
+
+#[test]
+fn it_should_deny_a_comment_line_before_the_omhl_call() {
+    let command = "# record the decision\nomhl append <<'EOF'\n{\"items\":[]}\nEOF\n";
+
+    let output = run_as("verifier", command);
+
+    assert_denied_mentioning(&output, "start");
+}
+
+#[test]
+fn it_should_deny_a_blank_line_before_the_omhl_call() {
+    let output = run_as("verifier", "\nomhl list");
+
+    assert_denied_mentioning(&output, "start");
+}
+
+#[test]
+fn it_should_deny_a_redirection_only_line_before_the_omhl_call() {
+    let output = run_as("verifier", ">out\nomhl list");
+
+    assert_denied_mentioning(&output, "start");
+}
+
+#[test]
+fn it_should_deny_a_heredoc_line_before_the_omhl_call() {
+    let output = run_as("verifier", "<<X\nbody\nX\nomhl list");
+
+    assert_denied_mentioning(&output, "start");
+}
+
+#[test]
+fn it_should_deny_a_line_continuation_before_the_omhl_call() {
+    let output = run_as("verifier", "\\\nomhl list");
+
+    assert_denied_mentioning(&output, "start");
+}
+
+#[test]
+fn it_should_allow_leading_spaces_and_tabs_before_the_omhl_call() {
+    assert_verifier_allowed("  \t omhl list");
+}
+
+#[test]
+fn it_should_not_hide_the_matrix_denial_behind_the_start_rule() {
+    let command = format!("# why\n{ATTEST}");
+
+    let output = run_as("verifier", &command);
+
+    assert_denied_listing(&output, "verifier", &command);
+}
+
+// B2: `env` que tira o papel
+
+#[test]
+fn it_should_deny_env_u_omhl_role() {
+    assert_denied_from_any_origin("env -u OMHL_ROLE omhl list");
+}
+
+#[test]
+fn it_should_deny_env_with_u_glued_to_omhl_role() {
+    assert_denied_from_any_origin("env -uOMHL_ROLE omhl list");
+}
+
+#[test]
+fn it_should_deny_env_unset_equals_omhl_role() {
+    assert_denied_from_any_origin("env --unset=OMHL_ROLE omhl list");
+}
+
+#[test]
+fn it_should_deny_env_unset_separated_omhl_role() {
+    assert_denied_from_any_origin("env --unset OMHL_ROLE omhl list");
+}
+
+// B3: `OMHL_ROLE+=`
+
+#[test]
+fn it_should_deny_omhl_role_plus_equals_as_a_command_prefix() {
+    assert_denied_from_any_origin("OMHL_ROLE+=omhl:verifier omhl list");
+}
+
+#[test]
+fn it_should_deny_env_omhl_role_plus_equals() {
+    assert_denied_from_any_origin("env OMHL_ROLE+=omhl:verifier omhl list");
+}
+
+#[test]
+fn it_should_deny_export_omhl_role_plus_equals() {
+    assert_denied_from_any_origin("export OMHL_ROLE+=omhl:verifier");
+}
+
+// B4: palavras reservadas que o prefixo não alcança
+
+#[test]
+fn it_should_deny_a_negated_omhl_call() {
+    let output = run_as("verifier", "! omhl list");
+
+    assert_denied_mentioning(&output, "start");
+}
+
+#[test]
+fn it_should_deny_omhl_behind_every_control_keyword() {
+    for keyword in ["if", "then", "elif", "else", "while", "until", "do"] {
+        let output = run_as("verifier", &format!("{keyword} omhl list"));
+
+        assert_denied_mentioning(&output, "start");
+    }
+}
+
+#[test]
+fn it_should_put_the_prefix_after_time_and_its_p_option() {
+    let output = run_as("verifier", "time -p omhl list");
+
+    assert_eq!(
+        decision_of(&output)["updatedInput"]["command"],
+        json!("time -p OMHL_ROLE=omhl:verifier omhl list")
+    );
+}
+
+#[test]
+fn it_should_put_the_prefix_after_time_when_the_call_has_leading_spaces() {
+    let output = run_as("verifier", "  time omhl list");
+
+    assert_eq!(
+        decision_of(&output)["updatedInput"]["command"],
+        json!("  time OMHL_ROLE=omhl:verifier omhl list")
+    );
+}
+
+// B5: `${...}` e `$((...))` são parte da palavra
+
+#[test]
+fn it_should_allow_omhl_with_a_braced_parameter_inside_double_quotes() {
+    assert_verifier_allowed("omhl list --db \"${X}/state.db\"");
+}
+
+#[test]
+fn it_should_allow_omhl_reached_through_a_braced_parameter_path() {
+    assert_verifier_allowed("${HOME}/.local/bin/omhl list");
+}
+
+#[test]
+fn it_should_allow_omhl_with_an_arithmetic_expansion_argument() {
+    assert_verifier_allowed("omhl list --limit $((1+2))");
+}
+
+#[test]
+fn it_should_allow_omhl_with_a_parenthesised_arithmetic_expansion() {
+    assert_verifier_allowed("omhl list --limit $(( (1+2)*3 ))");
+}
+
+#[test]
+fn it_should_not_read_a_hash_inside_a_braced_parameter_as_a_comment() {
+    let output = run_as("verifier", "echo ${#x}; omhl list");
+
+    assert_denied(&output);
+}
+
+#[test]
+fn it_should_not_read_a_hash_right_after_a_substitution_as_a_comment() {
+    let output = run_as("verifier", "echo $(true)#; omhl list");
+
+    assert_denied(&output);
+}
+
+// B6: heredoc sem aspas no terminador executa `$(...)` e crase
+
+#[test]
+fn it_should_deny_an_unquoted_heredoc_with_a_command_substitution_in_the_body() {
+    let command = "omhl append <<EOF\n{\"text\":\"on $(date)\"}\nEOF\n";
+
+    let output = run_as("verifier", command);
+
+    assert_denied_mentioning(&output, "<<'EOF'");
+}
+
+#[test]
+fn it_should_deny_an_unquoted_heredoc_with_a_backtick_in_the_body() {
+    let command = "omhl append <<EOF\n{\"text\":\"use `omhl list` to see\"}\nEOF\n";
+
+    let output = run_as("verifier", command);
+
+    assert_denied_mentioning(&output, "<<'EOF'");
+}
+
+#[test]
+fn it_should_deny_a_dash_heredoc_with_a_substitution_in_the_body() {
+    let command = "omhl append <<-EOF\n\t$(date)\n\tEOF\n";
+
+    let output = run_as("verifier", command);
+
+    assert_denied_mentioning(&output, "<<'EOF'");
+}
+
+#[test]
+fn it_should_deny_an_unquoted_heredoc_that_hides_an_omhl_substitution_in_another_command() {
+    let output = run_as("architect", "cat <<EOF\n$(omhl list)\nEOF\n");
+
+    assert_denied_mentioning(&output, "<<'EOF'");
+}
+
+#[test]
+fn it_should_allow_an_unquoted_heredoc_without_substitution() {
+    assert_verifier_allowed("omhl append <<EOF\n{\"items\":[]}\nEOF\n");
+}
+
+#[test]
+fn it_should_allow_a_quoted_heredoc_with_a_substitution_in_the_body() {
+    assert_verifier_allowed("omhl append <<'EOF'\n{\"text\":\"$(date) `x`\"}\nEOF\n");
+}
+
+#[test]
+fn it_should_pass_an_unquoted_heredoc_with_a_substitution_from_the_main_session() {
+    let output = run_agent_role("cat <<EOF\n$(date)\nEOF\n", None);
+
+    assert_passed(&output);
+}
+
+// B7: `command -v` consulta, não executa
+
+#[test]
+fn it_should_pass_command_v_omhl() {
+    let output = run_as("verifier", "command -v omhl");
+
+    assert_passed(&output);
+}
+
+#[test]
+fn it_should_pass_command_capital_v_omhl() {
+    let output = run_as("verifier", "command -V omhl");
+
+    assert_passed(&output);
+}
+
+// B10: `$'omhl'` e `$"omhl"` são o programa `omhl`
+
+#[test]
+fn it_should_read_an_ansi_c_quoted_program_as_omhl() {
+    assert_verifier_allowed("$'omhl' list");
+}
+
+#[test]
+fn it_should_read_a_locale_quoted_program_as_omhl() {
+    assert_verifier_allowed("$\"omhl\" list");
+}
+
+#[test]
+fn it_should_apply_the_matrix_to_an_ansi_c_quoted_program() {
+    let command = format!("$'omhl' {}", &ATTEST["omhl ".len()..]);
+
+    let output = run_as("verifier", &command);
+
+    assert_denied_listing(&output, "verifier", &command);
+}
+
+// Execução: o comando reescrito roda de verdade com `OMHL_ROLE` no `omhl`
+
+#[test]
+fn it_should_run_every_allowed_rewritten_command_with_omhl_role_in_the_omhl_environment() {
+    let bin = TempDir::new().expect("bin directory is created");
+    let fake_omhl = bin.path().join("omhl");
+    fs::write(&fake_omhl, "#!/bin/sh\nprintf '%s\\n' \"$OMHL_ROLE\"\n")
+        .expect("fake omhl is written");
+    fs::set_permissions(&fake_omhl, fs::Permissions::from_mode(0o755))
+        .expect("fake omhl is executable");
+    let path = format!(
+        "{}:{}",
+        bin.path().display(),
+        std::env::var("PATH").expect("PATH is set")
+    );
+
+    for command in [
+        "omhl list",
+        APPEND_HEREDOC,
+        "timeout 30 omhl list",
+        "env omhl list",
+        "time omhl list",
+        "time -p omhl list",
+        "  omhl list",
+        "omhl list 2>&1",
+    ] {
+        let rewritten = decision_of(&run_as("verifier", command))["updatedInput"]["command"]
+            .as_str()
+            .expect("the hook allowed and rewrote the command")
+            .to_owned();
+
+        let ran = Command::new("bash")
+            .args(["-c", &rewritten])
+            .env("PATH", &path)
+            .output()
+            .expect("bash runs the rewritten command");
+
+        assert_eq!(
+            String::from_utf8_lossy(&ran.stdout).trim(),
+            "omhl:verifier",
+            "{command:?} became {rewritten:?}"
+        );
     }
 }

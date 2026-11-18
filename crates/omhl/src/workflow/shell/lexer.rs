@@ -9,6 +9,10 @@ use super::redirect::{self, NextWord};
 pub(super) struct Lexed {
     pub(super) commands: Vec<Vec<String>>,
     pub(super) separated: bool,
+    /// Em que caractere começa a primeira palavra do primeiro comando.
+    pub(super) first_start: Option<usize>,
+    /// Algum heredoc sem aspas no terminador tem `$(` ou crase no corpo.
+    pub(super) executes_heredoc: bool,
 }
 
 pub(super) fn lex(source: &str) -> Result<Lexed, ReadError> {
@@ -17,9 +21,12 @@ pub(super) fn lex(source: &str) -> Result<Lexed, ReadError> {
         commands: Vec::new(),
         current: Vec::new(),
         word: None,
+        word_start: 0,
         next_word: NextWord::Argument,
         heredocs: Vec::new(),
         separated: false,
+        first_start: None,
+        executes_heredoc: false,
     };
     lexer.run(None)?;
     if !lexer.heredocs.is_empty() {
@@ -29,6 +36,8 @@ pub(super) fn lex(source: &str) -> Result<Lexed, ReadError> {
     Ok(Lexed {
         commands: lexer.commands,
         separated: lexer.separated,
+        first_start: lexer.first_start,
+        executes_heredoc: lexer.executes_heredoc,
     })
 }
 
@@ -55,9 +64,13 @@ struct Lexer {
     commands: Vec<Vec<String>>,
     current: Vec<String>,
     word: Option<WordBuilder>,
+    /// Caractere em que a palavra em andamento começou.
+    word_start: usize,
     next_word: NextWord,
     heredocs: Vec<Delimiter>,
     separated: bool,
+    first_start: Option<usize>,
+    executes_heredoc: bool,
 }
 
 impl Lexer {
@@ -75,6 +88,9 @@ impl Lexer {
     }
 
     fn step(&mut self, c: char) -> Result<(), ReadError> {
+        if self.word.is_none() {
+            self.word_start = self.cursor.consumed() - 1;
+        }
         match c {
             ' ' | '\t' => self.end_word(),
             '\n' => self.line_break()?,
@@ -108,16 +124,26 @@ impl Lexer {
         let Some(word) = self.word.take() else {
             return;
         };
+        // Só uma substituição vazia (`$(true)`) deixa palavra sem texto e sem aspas: o shell a descarta.
+        if word.text.is_empty() && !word.quoted {
+            return;
+        }
         match mem::take(&mut self.next_word) {
             NextWord::Ignored => {}
             NextWord::Delimiter { strip_tabs } => self.heredocs.push(Delimiter {
                 tag: word.text,
                 strip_tabs,
+                quoted: word.quoted,
             }),
             NextWord::Argument if self.current.is_empty() && word.is_group_brace() => {
                 self.separator();
             }
-            NextWord::Argument => self.current.push(word.text),
+            NextWord::Argument => {
+                if self.current.is_empty() {
+                    self.first_start.get_or_insert(self.word_start);
+                }
+                self.current.push(word.text);
+            }
         }
     }
 
@@ -137,8 +163,9 @@ impl Lexer {
     /// A quebra de linha termina o comando mas não conta como separador; depois dela vêm os corpos de heredoc.
     fn line_break(&mut self) -> Result<(), ReadError> {
         self.end_command();
+        self.executes_heredoc |= heredoc::skip_bodies(&mut self.cursor, &mut self.heredocs)?;
 
-        heredoc::skip_bodies(&mut self.cursor, &mut self.heredocs)
+        Ok(())
     }
 
     fn ampersand(&mut self) -> Result<(), ReadError> {
@@ -165,15 +192,18 @@ impl Lexer {
         Ok(())
     }
 
-    /// Lê uma substituição (`$(...)`, `${...}`, crase, `<(...)`) como comandos próprios; o comando e a
-    /// palavra que a contêm ficam guardados e voltam depois.
+    /// Lê uma substituição (`$(...)`, crase, `<(...)`) como comandos próprios; o comando e a palavra
+    /// que a contêm ficam guardados e voltam depois. O que vem colado depois (`$(true)#`) segue na mesma
+    /// palavra, então o `#` ali não abre comentário.
     fn nested(&mut self, close: char) -> Result<(), ReadError> {
         let outer_word = self.word.take();
+        let outer_start = self.word_start;
         let outer_command = mem::take(&mut self.current);
         let outer_next = mem::take(&mut self.next_word);
         self.separated = true;
         self.run(Some(close))?;
-        self.word = outer_word;
+        self.word = outer_word.or_else(|| Some(WordBuilder::default()));
+        self.word_start = outer_start;
         self.current = outer_command;
         self.next_word = outer_next;
 
@@ -182,13 +212,62 @@ impl Lexer {
 
     fn dollar(&mut self) -> Result<(), ReadError> {
         if self.cursor.eat('(') {
-            self.nested(')')
-        } else if self.cursor.eat('{') {
-            self.nested('}')
+            if !self.cursor.opens_arithmetic() {
+                return self.nested(')');
+            }
+            self.cursor.eat('(');
+            return self.arithmetic();
+        }
+        if self.cursor.eat('{') {
+            return self.parameter();
+        }
+        // `$'...'` e `$"..."` são só aspas: o `$` não entra na palavra.
+        if matches!(self.cursor.peek(), Some('\'' | '"')) {
+            self.word.get_or_insert_default();
         } else {
             self.push('$', false);
-            Ok(())
         }
+
+        Ok(())
+    }
+
+    /// `${...}` é parte da palavra, não separador: por dentro só importam `$(`, crase e aspas, e `#` não abre comentário.
+    fn parameter(&mut self) -> Result<(), ReadError> {
+        self.word.get_or_insert_default();
+        while let Some(c) = self.cursor.bump() {
+            match c {
+                '}' => break,
+                '$' => self.dollar()?,
+                '`' => self.nested('`')?,
+                '\\' => self.escape(),
+                '\'' => self.single_quoted()?,
+                '"' => self.double_quoted()?,
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    /// `$((...))` é parte da palavra; só `$(` e crase por dentro executam.
+    fn arithmetic(&mut self) -> Result<(), ReadError> {
+        self.word.get_or_insert_default();
+        let mut depth = 0;
+        while let Some(c) = self.cursor.bump() {
+            match c {
+                '(' => depth += 1,
+                ')' if depth > 0 => depth -= 1,
+                ')' => {
+                    self.cursor.eat(')');
+                    break;
+                }
+                '$' => self.dollar()?,
+                '`' => self.nested('`')?,
+                _ => {}
+            }
+        }
+
+        Ok(())
     }
 
     fn escape(&mut self) {

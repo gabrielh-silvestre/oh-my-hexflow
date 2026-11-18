@@ -24,6 +24,10 @@ pub struct CommandLine {
     pub commands: Vec<SimpleCommand>,
     /// Mais de um comando simples, ou algum separador. Redirecionamento e a quebra de linha final não contam.
     pub compound: bool,
+    /// Só espaços e tabs antes da primeira palavra do primeiro comando (sem comentário, linha em branco, redirecionamento ou continuação).
+    pub clean_start: bool,
+    /// Heredoc sem aspas no terminador cujo corpo tem `$(` ou crase: o bash executa o que está lá dentro.
+    pub executes_heredoc: bool,
 }
 
 /// Um comando simples: o trecho entre separadores, com as palavras sem aspas.
@@ -56,6 +60,11 @@ impl SimpleCommand {
         }
     }
 
+    /// Uma palavra reservada (`!`, `if`, `do`...) antes do programa: ali um `VAR=valor` na frente não vale.
+    pub fn follows_keyword(&self) -> bool {
+        self.split().0.iter().any(|word| wrapper::is_keyword(word))
+    }
+
     /// Roda o `omhl` ou o leitor não consegue descartar que rode: nega-se em vez de adivinhar.
     pub fn may_run_omhl(&self) -> bool {
         match self.resolved.opacity {
@@ -69,6 +78,13 @@ impl SimpleCommand {
 pub fn read_command(command: &str) -> Result<CommandLine, ReadError> {
     let lexed = lexer::lex(command)?;
     let compound = lexed.separated || lexed.commands.len() > 1;
+    let leading_blanks = command
+        .chars()
+        .take_while(|c| matches!(c, ' ' | '\t'))
+        .count();
+    let clean_start = lexed
+        .first_start
+        .is_none_or(|start| start == leading_blanks);
     let commands = lexed
         .commands
         .into_iter()
@@ -78,7 +94,12 @@ pub fn read_command(command: &str) -> Result<CommandLine, ReadError> {
         })
         .collect();
 
-    Ok(CommandLine { commands, compound })
+    Ok(CommandLine {
+        commands,
+        compound,
+        clean_start,
+        executes_heredoc: lexed.executes_heredoc,
+    })
 }
 
 #[cfg(test)]
@@ -176,7 +197,7 @@ mod tests {
         assert_eq!(program_names("echo \"$(omhl list)\""), ["omhl", "other"]);
         assert_eq!(
             program_names("echo \"${x:-$(omhl list)}\""),
-            ["omhl", "other", "other"]
+            ["omhl", "other"]
         );
         assert_eq!(program_names("echo '$(omhl list)'"), ["other"]);
     }
