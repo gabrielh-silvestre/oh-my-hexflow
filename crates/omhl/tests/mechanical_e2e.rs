@@ -480,9 +480,12 @@ fn it_should_block_a_commit_when_a_check_fails_and_allow_it_when_it_passes() {
     let flow = red_then_green(&e);
 
     assert_ne!(flow.blocked.status.code(), Some(0));
-    assert_eq!(
-        hook_error_code(&text(&flow.blocked.stderr)),
-        "checks-failed"
+    assert!(
+        text(&flow.blocked.stderr)
+            .lines()
+            .any(|line| line.starts_with("✘ BLOCKED · before-commit · ")),
+        "stderr: {}",
+        text(&flow.blocked.stderr)
     );
     assert_eq!(flow.count_after_blocked, "1");
     assert_eq!(flow.load.code, Some(0), "load: {}", flow.load.stderr);

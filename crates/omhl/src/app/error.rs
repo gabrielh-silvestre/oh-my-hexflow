@@ -74,6 +74,8 @@ pub struct AppError {
     code: String,
     message: String,
     details: Vec<Detail>,
+    /// Fatos que valem para o erro todo e que repetir em cada detalhe só duplicaria; só o `checks-failed` os traz.
+    context: Option<Value>,
 }
 
 impl AppError {
@@ -92,13 +94,19 @@ impl AppError {
     pub fn to_json(&self) -> Value {
         let details: Vec<Value> = self.details.iter().map(Detail::to_json).collect();
 
-        json!({ "error": { "code": self.code, "message": self.message, "details": details } })
+        let mut error = json!({ "code": self.code, "message": self.message, "details": details });
+        if let Some(context) = &self.context {
+            error["context"] = context.clone();
+        }
+
+        json!({ "error": error })
     }
 
     /// Erro sem detalhes. Privado: todo código estável tem construtor nomeado; só o código dinâmico de `ProjectError` passa por aqui direto.
     fn plain(code: &str, message: &str) -> AppError {
         AppError {
             code: code.to_owned(),
+            context: None,
             message: message.to_owned(),
             details: Vec::new(),
         }
@@ -108,6 +116,7 @@ impl AppError {
     pub(crate) fn at_pointer(code: &str, pointer: &str, message: &str) -> AppError {
         AppError {
             code: code.to_owned(),
+            context: None,
             message: message.to_owned(),
             details: vec![Detail::new(pointer, code, message)],
         }
@@ -239,6 +248,7 @@ impl AppError {
 
         AppError {
             code: "extensions-invalid".to_owned(),
+            context: None,
             message,
             details,
         }
@@ -248,6 +258,7 @@ impl AppError {
     pub(crate) fn projection_failed(error: &ProjectionError) -> AppError {
         AppError {
             code: "projection-failed".to_owned(),
+            context: None,
             message: "the projection could not be written".to_owned(),
             details: vec![Detail::new(&error.path, error.code, &error.message)],
         }
@@ -304,13 +315,17 @@ impl AppError {
 
         AppError {
             code: code.to_owned(),
+            context: None,
             message: format!("{code} at /snapshot: {reason}"),
             details: vec![Detail::new("/snapshot", code, code)],
         }
     }
 
-    pub(crate) fn checks_failed(details: Vec<CheckDetail>) -> AppError {
-        AppError::per_check("checks-failed", "a blocking check failed", details)
+    pub(crate) fn checks_failed(details: Vec<CheckDetail>, context: Value) -> AppError {
+        AppError {
+            context: Some(context),
+            ..AppError::per_check("checks-failed", "a blocking check failed", details)
+        }
     }
 
     pub(crate) fn check_not_run(details: Vec<CheckDetail>) -> AppError {
@@ -356,6 +371,7 @@ impl AppError {
 
         AppError {
             code: code.to_owned(),
+            context: None,
             message: message.to_owned(),
             details,
         }
@@ -436,6 +452,7 @@ impl AppError {
     pub(crate) fn refusal(code: &str, pointer: &str, guidance: Guidance) -> AppError {
         AppError {
             code: code.to_owned(),
+            context: None,
             message: guidance.cause.to_owned(),
             details: vec![Detail {
                 next_step: Some(guidance.next_step.to_owned()),
@@ -455,6 +472,7 @@ impl AppError {
 
         AppError {
             code: code.to_owned(),
+            context: None,
             message,
             details,
         }
@@ -644,6 +662,7 @@ impl AppError {
 
         AppError {
             code: code.to_owned(),
+            context: None,
             message,
             details,
         }
@@ -662,6 +681,7 @@ impl AppError {
 
         AppError {
             code: "amendment-invalid".to_owned(),
+            context: None,
             message: message.to_owned(),
             details: vec![Detail::new(path, "amendment-not-found", message)],
         }
@@ -729,6 +749,7 @@ impl From<HexlogError> for AppError {
 
         AppError {
             code: error.code.as_str().to_owned(),
+            context: None,
             message,
             details,
         }

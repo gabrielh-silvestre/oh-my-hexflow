@@ -19,6 +19,8 @@ pub struct PlannedCheck {
     pub blocking: bool,
     pub snapshot: hexlog::SnapshotKind,
     pub spec_digest: String,
+    pub concern: Option<String>,
+    pub variant: Option<String>,
 }
 
 pub fn plan_run(
@@ -38,6 +40,8 @@ pub fn plan_run(
                 blocking: node.data["blocking"] == true,
                 snapshot: snapshot_for(&node.data),
                 spec_digest: spec_digest(&node.data),
+                concern: node.data["concern"].as_str().map(str::to_owned),
+                variant: node.data["variant"].as_str().map(str::to_owned),
             })
         })
         .collect();

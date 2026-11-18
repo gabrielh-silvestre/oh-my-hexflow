@@ -29,7 +29,7 @@ pub fn render_error(value: &Value) -> String {
     let code = text(error, "code");
     let blocked = code == "checks-failed";
     let mut lines = vec![if blocked {
-        format!("✘ BLOCKED · {code} · {}", text(error, "message"))
+        blocked_header(&error["context"])
     } else {
         format!("✘ {code} · {}", text(error, "message"))
     }];
@@ -71,6 +71,60 @@ fn success_header(value: &Value, event: &str) -> String {
     format!("✔ {event} · {work_item} · {recorded}{snapshot}")
 }
 
+/// `context` é o do erro `checks-failed`: evento, work item (ausente na `develop`) e resumo.
+fn blocked_header(context: &Value) -> String {
+    let summary = &context["summary"];
+    let count = |key: &str| summary[key].as_u64().unwrap_or_default();
+
+    format!(
+        "✘ BLOCKED · {} · {} · {} of {} checks failed, {} not run",
+        text(context, "event"),
+        context["work_item"].as_str().unwrap_or("no work item"),
+        count("failed"),
+        count("planned"),
+        count("not_run")
+    )
+}
+
+/// Os fatos curtos do check reprovado, depois do id: `test/suite · blocking · exit 101 · 2.6s`.
+fn failed_check_line(path: &str, context: &Value) -> String {
+    let mut parts = vec![path.to_owned()];
+    if let Some(concern) = context["concern"].as_str() {
+        parts.push(format!("{concern}/{}", text(context, "variant")));
+    }
+    parts.push(
+        if context["blocking"] == false {
+            "non-blocking"
+        } else {
+            "blocking"
+        }
+        .to_owned(),
+    );
+    if let Some(exit_code) = context["exit_code"].as_i64() {
+        parts.push(format!("exit {exit_code}"));
+    }
+    if context["timed_out"] == true {
+        parts.push("timed out".to_owned());
+    }
+    if let Some(duration_ms) = context["duration_ms"].as_u64() {
+        parts.push(duration_label(duration_ms));
+    }
+    if context["truncated"] == true {
+        parts.push("truncated".to_owned());
+    }
+
+    format!("  ✘ {}", parts.join(" · "))
+}
+
+fn duration_label(duration_ms: u64) -> String {
+    if duration_ms < 1000 {
+        return format!("{duration_ms}ms");
+    }
+    let tenths = (duration_ms + 50) / 100;
+
+    format!("{}.{}s", tenths / 10, tenths % 10)
+}
+
 fn result_line(result: &Value) -> String {
     let outcome = text(result, "outcome");
     let icon = match outcome {
@@ -99,8 +153,13 @@ fn result_line(result: &Value) -> String {
         format!(" ({})", notes.join(", "))
     };
 
+    let concern = match result["concern"].as_str() {
+        Some(concern) => format!("  {concern}/{}", text(result, "variant")),
+        None => String::new(),
+    };
+
     format!(
-        "  {icon} {}  {outcome}  {}ms{notes}",
+        "  {icon} {}{concern}  {outcome}  {}ms{notes}",
         text(result, "check"),
         result["duration_ms"].as_u64().unwrap_or_default()
     )
@@ -149,12 +208,11 @@ fn detail_lines(detail: &Value) -> Vec<String> {
     let mut lines = Vec::new();
 
     if code == "failed" {
-        let blocking = if message.starts_with(NON_BLOCKING_PREFIX) {
-            "non-blocking"
-        } else {
-            "blocking"
-        };
-        lines.push(format!("  ✘ {path} · {blocking}"));
+        lines.push(failed_check_line(path, context));
+        if let Some(run) = context["run"].as_array() {
+            let run: Vec<&str> = run.iter().filter_map(Value::as_str).collect();
+            lines.push(format!("    command: {}", run.join(" ")));
+        }
         lines.push(format!(
             "    how to read the output: {}",
             message.strip_prefix(NON_BLOCKING_PREFIX).unwrap_or(message)
@@ -234,7 +292,20 @@ mod tests {
     }
 
     fn failed_detail(path: &str, message: &str) -> Value {
-        json!({ "code": "failed", "message": message, "path": path })
+        json!({
+            "code": "failed", "message": message, "path": path,
+            "context": {
+                "blocking": true, "concern": "test", "variant": "suite", "run": ["cargo", "test"],
+                "timeout_secs": 60, "exit_code": 101, "duration_ms": 2600,
+                "timed_out": false, "truncated": false
+            }
+        })
+    }
+
+    fn with_context(mut detail: Value, key: &str, value: Value) -> Value {
+        detail["context"][key] = value;
+
+        detail
     }
 
     fn error(code: &str, message: &str, details: Vec<Value>) -> Value {
@@ -242,20 +313,28 @@ mod tests {
     }
 
     fn checks_failed(details: Vec<Value>) -> Value {
-        error("checks-failed", "a blocking check failed", details)
+        let mut value = error("checks-failed", "a blocking check failed", details);
+        value["error"]["context"] = json!({
+            "event": "before-pr", "work_item": "work-items.w1",
+            "summary": { "planned": 3, "passed": 1, "failed": 1, "not_run": 1 }
+        });
+
+        value
     }
 
     fn develop_failure(tail: Value) -> Value {
-        let mut detail = json!({
-            "code": "failed", "path": "checks.bad", "message": "output in context.output_tail",
-            "context": {
-                "kind": "failed", "event": "before-pr", "check": "checks.bad",
-                "snapshot": { "id": COMMIT, "kind": "git-commit" }
-            }
-        });
-        detail["context"]["output_tail"] = tail;
+        let detail = with_context(
+            failed_detail("checks.bad", "output in context.output_tail"),
+            "output_tail",
+            tail,
+        );
+        let mut value = checks_failed(vec![detail]);
+        value["error"]["context"]
+            .as_object_mut()
+            .expect("context is an object")
+            .remove("work_item");
 
-        checks_failed(vec![detail])
+        value
     }
 
     fn pre_check_errors() -> Vec<Value> {
@@ -497,22 +576,99 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "✘ BLOCKED · checks-failed · a blocking check failed\n  ✘ checks.bad · blocking\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\nThe output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.\nNext: read the output with the command above, fix the cause, then run the same command again."
+            "✘ BLOCKED · before-pr · work-items.w1 · 1 of 3 checks failed, 1 not run\n  ✘ checks.bad · test/suite · blocking · exit 101 · 2.6s\n    command: cargo test\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\nThe output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.\nNext: read the output with the command above, fix the cause, then run the same command again."
         );
     }
 
     #[test]
     fn it_should_label_a_non_blocking_failed_check_and_drop_the_json_prefix() {
-        let value = checks_failed(vec![failed_detail(
-            "checks.soft",
-            "non-blocking: omhl byproduct checks.soft work-items.w1 --tail 40",
-        )]);
+        let soft = with_context(
+            failed_detail(
+                "checks.soft",
+                "non-blocking: omhl byproduct checks.soft work-items.w1 --tail 40",
+            ),
+            "blocking",
+            json!(false),
+        );
+        let value = checks_failed(vec![soft]);
 
         let rendered = render_error(&value);
 
-        assert!(rendered.contains(
-            "  ✘ checks.soft · non-blocking\n    how to read the output: omhl byproduct checks.soft"
-        ));
+        assert!(rendered.contains("  ✘ checks.soft · test/suite · non-blocking · "));
+        assert!(
+            rendered
+                .contains("    how to read the output: omhl byproduct checks.soft work-items.w1")
+        );
+    }
+
+    #[test]
+    fn it_should_say_timed_out_instead_of_an_exit_code_when_the_check_ran_out_of_time() {
+        let mut slow = with_context(
+            failed_detail("checks.slow", "omhl byproduct checks.slow w1 --tail 40"),
+            "timed_out",
+            json!(true),
+        );
+        slow["context"]
+            .as_object_mut()
+            .expect("context")
+            .remove("exit_code");
+        let value = checks_failed(vec![slow]);
+
+        let rendered = render_error(&value);
+
+        assert!(rendered.contains("  ✘ checks.slow · test/suite · blocking · timed out · 2.6s\n"));
+    }
+
+    #[test]
+    fn it_should_flag_a_truncated_output_on_the_failed_check_line() {
+        let big = with_context(
+            failed_detail("checks.big", "omhl byproduct checks.big w1 --tail 40"),
+            "truncated",
+            json!(true),
+        );
+        let value = checks_failed(vec![big]);
+
+        let rendered = render_error(&value);
+
+        assert!(rendered.contains("blocking · exit 101 · 2.6s · truncated\n"));
+    }
+
+    #[test]
+    fn it_should_open_the_blocked_header_without_a_work_item_on_develop() {
+        let value = develop_failure(json!({ "stdout": [], "stderr": [] }));
+
+        let rendered = render_error(&value);
+
+        assert_eq!(
+            rendered.lines().next(),
+            Some("✘ BLOCKED · before-pr · no work item · 1 of 3 checks failed, 1 not run")
+        );
+    }
+
+    #[test]
+    fn it_should_show_milliseconds_for_a_check_that_took_less_than_a_second() {
+        let quick = with_context(
+            failed_detail("checks.quick", "omhl byproduct checks.quick w1 --tail 40"),
+            "duration_ms",
+            json!(40),
+        );
+        let value = checks_failed(vec![quick]);
+
+        let rendered = render_error(&value);
+
+        assert!(rendered.contains("exit 101 · 40ms\n"));
+    }
+
+    #[test]
+    fn it_should_show_concern_and_variant_next_to_the_id_of_a_passed_check() {
+        let mut format = result("checks.fmt", "passed", true, 0, 12);
+        format["concern"] = json!("style");
+        format["variant"] = json!("format");
+        let value = success("before-pr", vec![format]);
+
+        let rendered = render_success(&value);
+
+        assert!(rendered.contains("\n  ✔ checks.fmt  style/format  passed  12ms\n"));
     }
 
     #[test]

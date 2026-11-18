@@ -384,14 +384,17 @@ impl Engine<'_> {
                 outcome,
                 blocking: check.blocking,
             },
-            output: with_run_fields(
-                json!({
-                    "check": check.id,
-                    "outcome": outcome_name(outcome),
-                    "ok": outcome != Outcome::Failed,
-                    "blocking": check.blocking,
-                }),
-                &report,
+            output: with_concern(
+                with_run_fields(
+                    json!({
+                        "check": check.id,
+                        "outcome": outcome_name(outcome),
+                        "ok": outcome != Outcome::Failed,
+                        "blocking": check.blocking,
+                    }),
+                    &report,
+                ),
+                check,
             ),
             failed,
         };
@@ -400,6 +403,12 @@ impl Engine<'_> {
             // Na `develop` nada é gravado: a saída só existe no `context`.
             let mut context = scope.ran_context("failed", &check.id, &spec.run, snapshot);
             context["output_tail"] = output_tail(&report);
+            if let (Some(context), Value::Object(fields)) = (
+                context.as_object_mut(),
+                failure_fields(check, spec, &report),
+            ) {
+                context.extend(fields);
+            }
             let message = "output in context.output_tail".to_owned();
             return Ok(verdict(failed(message, Some(context))));
         };
@@ -440,7 +449,10 @@ impl Engine<'_> {
                     check.id.as_str(),
                     work_item.as_str()
                 );
-                return Ok(verdict(failed(message, None)));
+                return Ok(verdict(failed(
+                    message,
+                    Some(failure_fields(check, spec, &report)),
+                )));
             }
             Recording::Busy => {
                 context["kind"] = json!("busy-exhausted");
@@ -804,7 +816,10 @@ fn finish(
     }
     let summary = summarize(&tally.results);
     if !summary.blocked.is_empty() {
-        return Err(AppError::checks_failed(tally.details));
+        return Err(AppError::checks_failed(
+            tally.details,
+            failure_context(scope, &tally.results, checks_planned),
+        ));
     }
 
     let mut output = json!({
@@ -829,6 +844,54 @@ fn finish(
     }
 
     Ok(output)
+}
+
+/// O que vale para o `checks-failed` inteiro: evento, work item (ausente na `develop`) e o resumo do plano.
+fn failure_context(scope: &Scope<'_>, results: &[CheckResult], checks_planned: usize) -> Value {
+    let failed = results
+        .iter()
+        .filter(|result| result.outcome == Outcome::Failed)
+        .count();
+    let mut context = json!({
+        "event": scope.event,
+        "summary": {
+            "planned": checks_planned,
+            "passed": results.len() - failed,
+            "failed": failed,
+            "not_run": checks_planned - results.len(),
+        },
+    });
+    if let Some(work_item) = scope.work_item {
+        context["work_item"] = json!(work_item);
+    }
+
+    context
+}
+
+/// `concern` e `variant` só entram quando o check os declara.
+fn with_concern(mut value: Value, check: &PlannedCheck) -> Value {
+    for (key, field) in [("concern", &check.concern), ("variant", &check.variant)] {
+        if let Some(field) = field {
+            value[key] = json!(field);
+        }
+    }
+
+    value
+}
+
+/// Campos curtos de um check reprovado, sem a saída do comando nem o `how`.
+fn failure_fields(check: &PlannedCheck, spec: &CheckSpec, report: &RunReport) -> Value {
+    with_run_fields(
+        with_concern(
+            json!({
+                "blocking": check.blocking,
+                "run": spec.run,
+                "timeout_secs": spec.timeout_secs,
+            }),
+            check,
+        ),
+        report,
+    )
 }
 
 /// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context`.

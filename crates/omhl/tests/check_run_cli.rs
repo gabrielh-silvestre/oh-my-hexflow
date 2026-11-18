@@ -39,7 +39,7 @@ event = "before-pr"
 
 const NOISY_RED: &str = r#"blocking = true
 how = "Always fails."
-run = ["sh", "-c", "printf 'SECRET-OUT-7a1\\n'; printf 'SECRET-ERR-7a1\\n' >&2; exit 1"]
+run = ["sh", "-c", "printf 'SECRET-OUT-%s\\n' 7a1; printf 'SECRET-ERR-%s\\n' 7a1 >&2; exit 1"]
 timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
@@ -377,8 +377,13 @@ fn it_should_exit_one_and_print_the_failing_check_on_stderr_when_a_blocking_chec
     );
     let error = error_of(&output.stderr);
     assert_eq!(error["code"], json!("checks-failed"));
+    let mut details = error["details"].clone();
+    details[0]
+        .as_object_mut()
+        .expect("a detail is an object")
+        .remove("context");
     assert_eq!(
-        error["details"],
+        details,
         json!([{
             "path": "checks.red",
             "code": "failed",
@@ -428,8 +433,8 @@ fn it_should_not_echo_the_command_output_in_the_error_json() {
         assert!(!output.stderr.contains(secret), "stderr leaks {secret}");
     }
     assert!(
-        error["details"][0].get("context").is_none(),
-        "the detail has no context: {}",
+        error["details"][0]["context"].get("output_tail").is_none(),
+        "the detail has no output tail: {}",
         error["details"][0]
     );
 }
