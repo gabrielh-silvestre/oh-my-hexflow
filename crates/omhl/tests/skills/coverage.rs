@@ -629,7 +629,10 @@ fn it_should_enumerate_the_options_of_the_cli() {
     let expected = [
         ("attest", vec!["--note", "--outcome"]),
         ("byproduct", vec!["--tail"]),
-        ("check run", vec!["--check", "--event", "--pre-push"]),
+        (
+            "check run",
+            vec!["--check", "--event", "--format", "--pre-push"],
+        ),
         ("gate-worktree", vec!["--branch"]),
         ("guideline retire", vec!["--by"]),
         ("hooks install", vec!["--force"]),

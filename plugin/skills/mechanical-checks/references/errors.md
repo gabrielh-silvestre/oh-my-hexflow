@@ -4,7 +4,7 @@ Vale para todo comando desta skill. A página de cada comando lista só os erros
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
+Um erro sai no stderr, numa linha JSON, com saída 1. O `omhl check run` é a exceção: o erro sai em texto, a menos que se passe `--format json` (veja [check-run.md](check-run.md)). Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
 
 A ordem das checagens é: uso do clap; argumentos e entrada do comando; existência do `--project-dir`; marcador; `--db`. O primeiro que falha é o que você vê.
 
