@@ -125,7 +125,8 @@ pub static ATTEST_PROFILE: Profile = Profile {
     label: "attest",
     nodes: None,
     success: &[
-        // O id é composto do snapshot, do check e do work item, que o texto já mostra.
+        // O id embute o SHA inteiro do snapshot; o texto mostra só os 7 primeiros caracteres
+        // (`HASH_PREFIX_LEN`), então o id completo é ruído aqui e o agente o obtém com `omhl list`.
         Entry::new(Region::Data, "id", Shape::Noise).under("attestation"),
         Entry::new(Region::Data, "check", Shape::Literal).under("attestation"),
         Entry::new(Region::Data, "work_item", Shape::Literal).under("attestation"),

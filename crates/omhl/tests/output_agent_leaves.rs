@@ -1856,7 +1856,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 80] = [
+const CASES: [Case; 81] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -2266,6 +2266,16 @@ const CASES: [Case; 80] = [
         fixture: sweep_with_stray,
         derived: sweep_facts,
         absent: sweep_absent,
+    },
+    Case {
+        name: "check sweep no marker",
+        key: CommandKey::CheckSweep,
+        args: &["check", "sweep"],
+        outcome: Outcome::Failure,
+        error_code: Some("no-marker"),
+        fixture: verify_no_marker,
+        derived: error_header_facts,
+        absent: no_facts,
     },
     Case {
         name: "check retire an orphaned check",
