@@ -15,6 +15,7 @@ pub mod pr_gate;
 pub mod project;
 pub mod query;
 pub mod raw;
+pub mod report;
 pub mod run;
 pub mod runner;
 pub mod scan;

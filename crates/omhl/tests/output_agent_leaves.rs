@@ -15,6 +15,7 @@ use support::inproc::{run_inproc, run_inproc_at};
 use support::omhl::{decision_data, work_item_data};
 use support::project::Project;
 use support::query;
+use support::report;
 use support::run::Run;
 
 // ---------------------------------------------------------------- folhas de um `Value`
@@ -950,6 +951,98 @@ fn generic_error_facts(value: &Value) -> Vec<String> {
     ]
 }
 
+// ---------------------------------------------------------------- fixtures de `render` e `report` (em processo)
+
+fn report_bare() -> Fixture {
+    Fixture::of(report::bare_project())
+}
+
+fn report_answers_state() -> Fixture {
+    Fixture::of(report::answers_project())
+}
+
+fn report_recurrences_state() -> Fixture {
+    Fixture::of(report::recurrences_project())
+}
+
+fn report_retro_state() -> Fixture {
+    Fixture::of(report::retro_project())
+}
+
+/// O produto do `render` é o texto do contexto: a primeira linha nomeia o tenant, sem símbolo de cabeçalho.
+fn render_facts(_value: &Value) -> Vec<String> {
+    vec!["# omhl context for tenant acme".to_owned()]
+}
+
+fn render_absent(_value: &Value) -> Vec<String> {
+    vec!["✔ render".to_owned()]
+}
+
+fn answers_facts(_value: &Value) -> Vec<String> {
+    vec![
+        "✔ report answers · 4 gaps".to_owned(),
+        "criterion".to_owned(),
+    ]
+}
+
+fn answers_empty_facts(_value: &Value) -> Vec<String> {
+    vec!["✔ report answers · none".to_owned()]
+}
+
+/// Os ids de uma lista do grupo, separados por vírgula como o texto os mostra.
+fn list_field(group: &Value, key: &str) -> String {
+    let ids: Vec<&str> = group[key]
+        .as_array()
+        .expect("the group has the list")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+
+    ids.join(", ")
+}
+
+fn recurrences_facts(value: &Value) -> Vec<String> {
+    let group = &value["recurrences"][0];
+
+    vec![
+        "✔ report recurrences · min 3 · 1 group".to_owned(),
+        format!("work items: {}", list_field(group, "work_items")),
+        format!("premises: {}", list_field(group, "premises")),
+    ]
+}
+
+fn recurrences_empty_facts(_value: &Value) -> Vec<String> {
+    vec!["✔ report recurrences · min 3 · none".to_owned()]
+}
+
+fn retro_facts(_value: &Value) -> Vec<String> {
+    vec![
+        "✔ report retro · 3 divergences · 1 approved amendment · 1 pending amendment · 1 no-criterion gap · 1 open gap"
+            .to_owned(),
+        "Next: propose one improvement per item to the owner and change nothing without the answer"
+            .to_owned(),
+    ]
+}
+
+fn retro_empty_facts(_value: &Value) -> Vec<String> {
+    vec!["✔ report retro · none".to_owned()]
+}
+
+fn retro_empty_absent(_value: &Value) -> Vec<String> {
+    vec!["Next:".to_owned()]
+}
+
+/// O erro sem detalhes (`no-marker`, `details: []`): só o cabeçalho `código · mensagem`.
+fn error_header_facts(value: &Value) -> Vec<String> {
+    let error = &value["error"];
+
+    vec![format!(
+        "✘ {} · {}",
+        text_at(error, "code"),
+        text_at(error, "message")
+    )]
+}
+
 /// Um estado de fixture de um comando: cada onda das etapas 3 e 4 acrescenta os seus casos.
 struct Case {
     name: &'static str,
@@ -965,7 +1058,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 24] = [
+const CASES: [Case; 36] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -1206,6 +1299,126 @@ const CASES: [Case; 24] = [
         derived: generic_error_facts,
         absent: no_facts,
     },
+    Case {
+        name: "render native only",
+        key: CommandKey::Render,
+        args: &["render"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: report_bare,
+        derived: render_facts,
+        absent: render_absent,
+    },
+    Case {
+        name: "render with nodes",
+        key: CommandKey::Render,
+        args: &["render"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: query_state,
+        derived: render_facts,
+        absent: render_absent,
+    },
+    Case {
+        name: "render no marker",
+        key: CommandKey::Render,
+        args: &["render"],
+        outcome: Outcome::Failure,
+        error_code: Some("no-marker"),
+        fixture: verify_no_marker,
+        derived: error_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report answers empty",
+        key: CommandKey::ReportAnswers,
+        args: &["report", "answers"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: report_bare,
+        derived: answers_empty_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report answers by state",
+        key: CommandKey::ReportAnswers,
+        args: &["report", "answers"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: report_answers_state,
+        derived: answers_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report answers unknown work item",
+        key: CommandKey::ReportAnswers,
+        args: &["report", "answers", "--work-item", report::ABSENT_WORK_ITEM],
+        outcome: Outcome::Failure,
+        error_code: Some("work-item-not-found"),
+        fixture: report_bare,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report recurrences empty",
+        key: CommandKey::ReportRecurrences,
+        args: &["report", "recurrences"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: report_bare,
+        derived: recurrences_empty_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report recurrences one group",
+        key: CommandKey::ReportRecurrences,
+        args: &["report", "recurrences"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: report_recurrences_state,
+        derived: recurrences_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report recurrences no marker",
+        key: CommandKey::ReportRecurrences,
+        args: &["report", "recurrences"],
+        outcome: Outcome::Failure,
+        error_code: Some("no-marker"),
+        fixture: verify_no_marker,
+        derived: error_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report retro null",
+        key: CommandKey::ReportRetro,
+        args: &["report", "retro", report::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: report_bare,
+        derived: retro_empty_facts,
+        absent: retro_empty_absent,
+    },
+    Case {
+        name: "report retro full",
+        key: CommandKey::ReportRetro,
+        args: &["report", "retro", report::WORK_ITEM],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: report_retro_state,
+        derived: retro_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report retro unknown work item",
+        key: CommandKey::ReportRetro,
+        args: &["report", "retro", report::ABSENT_WORK_ITEM],
+        outcome: Outcome::Failure,
+        error_code: Some("work-item-not-found"),
+        fixture: report_bare,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
 ];
 
 fn command(case: &Case, format: &str) -> Vec<String> {
@@ -1397,11 +1610,19 @@ fn mask_durations(text: &str) -> String {
     masked
 }
 
+/// O `report` fecha o texto com uma quebra de linha; o `render` não: o `text` do contexto já termina nos seus bytes.
+fn line_break(case: &Case) -> &'static str {
+    match (case.key, case.outcome) {
+        (CommandKey::Render, Outcome::Success) => "",
+        _ => "\n",
+    }
+}
+
 fn assert_command_prints_the_renderer_output(layout: Layout) {
     for case in &CASES {
         let fixture = (case.fixture)();
         let value = json_of(case, &fixture);
-        let expected = format!("{}\n", text_of(case, &value, layout));
+        let expected = format!("{}{}", text_of(case, &value, layout), line_break(case));
 
         let run = run_case(case, &fixture, layout_name(layout));
 
