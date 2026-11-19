@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
-use support::child::{Output as Child, omhl};
+use support::child::{Output as Child, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::git_in;
 use support::omhl::work_item_data;
@@ -133,7 +133,7 @@ impl Fixture {
     }
 
     fn run(&self, args: &[&str]) -> Child {
-        omhl(args)
+        omhl_json(args)
             .cwd(self.project.dir())
             .xdg(self.project.xdg())
             .run()

@@ -5,7 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use support::child::{Cmd as ChildCmd, Output as Child, omhl};
+use support::child::{Cmd as ChildCmd, Output as Child, omhl, omhl_json};
 use support::git::git_in;
 use support::legacy::seed_legacy_confirmed_premise;
 use support::omhl::work_item_data;
@@ -170,7 +170,7 @@ impl Fixture {
     }
 
     fn run_in(&self, cwd: &Path, args: &[&str]) -> Child {
-        omhl(args).cwd(cwd).xdg(self.project.xdg()).run()
+        omhl_json(args).cwd(cwd).xdg(self.project.xdg()).run()
     }
 
     fn validate_from_linked(&self) -> Child {

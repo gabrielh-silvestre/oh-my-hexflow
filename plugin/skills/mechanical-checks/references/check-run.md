@@ -7,7 +7,7 @@ Para rodar os checks mecânicos (os que têm `run`) de um evento, ou um check s�
 ## Entradas
 
 - Exatamente um de `--event` (`before-commit`, `before-pr` ou `before-merge`) e `--check <id>` (por exemplo `checks.ok`). O `--check` precisa apontar para um check com `run`.
-- `--format <text|json>`: o formato da saída, `text` por padrão. Qualquer outro valor é erro de uso do clap, com saída 2. Os hooks do git rodam sem `--format` e mostram o texto; para ler a saída por código, passe `--format json`.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando; o formato da saída, `agent` por padrão (hoje `human` imprime o mesmo texto). Qualquer outro valor, inclusive `text`, é erro de uso do clap, com saída 2. Os hooks do git rodam sem `--format` e mostram o texto `agent`; para ler a saída por código, passe `--format json`.
 - `--pre-push`: modo do hook `pre-push`, que lê as linhas do git no stdin. Só vale com `--event before-pr`.
 - O work item vem do nome da branch: `tipo/wi-<id>__<slug>`. Na `develop` nada é gravado (`recorded` é `false`); na `main` o comando recusa.
 - Precisa de um repositório git. No `before-pr` e no `before-merge` a árvore tem de estar limpa.
@@ -15,7 +15,7 @@ Para rodar os checks mecânicos (os que têm `run`) de um evento, ou um check s�
 
 ## Saída
 
-O padrão é **texto** em inglês, sem cor nem sequência ANSI. Com `--format json` a saída é o JSON de uma linha, descrito mais abaixo. O código de saída é o mesmo nos dois formatos.
+O padrão é o texto `agent`, em inglês, sem cor nem sequência ANSI. Com `--format json` a saída é o JSON de uma linha, descrito mais abaixo. O código de saída é o mesmo nos dois formatos.
 
 No sucesso, o texto sai no stdout, com saída 0 quando nenhum check bloqueante reprovou:
 
@@ -61,12 +61,12 @@ Um erro sai no stderr com saída 1: texto por padrão, uma linha JSON com `--for
 
 ## Exemplos
 
-Roda o evento `before-pr` (um check passa), depois o `before-merge` (sem check mecânico: o aviso `no-checks-for-event`) e, por fim, um check pelo id. Sem `--format`, a saída é o texto:
+Roda o evento `before-pr` (um check passa), depois o `before-merge` (sem check mecânico: o aviso `no-checks-for-event`) e, por fim, um check pelo id. Sem `--format`, a saída é o texto `agent`:
 
 ```omhl-example fixture=checks
 $ omhl check run --event before-pr
 ✔ before-pr · work-items.w1 · recorded (git-commit <snapshot>)
-  ✔ checks.ok  passed  12ms
+  ✔ checks.ok passed 12ms
 Nothing blocked. Next: go on with the push.
 $ omhl check run --event before-merge
 ✔ before-merge · work-items.w1 · recorded
@@ -74,7 +74,7 @@ $ omhl check run --event before-merge
 Nothing blocked. Next: go on with the merge.
 $ omhl check run --check checks.ok
 ✔ before-pr · work-items.w1 · recorded (git-commit <snapshot>)
-  ✔ checks.ok  passed  12ms
+  ✔ checks.ok passed 12ms
 Nothing blocked. Next: go on with the push.
 ```
 

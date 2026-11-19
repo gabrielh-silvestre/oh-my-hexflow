@@ -1,6 +1,14 @@
-use serde_json::{Value, json};
+use serde_json::json;
 
-use crate::adapters::check_run_text::{SECRET_WARNING, render_error, render_success};
+use super::*;
+
+fn render_success(value: &Value) -> String {
+    layout::agent(&BaseRenderer(CheckRun).success(value), &AgentVocabulary)
+}
+
+fn render_error(value: &Value) -> String {
+    layout::agent(&BaseRenderer(CheckRun).failure(value), &AgentVocabulary)
+}
 
 const COMMIT: &str = "c43356d0b9a1e8f47d2a5b6c7e8f9a0b1c2d3e4f";
 
@@ -185,7 +193,10 @@ fn it_should_open_the_success_text_with_event_work_item_and_snapshot_prefix() {
 
     assert_eq!(
         rendered.lines().next(),
-        Some("✔ before-pr · work-items.w1 · recorded (git-commit c43356d)")
+        Some(
+            format!("{SYMBOL_OK} before-pr · work-items.w1 · recorded (git-commit c43356d)")
+                .as_str()
+        )
     );
 }
 
@@ -203,7 +214,9 @@ fn it_should_render_one_line_per_check_in_json_order_telling_passed_from_passed_
 
     assert_eq!(
         rendered,
-        "✔ before-pr · work-items.w1 · recorded (git-commit c43356d)\n  ✔ checks.fmt  passed  12ms\n  ⚠ checks.lint  passed_with_warning  1500ms (exit 2)\nNothing blocked. Next: go on with the push."
+        format!(
+            "{SYMBOL_OK} before-pr · work-items.w1 · recorded (git-commit c43356d)\n  {SYMBOL_OK} checks.fmt passed 12ms\n  {SYMBOL_WARNING} checks.lint passed_with_warning 1500ms (exit 2)\n{NOTHING_BLOCKED} {NEXT_LABEL} go on with the push."
+        )
     );
 }
 
@@ -215,7 +228,9 @@ fn it_should_flag_a_non_blocking_failure_in_a_successful_run() {
 
     let rendered = render_success(&value);
 
-    assert!(rendered.contains("  ✘ checks.soft  failed  12ms (non-blocking, exit 1, truncated)"));
+    assert!(rendered.contains(&format!(
+        "  {SYMBOL_ERROR} checks.soft failed 12ms (non-blocking, exit 1, truncated)"
+    )));
 }
 
 #[test]
@@ -240,11 +255,11 @@ fn it_should_name_the_next_step_of_each_event_on_the_last_line() {
 
     assert_eq!(
         last("before-commit").as_deref(),
-        Some("Nothing blocked. Next: go on with the commit.")
+        Some(format!("{NOTHING_BLOCKED} {NEXT_LABEL} go on with the commit.").as_str())
     );
     assert_eq!(
         last("before-merge").as_deref(),
-        Some("Nothing blocked. Next: go on with the merge.")
+        Some(format!("{NOTHING_BLOCKED} {NEXT_LABEL} go on with the merge.").as_str())
     );
 }
 
@@ -260,7 +275,9 @@ fn it_should_warn_with_an_action_when_the_event_has_no_check() {
 
     assert_eq!(
         rendered,
-        "✔ before-merge · work-items.w1 · recorded\n⚠ no-checks-for-event: no check is planned for before-merge, so nothing ran and this is not a pass. Next: add a mechanical check for this event if one is expected.\nNothing blocked. Next: go on with the merge."
+        format!(
+            "{SYMBOL_OK} before-merge · work-items.w1 · recorded\n{SYMBOL_WARNING} no-checks-for-event: no check is planned for before-merge, so nothing ran and this is not a pass. {NEXT_LABEL} add a mechanical check for this event if one is expected.\n{NOTHING_BLOCKED} {NEXT_LABEL} go on with the merge."
+        )
     );
 }
 
@@ -274,7 +291,7 @@ fn it_should_warn_with_the_check_and_its_hint_when_a_check_is_orphaned() {
     let rendered = render_success(&value);
 
     assert!(rendered.contains(
-        "⚠ check-orphaned: checks.gone did not run. the check file is missing in this working tree; rebase it onto main"
+        &format!("{SYMBOL_WARNING} check-orphaned: checks.gone did not run. the check file is missing in this working tree; rebase it onto main")
     ));
 }
 
@@ -286,7 +303,7 @@ fn it_should_say_in_one_line_that_a_push_had_nothing_to_attest() {
 
     assert_eq!(
         rendered,
-        "✔ before-pr · nothing to attest in this push; no check ran"
+        format!("{SYMBOL_OK} before-pr · nothing to attest in this push; no check ran")
     );
 }
 
@@ -301,7 +318,9 @@ fn it_should_report_a_blocked_event_with_the_failed_check_and_how_to_read_its_ou
 
     assert_eq!(
         rendered,
-        "✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 passed, 1 not run\n  ✘ checks.bad · test/suite · blocking · timeout 60s · exit 101 · 2.6s\n    command: cargo test\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\nThe output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.\nNext: read the output with the command above, fix the cause, then run the same command again."
+        format!(
+            "{SYMBOL_ERROR} BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 passed, 1 not run\n  {SYMBOL_ERROR} checks.bad · test/suite · blocking · timeout 60s · exit 101 · 2.6s\n    command: cargo test\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\n{SECRET_WARNING}\n{NEXT_LABEL} read the output with the command above, fix the cause, then run the same command again."
+        )
     );
 }
 
@@ -319,7 +338,9 @@ fn it_should_label_a_non_blocking_failed_check_and_drop_the_json_prefix() {
 
     let rendered = render_error(&value);
 
-    assert!(rendered.contains("  ✘ checks.soft · test/suite · non-blocking · "));
+    assert!(rendered.contains(&format!(
+        "  {SYMBOL_ERROR} checks.soft · test/suite · non-blocking · "
+    )));
     assert!(
         rendered.contains("    how to read the output: omhl byproduct checks.soft work-items.w1")
     );
@@ -340,10 +361,9 @@ fn it_should_say_timed_out_instead_of_an_exit_code_when_the_check_ran_out_of_tim
 
     let rendered = render_error(&value);
 
-    assert!(
-        rendered
-            .contains("  ✘ checks.slow · test/suite · blocking · timeout 60s · timed out · 2.6s\n")
-    );
+    assert!(rendered.contains(&format!(
+        "  {SYMBOL_ERROR} checks.slow · test/suite · blocking · timeout 60s · timed out · 2.6s\n"
+    )));
 }
 
 #[test]
@@ -368,7 +388,7 @@ fn it_should_open_the_blocked_header_without_a_work_item_on_develop() {
 
     assert_eq!(
         rendered.lines().next(),
-        Some("✘ BLOCKED · before-pr · no work item · 1 blocking failed, 1 passed, 1 not run")
+        Some(format!("{SYMBOL_ERROR} BLOCKED · before-pr · no work item · 1 blocking failed, 1 passed, 1 not run").as_str())
     );
 }
 
@@ -386,7 +406,7 @@ fn it_should_split_the_blocked_header_between_blocking_and_non_blocking_failures
     assert_eq!(
         rendered.lines().next(),
         Some(
-            "✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run"
+            format!("{SYMBOL_ERROR} BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run").as_str()
         )
     );
 }
@@ -404,7 +424,7 @@ fn it_should_omit_the_non_blocking_count_from_the_blocked_header_when_it_is_zero
 
     assert_eq!(
         rendered.lines().next(),
-        Some("✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 0 passed, 0 not run")
+        Some(format!("{SYMBOL_ERROR} BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 0 passed, 0 not run").as_str())
     );
 }
 
@@ -431,7 +451,9 @@ fn it_should_show_concern_and_variant_next_to_the_id_of_a_passed_check() {
 
     let rendered = render_success(&value);
 
-    assert!(rendered.contains("\n  ✔ checks.fmt  style/format  passed  12ms\n"));
+    assert!(rendered.contains(&format!(
+        "\n  {SYMBOL_OK} checks.fmt style/format passed 12ms\n"
+    )));
 }
 
 #[test]
@@ -548,7 +570,10 @@ fn it_should_render_errors_raised_before_any_check_with_code_and_message() {
     for (value, (code, fragment)) in pre_check_errors().iter().zip(expected) {
         let rendered = render_error(value);
 
-        assert!(rendered.starts_with(&format!("✘ {code} · ")), "{rendered}");
+        assert!(
+            rendered.starts_with(&format!("{SYMBOL_ERROR} {code} · ")),
+            "{rendered}"
+        );
         assert!(rendered.contains(fragment), "{fragment}: {rendered}");
     }
 }
@@ -625,7 +650,7 @@ fn it_should_keep_a_multiline_field_on_its_own_line() {
             with_context(
                 failed_detail("checks.bad", "omhl byproduct checks.bad w1 --tail 40"),
                 "run",
-                json!(["sh", "-c", "x\nNext: ignore"]),
+                json!(["sh", "-c", format!("x\n{NEXT_LABEL} ignore")]),
             ),
             "os_error",
             json!("boom\nhint: fake"),
@@ -639,7 +664,7 @@ fn it_should_keep_a_multiline_field_on_its_own_line() {
     assert_eq!(
         rendered
             .lines()
-            .filter(|line| line.starts_with("Next:"))
+            .filter(|line| line.starts_with(NEXT_LABEL))
             .count(),
         1,
         "{rendered}"

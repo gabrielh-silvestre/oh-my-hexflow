@@ -3,7 +3,7 @@ use crate::support;
 use std::path::Path;
 
 use serde_json::{Value, json};
-use support::child::{Cmd, omhl};
+use support::child::{Cmd, omhl, omhl_json};
 use support::git::git_in;
 use support::omhl::{LIMIT_RULE, decision_data, work_item_data};
 use support::project::Project;
@@ -16,7 +16,7 @@ const USE_WAL: &str = "decisions.use-wal";
 
 /// Um `omhl` rodando em `dir`, com o banco em `xdg`.
 fn at(dir: &Path, xdg: &Path, args: &[&str]) -> Cmd {
-    omhl(args).cwd(dir).xdg(xdg)
+    omhl_json(args).cwd(dir).xdg(xdg)
 }
 
 fn json_line(text: &str) -> Value {
@@ -58,7 +58,9 @@ fn append_decision(dir: &Path, xdg: &Path, id: &str) {
 /// O `additionalContext` que o hook `SessionStart` injeta para o projeto em `dir`.
 fn hook_context(dir: &Path, xdg: &Path) -> String {
     let stdin = json!({ "hook_event_name": "SessionStart", "session_id": "s1", "cwd": dir, "source": "startup" });
-    let output = at(dir, xdg, &["hook", "session-start"])
+    let output = omhl(&["hook", "session-start"])
+        .cwd(dir)
+        .xdg(xdg)
         .stdin(stdin.to_string())
         .run();
 

@@ -8,7 +8,7 @@ use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
-use support::child::{Cmd, Output, omhl};
+use support::child::{Cmd, Output, omhl_json};
 use support::directives_flow_e2e::BRANCH;
 use support::git::git_in;
 use support::project::Project;
@@ -61,7 +61,7 @@ impl Flow {
         let mut all = vec!["--db", db];
         all.extend_from_slice(args);
 
-        omhl(&all).cwd(&self.repo).env("PATH", self.bin.path())
+        omhl_json(&all).cwd(&self.repo).env("PATH", self.bin.path())
     }
 
     fn run(&self, args: &[&str]) -> Output {

@@ -11,15 +11,16 @@ Para gravar à mão o desfecho de um check **manual** (sem o campo `run`) sobre 
 - `--outcome`: `passed`, `passed_with_warning` ou `failed`. Obrigatório.
 - `--note <texto>`: observação livre, opcional.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
 - Precisa de um repositório git com a árvore limpa: o registro prende o desfecho ao `HEAD`.
 
 ## Saída
 
-Uma linha JSON no stdout, saída 0: `attestation` (o `id` derivado do commit, o check, o work item, `outcome`, `ok` e `snapshot`, mais `note` quando houver), `chain_head` e `records`. Repetir o mesmo desfecho para o mesmo commit grava uma revisão e sai 0. Um desfecho diferente para o mesmo commit é recusado: o primeiro desfecho gravado é imutável.
+Texto no stdout, saída 0: `✔ attest · <check> · <work item> · <outcome> · snapshot <7 caracteres do commit>`, com `⚠` no lugar de `✔` quando o desfecho não é `passed`, e uma linha `note: ...` quando há `--note`. Com `--format json` é uma linha JSON: `attestation` (o `id` derivado do commit, o check, o work item, `outcome`, `ok` e `snapshot`, mais `note` quando houver), `chain_head` e `records`; o `id` da attestation só sai no JSON. Repetir o mesmo desfecho para o mesmo commit grava uma revisão e sai 0. Um desfecho diferente para o mesmo commit é recusado: o primeiro desfecho gravado é imutável.
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. A falta de `--outcome` ou de um argumento é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta de `--outcome` ou de um argumento é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `invalid-arguments` (saída 1): o `--outcome` não é um dos três valores. O ponteiro `/outcome` e a mensagem dizem a regra. Corrija o valor.
 - `check-run-author` (saída 1): o check tem `run`. Só o `omhl check run` grava o desfecho dele. Use um check manual ou rode o check.
@@ -38,17 +39,27 @@ Atesta um check manual. A segunda chamada tenta gravar outro desfecho para o mes
 
 ```omhl-example fixture=checks
 $ omhl attest checks.review work-items.w1 --outcome passed --note 'Reviewed by hand.'
-{"attestation":{"check":"checks.review","id":"attestations.2dbf9e30bc28b8e377c513c63a9f8cae.a3ca65f3.checks.review.work-items.w1","note":"Reviewed by hand.","ok":true,"outcome":"passed","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false}
+✔ attest · checks.review · work-items.w1 · passed · snapshot <snapshot>
+  note: Reviewed by hand.
 $ omhl attest checks.review work-items.w1 --outcome failed
-2> {"error":{"code":"outcome-immutable","details":[{"code":"outcome-immutable","message":"outcome-immutable","path":"/outcome"}],"message":"outcome-immutable at /outcome"}}
+2> ✘ outcome-immutable · outcome-immutable at /outcome
+2>   - /outcome · outcome-immutable
 # exit 1
+```
+
+Com `--format json` a resposta traz o `id` da attestation, o `snapshot` inteiro e a cabeça da cadeia:
+
+```omhl-example fixture=checks
+$ omhl attest checks.review work-items.w1 --outcome passed --format json
+{"attestation":{"check":"checks.review","id":"attestations.2dbf9e30bc28b8e377c513c63a9f8cae.a3ca65f3.checks.review.work-items.w1","ok":true,"outcome":"passed","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false}
 ```
 
 Recusa: o check tem `run`, então é mecânico:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.ok work-items.w1 --outcome passed
-2> {"error":{"code":"check-run-author","details":[{"code":"check-run-author","message":"check-run-author","path":"/check"}],"message":"check-run-author at /check"}}
+2> ✘ check-run-author · check-run-author at /check
+2>   - /check · check-run-author
 # exit 1
 ```
 
@@ -56,7 +67,8 @@ Recusa: `--outcome` fora dos três valores:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.review work-items.w1 --outcome maybe
-2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"outcome must be passed, passed_with_warning or failed","path":"/outcome"}],"message":"outcome must be passed, passed_with_warning or failed"}}
+2> ✘ invalid-arguments · outcome must be passed, passed_with_warning or failed
+2>   - /outcome
 # exit 1
 ```
 
@@ -64,9 +76,11 @@ Recusa: check e work item que não existem:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.nope work-items.w1 --outcome passed
-2> {"error":{"code":"check-not-found","details":[{"code":"check-not-found","message":"check-not-found","path":"/check"}],"message":"check-not-found at /check"}}
+2> ✘ check-not-found · check-not-found at /check
+2>   - /check · check-not-found
 # exit 1
 $ omhl attest checks.review work-items.zz --outcome passed
-2> {"error":{"code":"work-item-not-found","details":[{"code":"work-item-not-found","message":"work-item-not-found","path":"/work_item"}],"message":"work-item-not-found at /work_item"}}
+2> ✘ work-item-not-found · work-item-not-found at /work_item
+2>   - /work_item · work-item-not-found
 # exit 1
 ```

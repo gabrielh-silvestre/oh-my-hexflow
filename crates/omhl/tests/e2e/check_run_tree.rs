@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use support::check_run_tree::{BRANCH, W1, copy_index, node_wire, tree_json};
-use support::child::{Output as Child, omhl};
+use support::child::{Output as Child, omhl, omhl_json};
 use support::git::{GitRepo, git_command_with_env, git_with_env, write_executable};
 use support::omhl::work_item_data;
 use tempfile::TempDir;
@@ -62,7 +62,7 @@ impl BinaryRepo {
     }
 
     fn omhl(&self, args: &[&str]) -> support::child::Cmd {
-        omhl(args).cwd(self.path()).xdg(self.xdg.path())
+        omhl_json(args).cwd(self.path()).xdg(self.xdg.path())
     }
 
     /// `git add <file>` com `GIT_INDEX_FILE` apontando para `index`.

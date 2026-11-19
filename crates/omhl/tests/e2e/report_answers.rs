@@ -1,7 +1,7 @@
 use crate::support;
 
 use serde_json::{Value, json};
-use support::child::{Output, omhl};
+use support::child::{Output, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::commit_marker;
 use support::omhl::decision_data;
@@ -86,7 +86,7 @@ fn work_item_nodes() -> Vec<Value> {
 }
 
 fn in_project(project: &Project, args: &[&str]) -> Output {
-    omhl(args).cwd(project.dir()).xdg(project.xdg()).run()
+    omhl_json(args).cwd(project.dir()).xdg(project.xdg()).run()
 }
 
 fn json_line(text: &str) -> Value {

@@ -36,7 +36,7 @@ fn append_decision(project: &Project, claude_code: bool, role: Option<&str>) -> 
 
     run_omhl(
         project,
-        &["append"],
+        &["--format", "json", "append"],
         &request.to_string(),
         claude_code,
         role,
@@ -45,7 +45,13 @@ fn append_decision(project: &Project, claude_code: bool, role: Option<&str>) -> 
 
 /// `author` do node gravado; o `get` roda sem papel e fora do Claude Code.
 fn recorded_author(project: &Project) -> Value {
-    let fetched = run_omhl(project, &["get", DECISION_ID], "", false, None);
+    let fetched = run_omhl(
+        project,
+        &["--format", "json", "get", DECISION_ID],
+        "",
+        false,
+        None,
+    );
 
     json_line(&fetched.stdout)["node"]["author"].clone()
 }
@@ -121,7 +127,13 @@ fn it_should_refuse_guideline_retire_when_omhl_role_is_set() {
 
     let retired = run_omhl(
         &project,
-        &["guideline", "retire", "guidelines.brief"],
+        &[
+            "--format",
+            "json",
+            "guideline",
+            "retire",
+            "guidelines.brief",
+        ],
         "",
         true,
         Some("omhl:critic"),

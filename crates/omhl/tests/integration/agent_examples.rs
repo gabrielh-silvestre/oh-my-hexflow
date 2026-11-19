@@ -89,7 +89,13 @@ fn text(value: &Value) -> &str {
 fn seed(project: &Project, role: Option<&str>, items: &[Value]) {
     let request = json!({ "items": items });
 
-    let run = run_omhl(project, &["append"], &request.to_string(), true, role);
+    let run = run_omhl(
+        project,
+        &["append", "--format", "json"],
+        &request.to_string(),
+        true,
+        role,
+    );
 
     assert!(
         run.stdout.contains("\"records\""),
@@ -165,7 +171,7 @@ fn record_id_of(project: &Project, id: &str) -> String {
 }
 
 fn get(project: &Project, id: &str) -> Value {
-    let run = run_omhl(project, &["get", id], "", true, None);
+    let run = run_omhl(project, &["get", id, "--format", "json"], "", true, None);
 
     serde_json::from_str(run.stdout.trim_end())
         .unwrap_or_else(|_| panic!("get {id} failed: {}", run.stderr))
@@ -192,7 +198,13 @@ fn with_real_bases(project: &Project, mut request: Value) -> Value {
 
 /// Roda o exemplo como o papel; devolve quantos records foram gravados, ou a linha de erro da recusa.
 fn append_example(project: &Project, role: &str, request: &Value) -> Result<usize, String> {
-    let run = run_omhl(project, &["append"], &request.to_string(), true, Some(role));
+    let run = run_omhl(
+        project,
+        &["append", "--format", "json"],
+        &request.to_string(),
+        true,
+        Some(role),
+    );
     if run.stdout.is_empty() {
         return Err(run.stderr);
     }
@@ -422,7 +434,7 @@ fn first_retirement_refusal(project: &Project) -> Value {
     let request = example("verifier", 1);
     let run = run_omhl(
         project,
-        &["append"],
+        &["append", "--format", "json"],
         &request.to_string(),
         true,
         Some("omhl:verifier"),

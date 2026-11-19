@@ -148,7 +148,10 @@ impl Fixture {
 
     /// `omhl spec init`: devolve o caminho da primeira parte, ainda com as 5 seções vazias.
     fn init_spec(&self, work_item: &str) -> PathBuf {
-        let output = self.run_in(self.project.dir(), &["spec", "init", work_item, SPEC_SLUG]);
+        let output = self.run_in(
+            self.project.dir(),
+            &["--format", "json", "spec", "init", work_item, SPEC_SLUG],
+        );
         assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
 
         PathBuf::from(

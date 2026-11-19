@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
-use support::child::{Output, omhl};
+use support::child::{Output, omhl, omhl_json};
 use support::git::git_in;
 use support::omhl::work_item_data;
 use support::project::Project;
@@ -195,7 +195,7 @@ impl Fixture {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        omhl(args)
+        omhl_json(args)
             .cwd(self.project.dir())
             .xdg(self.project.xdg())
             .run()
@@ -228,7 +228,7 @@ impl Fixture {
 
     /// Aprova a emenda `amendment` (sem `.md`) para `DIVERGENCE`: revisão `spec-stale` com `base`.
     fn approve(&self, amendment: &str) {
-        let current = self.run(&["get", DIVERGENCE]);
+        let current = self.run(&["get", DIVERGENCE, "--format", "json"]);
         assert_eq!(current.code, Some(0), "stderr: {}", current.stderr);
         let mut data = json!({
             "source_ref": "CMP-001", "kind": "partial", "text": "t",

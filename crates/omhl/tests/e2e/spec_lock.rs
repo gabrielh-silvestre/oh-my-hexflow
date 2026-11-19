@@ -5,7 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use support::child::{Output as Child, omhl};
+use support::child::{Output as Child, omhl, omhl_json};
 use support::git::git_in;
 use support::project::Project;
 use tempfile::TempDir;
@@ -800,7 +800,7 @@ fn repo_with_open_work_item_and_specs_dir(dir: &str) -> Repo {
 }
 
 fn spec_init(repo: &Repo) -> Child {
-    omhl(&["spec", "init", "work-items.w1", "login"])
+    omhl_json(&["spec", "init", "work-items.w1", "login"])
         .cwd(&repo.main)
         .xdg(repo.project.xdg())
         .run()

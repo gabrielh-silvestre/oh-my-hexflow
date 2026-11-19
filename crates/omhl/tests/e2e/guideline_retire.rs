@@ -3,7 +3,7 @@ use crate::support;
 use std::fs;
 
 use serde_json::{Value, json};
-use support::child::{Cmd, omhl};
+use support::child::{Cmd, omhl_json};
 use support::ext::ExtTree;
 use support::guideline_retire::{BRIEF, TONE};
 use support::project::Project;
@@ -14,7 +14,7 @@ const TONE_TOML: &str = "kind = \"business\"\ntext = \"Keep every answer brief\"
 const BRIEF_TOML: &str = "kind = \"business\"\ntext = \"Be concise\"\n";
 
 fn omhl_in(project: &Project, args: &[&str]) -> Cmd {
-    omhl(args).cwd(project.dir()).xdg(project.xdg())
+    omhl_json(args).cwd(project.dir()).xdg(project.xdg())
 }
 
 /// Projeto com as diretivas `tone` e `brief` já carregadas; os arquivos seguem na árvore.

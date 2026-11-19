@@ -8,7 +8,7 @@ use ::omhl::facade::{Omhl, OmhlDeps};
 use ::omhl::ports::blob::BlobStore;
 use hexlog::{AppendRequest, Config};
 use serde_json::{Value, json};
-use support::child::{Output, omhl};
+use support::child::{Output, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::omhl::{acme, attestation_id_for, node_item, with_snapshot, work_item_data};
 use support::project::Project;
@@ -76,7 +76,7 @@ impl Fixture {
     }
 
     fn omhl(&self, args: &[&str]) -> Output {
-        omhl(args)
+        omhl_json(args)
             .cwd(self.project.dir())
             .xdg(self.project.xdg())
             .run()

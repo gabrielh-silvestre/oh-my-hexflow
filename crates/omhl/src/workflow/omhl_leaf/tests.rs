@@ -22,6 +22,24 @@ fn it_should_skip_global_options_before_the_leaf() {
 }
 
 #[test]
+fn it_should_skip_the_format_option_given_as_two_words_before_the_leaf() {
+    let args = ["--format", "json", "list"];
+
+    let leaf = leaf_of(&args);
+
+    assert_eq!(leaf, named("list"));
+}
+
+#[test]
+fn it_should_skip_the_format_option_given_as_an_assignment_before_the_leaf() {
+    let args = ["--format=json", "list"];
+
+    let leaf = leaf_of(&args);
+
+    assert_eq!(leaf, named("list"));
+}
+
+#[test]
 fn it_should_join_a_group_with_its_subcommand() {
     assert_eq!(
         leaf_of(&["spec", "--db", "x", "init", "--help"]),
