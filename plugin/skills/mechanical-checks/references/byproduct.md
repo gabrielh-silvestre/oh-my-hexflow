@@ -34,7 +34,7 @@ Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `-
 - `attestation-not-found` (saída 1): não há attestation para o par. Rode `omhl check run` nesse work item antes.
 - `byproduct-missing` (saída 1): a attestation não aponta para um arquivo de saída que exista (ou o arquivo tem formato errado). Rode o check de novo numa árvore nova.
 - `byproduct-corrupt` (saída 1): o arquivo de saída não pôde ser lido de volta íntegro (o SHA-256 não bate com o hash). Rode o check de novo.
-- `where-eq-value-too-long` (saída 1): o `<WORK_ITEM>` passa de 256 caracteres. Confira o id.
+- `where-eq-value-too-long` (saída 1): o `<WORK_ITEM>` passa de 256 caracteres. O nome vem do filtro `--where work_item=<valor>` que o comando monta por baixo (o `omhl byproduct` não tem essa opção): o valor passa do limite do `--where`. Confira o id.
 - `INVALID_INPUT` (saída 1): o `<CHECK>` tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
 - `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
 - `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.

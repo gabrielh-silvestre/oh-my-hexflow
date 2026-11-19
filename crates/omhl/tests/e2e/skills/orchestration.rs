@@ -5,19 +5,23 @@
 
 use std::fs;
 
+use omhl::guard::ROLE_REFERENCE_COMMANDS;
+
 use crate::skills::coverage::skills_dir;
 
 const BASE_SENTENCE: &str =
     "Esta skill exige a `directives-flow`. Se não estiver carregada, carregue-a";
-const ROLES: [&str; 7] = [
-    "analyst",
-    "planner",
-    "architect",
-    "critic",
-    "code-reviewer",
-    "security-reviewer",
-    "verifier",
-];
+
+/// `omhl:analyst` -> `analyst`; os sete papéis vêm da constante de referência da guarda.
+fn reference_roles() -> Vec<&'static str> {
+    ROLE_REFERENCE_COMMANDS
+        .iter()
+        .map(|(role, _)| {
+            role.strip_prefix("omhl:")
+                .expect("reference roles carry the omhl: prefix")
+        })
+        .collect()
+}
 
 fn read(relative: &str) -> String {
     fs::read_to_string(skills_dir().join(relative))
@@ -42,7 +46,7 @@ fn body(skill: &str) -> String {
         .to_owned()
 }
 
-fn first_sentence_after_heading(skill: &str) -> String {
+fn first_line_after_heading(skill: &str) -> String {
     skill
         .lines()
         .skip_while(|line| !line.starts_with("# "))
@@ -58,7 +62,7 @@ fn it_should_require_the_directives_flow_base_in_plan_consensus_and_in_review() 
         let text = read(&format!("{skill}/SKILL.md"));
 
         assert!(
-            first_sentence_after_heading(&text).starts_with(BASE_SENTENCE),
+            first_line_after_heading(&text).starts_with(BASE_SENTENCE),
             "{skill} must open with the base requirement"
         );
     }
@@ -81,13 +85,19 @@ fn it_should_give_the_new_skills_the_house_frontmatter() {
 }
 
 #[test]
-fn it_should_state_the_three_round_limit_and_the_escalation_to_the_owner_in_plan_consensus() {
+fn it_should_state_the_three_round_limit_in_plan_consensus() {
     let text = read("plan-consensus/SKILL.md");
 
     assert!(
         line_with(&text, &["3 voltas"]).is_some(),
         "the three-round limit"
     );
+}
+
+#[test]
+fn it_should_escalate_the_impasse_to_the_owner_on_the_third_round_in_plan_consensus() {
+    let text = read("plan-consensus/SKILL.md");
+
     assert!(
         line_with(&text, &["terceira", "impasse", "dono"]).is_some(),
         "on the third round without acceptance, stop and show the impasse to the owner"
@@ -124,10 +134,8 @@ fn it_should_call_the_verifier_in_an_isolated_context_before_gate_pr_in_review()
 }
 
 #[test]
-fn it_should_carry_the_cycle_the_roles_and_the_tracking_table_template_in_the_base_references() {
+fn it_should_carry_the_ten_cycle_steps_in_cycle_md() {
     let cycle = base_reference("cycle.md");
-    let roles = base_reference("roles.md");
-    let template = base_reference("tracking-table.md");
 
     for step in 1..=10 {
         assert!(
@@ -137,11 +145,23 @@ fn it_should_carry_the_cycle_the_roles_and_the_tracking_table_template_in_the_ba
             "cycle.md has step {step}"
         );
     }
+}
+
+#[test]
+fn it_should_carry_the_critic_confirmation_and_anchor_rules_in_roles_md() {
+    let roles = base_reference("roles.md");
+
     assert!(
         roles.contains("confirmed_by"),
         "roles.md has the critic confirmation rule"
     );
     assert!(roles.contains("rests-on"), "roles.md has the anchor rule");
+}
+
+#[test]
+fn it_should_carry_the_heading_legend_and_totals_in_the_tracking_table_template() {
+    let template = base_reference("tracking-table.md");
+
     assert!(
         template.contains("## Acompanhamento"),
         "the template heading"
@@ -151,8 +171,7 @@ fn it_should_carry_the_cycle_the_roles_and_the_tracking_table_template_in_the_ba
 }
 
 #[test]
-fn it_should_state_that_the_override_replaces_the_default_template_and_that_the_plugin_template_applies_when_the_file_is_absent()
- {
+fn it_should_state_that_the_override_replaces_the_default_template() {
     let template = base_reference("tracking-table.md");
     let review = read("review/SKILL.md");
 
@@ -169,10 +188,6 @@ fn it_should_state_that_the_override_replaces_the_default_template_and_that_the_
         "the override is read first and replaces the plugin template"
     );
     assert!(
-        line_with(&template, &["ausente", "plugin"]).is_some(),
-        "the plugin template applies when the file is absent"
-    );
-    assert!(
         line_with(
             &review,
             &[
@@ -183,6 +198,17 @@ fn it_should_state_that_the_override_replaces_the_default_template_and_that_the_
         )
         .is_some(),
         "review: the override replaces the plugin template when the file exists"
+    );
+}
+
+#[test]
+fn it_should_state_that_the_plugin_template_applies_when_the_override_is_absent() {
+    let template = base_reference("tracking-table.md");
+    let review = read("review/SKILL.md");
+
+    assert!(
+        line_with(&template, &["ausente", "plugin"]).is_some(),
+        "the plugin template applies when the file is absent"
     );
     assert!(
         line_with(
@@ -216,7 +242,7 @@ fn it_should_link_the_matrix_table_in_docs_from_roles_md_instead_of_copying_it()
 fn it_should_name_the_seven_roles_in_roles_md() {
     let roles = base_reference("roles.md");
 
-    for role in ROLES {
+    for role in reference_roles() {
         assert!(
             roles.contains(&format!("oh-my-hexflow:{role}")),
             "roles.md names {role}"
@@ -290,7 +316,7 @@ fn it_should_tell_review_to_list_decisions_and_critic_confirmed_premises_without
     );
 }
 
-const NEGATIONS: [&str; 3] = ["não", "nunca", "sem "];
+const NEGATIONS: [&str; 3] = ["não", "nunca", "sem"];
 
 fn numbered_steps(text: &str) -> Vec<String> {
     let step = regex::Regex::new(r"^\d+\. ").expect("regex");
@@ -307,14 +333,17 @@ fn step_with(text: &str, needles: &[&str]) -> Option<usize> {
         .position(|step| needles.iter().all(|needle| step.contains(needle)))
 }
 
-/// O trecho da linha antes de `marker`: uma negação ali inverteria a regra.
+/// O trecho da linha antes de `marker`: uma negação ali inverteria a regra. Casa a palavra inteira
+/// (`semântica` não é `sem`), sem distinguir maiúscula.
 fn prefix_has_negation(line: &str, marker: &str) -> bool {
     let prefix = line.split(marker).next().unwrap_or_default();
-    NEGATIONS.iter().any(|negation| prefix.contains(negation))
+    prefix
+        .split(|character: char| !character.is_alphanumeric())
+        .any(|word| NEGATIONS.contains(&word.to_lowercase().as_str()))
 }
 
 #[test]
-fn it_should_order_the_plan_consensus_steps_by_number_and_never_negate_the_verifier_call() {
+fn it_should_order_the_plan_consensus_steps_by_number() {
     let text = read("plan-consensus/SKILL.md");
 
     let technical_critic = step_with(
@@ -336,36 +365,54 @@ fn it_should_order_the_plan_consensus_steps_by_number_and_never_negate_the_verif
     )
     .expect("the verifier step");
     let validate = step_with(&text, &["rode `omhl spec validate"]).expect("the final validate");
-    let steps = numbered_steps(&text);
 
     assert!(technical_critic < planner && planner < architect && architect < verifier);
     assert!(
         verifier < validate,
         "the verifier step comes before the final validate"
     );
+}
+
+#[test]
+fn it_should_never_negate_the_verifier_call_in_plan_consensus() {
+    let text = read("plan-consensus/SKILL.md");
+    let verifier = step_with(
+        &text,
+        &["oh-my-hexflow:verifier", "contexto isolado", "contradicts"],
+    )
+    .expect("the verifier step");
+
     assert!(!prefix_has_negation(
-        &steps[verifier],
+        &numbered_steps(&text)[verifier],
         "oh-my-hexflow:verifier"
     ));
 }
 
 #[test]
-fn it_should_tell_plan_consensus_that_the_planner_validates_and_the_last_validate_is_the_final_check()
- {
+fn it_should_tell_plan_consensus_that_the_planner_validates_the_spec() {
     let text = read("plan-consensus/SKILL.md");
-    let planner = &numbered_steps(&text)[step_with(&text, &["oh-my-hexflow:planner"]).unwrap()];
+    let planner = &numbered_steps(&text)
+        [step_with(&text, &["oh-my-hexflow:planner"]).expect("the planner step")];
 
     assert!(
         planner.contains("e a valida"),
         "the planner validates the spec"
     );
     assert!(
-        planner.contains("conferência final"),
-        "the last validate is the final check"
-    );
-    assert!(
         !planner.contains("fica para"),
         "the validation is not deferred"
+    );
+}
+
+#[test]
+fn it_should_tell_plan_consensus_that_the_last_validate_is_the_final_check() {
+    let text = read("plan-consensus/SKILL.md");
+    let planner = &numbered_steps(&text)
+        [step_with(&text, &["oh-my-hexflow:planner"]).expect("the planner step")];
+
+    assert!(
+        planner.contains("conferência final"),
+        "the last validate is the final check"
     );
 }
 
@@ -413,7 +460,7 @@ fn it_should_keep_the_critic_verdict_out_of_the_graph_in_plan_consensus() {
 }
 
 #[test]
-fn it_should_hand_agents_the_absolute_spec_folder_and_the_from_to_pairs_in_both_skills() {
+fn it_should_hand_agents_the_absolute_spec_folder_in_both_skills() {
     for skill in ["plan-consensus", "review"] {
         let text = read(&format!("{skill}/SKILL.md"));
 
@@ -421,6 +468,14 @@ fn it_should_hand_agents_the_absolute_spec_folder_and_the_from_to_pairs_in_both_
             line_with(&text, &["**absoluto**", "não existe dentro da worktree"]).is_some(),
             "{skill}: the spec folder is passed as an absolute path"
         );
+    }
+}
+
+#[test]
+fn it_should_hand_agents_the_from_to_pairs_in_both_skills() {
+    for skill in ["plan-consensus", "review"] {
+        let text = read(&format!("{skill}/SKILL.md"));
+
         assert!(
             line_with(
                 &text,
@@ -433,7 +488,7 @@ fn it_should_hand_agents_the_absolute_spec_folder_and_the_from_to_pairs_in_both_
 }
 
 #[test]
-fn it_should_tell_roles_md_where_the_from_to_pair_is_read_and_who_can_read_it() {
+fn it_should_tell_roles_md_where_the_from_to_pair_is_read() {
     let roles = base_reference("roles.md");
 
     assert!(
@@ -449,15 +504,29 @@ fn it_should_tell_roles_md_where_the_from_to_pair_is_read_and_who_can_read_it() 
         "the projection holds the live relations"
     );
     assert!(
+        !roles
+            .to_lowercase()
+            .contains("nenhum comando de leitura devolve relações"),
+        "the false statement is gone"
+    );
+}
+
+#[test]
+fn it_should_tell_roles_md_that_the_verifier_cannot_read_the_pair() {
+    let roles = base_reference("roles.md");
+
+    assert!(
         line_with(&roles, &["verifier não roda `project`"]).is_some(),
         "the verifier cannot run project, so the pair travels in the request"
     );
+}
+
+#[test]
+fn it_should_tell_roles_md_that_the_spec_folder_is_absolute() {
+    let roles = base_reference("roles.md");
+
     assert!(
-        !roles.contains("nenhum comando de leitura devolve relações"),
-        "the false statement is gone"
-    );
-    assert!(
-        line_with(&roles, &["**absoluto**", "dir", "omhl spec init"]).is_some(),
+        line_with(&roles, &["**absoluto**", "`dir`", "omhl spec init"]).is_some(),
         "the spec folder is absolute"
     );
 }
@@ -539,12 +608,8 @@ fn it_should_keep_roles_md_free_of_a_copy_of_the_matrix() {
 }
 
 #[test]
-fn it_should_forbid_claude_from_retiring_and_keep_the_owner_rule_affirmative() {
+fn it_should_forbid_claude_from_retiring() {
     let roles = base_reference("roles.md");
-    let owner = roles
-        .lines()
-        .find(|line| line.contains("O dono (`user`)"))
-        .expect("the owner line");
 
     assert!(
         line_with(
@@ -554,6 +619,16 @@ fn it_should_forbid_claude_from_retiring_and_keep_the_owner_rule_affirmative() {
         .is_some(),
         "claude does not retire"
     );
+}
+
+#[test]
+fn it_should_keep_the_owner_rule_affirmative() {
+    let roles = base_reference("roles.md");
+    let owner = roles
+        .lines()
+        .find(|line| line.contains("O dono (`user`)"))
+        .expect("the owner line");
+
     assert!(!prefix_has_negation(owner, "retira um `contradicts`"));
     assert!(owner.contains("só num terminal externo, fora do Claude Code"));
 }
@@ -649,29 +724,43 @@ fn it_should_give_the_pr_table_recipe_its_header_the_critic_path_and_the_paginat
 }
 
 #[test]
-fn it_should_keep_the_two_fixed_reply_fields_and_the_gap_recording_rule_in_both_skills() {
+fn it_should_point_both_skills_to_the_reply_fields_rule_kept_in_roles_md() {
+    let roles = base_reference("roles.md");
+
     for skill in ["plan-consensus", "review"] {
         let text = read(&format!("{skill}/SKILL.md"));
 
-        assert!(text.contains("**Next role:**"), "{skill}: Next role field");
         assert!(
             line_with(
                 &text,
                 &[
+                    "**Next role:**",
                     "**Open questions for the main session:**",
-                    "`gap`",
-                    "`omhl append`",
-                    "`kind`"
+                    "roles.md",
+                    "O que fazer com a resposta"
                 ]
             )
             .is_some(),
-            "{skill}: open questions become gaps with the suggested kind"
-        );
-        assert!(
-            line_with(&text, &["Sem `kind`", "vai ao humano"]).is_some(),
-            "{skill}: a gap without kind goes to the human"
+            "{skill}: the reply fields point to roles.md"
         );
     }
+    assert!(
+        roles.contains("**Next role:**"),
+        "roles.md: Next role field"
+    );
+    assert!(
+        line_with(
+            &roles,
+            &[
+                "**Open questions for the main session:**",
+                "`gap`",
+                "`omhl append`",
+                "`kind`"
+            ]
+        )
+        .is_some(),
+        "roles.md: open questions become gaps with the suggested kind"
+    );
 }
 
 #[test]

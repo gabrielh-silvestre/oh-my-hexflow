@@ -41,7 +41,11 @@ pub fn commit_marker(dir: &Path) {
     ];
     for args in steps {
         let output = git_in(dir, args);
-        assert!(output.status.success(), "git {args:?} failed");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }
 

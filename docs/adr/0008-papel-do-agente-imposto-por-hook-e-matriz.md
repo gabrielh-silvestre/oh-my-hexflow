@@ -6,7 +6,7 @@ status: accepted
 
 ## Contexto
 
-A guarda do `omhl` só separava os autores `user`, `claude`, `loader`, `executor` e `guideline-retire` ([ADR 0004](0004-executor-e-loader-como-fronteira-da-guarda.md)). Todo agente que chamava a CLI pelo Bash gravava como `claude`, igual à sessão principal. O ciclo com os agentes do plugin (analyst, planner, architect, critic, code-reviewer, security-reviewer e verifier) precisa que cada papel grave só o que é dele: o critic não grava diretiva, o architect não confirma premissa, só o verifier retira um `contradicts`.
+A guarda do `omhl` só separava os autores `user`, `claude`, `loader`, `executor` e `guideline-retire` ([ADR 0004](0004-executor-e-loader-como-fronteira-da-guarda.md)). Todo agente que chamava a CLI pelo Bash gravava como `claude`, igual à sessão principal. O ciclo com os agentes do plugin (analyst, planner, architect, critic, code-reviewer, security-reviewer e verifier) precisa que cada papel grave só o que é dele: o critic não grava diretiva, o architect não confirma premissa, só o verifier (e o dono) retira um `contradicts`.
 
 O Claude Code entrega o `agent_type` do subagente no evento do hook `PreToolUse`; para um subagente de plugin o valor é o identificador com escopo `<plugin>:<agente>`, aqui `oh-my-hexflow:<papel>` ([Hooks reference, Common input fields e SubagentStart](https://code.claude.com/docs/en/hooks#common-input-fields), consultada em 2026-11-18). O Bash do agente não recebe nenhuma variável de ambiente do plugin ([Plugins reference, Where each variable resolves](https://code.claude.com/docs/en/plugins-reference#where-each-variable-resolves)), e o subagente escreve o comando que quiser. A fonte do papel tem de ser algo que o agente não digita.
 

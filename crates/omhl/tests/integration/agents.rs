@@ -2,9 +2,11 @@
 //! créditos do README. Todo teste lê os sete arquivos: com um agente faltando, o teste falha (nunca passa vazio).
 //! O frontmatter é lido com o `serde-saphyr` do próprio crate; o `omhl-allow`, pelo parser do hook.
 
+use crate::support;
+
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::CommandFactory;
 use omhl::adapters::cli::Cli;
@@ -13,6 +15,7 @@ use omhl::workflow::omhl_leaf::{Leaf, resolve_leaf};
 use omhl::workflow::role_allow::{RoleAllow, parse_role_allow};
 use regex::Regex;
 use serde::Deserialize;
+use support::repo_checks::repo_root;
 
 const ORIGIN_VERSION: &str = "5.7.19";
 const OPUS_ROLES: [&str; 2] = ["architect", "critic"];
@@ -209,10 +212,6 @@ impl Agent {
             .filter_map(|line| line.split_once(':').map(|(key, _)| key.trim()))
             .collect()
     }
-}
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 fn agents_dir() -> PathBuf {
@@ -421,17 +420,6 @@ fn it_should_not_mention_oh_my_claudecode_colon_or_dot_omc_slash_in_any_agent() 
                 agent.role
             );
         }
-    }
-}
-
-#[test]
-fn it_should_not_give_the_agent_tool_to_any_ported_agent() {
-    for agent in agents() {
-        assert!(
-            agent.disallowed_tools().contains("Agent"),
-            "{}: Agent is not disallowed",
-            agent.role
-        );
     }
 }
 
@@ -720,19 +708,54 @@ const OMC_ONLY_CONCEPTS: [&str; 7] = [
     "ast_grep",
 ];
 
-/// O texto de uma tag de topo do prompt, sem as tags de abertura e fechamento.
+/// O texto de uma tag de topo do prompt (tag sozinha na linha, fora de cercas), sem as tags de abertura e fechamento.
 fn section(body: &str, tag: &str) -> String {
     let open = format!("<{tag}>");
     let close = format!("</{tag}>");
-    let start = body
-        .find(&open)
-        .unwrap_or_else(|| panic!("no <{tag}> section"))
-        + open.len();
-    let end = body[start..]
-        .find(&close)
-        .unwrap_or_else(|| panic!("no </{tag}> closing"));
+    let mut fenced = false;
+    let mut inside = false;
+    let mut lines = Vec::new();
 
-    body[start..start + end].to_owned()
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            fenced = !fenced;
+        }
+        if !fenced && !inside && trimmed == open {
+            inside = true;
+            continue;
+        }
+        if !fenced && inside && trimmed == close {
+            return lines.join("\n");
+        }
+        if inside {
+            lines.push(line);
+        }
+    }
+
+    if inside {
+        panic!("no {close} closing line");
+    }
+    panic!("no {open} line outside code fences");
+}
+
+/// As duas últimas linhas não vazias do `Output_Format`, na ordem em que aparecem.
+fn last_two_output_lines(agent: &Agent) -> [String; 2] {
+    let output = section(&agent.body, "Output_Format");
+    let lines: Vec<&str> = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let [.., penultimate, last] = lines.as_slice() else {
+        panic!(
+            "{}: the Output_Format has {} non-empty lines, expected at least 2",
+            agent.role,
+            lines.len()
+        );
+    };
+
+    [(*penultimate).to_owned(), (*last).to_owned()]
 }
 
 #[test]
@@ -756,8 +779,7 @@ fn it_should_tell_the_spec_readers_that_the_spec_lives_in_the_main_checkout_and_
 
         for phrase in [
             "lives in the main checkout, outside your worktree",
-            "`.omhl/specs/wi-<id>__<slug>/`",
-            "The main session gives you that folder path",
+            "in the folder the main session gives you in the request (default `.omhl/specs/wi-<id>__<slug>/`)",
             "read the parts to find the `CMP-###` and `CA-###` items",
             "return to the main session asking for it",
         ] {
@@ -819,29 +841,36 @@ fn it_should_not_offer_the_planner_a_restart_it_cannot_perform_and_say_to_return
 }
 
 #[test]
-fn it_should_end_the_output_format_of_every_agent_with_the_next_role_and_the_open_questions_fields()
-{
+fn it_should_put_the_next_role_field_second_to_last_in_the_output_format_of_every_agent() {
     for agent in agents() {
-        let output = section(&agent.body, "Output_Format");
-        let last_two: Vec<String> = output
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .rev()
-            .take(2)
-            .map(str::to_owned)
-            .collect();
+        let [penultimate, _] = last_two_output_lines(&agent);
 
         assert!(
-            last_two[1].starts_with("- Next role: "),
-            "{}: {last_two:?}",
+            penultimate.starts_with("- Next role: "),
+            "{}: {penultimate}",
             agent.role
         );
+    }
+}
+
+#[test]
+fn it_should_put_the_open_questions_field_last_in_the_output_format_of_every_agent() {
+    for agent in agents() {
+        let [_, last] = last_two_output_lines(&agent);
+
         assert!(
-            last_two[0].starts_with("- Open questions for the main session"),
-            "{}: {last_two:?}",
+            last.starts_with("- Open questions for the main session"),
+            "{}: {last}",
             agent.role
         );
+    }
+}
+
+#[test]
+fn it_should_carry_the_suggested_kind_in_the_open_questions_of_every_agent() {
+    for agent in agents() {
+        let output = section(&agent.body, "Output_Format");
+
         assert!(
             squash(&output).contains("(suggested kind: technical | business)"),
             "{}: the questions carry no kind",

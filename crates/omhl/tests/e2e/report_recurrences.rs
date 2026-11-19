@@ -4,7 +4,7 @@ use std::fs;
 
 use serde_json::{Value, json};
 use support::child::{Output, omhl_json};
-use support::git::git_in;
+use support::git::{commit_marker, git_in};
 use support::omhl::work_item_data;
 use support::project::Project;
 
@@ -96,21 +96,6 @@ fn seed_three_occurrences(project: &Project) {
             tls_node("premises.p3", W3),
         ],
     );
-}
-
-/// Repositório git com o marcador do projeto commitado, que o `close` exige.
-fn commit_marker(project: &Project) {
-    let steps: [&[&str]; 5] = [
-        &["init", "-b", "main"],
-        &["config", "user.name", "Test Author"],
-        &["config", "user.email", "author@example.com"],
-        &["add", "-A"],
-        &["commit", "-m", "add marker"],
-    ];
-    for args in steps {
-        let output = git_in(project.dir(), args);
-        assert!(output.status.success(), "git {args:?} failed");
-    }
 }
 
 fn write_workflow(project: &Project, toml: &str) {
@@ -236,7 +221,7 @@ fn it_should_count_three_premises_of_the_same_work_item_once() {
 fn it_should_count_a_closed_work_item() {
     let project = Project::new("acme");
     seed_three_occurrences(&project);
-    commit_marker(&project);
+    commit_marker(project.dir());
 
     let closed = in_project(&project, &["close", W3]);
     let report = report(&project);
@@ -376,7 +361,7 @@ fn it_should_let_the_minimum_flag_win_over_workflow_toml() {
 fn it_should_apply_the_minimum_of_the_main_directory_workflow_file_from_a_linked_worktree() {
     let project = Project::new("acme");
     write_workflow(&project, "version = 1\n\n[promotion]\nmin_work_items = 2\n");
-    commit_marker(&project);
+    commit_marker(project.dir());
     let scratch = tempfile::TempDir::new().expect("scratch directory is created");
     let linked = scratch.path().join("wt");
     let added = git_in(

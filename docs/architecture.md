@@ -10,7 +10,7 @@ Setas apontam de quem depende para quem é dependido. Setas pontilhadas são uso
 flowchart LR
   subgraph ext["Atores externos"]
     term["Terminal"]
-    cchook["Claude Code hook SessionStart"]
+    cchook["Hooks do Claude Code: SessionStart e PreToolUse (spec-lock, agent-role)"]
     git["git"]
     sqlite[("SQLite")]
   end
@@ -292,7 +292,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Interface.** `App::open`, `App::with_project_root`, `App::dispatch(&Caller, &Action) -> Result<Value, AppError>` (`app/mod.rs`); `Runtime::discover`, `Runtime::app`, `run_action` (`app/runtime.rs`); `Action` (23 variantes), `Caller::{cli, cli_under_claude_code, hook, loader, executor}` (`app/action.rs`); `read_json_input`, `parse_json_text`, `INPUT_MAX_BYTES` (`app/input.rs`); `RetryPolicy` (`app/retry.rs`); `AppError::{code, message, to_json}` (`app/error.rs`); `output::{node, page, appended, gate, closed, verify}`. Invariantes: `load` e `project` respondem `no-project-root` sem `with_project_root`; só `Busy` é repetido (nada foi gravado nesse caso).
 
-**Escondido.** `Engine` (`app/engine.rs`) que despacha cada ação; `attest` (`app/attest.rs`), `load` (`app/load.rs`), `context` (`app/context.rs`), `wire` (`app/wire.rs`: JSON para `AppendRequest`), `read` (`app/read.rs`), a tradução de erros do motor, do domínio e do projeto para um `AppError`.
+**Escondido.** `Engine` (`app/engine.rs`) que despacha cada ação; `attest` (`app/attest.rs`), `agent_role` (`app/agent_role.rs`: o veredito do hook `agent-role`, 3.24), `load` (`app/load.rs`), `context` (`app/context.rs`), `wire` (`app/wire.rs`: JSON para `AppendRequest`), `read` (`app/read.rs`), a tradução de erros do motor, do domínio e do projeto para um `AppError`.
 
 **Catálogo de erros.** `app/error.rs` é o catálogo de códigos de erro; todo código estável ganha construtor nomeado, mesmo com 1 uso (os códigos são contrato externo: JSON da CLI e do hook; o texto `agent` e `human` do erro mostra o mesmo `code` literal).
 
@@ -417,7 +417,7 @@ Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/`
 
 O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só onde cada parte mora.
 
-- `workflow/` (`config`, `gap`, `lock`, `matrix`, `names`, `recurrence`, `retro`, `spec`): as regras puras do fluxo. A configuração de `.omhl/workflow.toml`, o estado dos gaps, a decisão do `spec-lock`, a matriz de prefixos do gate de worktree, a gramática da pasta e dos arquivos da spec (`names`), a recorrência de premissas, a retro e o validador de spec. Travado: não importa `ports`, `runner` nem `byproduct` (`WORKFLOW_FORBIDDEN_MODULES` em `crates/omhl/tests/integration/architecture.rs`).
+- `workflow/` (`config`, `gap`, `lock`, `matrix`, `names`, `omhl_leaf`, `recurrence`, `retro`, `role_allow`, `shell`, `spec`): as regras puras do fluxo. A configuração de `.omhl/workflow.toml`, o estado dos gaps, a decisão do `spec-lock`, a matriz de prefixos do gate de worktree, a gramática da pasta e dos arquivos da spec (`names`), a recorrência de premissas, a retro e o validador de spec, mais o leitor de comando do hook `agent-role` (`omhl_leaf`, `role_allow` e `shell/`, descritos abaixo). Travado: não importa `ports`, `runner` nem `byproduct` (`WORKFLOW_FORBIDDEN_MODULES` em `crates/omhl/tests/integration/architecture.rs`).
 - `ports/specs`: `SpecStore` (`has_spec`, `read_folder`, `folder_files`, `file_exists`, `create_first_part`) lê e cria a pasta de spec, com teto por arquivo e por número de entradas.
 - `ports/workflow`: `read_workflow` lê e valida o `.omhl/workflow.toml`.
 - `ports/files`: `list_sorted_capped`, que veio de `extensions/files.rs` (travado por `PORTS_FORBIDDEN_MODULES`).
