@@ -72,17 +72,7 @@ fn json_line(text: &str) -> Value {
 
 /// Transforma a pasta do projeto num repositório limpo, com o marcador commitado; devolve o HEAD.
 fn commit_marker(project: &Project) -> String {
-    let steps: [&[&str]; 5] = [
-        &["init", "-b", "main"],
-        &["config", "user.name", "Test Author"],
-        &["config", "user.email", "author@example.com"],
-        &["add", "-A"],
-        &["commit", "-m", "add marker"],
-    ];
-    for args in steps {
-        let output = git_in(project.dir(), args);
-        assert!(output.status.success(), "git {args:?} failed");
-    }
+    support::git::commit_marker(project.dir());
 
     head_of(project.dir())
 }

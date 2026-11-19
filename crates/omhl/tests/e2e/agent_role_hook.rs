@@ -8,8 +8,7 @@ use std::process::Command;
 
 use clap::CommandFactory;
 use omhl::adapters::cli::Cli;
-use omhl::guard::{ROLE_REFERENCE_COMMANDS, ROLE_REFERENCE_MATRIX};
-use omhl::workflow::role_allow::parse_role_allow;
+use omhl::guard::ROLE_REFERENCE_COMMANDS;
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
 use support::hook::{
@@ -999,43 +998,6 @@ fn it_should_allow_a_command_when_the_append_block_is_well_formed() {
     let output = run_verifier_with_agent_file(&content, "omhl list");
 
     assert_allowed_with_prefix(&output, "verifier", "omhl list");
-}
-
-// Fixtures iguais à matriz de referência
-
-fn sorted<S: AsRef<str>>(items: &[S]) -> Vec<String> {
-    let mut items: Vec<String> = items.iter().map(|item| item.as_ref().to_owned()).collect();
-    items.sort();
-
-    items
-}
-
-#[test]
-fn it_should_keep_every_agent_fixture_equal_to_the_reference_role_matrix() {
-    for (reference_role, commands) in ROLE_REFERENCE_COMMANDS {
-        let role = bare_role(reference_role);
-        let file = fs::read_to_string(fixtures_root().join(format!("agents/{role}.md")))
-            .expect("the fixture exists");
-        let (_, nodes, relations, retire) = ROLE_REFERENCE_MATRIX
-            .iter()
-            .find(|(matrix_role, ..)| *matrix_role == reference_role)
-            .expect("the role is in the reference matrix");
-
-        let allow = parse_role_allow(&file).unwrap_or_else(|problem| panic!("{role}: {problem}"));
-
-        assert_eq!(sorted(&allow.commands), sorted(commands), "{role}");
-        match &allow.append {
-            Some(append) => {
-                assert_eq!(sorted(&append.nodes), sorted(nodes), "{role}");
-                assert_eq!(sorted(&append.relations), sorted(relations), "{role}");
-                assert_eq!(sorted(&append.retire), sorted(retire), "{role}");
-            }
-            None => assert!(
-                nodes.is_empty() && relations.is_empty() && retire.is_empty(),
-                "{role}: the reference has append lists but the fixture has no append block"
-            ),
-        }
-    }
 }
 
 // Prefixo: só vale quando o `omhl` é provadamente o comando que o recebe

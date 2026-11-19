@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use support::child::{Cmd, omhl, omhl_json};
-use support::git::git_in;
+use support::git::commit_marker;
 use support::omhl::{LIMIT_RULE, decision_data, work_item_data};
 use support::project::Project;
 
@@ -21,21 +21,6 @@ fn at(dir: &Path, xdg: &Path, args: &[&str]) -> Cmd {
 
 fn json_line(text: &str) -> Value {
     serde_json::from_str(text.trim_end()).expect("the line is JSON")
-}
-
-/// Transforma a pasta do projeto num repositório limpo, com o marcador commitado.
-fn commit_marker(project: &Project) {
-    let steps: [&[&str]; 5] = [
-        &["init", "-b", "main"],
-        &["config", "user.name", "Test Author"],
-        &["config", "user.email", "author@example.com"],
-        &["add", "-A"],
-        &["commit", "-m", "add marker"],
-    ];
-    for args in steps {
-        let output = git_in(project.dir(), args);
-        assert!(output.status.success(), "git {args:?} failed");
-    }
 }
 
 fn node_request(id: &str, type_name: &str, data: &Value) -> Value {
@@ -91,7 +76,7 @@ fn it_should_list_the_current_nodes_from_the_cli() {
 #[test]
 fn it_should_return_the_attestation_from_the_cli() {
     let project = Project::new("acme");
-    commit_marker(&project);
+    commit_marker(project.dir());
     append_node(
         project.dir(),
         project.xdg(),
@@ -157,7 +142,7 @@ fn it_should_report_the_limit_error_from_the_cli() {
 #[test]
 fn it_should_run_a_full_session_across_hook_and_cli() {
     let project = Project::new("acme");
-    commit_marker(&project);
+    commit_marker(project.dir());
     let (dir, xdg) = (project.dir(), project.xdg());
 
     let before = hook_context(dir, xdg);
