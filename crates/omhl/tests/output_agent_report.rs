@@ -2,9 +2,12 @@ mod support;
 
 use std::fs;
 
-use serde_json::Value;
+use serde_json::{Value, json};
+use support::agent_author;
 use support::child::{Output, omhl as binary};
+use support::forge::forge;
 use support::inproc::run_inproc;
+use support::omhl::{node_item, work_item_data};
 use support::project::Project;
 use support::query::query_project;
 use support::report::{
@@ -359,7 +362,7 @@ fn context_text(project: &Project) -> String {
 }
 
 #[test]
-fn it_should_print_the_json_text_byte_for_byte_in_the_agent_render() {
+fn it_should_print_the_json_text_in_the_agent_render_when_it_has_no_controls() {
     let project = query_project();
     let text = context_text(&project);
 
@@ -369,7 +372,7 @@ fn it_should_print_the_json_text_byte_for_byte_in_the_agent_render() {
 }
 
 #[test]
-fn it_should_print_the_json_text_byte_for_byte_in_the_human_render() {
+fn it_should_print_the_json_text_in_the_human_render_when_it_has_no_controls() {
     let project = query_project();
     let text = context_text(&project);
 
@@ -674,4 +677,62 @@ fn it_should_separate_the_findings_from_the_next_step_with_a_blank_line_in_the_h
         )),
         "{printed}"
     );
+}
+
+const CONTROLLED_DECISION: &str = "decisions.controlled";
+
+/// Um contexto cujo texto de decisão traz um OSC (`ESC ] 0 ; x BEL`) e uma quebra de linha.
+fn controlled_project() -> Project {
+    let project = Project::new("acme");
+    let items = vec![
+        node_item(WORK_ITEM, "work-item", work_item_data("Payroll rollout")),
+        node_item(
+            CONTROLLED_DECISION,
+            "decision",
+            json!({
+                "text": "before\u{1b}]0;x\u{7}after\nsecond line",
+                "evidence": [{ "source": "docs/storage.md", "summary": "The storage doc recommends it." }],
+                "work_item": WORK_ITEM,
+            }),
+        ),
+    ];
+    forge(&project, agent_author(), items);
+
+    project
+}
+
+fn without_controls(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+        .collect()
+}
+
+fn assert_render_drops_controls(format: &str) {
+    let project = controlled_project();
+    let text = context_text(&project);
+
+    let printed = stdout_of(&project, &["--format", format, "render"]);
+
+    assert!(text.contains("\u{1b}]0;x\u{7}"), "{text:?}");
+    assert!(
+        !printed
+            .chars()
+            .any(|c| c.is_control() && c != '\n' && c != '\t'),
+        "{printed:?}"
+    );
+    assert!(
+        printed.contains("before]0;xafter\n  second line"),
+        "{printed:?}"
+    );
+    assert_eq!(printed, without_controls(&text));
+}
+
+#[test]
+fn it_should_drop_control_bytes_from_the_agent_render() {
+    assert_render_drops_controls("agent");
+}
+
+#[test]
+fn it_should_drop_control_bytes_from_the_human_render() {
+    assert_render_drops_controls("human");
 }

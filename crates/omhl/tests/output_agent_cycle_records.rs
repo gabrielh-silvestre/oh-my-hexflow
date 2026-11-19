@@ -4,8 +4,8 @@ use regex::Regex;
 use serde_json::Value;
 use support::child::Output;
 use support::cycle::{
-    self, APPEND_KEYED, APPEND_ONE, APPEND_TWO, MANUAL_CHECK, State, WORK_ITEM,
-    assert_single_json_line, assert_text_starting_with, first_line, lines_of, parsed,
+    self, APPEND_KEYED, APPEND_ONE, APPEND_TWO, MANUAL_CHECK, State, WORK_ITEM, default_formats,
+    first_line, lines_of, parsed,
 };
 use support::git::git_in;
 use support::project::Project;
@@ -93,95 +93,17 @@ fn attest_args<'a>(outcome: &'a str, rest: &[&'a str]) -> Vec<&'a str> {
 
 // ---------------------------------------------------------------- CA-1: sem `--format`, com `human` e com `json`
 
-/// Os seis testes de CA-1 de um comando: `agent` (sem flag), `human` e `json`, no sucesso e no erro.
-macro_rules! default_formats {
-    ($command:ident, $success:expr, $success_args:expr, $success_stdin:expr, $failure:expr, $failure_args:expr, $failure_stdin:expr) => {
-        mod $command {
-            use super::*;
-
-            #[test]
-            fn it_should_print_agent_text_for_the_success_when_no_format_is_given() {
-                let state = $success;
-
-                let output = run(&state, None, $success_args, $success_stdin);
-
-                assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
-                assert_text_starting_with(&output.stdout, "✔");
-                assert_eq!(output.stderr, "");
-            }
-
-            #[test]
-            fn it_should_print_human_text_for_the_success() {
-                let state = $success;
-
-                let output = run(&state, Some("human"), $success_args, $success_stdin);
-
-                assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
-                assert_text_starting_with(&output.stdout, "✔");
-                assert_eq!(output.stderr, "");
-            }
-
-            #[test]
-            fn it_should_print_a_single_json_line_for_the_success_with_format_json() {
-                let state = $success;
-
-                let output = run(&state, Some("json"), $success_args, $success_stdin);
-
-                assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
-                assert_single_json_line(&output.stdout);
-                assert_eq!(output.stderr, "");
-            }
-
-            #[test]
-            fn it_should_print_agent_error_text_when_no_format_is_given() {
-                let state = $failure;
-
-                let output = run(&state, None, $failure_args, $failure_stdin);
-
-                assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
-                assert_text_starting_with(&output.stderr, "✘");
-                assert_eq!(output.stdout, "");
-            }
-
-            #[test]
-            fn it_should_print_human_error_text() {
-                let state = $failure;
-
-                let output = run(&state, Some("human"), $failure_args, $failure_stdin);
-
-                assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
-                assert_text_starting_with(&output.stderr, "✘");
-                assert_eq!(output.stdout, "");
-            }
-
-            #[test]
-            fn it_should_print_a_single_json_error_line_with_format_json() {
-                let state = $failure;
-
-                let output = run(&state, Some("json"), $failure_args, $failure_stdin);
-
-                assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
-                assert_single_json_line(&output.stderr);
-                assert_eq!(output.stdout, "");
-            }
-        }
-    };
-}
-
 default_formats!(
     append,
     empty_db(),
-    &["append"],
-    APPEND_ONE,
+    &["append"] => APPEND_ONE,
     empty_db(),
-    &["append"],
-    cycle::APPEND_NOT_JSON
+    &["append"] => cycle::APPEND_NOT_JSON
 );
 default_formats!(
     attest,
     attest_state(),
-    &attest_args("passed", &[]),
-    "",
+    &attest_args("passed", &[]) => "",
     attest_state(),
     &[
         "attest",
@@ -189,8 +111,7 @@ default_formats!(
         WORK_ITEM,
         "--outcome",
         "passed"
-    ],
-    ""
+    ] => ""
 );
 
 // ---------------------------------------------------------------- `append`

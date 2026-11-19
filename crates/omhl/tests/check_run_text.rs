@@ -267,6 +267,9 @@ fn it_should_split_the_failure_text_header_between_blocking_and_non_blocking() {
             "✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run"
         )
     );
+    assert!(output.stderr.contains(
+        "    how to read the output: omhl byproduct checks.soft work-items.w1 --tail 40"
+    ));
 }
 
 #[test]

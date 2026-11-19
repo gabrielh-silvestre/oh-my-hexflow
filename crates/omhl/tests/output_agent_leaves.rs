@@ -2743,14 +2743,26 @@ fn layout_name(layout: Layout) -> &'static str {
     }
 }
 
+/// O `Value` de cada caso, na ordem de `CASES`: calculado uma vez e lido por todos os testes que não mudam a fixture,
+/// porque cada cálculo roda o comando real num filho e a varredura repetida estoura o prazo do filho sob carga.
+#[expect(
+    clippy::disallowed_types,
+    reason = "memory-exception: the tests of one binary run on separate threads and share the values; alternatives discarded: recomputing per test (about 12 sweeps overrun the 30 s child deadline under load), merging the read-only tests into one (breaks one behavior per test), passing the values by reference (the test harness has no shared fixture argument)"
+)]
+static CASE_VALUES: std::sync::LazyLock<Vec<Value>> = std::sync::LazyLock::new(|| {
+    CASES
+        .iter()
+        .map(|case| json_of(case, &(case.fixture)()))
+        .collect()
+});
+
 /// Roda a checagem em todos os casos e reprova uma vez, com os problemas de todos: um caso vermelho não esconde os outros.
 fn assert_cases_clean(check: impl Fn(&Case, &Value) -> Vec<String>) {
     let problems: Vec<String> = CASES
         .iter()
-        .flat_map(|case| {
-            let value = json_of(case, &(case.fixture)());
-
-            check(case, &value)
+        .zip(CASE_VALUES.iter())
+        .flat_map(|(case, value)| {
+            check(case, value)
                 .into_iter()
                 .map(|problem| format!("{}: {problem}", case.name))
                 .collect::<Vec<_>>()
@@ -2850,9 +2862,8 @@ fn it_should_omit_the_facts_the_human_text_replaces_or_hides() {
 #[test]
 fn it_should_not_suggest_a_next_step_when_the_chain_is_ok() {
     let case = &CASES[0];
-    let value = json_of(case, &(case.fixture)());
 
-    let text = text_of(case, &value, Layout::Agent);
+    let text = text_of(case, &CASE_VALUES[0], Layout::Agent);
 
     assert!(!text.contains("Next:"), "{text}");
 }
@@ -2969,9 +2980,11 @@ fn it_should_print_the_human_render_of_the_json_value_for_each_command() {
 
 #[test]
 fn it_should_answer_the_expected_error_code_in_the_json_of_each_error_case() {
-    for case in CASES.iter().filter(|case| case.outcome == Outcome::Failure) {
-        let value = json_of(case, &(case.fixture)());
-
+    for (case, value) in CASES
+        .iter()
+        .zip(CASE_VALUES.iter())
+        .filter(|(case, _)| case.outcome == Outcome::Failure)
+    {
         assert_eq!(
             value["error"]["code"],
             json!(case.error_code.expect("an error case names its code")),

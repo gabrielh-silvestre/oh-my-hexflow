@@ -12,7 +12,7 @@ Para ler o contexto de sessão do projeto: os checks, as diretivas, as decisões
 
 ## Saída
 
-O texto do contexto no stdout, saída 0, exatamente como o `text` abaixo, sem símbolo nem cabeçalho do `omhl`: a primeira linha é `# omhl context for tenant <tenant>`. `agent` e `human` imprimem os mesmos bytes, sem quebra de linha a mais no fim. Com `--format json` é uma linha JSON, com dois campos:
+O texto do contexto no stdout, saída 0, como o `text` abaixo mas sem os caracteres de controle (só `\n` e `\t` ficam), sem símbolo nem cabeçalho do `omhl`: a primeira linha é `# omhl context for tenant <tenant>`. `agent` e `human` imprimem os mesmos bytes, sem quebra de linha a mais no fim. O JSON e o hook `session-start` trazem o `text` inteiro. Com `--format json` é uma linha JSON, com dois campos:
 
 - `text`: o contexto em Markdown, com as seções `## Checks`, `## Guidelines` e `## Premises` (mais as de decisões e de premissas pendentes quando houver). Os checks e as diretivas nativos do `omhl` aparecem junto com os do projeto. Cada premissa leva `mark`: `confirmed` (vincula), `pending` (premissa de negócio sem confirmação, que não vincula) ou `autonomous` (premissa técnica sem confirmação); cada diretiva leva `confirmed: true` ou `false`. A premissa de um work item fechado sai do texto. Work items e attestations não entram.
 - `omitted`: quantos nós o texto deixou de listar por causa do limite de tamanho. Com `omitted` maior que zero, o texto termina com uma linha que manda rodar `omhl list` para ler o resto.

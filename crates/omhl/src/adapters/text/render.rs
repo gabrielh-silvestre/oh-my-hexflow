@@ -1,4 +1,4 @@
-//! Texto do `omhl render`: o produto é o próprio `text` do contexto, impresso como veio nos dois layouts.
+//! Texto do `omhl render`: o produto é o `text` do contexto sem controles, igual nos dois layouts.
 
 use serde_json::Value;
 
@@ -32,12 +32,18 @@ impl Specialization for Render {
 }
 
 impl Renderer for Render {
-    /// Uma linha crua com o `text` sem sanitizar: o contexto é multilinha e o hook injeta os mesmos bytes.
+    /// Uma linha crua com o `text`: o contexto é multilinha, então só `\n` e `\t` sobrevivem entre os controles.
+    /// O JSON e o hook `session-start` seguem com o `text` inteiro.
     fn success(&self, value: &Value) -> Doc {
         Doc {
             lines: vec![Line::Raw {
                 depth: 0,
-                text: value["text"].as_str().unwrap_or_default().to_owned(),
+                text: value["text"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .chars()
+                    .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+                    .collect(),
             }],
             closing: Closing::None,
         }
@@ -45,5 +51,27 @@ impl Renderer for Render {
 
     fn failure(&self, value: &Value) -> Doc {
         error::failure(self, value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn it_should_drop_controls_but_keep_line_breaks_and_tabs_in_the_context_text() {
+        let value = json!({ "text": "a\n\tb\u{1b}]0;x\u{7}c\r\u{85}d" });
+
+        let doc = Render.success(&value);
+
+        assert_eq!(
+            doc.lines,
+            vec![Line::Raw {
+                depth: 0,
+                text: "a\n\tb]0;xcd".to_owned()
+            }]
+        );
     }
 }
