@@ -8,7 +8,7 @@ description: Protocolo de fechamento do work item no omhl. Use para conferir o g
 A ordem, antes de abrir ou mergear o PR:
 
 1. Confira que os checks do commit atual estão atestados: `omhl check run` (os hooks já rodam `before-commit` e `before-pr`; o `before-merge` é à mão) e `omhl attest` para os checks manuais. Um commit novo pede tudo de novo.
-2. `omhl gate-pr <work-item>` e resolva cada pergunta com `passed: false` (inclui `decisions-anchored`, ver `directives-flow`).
+2. `omhl gate-pr <work-item>` e resolva cada pergunta reprovada, a linha com `✘` (com `--format json`, `passed: false`; inclui `decisions-anchored`, ver `directives-flow`).
 3. Abra e mergeie o PR (com `wt`). `omhl close <work-item>` com o PR pronto, não antes.
 4. `omhl report retro` e proponha melhorias, como em "Depois do `close`" abaixo.
 
@@ -17,7 +17,7 @@ A referência de cada comando está em `references/`.
 ## Regras que valem o tempo todo
 
 - **Árvore limpa e commit atual.** `omhl gate-pr` e `omhl close` leem o `HEAD` e recusam com `snapshot-dirty` se há mudança não commitada. Uma attestation vale só para o commit em que foi gravada: um commit novo pede os checks de novo (`omhl check run`, `omhl attest`).
-- **Gate reprovado não é erro.** O `gate-pr` sai 0 mesmo com `passed: false`. Leia o campo `passed` e as perguntas com `passed: false`, e resolva cada uma antes de abrir o PR.
+- **Gate reprovado não é erro.** O `gate-pr` sai 0 mesmo reprovado. Leia o símbolo e a contagem da primeira linha (`✘ gate-pr · ... · not passed · N questions · M failed`; com `--format json`, o campo `passed`) e resolva cada pergunta reprovada, a linha com `✘`, antes de abrir o PR.
 - **O `close` fecha mesmo com o gate reprovado.** Ele grava o resultado do gate no work item, num banco append-only, e um segundo `close` é recusado (`invalid-transition`). Confira o `gate-pr` antes.
 - **O `close` não é o merge.** Fechar o work item não mergeia nem apaga a branch. Isso é com `wt`.
 - **Retro é só leitura e só propõe.** Veja "Depois do `close`" abaixo.
@@ -25,7 +25,7 @@ A referência de cada comando está em `references/`.
 
 ## Depois do `close`
 
-Quando o `close` imprimir o campo `retro` (ou quando você rodar `omhl report retro` com o id do work item), proponha uma melhoria por item do relatório, numa destas quatro categorias:
+Quando o `close` imprimir a retro (a linha `✔ retro`; com `--format json`, o campo `retro`) ou quando você rodar `omhl report retro` com o id do work item, proponha uma melhoria por item do relatório, numa destas quatro categorias:
 
 - `guideline`: uma nova diretiva.
 - `premise`: uma nova premissa.
