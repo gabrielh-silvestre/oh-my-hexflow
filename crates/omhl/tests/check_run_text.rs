@@ -2,6 +2,7 @@ mod support;
 
 use std::fs;
 
+use omhl::adapters::text::{AgentVocabulary, HumanVocabulary, SYMBOL_OK, State, Vocabulary};
 use serde_json::{Value, json};
 use support::child::{Cmd, omhl};
 use support::ext::ExtTree;
@@ -258,7 +259,7 @@ fn it_should_count_blocking_failures_apart_in_the_failure_json_summary() {
 fn it_should_split_the_failure_text_header_between_blocking_and_non_blocking() {
     let p = cli_repo(&[("suite", SUITE_RED), ("soft", SOFT_RED), ("green", GREEN)]);
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     assert_eq!(
         output.stderr.lines().next(),
@@ -266,6 +267,9 @@ fn it_should_split_the_failure_text_header_between_blocking_and_non_blocking() {
             "✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run"
         )
     );
+    assert!(output.stderr.contains(
+        "    how to read the output: omhl byproduct checks.soft work-items.w1 --tail 40"
+    ));
 }
 
 #[test]
@@ -316,7 +320,7 @@ fn it_should_open_the_failure_text_with_event_work_item_and_summary() {
     let p = cli_repo(&[("suite", SUITE_RED), ("gone", GREEN)]);
     drop_check(&p, "gone");
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     assert_eq!(
         output.stderr.lines().next(),
@@ -329,7 +333,7 @@ fn it_should_open_the_failure_text_without_a_work_item_on_develop() {
     let p = cli_repo(&[("suite", SUITE_RED)]);
     git(&p, &["switch", "-q", "-c", "develop"]);
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     assert_eq!(
         output.stderr.lines().next(),
@@ -341,7 +345,7 @@ fn it_should_open_the_failure_text_without_a_work_item_on_develop() {
 fn it_should_describe_a_failed_check_in_the_text_with_its_exit_code_and_command() {
     let p = cli_repo(&[("suite", SUITE_RED)]);
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     let lines: Vec<&str> = output.stderr.lines().collect();
     assert!(
@@ -356,7 +360,7 @@ fn it_should_describe_a_failed_check_in_the_text_with_its_exit_code_and_command(
 fn it_should_describe_a_timed_out_check_in_the_text_without_an_exit_code() {
     let p = cli_repo(&[("slow", SLOW)]);
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     let line = output.stderr.lines().nth(1).expect("the failed check line");
     assert!(
@@ -382,11 +386,11 @@ fn it_should_carry_concern_and_variant_in_each_success_result_that_declares_them
 fn it_should_show_concern_and_variant_next_to_the_id_in_the_success_text() {
     let p = cli_repo(&[("format", FORMAT_GREEN)]);
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     let line = output.stdout.lines().nth(1).expect("the check line");
     assert!(
-        line.starts_with("  ✔ checks.format  style/format  passed  "),
+        line.starts_with("  ✔ checks.format style/format passed "),
         "{line}"
     );
 }
@@ -434,21 +438,24 @@ fn it_should_reject_an_unknown_format_with_a_usage_exit() {
 }
 
 #[test]
-fn it_should_accept_both_known_formats() {
+fn it_should_accept_the_three_known_formats() {
     let p = cli_repo(&[("green", GREEN)]);
 
-    let text = omhl_in(
-        &p,
-        &["check", "run", "--event", "before-pr", "--format", "text"],
-    )
-    .run();
-    let json = omhl_in(
-        &p,
-        &["check", "run", "--event", "before-pr", "--format", "json"],
-    )
-    .run();
+    let codes: Vec<Option<i32>> = ["agent", "human", "json"]
+        .map(|format| run_pr(&p, format).code)
+        .to_vec();
 
-    assert_eq!((text.code, json.code), (Some(0), Some(0)));
+    assert_eq!(codes, vec![Some(0); 3]);
+}
+
+#[test]
+fn it_should_reject_the_removed_text_format_with_a_usage_exit() {
+    let p = cli_repo(&[("green", GREEN)]);
+
+    let output = run_pr(&p, "text");
+
+    assert_eq!(output.code, Some(2));
+    assert_eq!(output.stdout, "");
 }
 
 #[test]
@@ -465,7 +472,7 @@ fn it_should_print_the_success_text_on_stdout_by_default() {
         "{lines:?}"
     );
     assert!(
-        lines[1].starts_with("  ✔ checks.green  passed  "),
+        lines[1].starts_with("  ✔ checks.green passed "),
         "{lines:?}"
     );
     assert_eq!(
@@ -513,7 +520,7 @@ fn it_should_print_the_output_tail_of_a_failed_check_on_develop() {
     let p = cli_repo(&[("red", NOISY_RED)]);
     git(&p, &["switch", "-q", "-c", "develop"]);
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     assert_eq!(output.code, Some(1));
     assert!(
@@ -530,7 +537,7 @@ fn it_should_warn_in_the_success_text_that_an_orphaned_check_did_not_run() {
     let p = cli_repo(&[("green", GREEN), ("gone", GREEN)]);
     drop_check(&p, "gone");
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert!(
@@ -633,17 +640,17 @@ fn assert_text_refusal(output: &support::child::Output, code: &str, detail_code:
 fn it_should_tell_a_passed_with_warning_check_from_a_passed_one_in_the_success_text() {
     let p = cli_repo(&[("warn", WARNING), ("green", GREEN)]);
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(output.stderr, "");
     let lines: Vec<&str> = output.stdout.lines().collect();
     assert!(
-        lines[1].starts_with("  ✔ checks.green  passed  "),
+        lines[1].starts_with("  ✔ checks.green passed "),
         "{lines:?}"
     );
     assert!(
-        lines[2].starts_with("  ⚠ checks.warn  passed_with_warning  "),
+        lines[2].starts_with("  ⚠ checks.warn passed_with_warning "),
         "{lines:?}"
     );
     assert!(lines[2].ends_with("ms (exit 1)"), "{lines:?}");
@@ -712,7 +719,7 @@ fn it_should_print_worktree_dirty_as_text_for_an_untracked_file() {
     let p = cli_repo(&[("green", GREEN)]);
     fs::write(p.dir().join("u.txt"), "u\n").expect("untracked file");
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     assert_text_refusal(&output, "worktree-dirty", "worktree-dirty");
 }
@@ -722,7 +729,7 @@ fn it_should_print_branch_protected_as_text_on_main() {
     let p = cli_repo(&[("green", GREEN)]);
     git(&p, &["switch", "-q", "main"]);
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     assert_text_refusal(&output, "branch-protected", "branch-protected");
 }
@@ -731,7 +738,7 @@ fn it_should_print_branch_protected_as_text_on_main() {
 fn it_should_print_check_not_run_as_text_when_the_binary_of_the_check_does_not_exist() {
     let p = cli_repo(&[("ghost", GHOST)]);
 
-    let output = run_pr(&p, "text");
+    let output = run_pr(&p, "agent");
 
     assert_text_refusal(&output, "check-not-run", "spawn-failed");
     assert!(
@@ -748,4 +755,97 @@ fn it_should_print_attestation_refused_as_text_when_a_check_stages_a_file_behind
     let output = omhl_in(&p, &["check", "run", "--event", "before-commit"]).run();
 
     assert_text_refusal(&output, "attestation-refused", "snapshot-tree-mismatch");
+}
+
+const SPACED_RED: &str = r#"blocking = true
+how = "Prints a spaced line and fails."
+run = ["sh", "-c", "printf '  a   b  \\n'; exit 1"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }]
+
+[when]
+event = "before-pr"
+"#;
+
+#[test]
+fn it_should_keep_the_interior_spaces_of_the_command_output_in_the_agent_text() {
+    let p = cli_repo(&[("spaced", SPACED_RED)]);
+    git(&p, &["switch", "-q", "-c", "develop"]);
+
+    let output = run_pr(&p, "agent");
+
+    assert_eq!(output.code, Some(1));
+    assert!(
+        output.stderr.contains("      stdout |   a   b\n"),
+        "{}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_trim_only_the_end_of_the_command_output_line_in_the_agent_text() {
+    let p = cli_repo(&[("spaced", SPACED_RED)]);
+    git(&p, &["switch", "-q", "-c", "develop"]);
+
+    let output = run_pr(&p, "agent");
+
+    assert!(
+        output.stderr.lines().all(|line| line == line.trim_end()),
+        "{}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_keep_the_command_output_line_untouched_in_the_human_text() {
+    let p = cli_repo(&[("spaced", SPACED_RED)]);
+    git(&p, &["switch", "-q", "-c", "develop"]);
+
+    let output = run_pr(&p, "human");
+
+    assert_eq!(output.code, Some(1));
+    assert!(
+        output.stderr.contains("      stdout |   a   b  \n"),
+        "{}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_keep_the_two_space_gap_between_the_check_columns_in_the_human_text() {
+    let p = cli_repo(&[("green", GREEN)]);
+
+    let output = run_pr(&p, "human");
+
+    assert!(
+        output
+            .stdout
+            .contains(&format!("\n  {SYMBOL_OK} checks.green  passed  ")),
+        "{}",
+        output.stdout
+    );
+}
+
+#[test]
+fn it_should_open_the_success_text_of_both_layouts_with_the_ok_symbol_of_the_vocabulary() {
+    let p = cli_repo(&[("green", GREEN)]);
+    let symbol = AgentVocabulary.symbol(State::Ok);
+
+    let agent = run_pr(&p, "agent");
+    let human = run_pr(&p, "human");
+
+    assert!(agent.stdout.starts_with(&format!("{symbol} before-pr")));
+    assert!(human.stdout.starts_with(&format!("{symbol} before-pr")));
+}
+
+#[test]
+fn it_should_open_the_failure_text_of_both_layouts_with_the_error_symbol_of_the_vocabulary() {
+    let p = cli_repo(&[("red", NOISY_RED)]);
+    let symbol = HumanVocabulary.symbol(State::Error);
+
+    let agent = run_pr(&p, "agent");
+    let human = run_pr(&p, "human");
+
+    assert!(agent.stderr.starts_with(&format!("{symbol} BLOCKED")));
+    assert!(human.stderr.starts_with(&format!("{symbol} BLOCKED")));
 }

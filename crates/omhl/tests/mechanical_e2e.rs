@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use support::assert_resolved_command;
-use support::child::{Cmd, Output as OmhlOutput, omhl};
+use support::child::{Cmd, Output as OmhlOutput, omhl_json};
 use support::git::{git_command_with_env, git_in, git_with_env, write_executable};
 use tempfile::TempDir;
 
@@ -283,7 +283,7 @@ impl E2e {
         assert_eq!(appended.code, Some(0), "append: {}", appended.stderr);
         let loaded = e.omhl(&["load"]).run();
         assert_eq!(loaded.code, Some(0), "load: {}", loaded.stderr);
-        let installed = e.omhl(&["hooks", "install"]).run();
+        let installed = e.omhl(&["hooks", "install", "--format", "json"]).run();
         assert_eq!(
             installed.code,
             Some(0),
@@ -323,7 +323,7 @@ impl E2e {
     }
 
     fn omhl(&self, args: &[&str]) -> Cmd {
-        omhl(args)
+        omhl_json(args)
             .cwd(&self.r)
             .xdg(&self.x)
             .env("HOME", &self.h)

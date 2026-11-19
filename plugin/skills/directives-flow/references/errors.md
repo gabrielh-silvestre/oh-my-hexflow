@@ -4,7 +4,7 @@ Vale para todo comando desta skill. A página de cada comando lista só os erros
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`); com `--format json`, numa linha JSON. Os comandos que só imprimem JSON seguem nela. Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
 
 A ordem das checagens é: uso do clap; argumentos e entrada do comando; `OMHL_ROLE`; existência do `--project-dir`; marcador; `--db`. O primeiro que falha é o que você vê.
 
@@ -21,6 +21,6 @@ Recusa: `--project-dir` que não existe:
 $ omhl append --project-dir /nonexistent <<'EOF'
 {"items":[]}
 EOF
-2> {"error":{"code":"invalid-project-dir","details":[],"message":"the project directory does not exist"}}
+2> ✘ invalid-project-dir · the project directory does not exist
 # exit 1
 ```

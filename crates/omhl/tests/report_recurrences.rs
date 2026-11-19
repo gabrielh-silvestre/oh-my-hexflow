@@ -4,7 +4,7 @@ use std::fs;
 
 use ::omhl::workflow::recurrence::{Premise, Recurrence, normalize, recurrences};
 use serde_json::{Value, json};
-use support::child::{Output, omhl};
+use support::child::{Output, omhl_json};
 use support::git::git_in;
 use support::omhl::work_item_data;
 use support::project::Project;
@@ -286,7 +286,7 @@ fn open_work_item(id: &str) -> Value {
 }
 
 fn in_project(project: &Project, args: &[&str]) -> Output {
-    omhl(args).cwd(project.dir()).xdg(project.xdg()).run()
+    omhl_json(args).cwd(project.dir()).xdg(project.xdg()).run()
 }
 
 fn json_line(text: &str) -> Value {
@@ -297,7 +297,7 @@ fn append_output(project: &Project, items: Vec<Value>) -> Output {
     let mut request = json!({});
     request["items"] = Value::Array(items);
 
-    omhl(&["append"])
+    omhl_json(&["append"])
         .cwd(project.dir())
         .xdg(project.xdg())
         .stdin(request.to_string())
@@ -629,7 +629,7 @@ fn it_should_apply_the_minimum_of_the_main_directory_workflow_file_from_a_linked
     )
     .expect("the branch version of workflow.toml is written");
 
-    let output = omhl(&["report", "recurrences"])
+    let output = omhl_json(&["report", "recurrences"])
         .cwd(&linked)
         .xdg(project.xdg())
         .run();

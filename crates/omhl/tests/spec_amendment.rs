@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use hexlog::{Config, Deps, Hexlog, Lineage};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use support::child::{Output as Child, omhl};
+use support::child::{Output as Child, omhl_json};
 use support::git::git_in;
 use support::omhl::{acme, work_item_data};
 use support::project::Project;
@@ -203,7 +203,7 @@ impl Fixture {
     }
 
     fn run(&self, args: &[&str]) -> Child {
-        omhl(args)
+        omhl_json(args)
             .cwd(self.project.dir())
             .xdg(self.project.xdg())
             .run()
@@ -213,7 +213,7 @@ impl Fixture {
         let mut request = json!({});
         request["items"] = Value::Array(items);
 
-        omhl(&["append"])
+        omhl_json(&["append"])
             .cwd(self.project.dir())
             .xdg(self.project.xdg())
             .stdin(request.to_string())

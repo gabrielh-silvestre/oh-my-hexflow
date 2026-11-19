@@ -629,10 +629,7 @@ fn it_should_enumerate_the_options_of_the_cli() {
     let expected = [
         ("attest", vec!["--note", "--outcome"]),
         ("byproduct", vec!["--tail"]),
-        (
-            "check run",
-            vec!["--check", "--event", "--format", "--pre-push"],
-        ),
+        ("check run", vec!["--check", "--event", "--pre-push"]),
         ("gate-worktree", vec!["--branch"]),
         ("guideline retire", vec!["--by"]),
         ("hooks install", vec!["--force"]),
@@ -659,7 +656,11 @@ fn it_should_enumerate_the_options_of_the_cli() {
                     options.into_iter().map(str::to_owned).collect()
                 ))
                 .to_vec(),
-            vec!["--db".to_owned(), "--project-dir".to_owned()]
+            vec![
+                "--db".to_owned(),
+                "--format".to_owned(),
+                "--project-dir".to_owned()
+            ]
         )
     );
 }

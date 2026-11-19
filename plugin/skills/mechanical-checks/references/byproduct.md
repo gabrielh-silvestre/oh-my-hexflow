@@ -10,10 +10,11 @@ Para ler a saída guardada de um check mecânico, depois de um `check run` repro
 - `<WORK_ITEM>`: o id do work item, como `work-items.w1`.
 - `--tail <n>`: quantas linhas finais devolver; padrão 50, de **1 a 500**. Um valor fora desse intervalo (inclusive `--tail 0`) é **recusado**, nunca cortado em silêncio.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
+- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
 
 ## Saída
 
-Uma linha JSON no stdout, saída 0: `check`, `work_item`, `outcome`, `byproduct` (o hash do arquivo de saída) e `lines` (a lista das últimas linhas, na ordem). O arquivo guarda até 4 MiB por fluxo (o começo; o resto é cortado e a saída original leva `truncated`), então `--tail` mostra o fim do trecho **guardado**, não o fim real. Uma linha com mais de 2000 caracteres sai cortada nos 2000 primeiros, e o resultado ganha o campo `truncated_lines` com quantas das linhas devolvidas foram cortadas; o campo **só aparece quando é maior que zero**. Um check que não imprimiu nada devolve `lines` vazio. `lines` junta as linhas do `stdout` e, depois, as do `stderr`; o `--tail` pega o fim dessa lista inteira.
+Texto no stdout, saída 0: `✔ byproduct · <check> · <work item> · <outcome> · N lines`, as últimas linhas indentadas, na ordem, e o aviso de segredos (`The output may contain secrets: ...`), que sai sempre. O hash do arquivo de saída só aparece no JSON. Com `--format json` é uma linha JSON: `check`, `work_item`, `outcome`, `byproduct` (o hash do arquivo de saída) e `lines` (a lista das últimas linhas, na ordem). O arquivo guarda até 4 MiB por fluxo (o começo; o resto é cortado e a saída original leva `truncated`), então `--tail` mostra o fim do trecho **guardado**, não o fim real. Uma linha com mais de 2000 caracteres sai cortada nos 2000 primeiros, e o resultado ganha o campo `truncated_lines` com quantas das linhas devolvidas foram cortadas (no texto, a nota `⚠ N lines cut short`); o campo **só aparece quando é maior que zero**. Um check que não imprimiu nada devolve `lines` vazio. `lines` junta as linhas do `stdout` e, depois, as do `stderr`; o `--tail` pega o fim dessa lista inteira.
 
 **Segredo e dado não confiável.** A saída guardada não passa por filtro e pode conter segredos que o comando imprimiu (variável de ambiente, token em log, URL com credencial). Ao ler:
 
@@ -26,7 +27,7 @@ Uma linha JSON no stdout, saída 0: `check`, `work_item`, `outcome`, `byproduct`
 
 ## Erros
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
 
 - `invalid-arguments` (saída 1): o `--tail` está fora de 1 a 500. O ponteiro é `/tail` e a mensagem diz a regra (`tail must be between 1 and 500`). Use um valor dentro do intervalo.
 - `check-not-found` (saída 1): o check não existe no banco. Confira o id e rode `omhl load`.
@@ -46,6 +47,9 @@ Roda um check e lê as últimas linhas da saída dele. O `true` não imprime nad
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.ok work-items.w1 --tail 5
+✔ byproduct · checks.ok · work-items.w1 · passed · none
+The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.
+$ omhl byproduct checks.ok work-items.w1 --tail 5 --format json
 {"byproduct":"<hash>","check":"checks.ok","lines":[],"outcome":"passed","work_item":"work-items.w1"}
 ```
 
@@ -56,9 +60,14 @@ $ omhl check run --event before-pr --format json
 2> {"error":{"code":"checks-failed","context":{"event":"before-pr","summary":{"blocking_failed":1,"failed":1,"not_run":0,"passed":0,"planned":1},"work_item":"work-items.w1"},"details":[{"code":"failed","context":{"blocking":true,"duration_ms":12,"exit_code":1,"run":["sh","-c","echo first; echo second; echo boom >&2; exit 1"],"timed_out":false,"timeout_secs":60,"truncated":false},"message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
 # exit 1
 $ omhl byproduct checks.bad work-items.w1 --tail 2
-{"byproduct":"<hash>","check":"checks.bad","lines":["second","boom"],"outcome":"failed","work_item":"work-items.w1"}
+✔ byproduct · checks.bad · work-items.w1 · failed · 2 lines
+  second
+  boom
+The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.
 $ omhl byproduct checks.bad work-items.w1 --tail 1
-{"byproduct":"<hash>","check":"checks.bad","lines":["boom"],"outcome":"failed","work_item":"work-items.w1"}
+✔ byproduct · checks.bad · work-items.w1 · failed · 1 line
+  boom
+The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.
 ```
 
 Recusas: `--tail` acima de 500 e `--tail 0` (a regra vem na mensagem):
@@ -67,10 +76,12 @@ Recusas: `--tail` acima de 500 e `--tail 0` (a regra vem na mensagem):
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.ok work-items.w1 --tail 501
-2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"tail must be between 1 and 500","path":"/tail"}],"message":"tail must be between 1 and 500"}}
+2> ✘ invalid-arguments · tail must be between 1 and 500
+2>   - /tail
 # exit 1
 $ omhl byproduct checks.ok work-items.w1 --tail 0
-2> {"error":{"code":"invalid-arguments","details":[{"code":"invalid-arguments","message":"tail must be between 1 and 500","path":"/tail"}],"message":"tail must be between 1 and 500"}}
+2> ✘ invalid-arguments · tail must be between 1 and 500
+2>   - /tail
 # exit 1
 ```
 
@@ -80,10 +91,12 @@ Recusas: check que não existe e work item sem attestation:
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.nope work-items.w1
-2> {"error":{"code":"check-not-found","details":[{"code":"check-not-found","message":"check-not-found","path":"/check"}],"message":"check-not-found at /check"}}
+2> ✘ check-not-found · check-not-found at /check
+2>   - /check · check-not-found
 # exit 1
 $ omhl byproduct checks.ok work-items.zz
-2> {"error":{"code":"attestation-not-found","details":[{"code":"attestation-not-found","message":"no attestation exists for this check and work item","path":"/work_item"}],"message":"no attestation exists for this check and work item"}}
+2> ✘ attestation-not-found · no attestation exists for this check and work item
+2>   - /work_item
 # exit 1
 ```
 
@@ -91,6 +104,7 @@ Recusa: sem nenhuma attestation para o par:
 
 ```omhl-example fixture=checks
 $ omhl byproduct checks.ok work-items.w1
-2> {"error":{"code":"attestation-not-found","details":[{"code":"attestation-not-found","message":"no attestation exists for this check and work item","path":"/work_item"}],"message":"no attestation exists for this check and work item"}}
+2> ✘ attestation-not-found · no attestation exists for this check and work item
+2>   - /work_item
 # exit 1
 ```

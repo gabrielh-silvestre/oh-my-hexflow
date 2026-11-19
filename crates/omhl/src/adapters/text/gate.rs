@@ -1,0 +1,239 @@
+//! Texto do `gate-pr` e do `close`: o `close` reusa o corpo do gate, o do `append` e o do `report retro`.
+
+use serde_json::Value;
+
+use super::base::{Entry, Profile, Region, Shape, Specialization};
+use super::doc::{Closing, Join, Line, Marker, field, has_items, items, joined, opt_text, text};
+use super::error;
+use super::report::Retro;
+use super::simple::Append;
+use super::vocab::{State, plural};
+
+pub static GATE_PR_PROFILE: Profile = Profile {
+    label: "gate-pr",
+    nodes: None,
+    success: &[
+        Entry::new(Region::Root, "gate", Shape::Closed),
+        Entry::new(Region::Root, "passed", Shape::Derived),
+        Entry::new(Region::Data, "label", Shape::Closed).under("questions"),
+        Entry::new(Region::Data, "kind", Shape::Closed).under("questions"),
+        Entry::new(Region::Data, "passed", Shape::Derived).under("questions"),
+        Entry::new(Region::Data, "matched", Shape::Derived).under("questions"),
+        Entry::new(Region::Data, "failing", Shape::Derived)
+            .under("questions")
+            .optional(),
+        Entry::new(Region::Data, "omitted", Shape::Derived).under("questions"),
+        Entry::new(Region::Data, "next_step", Shape::Closed)
+            .under("questions")
+            .optional(),
+        // O cabeçalho da cadeia só serve a quem verifica a cadeia (`omhl verify`).
+        Entry::new(Region::Data, "seq", Shape::Noise).under("chain_head"),
+        Entry::new(Region::Data, "hash", Shape::Noise).under("chain_head"),
+    ],
+    failure: &error::ENTRIES,
+};
+
+/// As chaves do gate vivem sob `report`; as do append, sob `outcome`; as do retro, sob `retro` (nulo sem projeto).
+pub static CLOSE_PROFILE: Profile = Profile {
+    label: "close",
+    nodes: None,
+    success: &[
+        Entry::new(Region::Data, "gate", Shape::Closed).under("report"),
+        Entry::new(Region::Data, "passed", Shape::Derived).under("report"),
+        Entry::new(Region::Data, "label", Shape::Closed).under("questions"),
+        Entry::new(Region::Data, "kind", Shape::Closed).under("questions"),
+        Entry::new(Region::Data, "passed", Shape::Derived).under("questions"),
+        Entry::new(Region::Data, "matched", Shape::Derived).under("questions"),
+        Entry::new(Region::Data, "failing", Shape::Derived)
+            .under("questions")
+            .optional(),
+        Entry::new(Region::Data, "omitted", Shape::Derived).under("questions"),
+        Entry::new(Region::Data, "next_step", Shape::Closed)
+            .under("questions")
+            .optional(),
+        Entry::new(Region::Data, "seq", Shape::Noise).under("chain_head"),
+        Entry::new(Region::Data, "hash", Shape::Noise).under("chain_head"),
+        Entry::new(Region::Data, "id", Shape::Literal).under("records"),
+        Entry::new(Region::Data, "seq", Shape::Literal).under("records"),
+        Entry::new(Region::Data, "replayed", Shape::Derived).under("outcome"),
+        Entry::new(Region::Data, "kind", Shape::Closed)
+            .under("divergences")
+            .optional(),
+        Entry::new(Region::Data, "resolution", Shape::Closed)
+            .under("divergences")
+            .optional(),
+        Entry::new(Region::Data, "ids", Shape::Literal)
+            .under("divergences")
+            .optional(),
+        Entry::new(Region::Data, "name", Shape::Literal)
+            .under("approved")
+            .optional(),
+        Entry::new(Region::Data, "divergence", Shape::Literal)
+            .under("approved")
+            .optional(),
+        Entry::new(Region::Data, "pending", Shape::Literal)
+            .under("amendments")
+            .optional(),
+        Entry::new(Region::Data, "gap", Shape::Literal)
+            .under("no_criterion")
+            .optional(),
+        Entry::new(Region::Data, "answered_by", Shape::Literal)
+            .under("no_criterion")
+            .optional(),
+        Entry::new(Region::Data, "gap", Shape::Literal)
+            .under("open_gaps")
+            .optional(),
+        Entry::new(Region::Data, "state", Shape::Closed)
+            .under("open_gaps")
+            .optional(),
+    ],
+    failure: &error::ENTRIES,
+};
+
+fn gate_passed(report: &Value) -> bool {
+    report["passed"] == true
+}
+
+fn failed_questions(report: &Value) -> impl Iterator<Item = &Value> {
+    items(report, "questions").filter(|question| question["passed"] != true)
+}
+
+/// O passo da primeira pergunta que reprova e traz um; as demais ficam no campo da própria linha.
+fn first_next_step(report: &Value) -> Option<String> {
+    failed_questions(report).find_map(|question| opt_text(question, "next_step"))
+}
+
+fn gate_summary(report: &Value) -> Vec<String> {
+    let failed = failed_questions(report).count();
+    let mut parts = vec![
+        text(report, "gate"),
+        match gate_passed(report) {
+            true => "passed".to_owned(),
+            false => "not passed".to_owned(),
+        },
+        plural(items(report, "questions").count(), "question"),
+    ];
+    if failed > 0 {
+        parts.push(format!("{failed} failed"));
+    }
+
+    parts
+}
+
+/// Uma linha por pergunta; o `next_step` de quem reprova vira campo, menos o que já é o `Next:` (`action`).
+fn question_lines(report: &Value, action: Option<&str>) -> Vec<Line> {
+    items(report, "questions")
+        .flat_map(|question| {
+            let state = match question["passed"] == true {
+                true => State::Ok,
+                false => State::Error,
+            };
+            let label = text(question, "label");
+            let kind = text(question, "kind");
+            let mut parts = vec![label.clone()];
+            // Nas perguntas sem check o `kind` repete o `label`.
+            if kind != label {
+                parts.push(kind);
+            }
+            parts.push(format!("matched {}", question["matched"]));
+            if has_items(question, "failing") {
+                parts.push(format!("failing {}", joined(question, "failing")));
+            }
+            if question["omitted"].as_u64().is_some_and(|count| count > 0) {
+                parts.push(format!("{} omitted", question["omitted"]));
+            }
+            let item = Line::Item {
+                depth: 0,
+                marker: Marker::Symbol(state),
+                parts,
+                join: Join::Dot,
+            };
+            let next_step = opt_text(question, "next_step")
+                .filter(|step| action != Some(step.as_str()))
+                .map(|step| field(1, "next_step", step));
+
+            std::iter::once(item).chain(next_step)
+        })
+        .collect()
+}
+
+pub struct GatePr;
+
+impl Specialization for GatePr {
+    fn profile(&self) -> &'static Profile {
+        &GATE_PR_PROFILE
+    }
+
+    fn state(&self, value: &Value) -> State {
+        match gate_passed(value) {
+            true => State::Ok,
+            false => State::Error,
+        }
+    }
+
+    fn summary(&self, value: &Value) -> Vec<String> {
+        gate_summary(value)
+    }
+
+    fn detail_lines(&self, value: &Value) -> Vec<Line> {
+        question_lines(value, first_next_step(value).as_deref())
+    }
+
+    fn closing(&self, value: &Value) -> Closing {
+        match first_next_step(value) {
+            Some(step) => Closing::Next(step),
+            None => Closing::None,
+        }
+    }
+}
+
+pub struct Close;
+
+impl Specialization for Close {
+    fn profile(&self) -> &'static Profile {
+        &CLOSE_PROFILE
+    }
+
+    /// O work item fecha mesmo com o gate reprovado: o resultado fica gravado.
+    fn state(&self, value: &Value) -> State {
+        match gate_passed(&value["report"]) {
+            true => State::Ok,
+            false => State::Warning,
+        }
+    }
+
+    fn summary(&self, value: &Value) -> Vec<String> {
+        gate_summary(&value["report"])
+    }
+
+    fn detail_lines(&self, value: &Value) -> Vec<Line> {
+        let outcome = &value["outcome"];
+        let mut lines = question_lines(&value["report"], None);
+        lines.push(Line::Header {
+            state: State::Ok,
+            parts: std::iter::once("closed".to_owned())
+                .chain(Append.summary(outcome))
+                .collect(),
+        });
+        lines.extend(Append.detail_lines(outcome));
+        if !value["retro"].is_null() {
+            lines.push(Line::Header {
+                state: State::Ok,
+                parts: std::iter::once("retro".to_owned())
+                    .chain(Retro.summary(value))
+                    .collect(),
+            });
+            lines.extend(Retro.detail_lines(value));
+        }
+
+        lines
+    }
+
+    /// Só há o que propor quando o retro traz algum item.
+    fn closing(&self, value: &Value) -> Closing {
+        match Retro.detail_lines(value).is_empty() {
+            true => Closing::None,
+            false => Retro.closing(value),
+        }
+    }
+}

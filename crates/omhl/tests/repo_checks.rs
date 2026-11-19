@@ -9,7 +9,7 @@ use ::omhl::mechanical::plan::{CheckNode, plan_run};
 use ::omhl::mechanical::spec::snapshot_for;
 use hexlog::SnapshotKind;
 use serde_json::{Value, json};
-use support::child::{Output, omhl};
+use support::child::{Output, omhl_json};
 use support::sid;
 use tempfile::TempDir;
 
@@ -158,7 +158,7 @@ fn repo_root() -> PathBuf {
 
 /// Roda `omhl` na raiz do repositório com o banco em `xdg`.
 fn load(args: &[&str], xdg: &Path) -> Output {
-    omhl(args).cwd(&repo_root()).xdg(xdg).run()
+    omhl_json(args).cwd(&repo_root()).xdg(xdg).run()
 }
 
 fn json_line(text: &str) -> Value {

@@ -52,7 +52,7 @@ Edição direta na `develop` nunca passa pelo gate. A `develop` e a `main` saem 
 
 ## 2. Comandos
 
-Um erro sai no stderr, numa linha JSON, com código de saída 1. Uma saída de sucesso é uma linha JSON no stdout.
+Um erro sai no stderr com código de saída 1, e uma saída de sucesso no stdout. Os 21 comandos ativos imprimem texto `agent` por padrão, com `--format human` (os mesmos fatos em blocos) e `--format json` (uma linha de JSON, a forma de ler por código); um erro sai em texto (`✘ código · mensagem`). Os cinco comandos lidos por máquina (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hooks post-commit` e `gate-worktree`) seguem em JSON e recusam `--format agent|human` com erro de uso (saída 2). A decisão está no [ADR 0009](adr/0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
 
 | Comando | O que faz |
 |---|---|
@@ -168,7 +168,7 @@ require = []
 | `promotion.min_work_items` | Número de work items distintos que dispara a sugestão de promoção |
 | `prefix.<nome>.require` | Átomos exigidos pelo prefixo. `[prefix.<novo>]` acrescenta um prefixo à tabela; um prefixo existente é sobrescrito |
 
-O arquivo é estrito: uma chave desconhecida é erro. O erro é `invalid-workflow-config`. A mensagem traz o caminho e a posição (linha e coluna), nunca o conteúdo do arquivo:
+O arquivo é estrito: uma chave desconhecida é erro. O erro é `invalid-workflow-config`. A mensagem traz o caminho e a posição (linha e coluna), nunca o conteúdo do arquivo. No padrão `agent` o erro sai em texto, `✘ invalid-workflow-config · <repo>/.omhl/workflow.toml: not a valid workflow file at line 3, column 1`; com `--format json`, sai a linha:
 
 ```json
 {"error":{"code":"invalid-workflow-config","details":[],"message":"<repo>/.omhl/workflow.toml: not a valid workflow file at line 3, column 1"}}
@@ -240,9 +240,14 @@ As specs ficam em `<specs.dir>/wi-<id>__<slug>/`, por padrão `.omhl/specs/wi-<i
 omhl spec init work-items.w1 export-reports
 ```
 
-```json
-{"dir":"<repo>/.omhl/specs/wi-w1__export-reports","path":"<repo>/.omhl/specs/wi-w1__export-reports/parte-01.md","slug":"export-reports","work_item":"work-items.w1"}
+```text
+✔ spec init · work-items.w1 · export-reports
+  dir: <repo>/.omhl/specs/wi-w1__export-reports
+  path: <repo>/.omhl/specs/wi-w1__export-reports/parte-01.md
+Next: fill in the five sections of the part file, then run omhl spec validate work-items.w1.
 ```
+
+Com `--format json`, a saída é a linha `{"dir":"...","path":"...","slug":"export-reports","work_item":"work-items.w1"}`.
 
 O comando cria a pasta no diretório principal, com o `parte-01.md` já com as cinco seções vazias, e escreve `<specs.dir>/.gitignore` com `*`. Nenhum projeto precisa editar o `.gitignore` da raiz.
 
@@ -293,10 +298,10 @@ Permitir que o usuário exporte relatórios em CSV.
 ### `omhl spec validate`
 
 ```bash
-omhl spec validate work-items.w1
+omhl spec validate work-items.w1 --format json
 ```
 
-Com sucesso, a saída lista as partes e o estado de cada emenda:
+Com sucesso, o JSON lista as partes e o estado de cada emenda (o padrão `agent` resume em `✔ spec validate · <n> parts · <n> amendments`):
 
 ```json
 {"amendments":[{"name":"emenda-01.md","state":"approved","violations":[]}],"ok":true,"parts":["parte-01.md"]}
@@ -379,10 +384,10 @@ Uma dúvida aberta é um `gap` (`question` e `context`, mais o `work_item` e o `
 {"items":[{"body":{"kind":"relation","relation_type":"answers","from":"premises.row-limit","to":"gaps.row-limit"}}]}
 ```
 
-O `omhl report answers` mostra o estado de cada gap:
+O `omhl report answers` mostra o estado de cada gap. A tabela abaixo descreve os campos do JSON (`--format json`); o padrão `agent` imprime uma linha por gap com os mesmos fatos:
 
 ```bash
-omhl report answers --work-item work-items.w1
+omhl report answers --work-item work-items.w1 --format json
 ```
 
 ```json
@@ -454,7 +459,7 @@ Quando o agente foge da spec congelada, ele grava uma `divergence`:
 
 ### A retro
 
-A retro é um relatório somente leitura. Ele sai de duas formas: no campo `retro` do `omhl close` e em `omhl report retro <work-item>` (vale para work item aberto ou fechado). Ele só existe quando há ao menos uma divergência ou uma resposta sem critério. Um gap aberto sozinho, ou um arquivo de emenda sozinho, não gera retro; o campo `retro` é `null`.
+A retro é um relatório somente leitura. Ele sai de duas formas: no campo `retro` do `omhl close` e em `omhl report retro <work-item>` (vale para work item aberto ou fechado). Ele só existe quando há ao menos uma divergência ou uma resposta sem critério. Um gap aberto sozinho, ou um arquivo de emenda sozinho, não gera retro; o campo `retro` do JSON (`--format json`) é `null` e o padrão `agent` imprime `✔ report retro · none`. O exemplo abaixo é o JSON:
 
 ```json
 {"retro":{"amendments":{"approved":[{"divergence":"divergences.row-limit","name":"emenda-01.md"}],"pending":[]},"divergences":[{"ids":["divergences.row-limit"],"kind":"contradicts","resolution":"spec-stale"}],"no_criterion":[{"answered_by":"premises.row-limit","gap":"gaps.row-limit"}],"open_gaps":[]}}
@@ -480,7 +485,7 @@ Depois do `close`, o agente propõe uma melhoria por item da retro. Cada propost
 ### A promoção na 3ª ocorrência
 
 ```bash
-omhl report recurrences
+omhl report recurrences --format json
 ```
 
 ```json
@@ -532,7 +537,7 @@ Spec aprovada nunca é editada. Para corrigir um erro da spec depois da aprovaç
    {"items":[{"base":"<record_id da revisão atual>","body":{"kind":"node","id":"divergences.row-limit","type":"divergence","data":{"source_ref":"CMP-002","kind":"contradicts","text":"...","evidence":[{"source":"src/export.ts","summary":"MAX_ROWS is 10000."}],"resolution":"spec-stale","work_item":"work-items.w1","amendment":"emenda-01","confirmed_by":{"by":"person:alice","question":"...","answer":"..."}}}}]}
    ```
 
-   O `record_id` da revisão atual vem de `omhl get <id>` (campo `node.record_id`).
+   O `record_id` da revisão atual vem de `omhl get <id>` (a linha `record_id:` do texto `agent`; com `--format json`, o campo `node.record_id`).
 
 Nunca tente editar a spec nem procure como descongelá-la.
 

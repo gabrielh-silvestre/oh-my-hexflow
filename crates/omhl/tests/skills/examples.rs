@@ -298,9 +298,14 @@ impl Normalizer {
             (r"\b\d+ms\b", "<ms>"),
             (r"\b\d+\.\ds\b", "<s>"),
             (r"\((git-commit|git-tree) [0-9a-f]{7}\)", "(${1} <snapshot>)"),
+            // Texto do `attest`: `snapshot 2dbf9e3`.
+            (r"\bsnapshot [0-9a-f]{7}\b", "snapshot <snapshot>"),
             (r#"("(?:pid|pgid|[a-z_]*_pid)"\s*:\s*)\d+"#, r#"${1}"<pid>""#),
             // `check sweep` vale para qualquer raiz da máquina: `swept` e `unreadable` não são determinísticos.
             (r#"("(?:swept|unreadable)"\s*:\s*)(?:\d+|\[[^\]]*\])"#, r#"${1}"<swept>""#),
+            // Texto do `check sweep`: `- sleep · pid 4242 · owner 4100` e `2 swept · 0 unreadable`.
+            (r"\b(pid|owner) \d+\b", "${1} <pid>"),
+            (r"\b\d+ (swept|unreadable)\b", "<n> ${1}"),
         ]
         .map(|(pattern, to)| (Regex::new(pattern).expect("regex"), to));
 
@@ -699,13 +704,13 @@ fn it_should_accept_a_valid_omhl_example_and_blocks_that_do_not_run_omhl() {
 fn it_should_report_file_line_command_and_both_outputs_on_a_mismatch() {
     let result = run_block(&one_block(
         "project",
-        "$ omhl get work-items.w1\n{\"node\":1}\n",
+        "$ omhl get work-items.w1 --format json\n{\"node\":1}\n",
     ));
 
     let message = result.expect_err("the output differs");
 
     assert!(
-        message.starts_with("synthetic.md:2: $ omhl get work-items.w1\n  expected exit 0 stdout \"{\\\"node\\\":1}\"")
+        message.starts_with("synthetic.md:2: $ omhl get work-items.w1 --format json\n  expected exit 0 stdout \"{\\\"node\\\":1}\"")
             && message.contains("obtained exit 0 stdout \"{\\\"node\\\":{"),
         "{message}"
     );
@@ -715,7 +720,7 @@ fn it_should_report_file_line_command_and_both_outputs_on_a_mismatch() {
 fn it_should_feed_the_heredoc_to_stdin_and_match_stderr_and_exit_code() {
     assert_runs(
         "project",
-        "$ omhl append <<'EOF'\nnot json\nEOF\n2> {\"error\":{\"code\":\"input-invalid-json\",\"details\":[],\"message\":\"input is not valid JSON at line 1 column 2\"}}\n# exit 1\n",
+        "$ omhl append --format json <<'EOF'\nnot json\nEOF\n2> {\"error\":{\"code\":\"input-invalid-json\",\"details\":[],\"message\":\"input is not valid JSON at line 1 column 2\"}}\n# exit 1\n",
     );
 }
 
@@ -740,10 +745,34 @@ fn it_should_keep_the_snapshot_kind_when_normalizing_the_short_id() {
 }
 
 #[test]
+fn it_should_match_check_sweep_text_pids_and_counts_against_placeholders() {
+    let expected = "✔ check sweep · <n> swept · <n> unreadable\n- sleep · pid <pid> · owner <pid>";
+    let obtained = "✔ check sweep · 2 swept · 33 unreadable\n- sleep · pid 4242 · owner 4100";
+
+    assert!(text_normalizer().same(expected, obtained));
+}
+
+#[test]
+fn it_should_keep_the_process_name_when_normalizing_check_sweep_text() {
+    let expected = "- sleep · pid <pid> · owner <pid>";
+    let obtained = "- sh · pid 4242 · owner 4100";
+
+    assert!(!text_normalizer().same(expected, obtained));
+}
+
+#[test]
+fn it_should_keep_counts_that_are_not_swept_or_unreadable() {
+    let expected = "✔ hooks install · 4 scripts";
+    let obtained = "✔ hooks install · 5 scripts";
+
+    assert!(!text_normalizer().same(expected, obtained));
+}
+
+#[test]
 fn it_should_assemble_the_project_fixture() {
     assert_runs(
         "project",
-        "$ omhl get work-items.w1\n{\"node\":{\"at\":\"<at>\",\"author\":{\"agent\":\"claude\",\"client\":\"cli\"},\"data\":{\"status\":\"open\",\"title\":\"First item\"},\"id\":\"work-items.w1\",\"record_id\":\"<record-id>\",\"seq\":1,\"shadowed\":false,\"type\":\"work-item\"}}\n",
+        "$ omhl get work-items.w1 --format json\n{\"node\":{\"at\":\"<at>\",\"author\":{\"agent\":\"claude\",\"client\":\"cli\"},\"data\":{\"status\":\"open\",\"title\":\"First item\"},\"id\":\"work-items.w1\",\"record_id\":\"<record-id>\",\"seq\":1,\"shadowed\":false,\"type\":\"work-item\"}}\n",
     );
 }
 
@@ -751,7 +780,7 @@ fn it_should_assemble_the_project_fixture() {
 fn it_should_assemble_the_git_fixture() {
     assert_runs(
         "git",
-        "$ omhl spec init work-items.w1 x\n{\"dir\":\"<repo>/.omhl/specs/wi-w1__x\",\"path\":\"<repo>/.omhl/specs/wi-w1__x/parte-01.md\",\"slug\":\"x\",\"work_item\":\"work-items.w1\"}\n",
+        "$ omhl spec init work-items.w1 x --format json\n{\"dir\":\"<repo>/.omhl/specs/wi-w1__x\",\"path\":\"<repo>/.omhl/specs/wi-w1__x/parte-01.md\",\"slug\":\"x\",\"work_item\":\"work-items.w1\"}\n",
     );
 }
 
@@ -759,7 +788,7 @@ fn it_should_assemble_the_git_fixture() {
 fn it_should_assemble_the_spec_fixture() {
     assert_runs(
         "spec",
-        "$ omhl spec validate work-items.w1\n{\"amendments\":[],\"ok\":true,\"parts\":[\"parte-01.md\"]}\n",
+        "$ omhl spec validate work-items.w1 --format json\n{\"amendments\":[],\"ok\":true,\"parts\":[\"parte-01.md\"]}\n",
     );
 }
 
@@ -767,7 +796,7 @@ fn it_should_assemble_the_spec_fixture() {
 fn it_should_assemble_the_checks_fixture() {
     assert_runs(
         "checks",
-        "$ omhl load\n{\"created\":[],\"dry_run\":false,\"orphan_relations\":[],\"orphans\":[],\"relations_created\":[],\"revised\":[],\"skipped\":[],\"tenant\":\"acme\",\"unchanged\":[\"checks.ok\",\"checks.review\"],\"warnings\":[]}\n",
+        "$ omhl load --format json\n{\"created\":[],\"dry_run\":false,\"orphan_relations\":[],\"orphans\":[],\"relations_created\":[],\"revised\":[],\"skipped\":[],\"tenant\":\"acme\",\"unchanged\":[\"checks.ok\",\"checks.review\"],\"warnings\":[]}\n",
     );
 }
 
@@ -775,7 +804,7 @@ fn it_should_assemble_the_checks_fixture() {
 fn it_should_assemble_the_retire_check_fixture() {
     assert_runs(
         "retire-check",
-        "$ omhl check retire checks.ok\n{\"retired\":\"checks.ok\"}\n",
+        "$ omhl check retire checks.ok --format json\n{\"retired\":\"checks.ok\"}\n",
     );
 }
 
@@ -783,7 +812,7 @@ fn it_should_assemble_the_retire_check_fixture() {
 fn it_should_assemble_the_retire_guideline_fixture() {
     assert_runs(
         "retire-guideline",
-        "$ omhl guideline retire guidelines.brief\n{\"retired\":\"guidelines.brief\",\"superseded_by\":null}\n",
+        "$ omhl guideline retire guidelines.brief --format json\n{\"retired\":\"guidelines.brief\",\"superseded_by\":null}\n",
     );
 }
 
@@ -791,7 +820,7 @@ fn it_should_assemble_the_retire_guideline_fixture() {
 fn it_should_assemble_the_hooks_fixture_with_the_hooks_folder_under_its_own_xdg() {
     assert_runs(
         "hooks",
-        "$ omhl hooks install\n{\"hooks_path\":\"<xdg>/omhl/hooks\",\"omhl\":\"<omhl>\",\"scripts\":[\"pre-commit\",\"pre-merge-commit\",\"pre-push\",\"post-commit\"],\"warnings\":[{\"code\":\"binary-in-build-dir\",\"hint\":\"install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks\",\"path\":\"<omhl>\"}]}\n",
+        "$ omhl hooks install --format json\n{\"hooks_path\":\"<xdg>/omhl/hooks\",\"omhl\":\"<omhl>\",\"scripts\":[\"pre-commit\",\"pre-merge-commit\",\"pre-push\",\"post-commit\"],\"warnings\":[{\"code\":\"binary-in-build-dir\",\"hint\":\"install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks\",\"path\":\"<omhl>\"}]}\n",
     );
 }
 

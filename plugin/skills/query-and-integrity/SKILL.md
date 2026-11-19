@@ -9,9 +9,10 @@ Todos estes comandos leem o banco do projeto; só o `omhl project` escreve, e ap
 
 ## Regras que valem o tempo todo
 
-- **Uma opção é respeitada ou recusada.** O `omhl` não corta nem ajusta um pedido em silêncio: um filtro que nunca casaria nada, um `--limit` fora de 1 a 200 ou um `--project-dir` inexistente voltam como erro com a regra na mensagem. Um `{"items":[]}` é, portanto, resposta vazia verdadeira.
-- **Leia o campo `ok` do `verify`.** O `omhl verify` sai 0 mesmo com a cadeia quebrada; a quebra aparece em `ok: false` e em `breaks`.
-- **`get` de id que não existe não é erro.** Devolve `{"node":null}`. Um id mal formado é erro.
+- **Uma opção é respeitada ou recusada.** O `omhl` não corta nem ajusta um pedido em silêncio: um filtro que nunca casaria nada, um `--limit` fora de 1 a 200 ou um `--project-dir` inexistente voltam como erro com a regra na mensagem. Uma página vazia é, portanto, resposta vazia verdadeira.
+- **Leia o símbolo do `verify`.** O `omhl verify` sai 0 mesmo com a cadeia quebrada; a quebra aparece como `✘ verify · chain broken` e nas linhas `- reason · seq S` (com `--format json`, em `ok: false` e em `breaks`).
+- **`get` de id que não existe não é erro.** Diz `node not found` (com `--format json`, `{"node":null}`). Um id mal formado é erro.
+- **A saída é texto `agent` por padrão.** `--format human` mostra os mesmos fatos em blocos e `--format json` devolve a linha de JSON.
 - **`--where` compara texto.** Só campo de texto, um valor por campo; sem `--type`, o filtro vale se algum tipo o satisfaz inteiro.
 - **`--id-prefix` casa por segmento inteiro** e começa por um namespace de tipo (`premises`, `work-items`, `checks`).
 - **`--db` com caminho novo cria o banco**, fora da pasta do projeto. O `--project-dir` precisa existir.

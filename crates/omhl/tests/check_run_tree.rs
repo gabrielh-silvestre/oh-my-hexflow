@@ -18,7 +18,7 @@ use omhl::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 use omhl::runner::{CommandRunner, RunError, RunReport, RunSpec};
 use serde_json::{Value, json};
 use support::busy::with_write_lock;
-use support::child::{Output as Child, omhl};
+use support::child::{Output as Child, omhl, omhl_json};
 use support::ext::write_check_file;
 use support::git::{GitRepo, git_command_with_env, git_with_env, write_executable};
 use support::omhl::{acme, check_data, work_item_data};
@@ -297,7 +297,7 @@ impl BinaryRepo {
     }
 
     fn omhl(&self, args: &[&str]) -> support::child::Cmd {
-        omhl(args).cwd(self.path()).xdg(self.xdg.path())
+        omhl_json(args).cwd(self.path()).xdg(self.xdg.path())
     }
 
     /// `git add <file>` com `GIT_INDEX_FILE` apontando para `index`.
