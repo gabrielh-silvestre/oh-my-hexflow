@@ -2,7 +2,7 @@ concern = "test"
 variant = "suite"
 blocking = true
 after = ["checks.compile-build"]
-run = ["cargo", "test", "--workspace", "--lib", "--locked"]
+run = ["env", "TMPDIR=/dev/shm", "cargo", "test", "--workspace", "--lib", "--locked"]
 timeout_secs = 120
 expect = [{ exit = 0, outcome = "passed" }]
 when = { event = "before-pr" }
