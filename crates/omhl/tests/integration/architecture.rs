@@ -1734,6 +1734,45 @@ fn parent_module_file(tests: &Path) -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// Arquivos e subpastas de `dir` que `module_file` não declara como `mod <nome>;`; entra nas subpastas
+/// declaradas e lê o `mod.rs` de cada uma. `fixtures` guarda dado, não módulo.
+fn undeclared_modules(dir: &Path, module_file: &str) -> Vec<PathBuf> {
+    let declaring = dir.join(module_file);
+    let code = tighten(
+        &lex(&read(&declaring))
+            .unwrap_or_else(|error| panic!("{}: {error}", declaring.display()))
+            .code,
+    );
+    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+        .unwrap_or_else(|error| panic!("cannot list {}: {error}", dir.display()))
+        .flatten()
+        .map(|entry| entry.path())
+        .collect();
+    entries.sort();
+
+    let mut undeclared = Vec::new();
+    for entry in entries {
+        let is_module_dir =
+            entry.is_dir() && entry.file_name().is_some_and(|name| name != "fixtures");
+        let is_module_file = entry.extension().is_some_and(|extension| extension == "rs")
+            && entry.file_name().is_some_and(|name| name != module_file);
+        if !is_module_dir && !is_module_file {
+            continue;
+        }
+        let name = entry
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or_default();
+        if occurrences(&code, &format!("mod {name};"), false) == 0 {
+            undeclared.push(entry);
+        } else if is_module_dir {
+            undeclared.extend(undeclared_modules(&entry, "mod.rs"));
+        }
+    }
+
+    undeclared
+}
+
 fn write_tree(root: &Path, files: &[(&str, &str)]) {
     for (relative, content) in files {
         let path = root.join(relative);
@@ -1915,5 +1954,59 @@ fn it_should_keep_in_tests_only_the_integration_e2e_support_and_fixtures_folders
     assert!(
         from_real.is_empty(),
         "unexpected entries in tests/: {from_real:?}"
+    );
+}
+
+#[test]
+fn it_should_declare_every_test_file_in_its_group_main() {
+    let complete = tempfile::tempdir().expect("temporary directory");
+    write_tree(
+        complete.path(),
+        &[
+            ("main.rs", "mod a;\n#[path = \"x.rs\"]\npub mod sub;"),
+            ("a.rs", ""),
+            ("sub/mod.rs", "mod b;"),
+            ("sub/b.rs", ""),
+            ("fixtures/data.json", ""),
+        ],
+    );
+    let incomplete = tempfile::tempdir().expect("temporary directory");
+    write_tree(
+        incomplete.path(),
+        &[
+            ("main.rs", "mod a;\nmod sub;\n// mod c;"),
+            ("a.rs", ""),
+            ("c.rs", ""),
+            ("plain/mod.rs", ""),
+            ("sub/mod.rs", "mod b;"),
+            ("sub/b.rs", ""),
+            ("sub/d.rs", ""),
+        ],
+    );
+    let tests_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+
+    let from_complete = undeclared_modules(complete.path(), "main.rs");
+    let from_incomplete: Vec<String> = undeclared_modules(incomplete.path(), "main.rs")
+        .iter()
+        .map(|path| {
+            path.strip_prefix(incomplete.path())
+                .unwrap_or(path)
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let from_real: Vec<PathBuf> = ["integration", "e2e"]
+        .iter()
+        .flat_map(|group| undeclared_modules(&tests_dir.join(group), "main.rs"))
+        .collect();
+
+    assert!(
+        from_complete.is_empty(),
+        "declared modules flagged: {from_complete:?}"
+    );
+    assert_eq!(from_incomplete, ["c.rs", "plain", "sub/d.rs"]);
+    assert!(
+        from_real.is_empty(),
+        "test files missing a `mod` in their group main: {from_real:?}"
     );
 }
