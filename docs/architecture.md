@@ -251,7 +251,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Escondido.** A semântica de cada pergunta, o corte de evidência (`EVIDENCE_CAP`), a paginação de `HexlogSource::nodes`.
 
-**Profundidade.** Funda. Seam real: dois adapters de `GateSource` (`HexlogSource` e `FakeSource` em `crates/omhl/tests/support/gate.rs`). Travado: o gate não importa `native`, `graphs` nem `pr_gate` e não contém os literais `check`, `work-item`, `attestation`.
+**Profundidade.** Funda. Seam real: dois adapters de `GateSource` (`HexlogSource` e `FakeSource`, esta com duas cópias: `crates/omhl/tests/support/gate.rs` e `crates/omhl/src/test_support/gate.rs`). Travado: o gate não importa `native`, `graphs` nem `pr_gate` e não contém os literais `check`, `work-item`, `attestation`.
 
 ### 3.7 Aninhada: `omhl::guard`
 
@@ -435,6 +435,8 @@ O hook impõe a matriz do papel ao `Bash` do agente portado ([ADR 0008](adr/0008
 
 ## 4. Regras de dependência e o teste que trava cada uma
 
+As regras de camada e de vocabulário varrem as fontes de produção: ignoram o `tests.rs` ao lado da fonte e `src/test_support/`. Esses arquivos só obedecem às regras de layout e de fronteira dos testes unitários (as duas últimas linhas de cada tabela).
+
 ### `hexlog` (`crates/hexlog/tests/integration/architecture.rs`)
 
 | Regra | Teste |
@@ -448,6 +450,8 @@ O hook impõe a matriz do papel ao `Bash` do agente portado ([ADR 0008](adr/0008
 | O `hexlog` não depende do `omhl` | `it_should_not_depend_on_omhl` |
 | Testes de integração só usam a API pública | `it_should_keep_integration_tests_on_the_public_api` |
 | Lints de memória do workspace herdados e sem `allow` | `it_should_inherit_the_workspace_lints_in_every_crate`, `it_should_refuse_allow_for_the_memory_lints_and_require_a_registered_reason_on_expect` |
+| Layout dos testes: `tests/` só com `integration/`, `fixtures/` e `proptest-regressions/`; sem `#[test]` nem módulo de teste inline em `src`; todo `tests.rs` declarado com `#[cfg(test)]` no módulo pai | `it_should_keep_in_tests_only_the_integration_fixtures_and_proptest_regressions_folders`, `it_should_keep_unit_tests_out_of_inline_modules_in_production_sources`, `it_should_declare_every_tests_file_with_cfg_test_in_its_parent_module` |
+| Fronteira dos `tests.rs`: ficam dentro do crate e fora das regras de produção, mas sob o lint de memória | `it_should_keep_unit_test_sources_inside_the_crate_boundary`, `it_should_leave_unit_test_sources_out_of_the_production_rules_and_under_the_memory_lint` |
 
 ### `omhl` (`crates/omhl/tests/integration/architecture.rs`)
 
@@ -475,6 +479,8 @@ O hook impõe a matriz do papel ao `Bash` do agente portado ([ADR 0008](adr/0008
 | O `main.rs` lê o pid do pai antes de qualquer outra coisa | `it_should_read_the_parent_pid_before_anything_else_in_main` |
 | Sem `mcp`, `tool_call` nem `json-rpc` em `src/` fora de `adapters/` e `main.rs` (ADR 0006) | `it_should_keep_the_removed_mcp_port_out_of_the_src_layers` |
 | `src/app` só tem os cortes numéricos (`.min(`, `.max(`, `.clamp(`, `.take(`, `saturating_`) da lista fechada, 9 ao todo; um corte novo reprova até ser justificado (ver [ADR 0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md)) | `it_should_not_grow_the_numeric_cuts_in_src_app_without_an_inventory_entry` |
+| Layout dos testes: `tests/` só com `integration/`, `e2e/`, `support/` e `fixtures/`; sem `#[test]` nem módulo de teste inline em `src`; todo `tests.rs` declarado com `#[cfg(test)]` no módulo pai | `it_should_keep_in_tests_only_the_integration_e2e_support_and_fixtures_folders`, `it_should_keep_unit_tests_out_of_inline_modules_in_production_sources`, `it_should_declare_every_tests_file_with_cfg_test_in_its_parent_module` |
+| Fronteira dos `tests.rs` e de `src/test_support/`: ficam dentro do crate e fora das regras de produção | `it_should_keep_unit_test_sources_inside_the_crate_boundary`, `it_should_leave_unit_test_sources_out_of_the_production_rules_and_under_the_memory_lint` |
 
 ### As skills do plugin (`crates/omhl/tests/e2e/skills/`)
 
@@ -488,7 +494,7 @@ As seis skills de `plugin/skills/` (`directives-flow`, `mechanical-checks`, `wor
 
 Cada bloco `omhl-example` ganha uma fixture nova (`project`, `git`, `spec`, `checks` e outras, montadas em Rust) e roda sem shell. Datas, ids, hashes, durações, pids e caminhos temporários são normalizados dos dois lados antes da comparação.
 
-O `skill_examples` executa `check sweep`, que varre o `/proc` inteiro e vale para qualquer raiz da máquina; por isso os campos `swept` e `unreadable` da saída entram na normalização. Pelo mesmo motivo ele pega o flock `omhl-process-sweep.lock` (em `std::env::temp_dir()`, `support/sweep_lock.rs`), o mesmo do `process_sweep`: sem ele, a varredura de um teste poderia matar o processo de outro. O flock só protege contra outro `cargo` concorrente; os binários de um mesmo `cargo test` já rodam em sequência.
+O `skill_examples` executa `check sweep`, que varre o `/proc` inteiro e vale para qualquer raiz da máquina; por isso os campos `swept` e `unreadable` da saída entram na normalização. Pelo mesmo motivo ele pega o flock `omhl-process-sweep.lock` (em `std::env::temp_dir()`, `support/sweep_lock.rs`), o mesmo do `process_sweep` e o único dos testes que varrem o `/proc`, a família `output_agent_*` incluída: sem ele, a varredura de um teste poderia matar o processo de outro. O flock só protege contra outro `cargo` concorrente; os binários de um mesmo `cargo test` já rodam em sequência.
 
 ### Os agentes e o hook do plugin
 
@@ -509,7 +515,7 @@ Os sete agentes de `plugin/agents/` e o hook `agent-role` (seção 3.24) têm ci
 
 ## 5. Pontos rasos ou com vazamento
 
-Oito itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o que aceito até haver motivo.
+Nove itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o que aceito até haver motivo.
 
 1. **Vocabulário de tipos espalhado (corte).** Os nomes `work-item`, `pull-request`, `premise`, `decision`, `guideline`, `attestation` são strings soltas em `facade.rs:23-31` (`PROJECTED_NODE_TYPES`, que ganhou `gap` e `divergence` com o fluxo de diretivas), `projection/build.rs:59-61` (`is_work_item`) e `:17-22` (`SECTIONS`), `guard/append.rs:15-19` (`namespace_of`) e `:121-126` (`check_node`), `pr_gate.rs:71,84`, `app/context.rs:15-18`, `app/attest.rs:13`. Só `WORK_ITEM_TYPES` (`graphs/mod.rs:5`) é compartilhado, e `projection/build.rs` não o usa. Trocar o nome de um tipo exige caçar seis arquivos. Já feito: `namespace_of` e os namespaces `premises`, `guidelines`, `gaps` e `divergences` moram em `graphs` (o validador de spec e a guarda derivam dali), e a gramática da pasta de spec e dos arquivos fica em `workflow/names.rs`, com um teste de arquitetura que proíbe os literais `wi-`, `parte-` e `emenda-` fora dele. Falta: `graphs` exportar os tipos de work item, os tipos projetados e o nome `loader`, no lugar das cópias nos arquivos acima. Dívida aceita ao lado dela: `workflow/spec.rs` (802 linhas) junta duas responsabilidades, a validação estrutural das partes e emendas (`validate_spec`) e a conferência delas contra o grafo (`validate_graph`, `amendment_state`), e não foi dividido. Trade-off: `graphs` ganha interface; em troca vira o único dono do vocabulário, que o `gate` já prova que dá para isolar.
 
@@ -526,3 +532,5 @@ Oito itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 7. **Helpers no lugar errado (corte pequeno, em parte feito).** `list_sorted_capped` saiu de `extensions/files.rs` para `ports/files.rs` no fluxo de diretivas, e `projection/write.rs` o importa de lá. Falta o resto: `projection/build.rs` importa `render::sort_by_id`, e `project/layout.rs` mistura constantes de `extensions` (`EXT_FILE_MAX_BYTES`, `CHECKS_DIR`), de `projection` (`PROJECTION_*`) e de arquivo temporário (`TMP_*`). Corte: `render::sort_by_id` vai para `project` (que já hospeda `text.rs`).
 
 8. **Superfície pública do `hexlog` maior que o consumo (dívida consciente).** `lib.rs:25-29` exporta 6 funções de `chain` e o `omhl` usa só `fingerprint` (`app/load.rs:1`); `CHECKED_FIELDS` (`lib.rs:9`) só serve a `tests/integration/chain_tamper.rs`; `Hexlog::catalog` (`facade.rs:331`) só tem um chamador, `Omhl::catalog` (`omhl/src/facade.rs:78`). A causa é a regra de que os testes de integração usem só a API pública (`it_should_keep_integration_tests_on_the_public_api`): o que os testes de adulteração precisam vira público. Cortar exige uma feature de cargo para test support. Também é o único conhecimento de host dentro do motor: `SnapshotKind::GitCommit` e `SnapshotKind::GitTree` (`engine/snapshot.rs:8-11`), enum fechado de propósito, assumido e travado por `it_should_mention_git_only_in_engine_snapshot`.
+
+9. **Helpers de teste copiados entre `src/test_support` e `tests/support` (dívida aceita).** O teste unitário de `src/**/tests.rs` não alcança `tests/support`, então os helpers existem nas duas pastas (`crates/omhl/src/test_support/mod.rs` lista as cópias no topo). Feature de cargo e `#[path]` foram descartados no plano da `perf3` (D4; decisão `perf3-test-support-copiado`). Custo: mudar um helper vale em dois arquivos, e nenhum teste confere que as cópias não derivam (hoje são parciais por construção e nenhuma assinatura copiada diverge). Gatilho do corte: a primeira deriva de corpo achada, ou o fluxo de entrevista de fluxos que o plano reserva para deduplicar. Corte: um arquivo único de helper, junto com o corte do item 8.

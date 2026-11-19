@@ -315,11 +315,11 @@ Os valores ficam fixos no TOML de cada check. O `omhl` não os calcula nem os re
 | `checks.lint` | 114,3 s | 149 |
 | `checks.compile-validate` | 68,2 s | 89 |
 | `checks.compile-build` | 153,6 s | 200 |
-| `checks.test-suite` | 7,8 s incremental (ver abaixo) | 120 (piso) |
+| `checks.test-suite` | 6,6 s incremental (ver abaixo) | 120 (piso) |
 
 Sem carga, as mesmas rodadas ficam entre 17 s e 25 s (22 s no `lint`, 23 s no `build`). A pior rodada vem da disputa por disco e CPU, e é ela que dita o prazo.
 
-O `test-suite` é exceção à regra fria (decisão `perf2-timeout-secs-incremental`): com o build frio proibido na máquina do dono, o prazo é `max(120, 2 x parede)` de uma rodada logo depois de `touch crates/hexlog/src/lib.rs`, que recompila `hexlog` e `omhl`, o pior caso incremental. Em 2026-11-17 essa rodada levou 7,8 s (470 MB, 1,9 núcleo); vale o piso de 120 s.
+O `test-suite` é exceção à regra fria (decisão `perf2-timeout-secs-incremental`): com o build frio proibido na máquina do dono, o prazo é `max(120, 2 x parede)` de uma rodada logo depois de `touch crates/hexlog/src/lib.rs`, que recompila `hexlog` e `omhl`, o pior caso incremental. Em 2026-11-19, com cerca de mil testes no `--lib` (work item `perf3`), a pior de 3 rodadas levou 6,6 s (774 MB, 4,7 núcleos; em 2026-11-17, com 45 testes, foram 7,8 s, 470 MB e 1,9 núcleo); vale o piso de 120 s.
 
 Para reajustar os demais:
 
@@ -347,15 +347,15 @@ Cada comando aquece um check com prazo: `compile-validate`, `lint`, `compile-bui
 
 ### Testes unitários no gate, integração no CI
 
-O `checks.test-suite` roda `cargo test --workspace --lib --locked`: só os testes unitários de `crates/*/src` (1016 em 2026-11-19: `hexlog` 118 e `omhl` 898, nos binários de lib). Os testes de `crates/*/tests` (integração 971, sendo `hexlog` 146 e `omhl` 825; e2e 1062, só no `omhl`; total de 3049 com os unitários; entram arquitetura e a trava das skills em `tests/e2e/skills/`) e os doctests rodam só no CI, em `.github/workflows/ci.yml` (decisões `perf2-pre-push-so-unitarios` e `perf2-doctest-roda-no-ci`). O `compile-validate` local ainda checa o tipo de todos os alvos.
+O `checks.test-suite` roda `cargo test --workspace --lib --locked -- --test-threads=4`: só os testes unitários de `crates/*/src` (cerca de mil em 2026-11-19, nos binários de lib), no máximo 4 ao mesmo tempo. Sem o limite, o gate morno ocupava 5,7 núcleos, acima da meta de 4 do pre-push; com ele, 1,1 s, 96 MB e 2 núcleos (mediana de 5, 2026-11-19, work item `perf3`). Os testes de `crates/*/tests` (integração e e2e; entram arquitetura e a trava das skills em `tests/e2e/skills/`) e os doctests rodam só no CI, em `.github/workflows/ci.yml` (decisões `perf2-pre-push-so-unitarios` e `perf2-doctest-roda-no-ci`). O `compile-validate` local ainda checa o tipo de todos os alvos.
 
-Três perguntas, de cima para baixo, decidem o grupo de um teste; a primeira resposta "sim" vale:
+Três perguntas e um critério de módulo, de cima para baixo, decidem o grupo de um teste; a primeira resposta "sim" vale:
 
 1. Executa o binário `omhl` compilado (`CARGO_BIN_EXE_omhl`) ou um hook git real? É e2e (`crates/omhl/tests/e2e/`).
 2. Chama git, `sh` ou outro processo, ou espera o relógio (`sleep`, timeout)? É integração.
 3. Passa pela fachada (`Hexlog::open`, `Omhl`, `App`)? É integração.
 
-Se as três respostas são não, o teste é unitário: fica num `tests.rs` ao lado da fonte (`src/<modulo>/tests.rs`) e roda no `--lib`. Um teste atravessa dois módulos quando o que o seu assert afirma depende da lógica de outro módulo: ele chama uma função de outro módulo e afirma sobre o resultado, ou afirma o comportamento combinado dos dois. Esse teste também não é unitário: vai para a integração. Módulo, aqui, é o módulo de primeiro nível de `src/` (arquivo ou pasta) e, dentro de `adapters/`, `app/` e `workflow/`, o de segundo nível (por exemplo `adapters::text` ou `workflow::gap`). O módulo do teste é o do arquivo de onde ele vem (`src/<m>/tests.rs` ou `tests/<grupo>/<m>.rs`). Não atravessa: chamar o próprio módulo (API pública ou submódulo dele), usar outro módulo só para montar a entrada ou o valor esperado (tipo, contrato, constante, tabela, catálogo embutido, hash), nem comparar entre si tabelas ou catálogos embutidos de outros módulos.
+Se as três respostas são não e o teste não atravessa dois módulos, ele é unitário: fica num `tests.rs` ao lado da fonte (`src/<modulo>/tests.rs`) e roda no `--lib`. Um teste atravessa dois módulos quando o que o seu assert afirma depende da lógica de outro módulo: ele chama uma função de outro módulo e afirma sobre o resultado, ou afirma o comportamento combinado dos dois. Esse teste também não é unitário: vai para a integração. Módulo, aqui, é o módulo de primeiro nível de `src/` (arquivo ou pasta) e, dentro de `adapters/`, `app/` e `workflow/`, o de segundo nível (por exemplo `adapters::text` ou `workflow::gap`). O módulo do teste é o do arquivo de onde ele vem (`src/<m>/tests.rs` ou `tests/<grupo>/<m>.rs`). O critério de módulo é regra de revisão, sem trava mecânica: só o layout e o `#[test]` solto em `src` são mecânicos. Não atravessa: chamar o próprio módulo (API pública ou submódulo dele), usar outro módulo só para montar a entrada ou o valor esperado (tipo, contrato, constante, tabela, catálogo embutido, hash), nem comparar entre si tabelas ou catálogos embutidos de outros módulos.
 
 Os meta-testes são a exceção. Meta-teste lê a árvore do repositório, os docs, `plugin/*.json` ou o `Cargo.lock`, ou testa um helper de teste (o oráculo que outros testes usam), e não tem módulo de fonte. Vai para o binário onde moram os helpers do seu arquivo; com o helper em `tests/support/`, que os dois binários incluem, ou sem helper comum, vai para a integração. Por isso os dois `architecture.rs` e o `plugin.rs` ficam na integração, e os meta de `skills/` ficam no e2e, junto do parser que dividem.
 
@@ -363,7 +363,7 @@ O layout de `tests/` é fixo: cada crate só tem `integration/`, `fixtures/` e, 
 
 O `support/` tem lugar diferente em cada crate. No `hexlog` fica dentro de `integration/`, porque a regra de API pública (`it_should_keep_integration_tests_on_the_public_api`) recusa `#[path]` em `tests/`. No `omhl` fica ao lado dos binários e cada `main.rs` o inclui por `#[path]`. Se o `hexlog` ganhar um e2e, o `support/` muda de lugar ou a regra relaxa.
 
-A trava de varredura do `/proc` é um flock em `omhl-process-sweep.lock` (em `std::env::temp_dir()`), com dois modos. `serialize_sweeps()` (exclusivo) vale para o teste que varre o `/proc` inteiro: `sweep_strays()`, `omhl check sweep` e os blocos `check sweep` do `skill_examples`. `share_sweeps()` (compartilhado) vale para o teste que só cria órfão de propósito. O guard é a primeira instrução do teste, para ser solto por último.
+A trava de varredura do `/proc` é um flock em `omhl-process-sweep.lock` (em `std::env::temp_dir()`), com dois modos. `serialize_sweeps()` (exclusivo) vale para o teste que varre o `/proc` inteiro: `sweep_strays()`, `omhl check sweep` e os blocos `check sweep` do `skill_examples`, inclusive os testes da família `output_agent_*` que rodam `check sweep` ou criam um fugido para ele varrer. `share_sweeps()` (compartilhado) vale para o teste que só cria órfão de propósito. O guard é a primeira instrução do teste, para ser solto por último.
 
 O job `ci` roda, a cada PR (qualquer base) e a cada push na `main`, `cargo fmt`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --workspace --locked` e `cargo test --workspace --locked --no-fail-fast`, cada passo independente dos outros. O job roda com `CARGO_PROFILE_DEV_DEBUG: line-tables-only` (work item `perf3`, técnica T2). O último passo prova a cobertura: a contagem de `cargo test --workspace --locked -- --list` tem de ser igual à soma dos `passed` do passo de teste, com 0 `failed` e 0 `ignored`.
 

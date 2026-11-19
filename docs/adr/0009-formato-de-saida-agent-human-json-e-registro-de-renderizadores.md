@@ -61,6 +61,7 @@ O `Doc` concentra a convenção do out1 e reduz 12 comandos a dados; projetá-lo
 |---|---|---|---|---|
 | `check run` | bytes do `agent` | texto do out1, dois espaços entre as partes | texto compacto, um espaço, valores limpos; mesmos fatos | quem comparava os bytes do out1; `tests/check_run_text.rs` e os unitários migrados (emenda-03, EMD-007 e EMD-008) |
 
+- **Nota de 2026-11-18 (work item `perf3`).** O `tests/check_run_text.rs` da tabela acima agora é `crates/omhl/tests/e2e/check_run_text.rs`. O layout de `tests/` mudou; ver [Testes unitários no gate, integração no CI](../mechanical-gates.md#testes-unitários-no-gate-integração-no-ci).
 - `adapters::text` expõe `render_success`, `render_failure` e `profile_for`, que os testes de `tests/` usam: passam a ser um contrato interno a manter.
 - O `human` do `spec validate` não abre linha em branco antes de uma emenda com violação (`layout.rs`): o golden fixa o comportamento atual.
 - A guarda contra chave renomeada é um teste de `tests/`: o gate local `--lib` não a cobre, e depois do PR só o CI a roda.
