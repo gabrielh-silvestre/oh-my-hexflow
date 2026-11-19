@@ -19,6 +19,7 @@ fn plain(project: Project) -> State {
     State {
         project,
         program: None,
+        sweep_guard: None,
     }
 }
 

@@ -7,6 +7,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use nix::fcntl::Flock;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -16,6 +17,7 @@ use super::git::{commit_marker, git_in};
 use super::inproc::run_inproc;
 use super::omhl::work_item_data;
 use super::project::Project;
+use super::sweep_lock::serialize_sweeps;
 
 pub const WORK_ITEM: &str = "work-items.payroll";
 pub const WORK_BRANCH: &str = "feat/wi-payroll__x";
@@ -249,8 +251,6 @@ pub fn byproduct_repo() -> Project {
         ("payroll-wide", &wide),
         ("payroll-quiet", &quiet),
     ]);
-    let _runs = check_run_guard();
-
     omhl_succeeds(
         &project,
         &["--format", "json", "check", "run", "--event", "before-pr"],
@@ -348,14 +348,11 @@ pub fn gate_unattested() -> Project {
 pub fn gate_approved() -> Project {
     let toml = check_file("style", "format", "exit 0");
     let project = check_repo(&[("payroll-format", &toml)]);
-    {
-        let _runs = check_run_guard();
-        omhl_succeeds(
-            &project,
-            &["--format", "json", "check", "run", "--event", "before-pr"],
-            "",
-        );
-    }
+    omhl_succeeds(
+        &project,
+        &["--format", "json", "check", "run", "--event", "before-pr"],
+        "",
+    );
     attest_natives(&project);
 
     project
@@ -449,31 +446,14 @@ pub fn close_with_retro() -> Project {
 
 // ---------------------------------------------------------------- `check sweep`
 
-/// `check run` e `check sweep` varrem o `/proc` inteiro: um `check run` que começa mata o fugido de outro.
-/// Quem roda `check run` segura a trava compartilhada (vários ao mesmo tempo); quem cria um fugido e conta com ele
-/// segura a exclusiva. O `flock` vale entre threads (cada guarda abre o arquivo de novo) e entre binários de teste
-/// (é o arquivo do `check_sweep_cli`).
-pub struct SweepGuard {
-    _file: File,
-}
-
-fn lock_file() -> File {
-    File::create(Path::new(env!("CARGO_TARGET_TMPDIR")).join("check_sweep_cli.lock"))
-        .expect("the sweep lock file opens")
-}
-
-pub fn check_run_guard() -> SweepGuard {
-    let file = lock_file();
-    file.lock_shared().expect("the shared sweep lock is taken");
-
-    SweepGuard { _file: file }
-}
+/// `check sweep` varre o `/proc` inteiro: quem cria um fugido e conta com ele, ou roda o `check sweep` com sucesso,
+/// segura a trava exclusiva de `sweep_lock`, a mesma de `check_sweep_cli` e `skill_examples`. O `check run` só varre a
+/// própria raiz, então não precisa de trava. Cada guarda reabre o arquivo: tomar o exclusivo duas vezes na mesma
+/// thread trava para sempre.
+pub type SweepGuard = Flock<File>;
 
 pub fn stray_guard() -> SweepGuard {
-    let file = lock_file();
-    file.lock().expect("the exclusive sweep lock is taken");
-
-    SweepGuard { _file: file }
+    serialize_sweeps()
 }
 
 /// Um check solta um `sleep 61` em sessão própria e só sai quando o neto gravou o pid: o `check run` termina com o fugido vivo.
@@ -547,9 +527,20 @@ impl Program {
 pub struct State {
     pub project: Project,
     pub program: Option<Program>,
+    /// Quem roda o `check sweep` com sucesso segura a trava exclusiva até o fim do teste.
+    pub sweep_guard: Option<SweepGuard>,
 }
 
 impl State {
+    /// Projeto que o `check sweep` varre: a trava exclusiva fica no estado, porque o `default_formats!` só devolve o estado.
+    pub fn swept(project: Project) -> State {
+        State {
+            project,
+            program: None,
+            sweep_guard: Some(serialize_sweeps()),
+        }
+    }
+
     /// O comando pelo binário (ou pela cópia), com a pasta do projeto como cwd e o git sem configuração do usuário.
     pub fn command(&self, args: &[&str]) -> Cmd {
         let cmd = omhl(args)
@@ -569,7 +560,11 @@ fn hooks_state(program: Option<Program>) -> State {
     let project = Project::new("acme");
     commit_marker(project.dir());
 
-    State { project, program }
+    State {
+        project,
+        program,
+        sweep_guard: None,
+    }
 }
 
 /// O binário fora de qualquer pasta `target/`: a instalação não traz aviso.

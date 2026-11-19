@@ -18,6 +18,7 @@ fn plain(project: Project) -> State {
     State {
         project,
         program: None,
+        sweep_guard: None,
     }
 }
 
@@ -70,7 +71,7 @@ default_formats!(
 );
 default_formats!(
     check_sweep,
-    plain(Project::new("acme")),
+    State::swept(Project::new("acme")),
     &["check", "sweep"],
     no_marker(),
     &["check", "sweep"]

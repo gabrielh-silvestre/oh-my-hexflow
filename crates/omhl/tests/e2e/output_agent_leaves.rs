@@ -5,7 +5,6 @@ use omhl::adapters::text::{
 };
 use regex::Regex;
 use serde_json::{Value, json};
-use std::any::Any;
 use std::fs;
 use std::path::PathBuf;
 use support::child::{Output, omhl as binary};
@@ -20,6 +19,7 @@ use support::project::Project;
 use support::query;
 use support::report;
 use support::run::Run;
+use support::sweep_lock::serialize_sweeps;
 
 // ---------------------------------------------------------------- fixtures e casos
 
@@ -32,7 +32,7 @@ struct Fixture {
     /// A cópia do binário que o comando grava (`hooks install`); `Some` roda sempre pelo binário.
     program: Option<Program>,
     /// Quem criou um fugido vivo segura o guarda até o `check sweep` rodar.
-    sweep_guard: Option<Box<dyn Any>>,
+    _sweep_guard: Option<cycle::SweepGuard>,
 }
 
 impl Fixture {
@@ -44,7 +44,7 @@ impl Fixture {
             project_dir,
             spawned_with: None,
             program: None,
-            sweep_guard: None,
+            _sweep_guard: None,
         }
     }
 
@@ -65,14 +65,13 @@ impl Fixture {
 
     fn sweeping(project: Project, guard: cycle::SweepGuard) -> Fixture {
         Fixture {
-            sweep_guard: Some(Box::new(guard)),
+            _sweep_guard: Some(guard),
             ..Fixture::spawned(project, "")
         }
     }
 
     /// O binário com o ambiente do projeto; o `check run` nunca roda no processo do teste (varre os próprios filhos).
     fn spawn(&self, args: &[&str]) -> Output {
-        let _sweeps = self.sweep_guard.is_none().then(cycle::check_run_guard);
         let command = binary(args)
             .cwd(&self.project_dir)
             .xdg(self.project.xdg())
@@ -664,7 +663,7 @@ fn project_blocked() -> Fixture {
 }
 
 fn sweep_empty() -> Fixture {
-    Fixture::spawned(Project::new("acme"), "")
+    Fixture::sweeping(Project::new("acme"), serialize_sweeps())
 }
 
 fn sweep_with_stray() -> Fixture {
