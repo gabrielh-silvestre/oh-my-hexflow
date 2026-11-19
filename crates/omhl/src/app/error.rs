@@ -773,3 +773,6 @@ impl From<ProjectError> for AppError {
         AppError::plain(error.code, &error.message)
     }
 }
+
+#[cfg(test)]
+mod tests;

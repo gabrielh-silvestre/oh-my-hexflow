@@ -45,3 +45,6 @@ fn is_satisfied(atom: RequireAtom, premises: &[PremiseFact], spec_valid: bool) -
         RequireAtom::Spec => spec_valid,
     }
 }
+
+#[cfg(test)]
+mod tests;

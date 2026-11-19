@@ -4,6 +4,8 @@ mod error;
 mod facade;
 mod ids;
 mod store;
+#[cfg(test)]
+mod test_support;
 
 pub use crate::catalog::{Catalog, RelationTypeDef, TypeDef};
 pub use crate::engine::CHECKED_FIELDS;

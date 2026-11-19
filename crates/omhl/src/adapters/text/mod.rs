@@ -13,6 +13,8 @@ mod render;
 mod report;
 mod simple;
 mod spec_validate;
+#[cfg(test)]
+mod tests;
 mod verify;
 mod vocab;
 

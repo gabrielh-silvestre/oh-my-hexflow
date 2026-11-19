@@ -149,3 +149,6 @@ fn is_checked_out(lref: &str, lsha: &str, head: Option<&str>, checkout: Option<&
     };
     head == Some(lsha) && same_branch
 }
+
+#[cfg(test)]
+mod tests;

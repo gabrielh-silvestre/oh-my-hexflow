@@ -350,3 +350,6 @@ fn footer_chars(omitted: usize) -> usize {
     let digits = omitted.ilog10() as usize + 1;
     1 + 1 + digits + FOOTER_TAIL.chars().count() + 1
 }
+
+#[cfg(test)]
+mod tests;

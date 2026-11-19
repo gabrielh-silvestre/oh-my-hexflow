@@ -138,45 +138,4 @@ impl Vocabulary for AgentVocabulary {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_should_collapse_repeated_spaces_and_trim_the_value_ends_in_the_agent_vocabulary() {
-        let cleaned = AgentVocabulary.clean("  a   b  c  ");
-
-        assert_eq!(cleaned, "a b c");
-    }
-
-    #[test]
-    fn it_should_keep_the_value_untouched_in_the_human_vocabulary() {
-        let cleaned = HumanVocabulary.clean("  a   b  ");
-
-        assert_eq!(cleaned, "  a   b  ");
-    }
-
-    #[test]
-    fn it_should_keep_the_interior_of_an_output_line_and_trim_only_its_end() {
-        let cleaned = AgentVocabulary.clean_output("  a   b   ");
-
-        assert_eq!(cleaned, "  a   b");
-    }
-
-    #[test]
-    fn it_should_turn_the_gap_into_one_space_only_in_the_agent_vocabulary() {
-        assert_eq!(AgentVocabulary.separator(Join::Gap), " ");
-        assert_eq!(HumanVocabulary.separator(Join::Gap), "  ");
-        assert_eq!(
-            AgentVocabulary.separator(Join::Dot),
-            HumanVocabulary.separator(Join::Dot)
-        );
-    }
-
-    #[test]
-    fn it_should_count_zero_as_none_and_pluralize_from_two() {
-        assert_eq!(counted(0, "node"), "none");
-        assert_eq!(counted(1, "node"), "1 node");
-        assert_eq!(counted(2, "node"), "2 nodes");
-        assert_eq!(plural(0, "node"), "0 nodes");
-    }
-}
+mod tests;

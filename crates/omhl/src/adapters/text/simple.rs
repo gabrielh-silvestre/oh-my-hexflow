@@ -433,3 +433,6 @@ impl Specialization for Attest {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests;

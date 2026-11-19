@@ -112,3 +112,6 @@ pub fn find_marker(start: &Path) -> Result<Option<Located>, ProjectError> {
 
     Ok(None)
 }
+
+#[cfg(test)]
+mod tests;

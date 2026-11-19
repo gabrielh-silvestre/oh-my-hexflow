@@ -282,3 +282,6 @@ fn truncate_to_limit(mut content: String) -> String {
     content.push_str(TRUNCATION_MARKER);
     content
 }
+
+#[cfg(test)]
+mod tests;

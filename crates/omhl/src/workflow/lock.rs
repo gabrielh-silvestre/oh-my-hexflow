@@ -166,3 +166,6 @@ fn normalized_names(path: &Path) -> Option<Vec<&str>> {
 
     Some(names)
 }
+
+#[cfg(test)]
+mod tests;

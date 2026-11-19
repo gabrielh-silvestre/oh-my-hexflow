@@ -230,3 +230,6 @@ fn write_float(x: f64, out: &mut String) -> Result<(), HexlogError> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

@@ -274,9 +274,9 @@ O `check run` descobre o work item pelo nome da branch, que segue o padrão
   rastreado, a execução se perde: o `omhl` não grava nada e sai com
   `check-not-run`. Restaure o arquivo com `git checkout -- <arquivo>` e repita,
   ou faça commit da mudança, se quiser mantê-la. O
-  `chain_properties.proptest-regressions`, que o `proptest` reescreve quando um
-  teste falha, só muda numa rodada manual de `crates/hexlog/tests`: o gate
-  local não roda esse arquivo.
+  `chain_properties.txt`, em `crates/hexlog/tests/proptest-regressions/`, que o
+  `proptest` reescreve quando um teste falha, só muda numa rodada manual de
+  `crates/hexlog/tests`: o gate local não roda esse arquivo.
 
 ### Recuperar uma attestation
 
@@ -327,13 +327,15 @@ cargo test --workspace --locked --no-fail-fast
 ```
 
 `cargo test` sem filtro roda a suíte inteira, que é pesada. Ao mexer em área
-coberta por `tests/`, rode só o arquivo afetado
-(`cargo test -p <crate> --test <nome>`). Detalhes em
+coberta por `tests/`, rode só o módulo afetado
+(`cargo test -p <crate> --test integration <modulo>::`; no omhl, `--test e2e`
+para o e2e; `--lib <modulo>::` para o unitário). Detalhes em
 [docs/mechanical-gates.md](docs/mechanical-gates.md).
 
 O workspace proíbe `unsafe` e os tipos de memória compartilhada listados em
-`clippy.toml`. Os testes de arquitetura em `crates/*/tests/architecture.rs`
-travam as regras de dependência entre os módulos. O mapa dos módulos e dessas
+`clippy.toml`. Os testes de arquitetura, em
+`crates/*/tests/integration/architecture.rs`, travam as regras de dependência
+entre os módulos. O mapa dos módulos e dessas
 regras está em [docs/architecture.md](docs/architecture.md).
 
 ## Créditos
