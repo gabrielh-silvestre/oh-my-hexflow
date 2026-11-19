@@ -31,7 +31,7 @@ Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `-
 
 Instala os hooks. O aviso aparece porque o binário do exemplo está em `target/debug`; repetir o comando é idempotente:
 
-```omhl-example fixture=hooks
+```omhl-example fixture=git
 $ omhl hooks install
 ⚠ hooks install · 4 scripts · 1 warning
   hooks path: <xdg>/omhl/hooks
@@ -50,7 +50,7 @@ Next: install an omhl binary outside any worktree (cargo install or ~/.local/bin
 
 Com `--format json` o resultado sai para máquinas:
 
-```omhl-example fixture=hooks
+```omhl-example fixture=git
 $ omhl hooks install --format json
 {"hooks_path":"<xdg>/omhl/hooks","omhl":"<omhl>","scripts":["pre-commit","pre-merge-commit","pre-push","post-commit"],"warnings":[{"code":"binary-in-build-dir","hint":"install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks","path":"<omhl>"}]}
 ```

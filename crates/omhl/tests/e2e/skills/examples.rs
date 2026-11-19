@@ -415,7 +415,7 @@ impl Fixture {
         };
         match name {
             "project" => fixture.seed(),
-            "git" | "hooks" => {
+            "git" => {
                 fixture.seed();
                 fixture.init_git();
             }
