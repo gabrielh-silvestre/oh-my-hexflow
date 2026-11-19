@@ -17,4 +17,6 @@ pub mod project;
 pub mod projection;
 pub mod render;
 pub mod runner;
+#[cfg(test)]
+mod test_support;
 pub mod workflow;

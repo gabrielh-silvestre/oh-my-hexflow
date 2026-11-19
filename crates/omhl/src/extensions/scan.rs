@@ -197,3 +197,6 @@ fn is_valid_slug(slug: &str) -> bool {
                     .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
         })
 }
+
+#[cfg(test)]
+mod tests;

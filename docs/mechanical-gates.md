@@ -18,7 +18,7 @@ O `omhl` exige git 2.31 ou mais novo (`git rev-parse --path-format=absolute`). N
 
 Códigos de saída: `0` quando nenhum check bloqueante reprovou, `1` para qualquer erro (o erro no stderr, stdout vazio) e `2` para erro de uso da linha de comando. Os códigos são os mesmos nos dois formatos de saída.
 
-**Formato da saída.** O `check run` aceita `--format text|json`, e o padrão é `text`. O texto, em inglês e sem cor, é pensado para o agente: no sucesso sai no stdout e diz o que passou e o próximo passo; na falha sai no stderr e diz o que reprovou, onde ler a saída e o que fazer a seguir. Os hooks do git rodam sem `--format` e mostram o texto. Com `--format json` a saída é a linha JSON descrita neste documento, e é a forma de ler o resultado por código. Outro valor de `--format` é erro de uso da linha de comando, com saída `2`. O texto não revela nada que o JSON do mesmo caso não revele. A referência com exemplos executáveis está em [check-run.md](../plugin/skills/mechanical-checks/references/check-run.md).
+**Formato da saída.** O `omhl` aceita a opção global `--format agent|human|json`; os 21 comandos ativos, o `check run` entre eles, imprimem `agent` por padrão (o `text` antigo foi removido). `human` mostra os mesmos fatos em blocos, e os cinco comandos lidos por máquina seguem em JSON. O texto, em inglês e sem cor, é pensado para o agente: no sucesso sai no stdout e diz o que passou e o próximo passo; na falha sai no stderr e diz o que reprovou, onde ler a saída e o que fazer a seguir. Os hooks do git rodam sem `--format` e mostram o texto. Com `--format json` a saída é a linha JSON descrita neste documento, e é a forma de ler o resultado por código. Outro valor de `--format` é erro de uso da linha de comando, com saída `2`. O texto não revela nada que o JSON do mesmo caso não revele. A referência com exemplos executáveis está em [check-run.md](../plugin/skills/mechanical-checks/references/check-run.md).
 
 **Evento sem checks.** Um `check run` cujo evento não tem nenhum check no banco sai com `0`, sem rodar nada. Para não passar por aprovação, o JSON traz `checks_planned: 0` e `warnings: [{"code": "no-checks-for-event"}]`, e o texto traz uma linha de aviso `no-checks-for-event` que lembra que nada rodou. O `recorded` continua significando o modo de gravação (work item), não que algo foi gravado.
 
@@ -98,7 +98,7 @@ O arquivo de saída (`byproduct`) guarda a saída completa do comando, até 4 Mi
 | `push-to-main` | Push com destino `main` | main receives no direct pushes; open a pull request |
 | `parent-gone` | O processo que lançou o `omhl` saiu antes dos checks | the process that started omhl exited before the checks ran; nothing ran; run the same command again |
 
-O teste `crates/omhl/tests/repo_checks.rs` confere que cada código e cada `kind` desta seção aparece na página.
+O teste `crates/omhl/tests/integration/repo_checks.rs` confere que cada código e cada `kind` desta seção aparece na página.
 
 ## 2. Um comando por check
 
@@ -294,7 +294,7 @@ Ela roda em silêncio no início de todo `omhl check run`, inclusive no `--pre-p
 omhl check sweep
 ```
 
-A saída é uma linha JSON com `swept` (cada item tem `pid`, `comm` e `owner_pid`), `unreadable` e `scan_timed_out`, e o código de saída é 0, também sem alvo. Quando acha alvo, a varredura acrescenta uma linha a `$XDG_DATA_HOME/omhl/sweep.jsonl`. A leitura de `/proc` espera no máximo 1 segundo.
+A saída é texto `agent` (ou `human`), com o que a varredura achou; com `--format json` é uma linha JSON com `swept` (cada item tem `pid`, `comm` e `owner_pid`), `unreadable` e `scan_timed_out`. O código de saída é 0, também sem alvo. Quando acha alvo, a varredura acrescenta uma linha a `$XDG_DATA_HOME/omhl/sweep.jsonl`. A leitura de `/proc` espera no máximo 1 segundo.
 
 Limites:
 
@@ -315,11 +315,11 @@ Os valores ficam fixos no TOML de cada check. O `omhl` não os calcula nem os re
 | `checks.lint` | 114,3 s | 149 |
 | `checks.compile-validate` | 68,2 s | 89 |
 | `checks.compile-build` | 153,6 s | 200 |
-| `checks.test-suite` | 7,8 s incremental (ver abaixo) | 120 (piso) |
+| `checks.test-suite` | 6,6 s incremental (ver abaixo) | 120 (piso) |
 
 Sem carga, as mesmas rodadas ficam entre 17 s e 25 s (22 s no `lint`, 23 s no `build`). A pior rodada vem da disputa por disco e CPU, e é ela que dita o prazo.
 
-O `test-suite` é exceção à regra fria (decisão `perf2-timeout-secs-incremental`): com o build frio proibido na máquina do dono, o prazo é `max(120, 2 x parede)` de uma rodada logo depois de `touch crates/hexlog/src/lib.rs`, que recompila `hexlog` e `omhl`, o pior caso incremental. Em 2026-11-17 essa rodada levou 7,8 s (470 MB, 1,9 núcleo); vale o piso de 120 s.
+O `test-suite` é exceção à regra fria (decisão `perf2-timeout-secs-incremental`): com o build frio proibido na máquina do dono, o prazo é `max(120, 2 x parede)` de uma rodada logo depois de `touch crates/hexlog/src/lib.rs`, que recompila `hexlog` e `omhl`, o pior caso incremental. Em 2026-11-19, com cerca de mil testes no `--lib` (work item `perf3`), a pior de 3 rodadas levou 6,6 s (774 MB, 4,7 núcleos; em 2026-11-17, com 45 testes, foram 7,8 s, 470 MB e 1,9 núcleo); vale o piso de 120 s.
 
 Para reajustar os demais:
 
@@ -347,16 +347,32 @@ Cada comando aquece um check com prazo: `compile-validate`, `lint`, `compile-bui
 
 ### Testes unitários no gate, integração no CI
 
-O `checks.test-suite` roda `cargo test --workspace --lib --locked`: só os testes unitários de `crates/*/src` (45 em 2026-11-17, nos binários de lib de `hexlog` e `omhl`). Os testes de `crates/*/tests` (integração, e2e, arquitetura, a trava das skills em `tests/skills.rs`) e os doctests rodam só no CI, em `.github/workflows/ci.yml` (decisões `perf2-pre-push-so-unitarios` e `perf2-doctest-roda-no-ci`). O `compile-validate` local ainda checa o tipo de todos os alvos.
+O `checks.test-suite` roda `cargo test --workspace --lib --locked -- --test-threads=4`: só os testes unitários de `crates/*/src` (cerca de mil em 2026-11-19, nos binários de lib), no máximo 4 ao mesmo tempo. Sem o limite, o gate morno ocupava 5,7 núcleos, acima da meta de 4 do pre-push; com ele, 1,1 s, 96 MB e 2 núcleos (mediana de 5, 2026-11-19, work item `perf3`). Os testes de `crates/*/tests` (integração e e2e; entram arquitetura e a trava das skills em `tests/e2e/skills/`) e os doctests rodam só no CI, em `.github/workflows/ci.yml` (decisões `perf2-pre-push-so-unitarios` e `perf2-doctest-roda-no-ci`). O `compile-validate` local ainda checa o tipo de todos os alvos.
 
-O job `ci` roda, a cada PR (qualquer base) e a cada push na `main`, `cargo fmt`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --workspace --locked` e `cargo test --workspace --locked --no-fail-fast`, cada passo independente dos outros. O último passo prova a cobertura: a contagem de `cargo test --workspace --locked -- --list` tem de ser igual à soma dos `passed` do passo de teste, com 0 `failed` e 0 `ignored`.
+Três perguntas e um critério de módulo, de cima para baixo, decidem o grupo de um teste; a primeira resposta "sim" vale:
+
+1. Executa o binário `omhl` compilado (`CARGO_BIN_EXE_omhl`) ou um hook git real? É e2e (`crates/omhl/tests/e2e/`).
+2. Chama git, `sh` ou outro processo, ou espera o relógio (`sleep`, timeout)? É integração.
+3. Passa pela fachada (`Hexlog::open`, `Omhl`, `App`)? É integração.
+
+Se as três respostas são não e o teste não atravessa dois módulos, ele é unitário: fica num `tests.rs` ao lado da fonte (`src/<modulo>/tests.rs`) e roda no `--lib`. Um teste atravessa dois módulos quando o que o seu assert afirma depende da lógica de outro módulo: ele chama uma função de outro módulo e afirma sobre o resultado, ou afirma o comportamento combinado dos dois. Esse teste também não é unitário: vai para a integração. Módulo, aqui, é o módulo de primeiro nível de `src/` (arquivo ou pasta) e, dentro de `adapters/`, `app/` e `workflow/`, o de segundo nível (por exemplo `adapters::text` ou `workflow::gap`). O módulo do teste é o do arquivo de onde ele vem (`src/<m>/tests.rs` ou `tests/<grupo>/<m>.rs`). O critério de módulo é regra de revisão, sem trava mecânica: só o layout e o `#[test]` solto em `src` são mecânicos. Não atravessa: chamar o próprio módulo (API pública ou submódulo dele), usar outro módulo só para montar a entrada ou o valor esperado (tipo, contrato, constante, tabela, catálogo embutido, hash), nem comparar entre si tabelas ou catálogos embutidos de outros módulos.
+
+Os meta-testes são a exceção. Meta-teste lê a árvore do repositório, os docs, `plugin/*.json` ou o `Cargo.lock`, ou testa um helper de teste (o oráculo que outros testes usam), e não tem módulo de fonte. Vai para o binário onde moram os helpers do seu arquivo; com o helper em `tests/support/`, que os dois binários incluem, ou sem helper comum, vai para a integração. Por isso os dois `architecture.rs` e o `plugin.rs` ficam na integração, e os meta de `skills/` ficam no e2e, junto do parser que dividem.
+
+O layout de `tests/` é fixo: cada crate só tem `integration/`, `fixtures/` e, no `omhl`, `e2e/` e `support/` (o `hexlog` ainda guarda as sementes do `proptest` em `proptest-regressions/`). Nenhum `tests/<arquivo>.rs` fica solto: o teste de layout em `tests/integration/architecture.rs` reprova. Para rodar um módulo, use `cargo test -p <crate> --test integration <modulo>::`, `--test e2e <modulo>::` (só o `omhl`) ou `--lib <modulo>::`. Em `src`, o corpo de teste vive só em `tests.rs`: `#[test]` solto e `#[cfg(test)] mod <nome> { ... }` dentro da fonte reprovam o teste de arquitetura.
+
+O `support/` tem lugar diferente em cada crate. No `hexlog` fica dentro de `integration/`, porque a regra de API pública (`it_should_keep_integration_tests_on_the_public_api`) recusa `#[path]` em `tests/`. No `omhl` fica ao lado dos binários e cada `main.rs` o inclui por `#[path]`. Se o `hexlog` ganhar um e2e, o `support/` muda de lugar ou a regra relaxa.
+
+A trava de varredura do `/proc` é um flock em `omhl-process-sweep.lock` (em `std::env::temp_dir()`), com dois modos. `serialize_sweeps()` (exclusivo) vale para o teste que varre o `/proc` inteiro: `sweep_strays()`, `omhl check sweep` e os blocos `check sweep` do `skill_examples`, inclusive os testes da família `output_agent_*` que rodam `check sweep` ou criam um fugido para ele varrer. `share_sweeps()` (compartilhado) vale para o teste que só cria órfão de propósito. O guard é a primeira instrução do teste, para ser solto por último.
+
+O job `ci` roda, a cada PR (qualquer base) e a cada push na `main`, `cargo fmt`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --workspace --locked` e `cargo test --workspace --locked --no-fail-fast`, cada passo independente dos outros. O job roda com `CARGO_PROFILE_DEV_DEBUG: line-tables-only` (work item `perf3`, técnica T2). O último passo prova a cobertura: a contagem de `cargo test --workspace --locked -- --list` tem de ser igual à soma dos `passed` do passo de teste, com 0 `failed` e 0 `ignored`.
 
 O merge é bloqueado em duas camadas (decisão `perf2-bloqueio-camada-dupla`):
 
 1. O ruleset `main` do GitHub exige o check `ci` do app do GitHub Actions (`integration_id` 15368) e proíbe deletar a `main` ou reescrevê-la com force-push. O papel admin só contorna as regras no merge de um PR, marcando o bypass de forma explícita (`bypass_mode: pull_request`); um push direto na `main` fica bloqueado para todos.
 2. A attestation manual de `checks.ci-green-before-merge` cita a execução do CI do mesmo commit. Selecione a execução com `gh run list --workflow ci.yml --branch <branch> --event pull_request --limit 1 --json databaseId,headSha,conclusion,url`. Exija `conclusion` igual a `success` e `headSha` igual a `git rev-parse HEAD`, e grave os dois na nota: `omhl attest checks.ci-green-before-merge work-items.<id> --outcome passed --note "<url> <headSha>"`. Depois de um rebase (por exemplo, no merge de pilha do `gh stack`), o SHA muda: espere o CI novo e ateste de novo.
 
-Ao mexer em área coberta por `tests/`, rode na máquina local só o arquivo afetado (`cargo test -p <crate> --test <nome>`). Se o `proptest` gravar uma semente nova em `crates/hexlog/tests/chain_properties.proptest-regressions` (arquivo rastreado) numa rodada local, restaure o arquivo antes do commit, como descreve o [README](../README.md).
+Ao mexer em área coberta por `tests/`, rode na máquina local só o módulo afetado (`cargo test -p <crate> --test integration <modulo>::`, `--test e2e` ou `--lib`, como descrito acima). Se o `proptest` gravar uma semente nova em `crates/hexlog/tests/proptest-regressions/chain_properties.txt` (arquivo rastreado) numa rodada local, restaure o arquivo antes do commit, como descreve o [README](../README.md).
 
 ## 10. Modelo de ameaça do veredito
 

@@ -18,6 +18,10 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # perf3 T2: clippy, build e test compartilham artefatos; o perfil test herda do dev.
+    # Medido no CI: B vence 5 de 5 pares, mediana de 15,4% na recompilação do workspace.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

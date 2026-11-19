@@ -194,3 +194,6 @@ fn write_new(path: &Path, content: &str) -> std::io::Result<()> {
         .open(path)?
         .write_all(content.as_bytes())
 }
+
+#[cfg(test)]
+mod tests;

@@ -67,3 +67,6 @@ pub fn recurrences(premises: &[Premise], directives: &[String], min: u32) -> Vec
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

@@ -420,3 +420,6 @@ fn check_after(path: &str, own_id: &str, after: &[String], issues: &mut Vec<Exte
         ));
     }
 }
+
+#[cfg(test)]
+mod tests;

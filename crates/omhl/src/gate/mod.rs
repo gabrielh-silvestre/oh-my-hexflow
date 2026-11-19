@@ -431,3 +431,6 @@ fn report(
         next_step: None,
     }
 }
+
+#[cfg(test)]
+mod tests;

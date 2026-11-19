@@ -32,3 +32,6 @@ pub fn read_json_input(input: &mut impl Read) -> Result<Value, AppError> {
 
     parse_json_text(&bytes)
 }
+
+#[cfg(test)]
+mod tests;

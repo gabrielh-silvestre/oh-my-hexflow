@@ -49,6 +49,7 @@ O `--where` e o `--id-prefix` do `list` seguem uma regra única: o filtro vale s
 
 - **Manter o corte de 500 e documentá-lo.** Foi a decisão anterior; o dono a reverteu. Documentar o corte não avisa o agente que o pediu.
 - **`value_parser` do clap.** Descartada: levaria o teto de 500 do `--tail` e o de 200 do `--limit` para o adapter, contra a T3. O erro de leitura do valor já é erro de sintaxe, com saída 2 fixada em `tests/cli.rs`; levá-lo a JSON com saída 1 mudaria a saída de todo erro de sintaxe, fora da conta fechada da T1.
+- **Nota de 2026-11-18 (work item `perf3`).** O teste da saída 2 agora é `tests/e2e/cli.rs`. O layout de `tests/` mudou; ver [Testes unitários no gate, integração no CI](../mechanical-gates.md#testes-unitários-no-gate-integração-no-ci).
 - **Corrigir só o `byproduct`.** Descartada: o dono pediu todos os comandos.
 - **Aviso em `warnings[]` em vez de recusa.** Há precedente no `hooks`. Descartada: um aviso ao lado de `[]` convida o agente a confiar no `[]`.
 

@@ -176,3 +176,6 @@ impl Hash {
         Hash(hex)
     }
 }
+
+#[cfg(test)]
+mod tests;

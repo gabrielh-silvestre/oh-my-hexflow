@@ -103,3 +103,6 @@ fn io_error(error: &io::Error) -> ByproductError {
         message: error.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests;

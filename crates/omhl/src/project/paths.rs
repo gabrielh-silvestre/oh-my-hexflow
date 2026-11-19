@@ -68,3 +68,6 @@ fn create_private_file(path: &Path) -> std::io::Result<()> {
 
     options.open(path).map(drop)
 }
+
+#[cfg(test)]
+mod tests;

@@ -12,7 +12,7 @@ Quando consultar: ao gravar uma `divergence` (o agente fugiu da spec congelada) 
 | `work_item` | O work item da divergência |
 | `confirmed_by`, `amendment` | Só em `spec-stale` |
 
-Toda divergência nasce `open`. Os três desfechos são novas revisões da mesma `divergence` (`omhl append` com `base`, o `node.record_id` de `omhl get divergences.<nome>`):
+Toda divergência nasce `open`. Os três desfechos são novas revisões da mesma `divergence` (`omhl append` com `base`, o `record_id` de `omhl get divergences.<nome>`):
 
 - `spec-stale`: a spec estava errada e o humano aprovou a emenda. A revisão leva `amendment` (`emenda-NN`, sem `.md`) e `confirmed_by`; o passo a passo está no `SKILL.md`, em "Corrigir a spec depois da aprovação".
 - `code-fixed`: a spec estava certa e você corrigiu o código para segui-la.

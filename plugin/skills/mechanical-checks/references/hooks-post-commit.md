@@ -8,6 +8,7 @@ Quem chama é o hook `post-commit` que o `omhl hooks install` grava; você raram
 
 - Sem argumentos posicionais. Usa a branch e a pasta do git do diretório atual.
 - `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
+- `--format json`: opção global, o único formato deste comando, que só imprime JSON. `agent` e `human` saem com erro de uso (saída 2), antes de o comando rodar.
 
 ## Saída
 

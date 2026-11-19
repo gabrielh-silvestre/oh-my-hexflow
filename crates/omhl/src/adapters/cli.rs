@@ -5,11 +5,11 @@ use std::process::ExitCode;
 
 use clap::builder::PossibleValuesParser;
 use clap::error::ErrorKind;
-use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use clap::{ArgGroup, Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
-use super::check_run_text::{render_error, render_success};
 use super::hook;
+use super::text::{CommandKey, Layout, render_failure, render_success, renderer_for};
 use crate::app::RUNNABLE_EVENTS;
 use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
@@ -26,6 +26,9 @@ pub struct Cli {
     /// Directory where the project marker lookup starts.
     #[arg(long, global = true)]
     pub project_dir: Option<PathBuf>,
+    /// Output format: `agent` (text for agents), `human` (text for people) or `json` (one JSON line). The default of each command is in `omhl --help` and in the help of the command; a command whose default is `json` only prints JSON.
+    #[arg(long, global = true, value_enum)]
+    pub format: Option<OutputFormat>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -70,7 +73,7 @@ pub enum ActionCommand {
         #[arg(long)]
         note: Option<String>,
     },
-    /// Print the session context as JSON.
+    /// Print the session context.
     Render,
     /// Evaluate the pull-request gate for a work item.
     GatePr { work_item: String },
@@ -155,14 +158,12 @@ pub struct CheckRunArgs {
     pub check: Option<String>,
     #[arg(long, requires = "event")]
     pub pre_push: bool,
-    /// Output format: `text` for agents, `json` for the single JSON line.
-    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-    pub format: OutputFormat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
-    Text,
+    Agent,
+    Human,
     Json,
 }
 
@@ -231,16 +232,21 @@ pub fn run(
     err: &mut impl std::io::Write,
     env: &Env<'_>,
 ) -> ExitCode {
-    let cli = match Cli::try_parse_from(args) {
+    let parsed = command()
+        .try_get_matches_from(args)
+        .and_then(|matches| Cli::from_arg_matches(&matches));
+    let cli = match parsed {
         Ok(cli) => cli,
         Err(usage) => return report_usage(&usage, out, err),
     };
-    if let Some(usage) = pre_push_misuse(&cli) {
+    let key = command_key(&cli.command);
+    if let Some(usage) = pre_push_misuse(&cli).or_else(|| format_misuse(&cli, key)) {
         return report_usage(&usage, out, err);
     }
     let Cli {
         db,
         project_dir,
+        format,
         command,
     } = cli;
     let db = db.as_deref();
@@ -266,15 +272,15 @@ pub fn run(
         }
         Command::Action(command) => {
             // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
-            let silent_without_marker = matches!(command, ActionCommand::GateWorktree { .. });
-            let format = output_format(&command);
+            let silent_without_marker = matches!(key, CommandKey::GateWorktree);
+            let format = format.unwrap_or_else(|| default_format(key));
             let result = start_dir(project_dir.as_deref())
                 .and_then(|dir| execute(command, stdin, &dir, db, env));
             match &result {
                 Err(error) if silent_without_marker && error.code() == "no-marker" => {
                     ExitCode::SUCCESS
                 }
-                _ => report(result, format, out, err),
+                _ => report(result, format, key, out, err),
             }
         }
     }
@@ -314,19 +320,167 @@ fn pre_push_misuse(cli: &Cli) -> Option<clap::Error> {
     })
 }
 
-/// Só o `check run` tem texto; todo outro comando segue em JSON.
-fn output_format(command: &ActionCommand) -> OutputFormat {
+/// `agent` e `human` só existem onde o comando tem renderizador; a recusa sai pelo mesmo caminho do erro de uso.
+fn format_misuse(cli: &Cli, key: CommandKey) -> Option<clap::Error> {
+    if !matches!(cli.format, Some(OutputFormat::Agent | OutputFormat::Human))
+        || renderer_for(key).is_some()
+    {
+        return None;
+    }
+
+    Some(Cli::command().error(
+        ErrorKind::InvalidValue,
+        "this command only prints JSON; use --format json",
+    ))
+}
+
+fn default_format(key: CommandKey) -> OutputFormat {
+    match renderer_for(key).is_some() {
+        true => OutputFormat::Agent,
+        false => OutputFormat::Json,
+    }
+}
+
+/// O clap com o padrão de saída de cada comando no help: o texto sai de `default_format`, o mesmo fato que escolhe o formato na execução.
+fn command() -> clap::Command {
+    let listing: Vec<String> = OutputFormat::value_variants()
+        .iter()
+        .filter_map(|format| {
+            let paths: Vec<&str> = CommandKey::ALL
+                .into_iter()
+                .filter(|key| default_format(*key) == *format)
+                .map(command_path)
+                .collect();
+            (!paths.is_empty()).then(|| format!("  {}: {}", format_name(*format), paths.join(", ")))
+        })
+        .collect();
+    let root = Cli::command().after_help(format!(
+        "Default output format of each command:\n{}",
+        listing.join("\n")
+    ));
+
+    CommandKey::ALL.into_iter().fold(root, |command, key| {
+        let path: Vec<&str> = command_path(key).split(' ').collect();
+        let note = format!(
+            "Default output format: {}.",
+            format_name(default_format(key))
+        );
+
+        annotate(command, &path, note)
+    })
+}
+
+/// Desce pelos subcomandos do `path` e põe a nota no fim do help do comando folha.
+fn annotate(command: clap::Command, path: &[&str], note: String) -> clap::Command {
+    match path.split_first() {
+        Some((name, rest)) => command.mut_subcommand(*name, |sub| annotate(sub, rest, note)),
+        None => command.after_help(note),
+    }
+}
+
+fn format_name(format: OutputFormat) -> String {
+    format
+        .to_possible_value()
+        .map(|value| value.get_name().to_owned())
+        .unwrap_or_default()
+}
+
+/// Como o comando se escreve na CLI; sem braço `_`: chave nova falha na compilação até ganhar o caminho.
+fn command_path(key: CommandKey) -> &'static str {
+    match key {
+        CommandKey::List => "list",
+        CommandKey::Get => "get",
+        CommandKey::Append => "append",
+        CommandKey::Attest => "attest",
+        CommandKey::Render => "render",
+        CommandKey::GatePr => "gate-pr",
+        CommandKey::GateWorktree => "gate-worktree",
+        CommandKey::Close => "close",
+        CommandKey::Verify => "verify",
+        CommandKey::Load => "load",
+        CommandKey::Project => "project",
+        CommandKey::CheckRun => "check run",
+        CommandKey::CheckSweep => "check sweep",
+        CommandKey::CheckRetire => "check retire",
+        CommandKey::GuidelineRetire => "guideline retire",
+        CommandKey::Byproduct => "byproduct",
+        CommandKey::HooksInstall => "hooks install",
+        CommandKey::HooksPostCommit => "hooks post-commit",
+        CommandKey::SpecInit => "spec init",
+        CommandKey::SpecValidate => "spec validate",
+        CommandKey::ReportAnswers => "report answers",
+        CommandKey::ReportRecurrences => "report recurrences",
+        CommandKey::ReportRetro => "report retro",
+        CommandKey::HookSessionStart => "hook session-start",
+        CommandKey::HookSpecLock => "hook spec-lock",
+        CommandKey::HookAgentRole => "hook agent-role",
+    }
+}
+
+/// Sem braço `_`: comando novo falha na compilação até ganhar uma chave.
+fn command_key(command: &Command) -> CommandKey {
     match command {
-        ActionCommand::Check {
-            command: CheckCommand::Run(args),
-        } => args.format,
-        _ => OutputFormat::Json,
+        Command::Hook {
+            event: HookEvent::SessionStart,
+        } => CommandKey::HookSessionStart,
+        Command::Hook {
+            event: HookEvent::SpecLock,
+        } => CommandKey::HookSpecLock,
+        Command::Hook {
+            event: HookEvent::AgentRole,
+        } => CommandKey::HookAgentRole,
+        Command::Action(ActionCommand::List { .. }) => CommandKey::List,
+        Command::Action(ActionCommand::Get { .. }) => CommandKey::Get,
+        Command::Action(ActionCommand::Append) => CommandKey::Append,
+        Command::Action(ActionCommand::Attest { .. }) => CommandKey::Attest,
+        Command::Action(ActionCommand::Render) => CommandKey::Render,
+        Command::Action(ActionCommand::GatePr { .. }) => CommandKey::GatePr,
+        Command::Action(ActionCommand::GateWorktree { .. }) => CommandKey::GateWorktree,
+        Command::Action(ActionCommand::Close { .. }) => CommandKey::Close,
+        Command::Action(ActionCommand::Verify) => CommandKey::Verify,
+        Command::Action(ActionCommand::Load { .. }) => CommandKey::Load,
+        Command::Action(ActionCommand::Project) => CommandKey::Project,
+        Command::Action(ActionCommand::Check {
+            command: CheckCommand::Run(_),
+        }) => CommandKey::CheckRun,
+        Command::Action(ActionCommand::Check {
+            command: CheckCommand::Sweep,
+        }) => CommandKey::CheckSweep,
+        Command::Action(ActionCommand::Check {
+            command: CheckCommand::Retire { .. },
+        }) => CommandKey::CheckRetire,
+        Command::Action(ActionCommand::Guideline {
+            command: GuidelineCommand::Retire { .. },
+        }) => CommandKey::GuidelineRetire,
+        Command::Action(ActionCommand::Byproduct { .. }) => CommandKey::Byproduct,
+        Command::Action(ActionCommand::Hooks {
+            command: HooksCommand::Install { .. },
+        }) => CommandKey::HooksInstall,
+        Command::Action(ActionCommand::Hooks {
+            command: HooksCommand::PostCommit,
+        }) => CommandKey::HooksPostCommit,
+        Command::Action(ActionCommand::Spec {
+            command: SpecCommand::Init { .. },
+        }) => CommandKey::SpecInit,
+        Command::Action(ActionCommand::Spec {
+            command: SpecCommand::Validate { .. },
+        }) => CommandKey::SpecValidate,
+        Command::Action(ActionCommand::Report {
+            command: ReportCommand::Answers { .. },
+        }) => CommandKey::ReportAnswers,
+        Command::Action(ActionCommand::Report {
+            command: ReportCommand::Recurrences { .. },
+        }) => CommandKey::ReportRecurrences,
+        Command::Action(ActionCommand::Report {
+            command: ReportCommand::Retro { .. },
+        }) => CommandKey::ReportRetro,
     }
 }
 
 fn report(
     result: Result<Value, AppError>,
     format: OutputFormat,
+    key: CommandKey,
     out: &mut impl std::io::Write,
     err: &mut impl std::io::Write,
 ) -> ExitCode {
@@ -335,18 +489,35 @@ fn report(
             let _ = writeln!(out, "{value}");
             ExitCode::SUCCESS
         }
-        (Ok(value), OutputFormat::Text) => {
-            let _ = writeln!(out, "{}", render_success(&value));
+        (Ok(value), OutputFormat::Agent | OutputFormat::Human) => {
+            let text = render_success(key, &value, layout_of(format));
+            // O `text` do `render` já termina em quebra de linha: sai byte a byte, sem quebra extra.
+            let _ = match key {
+                CommandKey::Render => write!(out, "{text}"),
+                _ => writeln!(out, "{text}"),
+            };
             ExitCode::SUCCESS
         }
         (Err(error), OutputFormat::Json) => {
             let _ = writeln!(err, "{}", error.to_json());
             ExitCode::from(1)
         }
-        (Err(error), OutputFormat::Text) => {
-            let _ = writeln!(err, "{}", render_error(&error.to_json()));
+        (Err(error), OutputFormat::Agent | OutputFormat::Human) => {
+            let _ = writeln!(
+                err,
+                "{}",
+                render_failure(key, &error.to_json(), layout_of(format))
+            );
             ExitCode::from(1)
         }
+    }
+}
+
+/// O `Json` não passa por aqui: o `report` só chama isto nos braços `Agent` e `Human`.
+fn layout_of(format: OutputFormat) -> Layout {
+    match format {
+        OutputFormat::Human => Layout::Human,
+        OutputFormat::Agent | OutputFormat::Json => Layout::Agent,
     }
 }
 
@@ -505,3 +676,6 @@ fn read_pre_push_input(stdin: &mut impl Read) -> Result<String, AppError> {
 fn push_input_refused(kind: &str) -> AppError {
     AppError::push_input_invalid("").with_context(json!({ "kind": kind, "event": "before-pr" }))
 }
+
+#[cfg(test)]
+mod tests;

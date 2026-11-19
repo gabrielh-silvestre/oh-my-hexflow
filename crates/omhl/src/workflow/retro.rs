@@ -149,3 +149,6 @@ fn group_divergences(divergences: &[DivergenceFact]) -> Vec<DivergenceGroup> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

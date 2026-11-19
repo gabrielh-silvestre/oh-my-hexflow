@@ -97,9 +97,14 @@ Fora de um projeto marcado, o hook não imprime nada e não cria o banco.
 
 ## Primeiros passos
 
-Os comandos abaixo rodam dentro de um projeto marcado e imprimem uma linha de
-JSON. A exceção é o `check run`, que imprime texto por padrão e uma linha de
-JSON com `--format json`.
+Os comandos abaixo rodam dentro de um projeto marcado e imprimem texto para o
+agente (`--format agent`, o padrão). `--format human` mostra os mesmos fatos em
+blocos, e `--format json` devolve a linha de JSON, que é a forma de ler a saída
+por código. Os comandos lidos por máquina (`hook session-start`,
+`hook spec-lock`, `hook agent-role`, `hooks post-commit` e `gate-worktree`)
+seguem em JSON e recusam `--format agent|human` com erro de uso (saída 2). A
+decisão está no
+[ADR 0009](docs/adr/0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
 
 1. Grave uma guideline:
 
@@ -149,7 +154,7 @@ JSON com `--format json`.
 | `report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |
 | `report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção a guideline |
 | `report retro <work-item>` | A retro de um work item, aberto ou fechado: divergências, emendas e gaps sem resposta |
-| `check run --event <evento>` ou `check run --check <id>` | Roda os checks mecânicos de um evento (ou um só) e grava as attestations do work item da branch atual. A saída é texto; `--format json` devolve a linha de JSON. `--pre-push` é do hook `pre-push` |
+| `check run --event <evento>` ou `check run --check <id>` | Roda os checks mecânicos de um evento (ou um só) e grava as attestations do work item da branch atual. `--pre-push` é do hook `pre-push` |
 | `check sweep` | Encerra os processos que fugiram de um `check run` anterior |
 | `check retire <check-id>` | Aposenta o check órfão, cujo arquivo `.omhl/checks/<slug>.toml` não existe na árvore, e some o aviso `check-orphaned`. É definitivo e vale para todos os clones e branches: o id não volta. Se a branch ou a worktree é anterior ao check, faça rebase sobre a `main` (ou restaure o arquivo) em vez de aposentar |
 | `guideline retire <id> [--by <id-novo>]` | Retira a diretiva órfã, cujo arquivo `.omhl/guidelines/<slug>.toml` não existe na árvore. Com `--by`, grava também que a diretiva nova a supera. É definitivo e vale para todos os clones e branches |
@@ -157,9 +162,10 @@ JSON com `--format json`.
 | `hooks install [--force]` | Instala os hooks do git deste clone |
 | `hooks post-commit` | Apaga a marca da `develop` depois de um commit (o hook `post-commit` o chama) |
 
-`attest` e `close` exigem a árvore git limpa. Um erro sai no stderr como JSON,
-com o código de saída 1. O `check run` é a exceção: o erro sai em texto, a menos
-que se passe `--format json`.
+`attest` e `close` exigem a árvore git limpa. Um erro sai no stderr, com o
+código de saída 1, em texto (`✘ código · mensagem`) nos comandos que falam
+`agent` e `human`; com `--format json`, e nos comandos lidos por máquina, sai
+como uma linha de JSON.
 
 A interface do agente é a CLI.
 
@@ -268,9 +274,9 @@ O `check run` descobre o work item pelo nome da branch, que segue o padrão
   rastreado, a execução se perde: o `omhl` não grava nada e sai com
   `check-not-run`. Restaure o arquivo com `git checkout -- <arquivo>` e repita,
   ou faça commit da mudança, se quiser mantê-la. O
-  `chain_properties.proptest-regressions`, que o `proptest` reescreve quando um
-  teste falha, só muda numa rodada manual de `crates/hexlog/tests`: o gate
-  local não roda esse arquivo.
+  `chain_properties.txt`, em `crates/hexlog/tests/proptest-regressions/`, que o
+  `proptest` reescreve quando um teste falha, só muda numa rodada manual de
+  `crates/hexlog/tests`: o gate local não roda esse arquivo.
 
 ### Recuperar uma attestation
 
@@ -321,13 +327,15 @@ cargo test --workspace --locked --no-fail-fast
 ```
 
 `cargo test` sem filtro roda a suíte inteira, que é pesada. Ao mexer em área
-coberta por `tests/`, rode só o arquivo afetado
-(`cargo test -p <crate> --test <nome>`). Detalhes em
+coberta por `tests/`, rode só o módulo afetado
+(`cargo test -p <crate> --test integration <modulo>::`; no omhl, `--test e2e`
+para o e2e; `--lib <modulo>::` para o unitário). Detalhes em
 [docs/mechanical-gates.md](docs/mechanical-gates.md).
 
 O workspace proíbe `unsafe` e os tipos de memória compartilhada listados em
-`clippy.toml`. Os testes de arquitetura em `crates/*/tests/architecture.rs`
-travam as regras de dependência entre os módulos. O mapa dos módulos e dessas
+`clippy.toml`. Os testes de arquitetura, em
+`crates/*/tests/integration/architecture.rs`, travam as regras de dependência
+entre os módulos. O mapa dos módulos e dessas
 regras está em [docs/architecture.md](docs/architecture.md).
 
 ## Créditos

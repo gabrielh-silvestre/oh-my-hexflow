@@ -113,3 +113,6 @@ fn is_stray(
     }
     owner_start(marker.pid) != Some(marker.start)
 }
+
+#[cfg(test)]
+mod tests;

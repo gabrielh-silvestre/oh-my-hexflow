@@ -277,3 +277,6 @@ pub(crate) fn pair(name: &str, value: Scalar) -> (FieldName, Scalar) {
 
     (field, value)
 }
+
+#[cfg(test)]
+mod tests;

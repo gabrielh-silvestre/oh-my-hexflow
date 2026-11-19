@@ -99,3 +99,6 @@ fn is_native_id(id: &str) -> bool {
             .iter()
             .any(|guideline| guideline.id == id)
 }
+
+#[cfg(test)]
+mod tests;

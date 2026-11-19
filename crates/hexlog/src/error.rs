@@ -133,3 +133,6 @@ pub(crate) fn push_pointer_segment(out: &mut String, segment: &str) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

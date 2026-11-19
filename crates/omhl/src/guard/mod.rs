@@ -39,3 +39,6 @@ pub fn attestation_id(
 
     Ok(SemanticId::parse(&text)?)
 }
+
+#[cfg(test)]
+mod tests;
