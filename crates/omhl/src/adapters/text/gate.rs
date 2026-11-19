@@ -237,3 +237,6 @@ impl Specialization for Close {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

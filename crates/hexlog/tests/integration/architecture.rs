@@ -1116,6 +1116,43 @@ fn declares_test_module(source: &str) -> Result<bool, String> {
     }))
 }
 
+fn is_test_attribute(group: &Group) -> bool {
+    group.delimiter() == Delimiter::Bracket
+        && matches!(tokens(group.stream()).as_slice(), [only] if is_ident(only, "test"))
+}
+
+/// Corpo de teste dentro da fonte, em qualquer nível: cada `#[test]` e cada `#[cfg(test)] mod <nome> { ... }`.
+fn inline_test_findings(source: &str) -> Result<Vec<Finding>, String> {
+    let mut found = Vec::new();
+    walk_inline_tests(&tokens(tokenize(source)?), &mut found);
+    Ok(found)
+}
+
+fn walk_inline_tests(trees: &[TokenTree], found: &mut Vec<Finding>) {
+    for (at, tree) in trees.iter().enumerate() {
+        match tree {
+            TokenTree::Punct(punct) if punct.as_char() == '#' => {
+                let Some(TokenTree::Group(attribute)) = trees.get(at + 1) else {
+                    continue;
+                };
+                let what = if is_test_attribute(attribute) {
+                    "#[test]"
+                } else if cfg_test_module(trees, at).is_some() {
+                    "#[cfg(test)] mod { ... }"
+                } else {
+                    continue;
+                };
+                found.push(Finding {
+                    line: punct.span().start().line,
+                    what: what.to_string(),
+                });
+            }
+            TokenTree::Group(group) => walk_inline_tests(&tokens(group.stream()), found),
+            _ => {}
+        }
+    }
+}
+
 /// O arquivo do módulo pai de `tests`: `dir/mod.rs` ou `dir.rs`, para `dir/tests.rs`.
 fn parent_module_file(tests: &Path) -> Option<PathBuf> {
     let dir = tests.parent()?;
@@ -1611,6 +1648,42 @@ fn it_should_keep_unit_test_sources_inside_the_crate_boundary() {
     );
     for path in unit_test_sources() {
         match boundary_findings(&read(&path)) {
+            Ok(found) => failures.extend(
+                found
+                    .iter()
+                    .map(|finding| render(&path, finding.line, &finding.what)),
+            ),
+            Err(error) => failures.push(format!("{}: cannot tokenize: {error}", display(&path))),
+        }
+    }
+
+    assert_no_failures(&failures);
+}
+
+// Limite declarado: a parte `#[cfg(test)] mod <nome> { ... }` não vê `#[cfg(all(test, ...))]` (o `is_cfg_test` só
+// aceita `cfg(test)` puro); `pub` e outros atributos entre o `cfg` e o `mod` o `cfg_test_module` já trata. Isso não abre
+// brecha para o corpo de teste: um módulo com `#[test]` dentro cai na parte `#[test]`, qualquer que seja a forma do
+// `cfg`; sobra só um módulo de helper de teste, sem `#[test]`, nessa forma. Sem 6º caso sintético: um caso que aceita
+// o furo o fixaria como regra. Se um dia aparecer, o caso entra na prova junto com o ajuste do detector.
+#[test]
+fn it_should_keep_unit_tests_out_of_inline_modules_in_production_sources() {
+    let flagged = [
+        "#[cfg(test)] mod tests { fn f() {} }",
+        "#[cfg(test)]\nmod helpers {\n    #[test] fn f() {}\n}",
+        "#[test] fn f() {}",
+    ];
+    let accepted = [
+        "#[cfg(test)] mod tests;",
+        "#[cfg(target_os = \"linux\")] mod platform { fn f() {} }",
+    ];
+
+    let mut failures = prove_both_sides(
+        |snippet| inline_test_findings(snippet).map(|found| found.len()),
+        &flagged,
+        &accepted,
+    );
+    for path in production_sources(&src_dir()) {
+        match inline_test_findings(&read(&path)) {
             Ok(found) => failures.extend(
                 found
                     .iter()

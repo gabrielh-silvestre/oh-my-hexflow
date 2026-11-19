@@ -29,7 +29,6 @@ mod output_agent_leaves;
 mod output_agent_query;
 mod output_agent_report;
 mod output_agent_surface;
-mod output_vocab;
 mod plugin;
 mod pr_gate;
 mod proc_roles;

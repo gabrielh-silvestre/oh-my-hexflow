@@ -1709,6 +1709,23 @@ fn declares_test_module(source: &str) -> Result<bool, String> {
     Ok(occurrences(&code, "#[cfg(test)] mod tests;", false) > 0)
 }
 
+/// Corpo de teste dentro da fonte: cada `#[test]` e cada `#[cfg(test)] mod <nome> {` (corpo inline, qualquer nome).
+fn inline_test_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+    let attributes = occurrences(&code, "#[test]", false);
+    let modules = code
+        .match_indices("#[cfg(test)] mod ")
+        .filter(|(at, needle)| {
+            let rest = &code[at + needle.len()..];
+            let name_end = rest.find(|c| !is_ident(c)).unwrap_or(rest.len());
+
+            name_end > 0 && rest[name_end..].starts_with('{')
+        })
+        .count();
+
+    Ok(attributes + modules)
+}
+
 /// O arquivo do módulo pai de `tests`: `dir/mod.rs` ou `dir.rs`, para `dir/tests.rs`.
 fn parent_module_file(tests: &Path) -> Option<PathBuf> {
     let dir = tests.parent()?;
@@ -1835,6 +1852,31 @@ fn it_should_declare_every_tests_file_with_cfg_test_in_its_parent_module() {
             Err(error) => failures.push(format!("{}: {error}", parent.display())),
         }
     }
+
+    assert_no_failures(&failures);
+}
+
+// Limites declarados: a parte `#[cfg(test)] mod <nome> {` não vê (a) outro atributo entre `#[cfg(test)]` e `mod`,
+// (b) `pub`/`pub(crate)` antes de `mod` e (c) `#[cfg(all(test, ...))]`. Isso não abre brecha para o corpo de teste:
+// um módulo com `#[test]` dentro cai na parte `#[test]`, qualquer que seja a forma do `cfg`; sobra só um módulo de
+// helper de teste, sem `#[test]`, escrito numa dessas formas. Sem 6º caso sintético: um caso que aceita o furo o
+// fixaria como regra. Se um dia aparecer, o caso entra na prova junto com o ajuste do detector.
+#[test]
+fn it_should_keep_unit_tests_out_of_inline_modules_in_production_sources() {
+    let mut failures = prove_both_sides(
+        inline_test_refs,
+        &[
+            "#[cfg(test)] mod tests { fn f() {} }",
+            "#[cfg(test)]\nmod helpers {\n    #[test] fn f() {}\n}",
+            "#[test] fn f() {}",
+        ],
+        &[
+            "#[cfg(test)] mod tests;",
+            "#[cfg(target_os = \"linux\")] mod platform { fn f() {} }",
+        ],
+    );
+
+    failures.extend(scan_dir(&src_dir(), inline_test_refs));
 
     assert_no_failures(&failures);
 }

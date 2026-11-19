@@ -2,9 +2,9 @@ use crate::support;
 
 use std::fs;
 
-use ::omhl::adapters::text::{CommandKey, Layout, SECRET_WARNING, render_success};
+use ::omhl::adapters::text::SECRET_WARNING;
 use regex::Regex;
-use serde_json::{Value, json};
+use serde_json::Value;
 use support::child::Output;
 use support::cycle::{
     self, ORPHAN_CHECK, ORPHAN_GUIDELINE, SPEC_SLUG, SUCCESSOR_GUIDELINE, State, WORK_ITEM,
@@ -215,49 +215,6 @@ fn it_should_open_the_check_sweep_text_with_the_swept_and_unreadable_counts() {
     let text = printed(&state, None, &["check", "sweep"]);
 
     assert!(header.is_match(first_line(&text)), "{text}");
-}
-
-#[test]
-fn it_should_print_the_sweep_counts_alone_when_nothing_was_swept() {
-    let value = json!({ "scan_timed_out": false, "swept": [], "unreadable": 3 });
-
-    let text = render_success(CommandKey::CheckSweep, &value, Layout::Agent);
-
-    assert_eq!(text, "✔ check sweep · 0 swept · 3 unreadable");
-}
-
-#[test]
-fn it_should_warn_and_ask_for_another_sweep_when_the_scan_timed_out() {
-    let value = json!({ "scan_timed_out": true, "swept": [], "unreadable": 0 });
-
-    let text = render_success(CommandKey::CheckSweep, &value, Layout::Agent);
-
-    assert_eq!(
-        lines_of(&text),
-        [
-            "⚠ check sweep · 0 swept · 0 unreadable · scan timed out",
-            "Next: run omhl check sweep again, an empty swept proves nothing after a timeout.",
-        ]
-    );
-}
-
-#[test]
-fn it_should_print_a_swept_process_as_a_dash_item_with_pid_and_owner() {
-    let value = json!({
-        "scan_timed_out": false,
-        "swept": [{ "comm": "sleep", "owner_pid": 4100, "pid": 4242 }],
-        "unreadable": 0,
-    });
-
-    let text = render_success(CommandKey::CheckSweep, &value, Layout::Agent);
-
-    assert_eq!(
-        lines_of(&text),
-        [
-            "✔ check sweep · 1 swept · 0 unreadable",
-            "- sleep · pid 4242 · owner 4100",
-        ]
-    );
 }
 
 // ---------------------------------------------------------------- `check retire`

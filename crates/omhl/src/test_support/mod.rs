@@ -30,6 +30,7 @@
 //! - `native/tests.rs`, de `tests/integration/native.rs`: `CHECK_IDS`, `GUIDELINE_IDS`, `RUN_TESTS`, `CI_GREEN` e `native_ids_with_types`;
 //! - `ports/process/tests.rs`, de `tests/integration/process_runner.rs`: `TWENTY_SECS`; e `spec`, de `tests/integration/proc_roles/mod.rs`;
 //! - `guard/tests.rs`, de `tests/integration/guard.rs`: `rule`;
+//! - `adapters/text/simple/tests.rs`, de `tests/support/cycle.rs`: `lines_of`;
 //! - `ports/blob/tests.rs` e `byproduct/tests.rs`, `ABC_SHA256` (uma cópia em cada; o antigo `tests/byproduct_store.rs` não existe mais).
 
 pub mod ext;
