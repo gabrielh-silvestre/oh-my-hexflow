@@ -13,9 +13,11 @@ Mostre a premissa ao dono em português; o `text` gravado é em inglês.
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"work-items.i1","type":"work-item","data":{"title":"Export CSV","status":"open"}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":3},"records":[{"id":"<record-id>","seq":3}],"replayed":false}
+✔ append · 1 record
+- <record-id> · seq 3
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"premises.i1","type":"premise","data":{"text":"The export must include every column the user sees.","status":"confirmed","kind":"business","work_item":"work-items.i1","confirmed_by":{"by":"person:ana","question":"Quais colunas entram no export?","answer":"Todas as que o usuário vê na tela."}}}}]}
 EOF
-{"chain_head":{"hash":"<hash>","seq":4},"records":[{"id":"<record-id>","seq":4}],"replayed":false}
+✔ append · 1 record
+- <record-id> · seq 4
 ```

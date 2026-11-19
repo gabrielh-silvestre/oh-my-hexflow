@@ -5,13 +5,13 @@ description: Protocolo da entrevista de negócio com o dono, antes de gravar o w
 
 # Entrevista de negócio
 
-Esta skill exige a `directives-flow`. Se não estiver carregada, carregue-a. Ela traz as regras de gravação e o ciclo ([cycle.md](../directives-flow/references/cycle.md)). A entrevista vem antes do passo 1 do ciclo; ao fim, o work item e as premissas de negócio estão gravados e a [plan-consensus](../plan-consensus/SKILL.md) cobre só o técnico.
+Esta skill exige a `directives-flow`. Se não estiver carregada, carregue-a. Ela traz as regras de gravação e o ciclo ([cycle.md](../directives-flow/references/cycle.md)). As rodadas de perguntas vêm antes do passo 1 do ciclo; ao fim, o work item e as premissas de negócio estão gravados e a [plan-consensus](../plan-consensus/SKILL.md) cobre só o técnico.
 
 Você é a sessão principal e conduz a entrevista sozinha. Não escreve spec: a spec é do planner (passo 4 do ciclo).
 
 ## Quando usar
 
-- **Obrigatória** em `feat` e `fix`: a entrevista vem antes do work item, e nada é gravado antes de ela terminar.
+- **Obrigatória** em `feat` e `fix`: a entrevista vem antes do work item, e nada é gravado no banco antes de ela terminar.
 - **Opcional** em `refactor`, `tests`, `bugfix`, `chore` e `docs`: só roda a pedido do dono. Sem o pedido, siga direto pela `directives-flow`.
 
 ## As rodadas de perguntas

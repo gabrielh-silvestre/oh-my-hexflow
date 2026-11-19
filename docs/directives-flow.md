@@ -22,7 +22,7 @@ Os exemplos de saída vêm de uma execução real do `omhl` num repositório des
 | 8 | Retro | `omhl close` | Ao fechar o work item, o `omhl` imprime um relatório somente leitura. O agente propõe melhorias, cada uma só vale com a confirmação do humano |
 | 9 | Promoção | Agente e humano | Premissa repetida em 3 work items distintos vira sugestão de diretiva. O humano confirma |
 
-Ordem do protocolo, antes do código: escolher prefixo, id e slug; gravar o work item (`work-items.<id>`); sugerir as premissas; confirmar com o humano; criar e validar a spec; só então `wt switch -c`.
+Ordem do protocolo, antes do código: em `feat` e `fix`, fazer a entrevista de negócio (skill `interview`, seção 12); escolher prefixo, id e slug; gravar o work item (`work-items.<id>`); sugerir as premissas; confirmar com o humano; criar e validar a spec; só então `wt switch -c`.
 
 A tabela descreve o protocolo sem dizer quem o cumpre. Com os agentes do plugin, cada etapa tem um papel `oh-my-hexflow:<papel>` e há uma volta de consenso entre o architect e o critic antes da spec valer: o ciclo de dez passos está na seção 12.
 
@@ -705,7 +705,8 @@ flowchart TD
   P7 -- "sim" --> P8A["8 verifier: retira contradicts resolvidos"]
   P7 -- "não" --> LIM{"3 voltas feitas?"}
   P8A -- "FAIL ou INCOMPLETE" --> LIM
-  LIM -- "não" --> P5
+  LIM -- "não, e a spec não muda" --> P5
+  LIM -- "não, e a spec muda" --> P4
   LIM -- "sim" --> ESC["Impasse: a sessão principal para e escala ao dono"]
   P8A -- "ok" --> P8B["8 spec validate, gate-worktree, worktree e implementação"]
   P8B --> P9["9 code-reviewer e security-reviewer"]
