@@ -1129,26 +1129,34 @@ fn inline_test_findings(source: &str) -> Result<Vec<Finding>, String> {
 }
 
 fn walk_inline_tests(trees: &[TokenTree], found: &mut Vec<Finding>) {
-    for (at, tree) in trees.iter().enumerate() {
-        match tree {
+    let mut at = 0;
+    while at < trees.len() {
+        match &trees[at] {
             TokenTree::Punct(punct) if punct.as_char() == '#' => {
-                let Some(TokenTree::Group(attribute)) = trees.get(at + 1) else {
+                let line = punct.span().start().line;
+                if let Some(TokenTree::Group(attribute)) = trees.get(at + 1)
+                    && is_test_attribute(attribute)
+                {
+                    found.push(Finding {
+                        line,
+                        what: "#[test]".to_string(),
+                    });
+                } else if let Some((_, next)) = cfg_test_module(trees, at) {
+                    // O módulo é acusado uma vez; o corpo não é percorrido de novo.
+                    found.push(Finding {
+                        line,
+                        what: "#[cfg(test)] mod { ... }".to_string(),
+                    });
+                    at = next;
                     continue;
-                };
-                let what = if is_test_attribute(attribute) {
-                    "#[test]"
-                } else if cfg_test_module(trees, at).is_some() {
-                    "#[cfg(test)] mod { ... }"
-                } else {
-                    continue;
-                };
-                found.push(Finding {
-                    line: punct.span().start().line,
-                    what: what.to_string(),
-                });
+                }
+                at += 1;
             }
-            TokenTree::Group(group) => walk_inline_tests(&tokens(group.stream()), found),
-            _ => {}
+            TokenTree::Group(group) => {
+                walk_inline_tests(&tokens(group.stream()), found);
+                at += 1;
+            }
+            _ => at += 1,
         }
     }
 }
