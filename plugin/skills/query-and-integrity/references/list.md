@@ -139,7 +139,7 @@ $ omhl list --id-prefix premises.p
 ✔ 0 nodes
 ```
 
-Recusa (I11): `--limit` fora de 1 a 200:
+Recusa: `--limit` fora de 1 a 200:
 
 ```omhl-example fixture=project
 $ omhl list --limit 0
@@ -152,7 +152,7 @@ $ omhl list --limit 201
 # exit 1
 ```
 
-Recusa (I6): `--type` que não existe no catálogo (o plural recusa):
+Recusa: `--type` que não existe no catálogo (o plural recusa):
 
 ```omhl-example fixture=project
 $ omhl list --type premises
@@ -161,7 +161,7 @@ $ omhl list --type premises
 # exit 1
 ```
 
-Recusa (I12): `--id-prefix` que não começa por um namespace de tipo, ou que sai do namespace do `--type`:
+Recusa: `--id-prefix` que não começa por um namespace de tipo, ou que sai do namespace do `--type`:
 
 ```omhl-example fixture=project
 $ omhl list --id-prefix premise
@@ -174,7 +174,7 @@ $ omhl list --type premise --id-prefix work-items
 # exit 1
 ```
 
-Recusa (I3): `--id-prefix` com segmento inválido (vazio, começando por `-`, acima de 63 caracteres):
+Recusa: `--id-prefix` com segmento inválido (vazio, começando por `-`, acima de 63 caracteres):
 
 ```omhl-example fixture=project
 $ omhl list --id-prefix premises..x
@@ -191,7 +191,7 @@ $ omhl list --id-prefix premises.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 # exit 1
 ```
 
-Recusa (I4): com `--type`, campo que o tipo não declara, campo que não é de texto e valor fora do `enum`:
+Recusa: com `--type`, campo que o tipo não declara, campo que não é de texto e valor fora do `enum`:
 
 ```omhl-example fixture=project
 $ omhl list --type premise --where blocking=true
@@ -208,7 +208,7 @@ $ omhl list --type premise --where status=confimed
 # exit 1
 ```
 
-Recusa (I5): o mesmo campo com valores diferentes. O mesmo par repetido segue aceito:
+Recusa: o mesmo campo com valores diferentes. O mesmo par repetido segue aceito:
 
 ```omhl-example fixture=project
 $ omhl list --type premise --where status=confirmed --where status=assumed
@@ -220,7 +220,7 @@ $ omhl list --type premise --where status=confirmed --where status=confirmed
   premises.p1 · premise · seq 2 · confirmed · business · work-items.w1 · Money is stored in cents.
 ```
 
-Recusa (I10): sem `--type`, nenhum tipo declara todos os campos do `--where`:
+Recusa: sem `--type`, nenhum tipo declara todos os campos do `--where`:
 
 ```omhl-example fixture=project
 $ omhl list --where title=x --where kind=missing

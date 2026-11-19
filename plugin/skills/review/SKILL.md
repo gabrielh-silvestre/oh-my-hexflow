@@ -11,16 +11,16 @@ Você é a sessão principal: chama cada agente como `oh-my-hexflow:<papel>`, um
 
 ## Os passos
 
-1. Chame `oh-my-hexflow:code-reviewer` e depois `oh-my-hexflow:security-reviewer`. Passe a cada um o id do work item (`work-items.<id>`), o caminho **absoluto** da pasta da spec, no checkout principal (o `dir` do `omhl spec init`, repetido pelo planner em "Spec written to"; um caminho relativo não existe dentro da worktree) e a mudança a revisar. Peça que listem cada relação gravada como `<relação>: <from> -> <to>`.
+1. Chame `oh-my-hexflow:code-reviewer` e depois `oh-my-hexflow:security-reviewer`. Passe a cada um o id do work item (`work-items.<id>`), o caminho **absoluto** da pasta da spec, no checkout principal (o `dir` do `omhl spec init`, repetido pelo planner em "Spec written to"; um caminho relativo não existe dentro da worktree) e a mudança a revisar. Eles listam cada relação gravada em `Records Written`, no formato do próprio agente ([code-reviewer.md](../../agents/code-reviewer.md), [security-reviewer.md](../../agents/security-reviewer.md)).
 2. Cada achado vira uma destas coisas, e nenhuma outra:
    - código que não cumpre a spec: `divergence` com `source_ref` no `CA-###` da spec e `resolution` `open`;
-   - violação de diretiva ou de decisão: `decision` do revisor com `rests-on` para uma diretriz ou premissa confirmada (a diretriz violada, ou a âncora da decisão violada; nunca para uma `decision`) e `contradicts` para o alvo violado;
+   - violação de diretiva ou de decisão: `decision` do revisor com `rests-on` para uma diretriz ou premissa confirmada do work item, a que ele lê com `omhl list` e `omhl get` (a diretriz violada, ou a premissa que sustenta a conclusão dele; nunca para uma `decision`) e `contradicts` para o alvo violado;
    - achado de segurança CRITICAL ou HIGH que nenhum item da spec, diretiva ou decisão cobre: não fica só na mensagem. Mostre-o ao dono (local, categoria, severidade, correção) antes do passo 8 e liste-o no corpo do PR, abaixo da tabela, com a resposta dele (corrigir agora, aceitar ou abrir issue). Não o grave como `divergence`: ela exige `source_ref` numa spec, premissa ou diretiva, e o `unrequested` descreve código fora do pedido, não vulnerabilidade;
    - o resto (estilo, performance genérica, segurança MEDIUM ou LOW sem alvo): fica só na mensagem.
 3. Corrija o código das divergências abertas (a sessão principal, ou quem implementa o work item). Um desvio que o dono aceita não é correção: pergunte a ele e grave `accepted` só com a resposta dele (regras em [divergence.md](../directives-flow/references/divergence.md)).
 4. Antes do gate do PR, chame `oh-my-hexflow:verifier` em contexto isolado, sem o contexto do autor: passe o id, a pasta absoluta da spec, o id de cada divergência a conferir e o par `from`/`to` de cada `contradicts` a retirar (as linhas `contradicts: <from> -> <to>` da resposta dos revisores, ou a seção `## Relations` de `.omhl/projection/work-items.<id>.md`, veja [roles.md](../directives-flow/references/roles.md)). Ele confere a correção com evidência nova e retira os `contradicts` resolvidos; a razão de cada retirada vem na mensagem dele (seção `Retirements`). Copie essa seção, com o par `from -> to` de cada retirada, para `<checkout principal>/.omhl/notes/<id>-retiradas.md` (caminho absoluto, no checkout principal e fora de `.omhl/specs/`, para o `spec-lock` não congelar); o passo 7 lê esse arquivo, porque a mensagem não sobrevive à compactação e o grafo só guarda a retirada.
 5. O verifier fecha a `divergence` de qualquer revisor de `open` para `code-fixed`, com a evidência nova em `evidence`, e nunca para `accepted`, que é resposta do dono. Só siga com o veredito `PASS`. Se ele devolver `FAIL` ou `INCOMPLETE`, ou deixar uma `divergence` `open`, volte ao passo 3 e chame-o de novo; no `INCOMPLETE`, leia as lacunas (`### Gaps`) da resposta dele e corrija ou grave como `gap` o que ele não conseguiu provar. Se você julga um `contradicts` de revisor falso positivo, não o retire e não o ignore: leve ao dono o par `from`/`to` e o seu motivo, e espere. Quem retira é o dono, num terminal fora do Claude Code (receita em [roles.md](../directives-flow/references/roles.md)); o verifier só retira o que ele confere como resolvido.
-6. Monte a tabela do PR com o template do plugin ([tracking-table.md](../directives-flow/references/tracking-table.md)); se o arquivo `.omhl/templates/tracking-table.md` existir, ele vale no lugar. As linhas vêm destes comandos, um comando por chamada, sem pipe:
+6. Monte a tabela do PR com o template do plugin ([tracking-table.md](../directives-flow/references/tracking-table.md)); se o arquivo `.omhl/templates/tracking-table.md` existir, ele vale no lugar. As linhas vêm destes comandos. A regra do agente é um comando por chamada, sem pipe, porque o hook `agent-role` nega comando composto; a sessão principal não passa por ele e pode compor, mas aqui cada listagem é um comando próprio:
    - `omhl list --type decision --where work_item=work-items.<id>`
    - `omhl list --type premise --where work_item=work-items.<id>`
 
@@ -30,7 +30,4 @@ Você é a sessão principal: chama cada agente como `oh-my-hexflow:<papel>`, um
 
 ## O que fazer com a resposta de cada agente
 
-Toda resposta termina com dois campos fixos:
-
-- **Next role:** o papel a chamar em seguida (ou `none`).
-- **Open questions for the main session:** perguntas que o agente não pode gravar. Grave cada uma como `gap` pelo `omhl append`, com o `kind` sugerido. Sem `kind`, o gap vai ao humano.
+Toda resposta termina com os campos **Next role:** e **Open questions for the main session:**. O que fazer com cada um está em [roles.md](../directives-flow/references/roles.md), na seção "O que fazer com a resposta".
