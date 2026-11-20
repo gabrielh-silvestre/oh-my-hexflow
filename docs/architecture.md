@@ -421,7 +421,7 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 - `ports/specs`: `SpecStore` (`has_spec`, `read_folder`, `folder_files`, `file_exists`, `create_first_part`) lê e cria a pasta de spec, com teto por arquivo e por número de entradas.
 - `ports/workflow`: `read_workflow` lê e valida o `.omhl/workflow.toml`.
 - `ports/files`: `list_sorted_capped`, que veio de `extensions/files.rs` (travado por `PORTS_FORBIDDEN_MODULES`).
-- `probe`: `trait GitTopology` (`main_dir`, `branch_exists`, `worktree_branches`, `local_branches`), implementada por `GitProbe` em `ports/git.rs`. O gate de worktree e o `spec-lock` a usam.
+- `ports/git`: `GitProbe` expõe `main_dir`, `worktree_branches` e `local_branches` como métodos próprios. O gate de worktree e o `spec-lock` os usam.
 
 #### O hook `agent-role`
 

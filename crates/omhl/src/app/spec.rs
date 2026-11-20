@@ -13,7 +13,7 @@ use crate::ports::files::FILE_TOO_LARGE;
 use crate::ports::git::GitProbe;
 use crate::ports::specs::{SpecDocument, SpecFolder, SpecStore, SpecStoreError};
 use crate::ports::workflow::{read_policy, read_workflow};
-use crate::probe::{GitTopology, ProbeError};
+use crate::probe::ProbeError;
 use crate::project::marker::{Located, find_marker};
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{

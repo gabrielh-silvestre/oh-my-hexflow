@@ -9,7 +9,6 @@ use crate::error::OmhlError;
 use crate::mechanical::branch::{BranchKind, branch_prefix, classify};
 use crate::ports::git::GitProbe;
 use crate::ports::workflow::read_workflow;
-use crate::probe::GitTopology;
 use crate::project::marker::find_marker;
 use crate::workflow::config::{RequireAtom, WorkflowConfig};
 use crate::workflow::matrix::missing_atoms;

@@ -9,9 +9,7 @@ use std::time::{Duration, Instant};
 
 use hexlog::{Snapshot, SnapshotKind};
 
-use crate::probe::{
-    DevelopMark, GitTopology, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
-};
+use crate::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -298,8 +296,9 @@ impl DevelopMark for GitProbe {
     }
 }
 
-impl GitTopology for GitProbe {
-    fn main_dir(&self) -> Result<PathBuf, ProbeError> {
+impl GitProbe {
+    /// Diretório de trabalho principal, o mesmo de qualquer worktree ligada.
+    pub fn main_dir(&self) -> Result<PathBuf, ProbeError> {
         let common_dir = self.line(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
         Path::new(&common_dir)
             .parent()
@@ -307,18 +306,8 @@ impl GitTopology for GitProbe {
             .ok_or_else(|| error("unexpected git output"))
     }
 
-    fn branch_exists(&self, name: &str) -> Result<bool, ProbeError> {
-        let output =
-            self.run(self.git(&["show-ref", "--verify", "-q", &format!("refs/heads/{name}")]))?;
-        match output.status.code() {
-            Some(0) => Ok(true),
-            // Ref inexistente sai 1; nome que o git não aceita sai 128.
-            Some(1 | 128) => Ok(false),
-            _ => Err(git_error(&output)),
-        }
-    }
-
-    fn worktree_branches(&self) -> Result<Vec<String>, ProbeError> {
+    /// Branches com worktree (a principal inclusive), em ordem crescente.
+    pub fn worktree_branches(&self) -> Result<Vec<String>, ProbeError> {
         let stdout = self.run_ok(self.git(&["worktree", "list", "--porcelain"]))?;
         let text = utf8_output(stdout)?;
         let mut branches: Vec<String> = text
@@ -330,7 +319,8 @@ impl GitTopology for GitProbe {
         Ok(branches)
     }
 
-    fn local_branches(&self) -> Result<Vec<String>, ProbeError> {
+    /// Branches locais, em ordem crescente.
+    pub fn local_branches(&self) -> Result<Vec<String>, ProbeError> {
         let stdout =
             self.run_ok(self.git(&["for-each-ref", "--format=%(refname:short)", "refs/heads"]))?;
         let text = utf8_output(stdout)?;
