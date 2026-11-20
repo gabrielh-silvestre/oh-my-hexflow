@@ -22,7 +22,7 @@ Os exemplos de saída vêm de uma execução real do `omhl` num repositório des
 | 8 | Retro | `omhl close` | Ao fechar o work item, o `omhl` imprime um relatório somente leitura. O agente propõe melhorias, cada uma só vale com a confirmação do humano |
 | 9 | Promoção | Agente e humano | Premissa repetida em 3 work items distintos vira sugestão de diretiva. O humano confirma |
 
-Ordem do protocolo, antes do código: escolher prefixo, id e slug; gravar o work item (`work-items.<id>`); sugerir as premissas; confirmar com o humano; criar e validar a spec; só então `wt switch -c`.
+Ordem do protocolo, antes do código: em `feat` e `fix`, fazer a entrevista de negócio (skill `interview`, seção 12); escolher prefixo, id e slug; gravar o work item (`work-items.<id>`); sugerir as premissas; confirmar com o humano; criar e validar a spec; só então `wt switch -c`.
 
 A tabela descreve o protocolo sem dizer quem o cumpre. Com os agentes do plugin, cada etapa tem um papel `oh-my-hexflow:<papel>` e há uma volta de consenso entre o architect e o critic antes da conferência final da spec: o ciclo de dez passos está na seção 12.
 
@@ -87,7 +87,7 @@ omhl list --type divergence --where work_item=work-items.w1 --where resolution=o
 
 **Autoria.** Grave tudo pela CLI: `omhl append` (JSON no stdin) e `omhl attest`. A CLI grava `agent: "user"`, com uma exceção: sob o Claude Code (variável `CLAUDECODE=1`, que ele e as extensões de IDE definem em subprocessos e terminais integrados: Bash, hooks, tmux e o terminal integrado da IDE), a CLI grava `agent: "claude"` com `client: "cli"`. O erro seguro é o falso positivo: um humano que roda o `omhl` dentro de uma sessão do Claude Code, ou no terminal integrado de uma IDE, sai registrado como agente. O inverso, `env -u CLAUDECODE`, grava `agent: "user"` (Follow-up da trava técnica, seção 3). Com `OMHL_ROLE=omhl:<papel>` sob o Claude Code, a CLI grava `agent: "omhl:<papel>"` no lugar de `"claude"` (seção 8, "A matriz por papel"). Quem define a variável para o agente portado é o hook `agent-role`, que a escreve no comando a partir do `agent_type` do evento (seção 12).
 
-**Skills do plugin.** A skill [`directives-flow`](../plugin/skills/directives-flow/SKILL.md) leva este fluxo ao agente. Para cada um dos comandos acima, que ela cobre (`append`, `gate-worktree`, `guideline retire`, `spec init`, `spec validate`), há uma página em [`plugin/skills/directives-flow/references/`](../plugin/skills/directives-flow/references/) com entradas, saída, erros e exemplos que um teste executa contra o `omhl` real (ver [architecture.md](architecture.md), seção 4). A mesma pasta traz as páginas de apoio ao ciclo com os agentes: `cycle.md` (os dez passos), `roles.md` (quem faz cada papel e o que a sessão principal lhe passa) e `tracking-table.md` (o template da tabela do PR). Essas páginas não têm os cinco títulos das páginas de comando nem exemplos executáveis. O `omhl attest` é coberto pela skill [`mechanical-checks`](../plugin/skills/mechanical-checks/SKILL.md). As skills [`plan-consensus`](../plugin/skills/plan-consensus/SKILL.md) e [`review`](../plugin/skills/review/SKILL.md) conduzem a sessão principal pelos agentes (seção 12) e exigem a `directives-flow`.
+**Skills do plugin.** A skill [`directives-flow`](../plugin/skills/directives-flow/SKILL.md) leva este fluxo ao agente. Para cada um dos comandos acima, que ela cobre (`append`, `gate-worktree`, `guideline retire`, `spec init`, `spec validate`) e para os de consulta ao banco (`list`, `get`, `render`, `verify`, `project`, `report answers`, `report recurrences`), há uma página em [`plugin/skills/directives-flow/references/`](../plugin/skills/directives-flow/references/) com entradas, saída, erros e exemplos que um teste executa contra o `omhl` real (ver [architecture.md](architecture.md), seção 4). A mesma pasta traz as páginas de apoio ao ciclo com os agentes: `cycle.md` (os dez passos), `roles.md` (quem faz cada papel e o que a sessão principal lhe passa) e `tracking-table.md` (o template da tabela do PR). Essas páginas não têm os cinco títulos das páginas de comando nem exemplos executáveis. O `omhl attest` é coberto pela skill [`review`](../plugin/skills/review/SKILL.md), que traz também as páginas dos checks mecânicos e do fechamento do work item. As skills [`plan-consensus`](../plugin/skills/plan-consensus/SKILL.md) e [`review`](../plugin/skills/review/SKILL.md) conduzem a sessão principal pelos agentes (seção 12) e exigem a `directives-flow`.
 
 ## 3. Confirmação humana (`confirmed_by`)
 
@@ -677,6 +677,12 @@ Cada recusa desta seção traz a causa em `message` e o próximo passo em `next_
 
 O plugin traz sete agentes (`oh-my-hexflow:analyst`, `planner`, `architect`, `critic`, `code-reviewer`, `security-reviewer` e `verifier`) e duas skills que conduzem a sessão principal por eles: [`plan-consensus`](../plugin/skills/plan-consensus/SKILL.md), dos passos 2 a 8, e [`review`](../plugin/skills/review/SKILL.md), dos passos 9 e 10. O ciclo abaixo é o da seção 1 com os papéis nomeados e a volta de consenso. A sessão principal chama um agente por vez, como `oh-my-hexflow:<papel>`, e um resumo dos mesmos passos está em [`cycle.md`](../plugin/skills/directives-flow/references/cycle.md).
 
+**Antes do passo 1.** Em `feat` e `fix`, a sessão principal conduz a entrevista de negócio com o dono (skill [`interview`](../plugin/skills/interview/SKILL.md)): rodadas de perguntas até a ambiguidade chegar a 20% ou menos, e só então o passo 1 grava o work item e as premissas de negócio confirmadas. Nos outros prefixos a entrevista só roda a pedido do dono. O estado das rodadas fica em `.omhl/notes/`, fora do banco e fora da spec.
+
+**Caminho leve (`chore` e `docs`).** Não há spec: o consenso fica nos passos 2 e 3 (o critic só no modo do passo 3), sem planner nem voltas e sem os passos 4 a 7, e o passo 8 se reduz ao `omhl gate-worktree`.
+
+**O ciclo como dado e a vista por papel.** O [`cycle.md`](../plugin/skills/directives-flow/references/cycle.md) traz, além da prosa dos dez passos, um bloco `omhl-cycle` com o número, o nome e os papéis de cada passo; um teste confere que o bloco e a prosa concordam. Cada agente pré-carrega a skill `role-<papel>` pelo campo `skills:`, que lista os comandos `omhl` do papel por passo, e as páginas de comando de `directives-flow/references/` e `review/references/` abrem com a tabela de quem roda o comando e em qual passo. As três skills de CLI antigas (consulta, checks e fechamento) foram dissolvidas nessas duas skills. A decisão, as medições do canal `skills:` e os limites estão no [ADR 0010](adr/0010-skills-por-papel-e-entrevista-antes-do-work-item.md).
+
 ### Os dez passos
 
 1. **Work item.** A sessão principal grava `work-items.<id>` com `omhl append`, com o prefixo e o slug escolhidos.
@@ -688,7 +694,7 @@ O plugin traz sete agentes (`oh-my-hexflow:analyst`, `planner`, `architect`, `cr
 7. **Consenso.** A volta 1 são os passos 5 e 6; sem aceite, o architect (e o planner, se a spec muda) revê e o critic julga de novo, em **no máximo 3 voltas** no total. O aceite é o veredito `ACCEPT`; `ACCEPT-WITH-RESERVATIONS` vai ao dono com as reservas. Na terceira volta sem aceite, a sessão principal para e mostra o impasse ao dono. Os `contradicts` seguem vigentes e travam o `omhl gate-pr`: o dono os retira num terminal fora do Claude Code, ou manda revisar e o verifier os retira. O veredito do critic circula só na mensagem entre os agentes e não vai ao grafo.
 8. **Spec e worktree.** Com o aceite, o `oh-my-hexflow:verifier` retira os `contradicts` resolvidos; um `FAIL` ou `INCOMPLETE` dele conta como volta sem aceite. Então vêm a conferência final com `omhl spec validate`, o `omhl gate-worktree`, a worktree e a implementação.
 9. **Revisão.** O `oh-my-hexflow:code-reviewer` e o `oh-my-hexflow:security-reviewer` revisam a entrega; cada achado vira uma `divergence` (código que não cumpre a spec) ou uma `decision` com `contradicts` (violação de diretiva ou de decisão). A sessão principal corrige o código das divergências abertas; um desvio que o dono aceita não é correção, e só a resposta dele grava `accepted`. Antes do gate do PR, o `oh-my-hexflow:verifier` fecha a `divergence` de `open` para `code-fixed`, com evidência nova, e retira os `contradicts` resolvidos.
-10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic; depois vêm `omhl gate-pr` e `omhl close`, pela skill [`work-item-closing`](../plugin/skills/work-item-closing/SKILL.md).
+10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic; depois vêm `omhl gate-pr` e `omhl close`, pela skill [`review`](../plugin/skills/review/SKILL.md), passo 8.
 
 ```mermaid
 flowchart TD
@@ -701,7 +707,8 @@ flowchart TD
   P7 -- "sim" --> P8A["8 verifier: retira contradicts resolvidos"]
   P7 -- "não" --> LIM{"3 voltas feitas?"}
   P8A -- "FAIL ou INCOMPLETE" --> LIM
-  LIM -- "não" --> P5
+  LIM -- "não, e a spec não muda" --> P5
+  LIM -- "não, e a spec muda" --> P4
   LIM -- "sim" --> ESC["Impasse: a sessão principal para e escala ao dono"]
   P8A -- "ok" --> P8B["8 spec validate, gate-worktree, worktree e implementação"]
   P8B --> P9["9 code-reviewer e security-reviewer"]

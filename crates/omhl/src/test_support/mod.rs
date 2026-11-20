@@ -8,9 +8,14 @@
 //! - `tests/support/views.rs`: o arquivo inteiro (`test_support/views.rs`);
 //! - `tests/support/pr_gate.rs`: `CI_GREEN`, `NO_OPEN_CONTRADICTION`, `DECISIONS_ANCHORED`, `ANCHORS_CONFIRMED`, `RECORD_ID`,
 //!   `native_check`, `default_natives`, `project_check`, `mechanical_project_check`, `required_pairs` e `snapshots`;
-//! - `tests/support/ext.rs`: `ExtTree` sem `at` e sem `fifo` (o `mkfifo` fica fora de `src`) e sem `write_check_file` e `toml_value`.
+//! - `tests/support/ext.rs`: `ExtTree` sem `at` e sem `fifo` (o `mkfifo` fica fora de `src`) e sem `write_check_file` e `toml_value`;
+//! - `tests/support/scan.rs`: `prove_both_sides` (em `role_view.rs`).
 //!
 //! Helpers que um `tests.rs` copia do arquivo de integração/e2e de onde saíram (uma mudança num vale também no outro):
+//! - `role_view.rs`, de `workflow/role_allow.rs`: `frontmatter` (o recorte entre as linhas `---`, com `\r\n`) e o `no_schema` da leitura (no `Cycle`, junto de `strict_booleans`);
+//!   de `tests/e2e/skills/coverage.rs`: a varredura de folhas (`leaf_commands`) e o padrão de citação (`citations`);
+//!   de `tests/e2e/skills/orchestration.rs`: `body` (como `skill_body`) e o padrão de `numbered_steps`;
+//! - `role_view/who_uses.rs`, de `tests/e2e/skills/workflow.rs`: `BASE_LEAVES` e `WHO_USES_HEADING`;
 //! - `graphs/tests.rs`, de `tests/integration/catalogs.rs`: `PREVIOUS_DECISIONS_CATALOG_V3`, `catalog`, `catalog_from`, `confirmation`,
 //!   `confirmed`, `gap`, `is_accepted`, `old_decisions_guideline`, `old_decisions_premise`, `plain` e `with`;
 //! - `workflow/spec/tests.rs`, de `tests/e2e/spec_validate.rs`: `AMENDMENT_MOTIVE_BODY_LINE`, `PART_CA_LINE`, `PART_CMP_LINE`,
@@ -37,6 +42,7 @@ pub mod ext;
 pub mod gate;
 pub mod omhl;
 pub mod pr_gate;
+pub mod role_view;
 pub mod views;
 
 use hexlog::{Author, RelationTypeName, SemanticId, Snapshot, SnapshotKind, TenantId, TypeName};
