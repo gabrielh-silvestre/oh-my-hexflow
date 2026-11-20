@@ -156,6 +156,7 @@ As decisões estruturais, com o porquê de cada uma:
 - [0007](adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md): uma opção da CLI é respeitada ou recusada com a regra, nunca cortada ou ignorada em silêncio (3.11, `app`).
 - [0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md): o papel do agente portado é imposto pelo hook `agent-role` e pela matriz compilada, e o limite é o erro do agente, não a má-fé (3.12, 3.24).
 - [0009](adr/0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md): `--format agent|human|json` é uma opção global, o padrão de cada comando vem de ele ter renderizador, e o texto nasce de um `Doc` e de um vocabulário central em `adapters/text/` (3.12).
+- [0010](adr/0010-spec-aprovada-congelada-para-sempre.md): uma spec aprovada fica congelada por branch local ou pela marca `.frozen` do work item, gravada por uma só função, e o `spec-lock` decide pelo caminho lexical e pelo físico.
 
 ## 3. Caixas cinzas
 

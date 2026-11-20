@@ -247,7 +247,7 @@ omhl-freeze = "case {{ branch }} in develop|main) exit 0;; esac; omhl hook wt-po
 
 ## 6. A spec
 
-As specs ficam em `<specs.dir>/wi-<id>__<slug>/`, por padrão `.omhl/specs/wi-<id>__<slug>/`. A pasta tem as partes `parte-NN.md` (`NN` com dois dígitos) e, depois, as emendas `emenda-NN.md`. Elas ficam fora do git: a worktree não as recebe, e o `spec validate` acha o diretório principal sozinho, de qualquer worktree.
+As specs ficam em `<specs.dir>/wi-<id>__<slug>/`, por padrão `.omhl/specs/wi-<id>__<slug>/`. A pasta tem as partes `parte-NN.md` (`NN` com dois dígitos) e, depois, as emendas `emenda-NN.md`. Elas ficam fora do git: a worktree não as recebe, e o `spec validate` acha o diretório principal sozinho, de qualquer worktree. Cada spec admite até 99 emendas: o nome leva dois dígitos, e `emenda-100.md` não segue o padrão (limite aceito, [ADR 0010](adr/0010-spec-aprovada-congelada-para-sempre.md)).
 
 ### `omhl spec init`
 
@@ -372,7 +372,7 @@ O hook lê o evento no stdin e decide por regras fechadas:
 2. Está congelada a spec cujo work item tem uma branch local (`tipo/wi-<id>__<slug>`) **ou a marca `.frozen`** em qualquer pasta `wi-<id>__*` dele. O hook só olha o disco e o git, nunca o banco. Work item que nunca teve branch e não tem marca segue editável e não ganha marca.
 3. Numa spec congelada, o hook nega `Edit` e `MultiEdit` em qualquer arquivo da pasta, `Write` sobre um arquivo que já existe e `Write` de uma `parte-NN.md` nova.
 4. Numa spec congelada, nenhum arquivo se escreve numa pasta que não existe. Pasta nova do work item (por exemplo, um slug digitado errado) é negada com `spec-folder-unknown`.
-5. A única exceção é a criação de emenda: `Write` de um arquivo que ainda não existe, chamado `emenda-NN.md`, em que `NN` é o próximo número da pasta (o maior existente mais um, ou `01`). Um arquivo novo que não é `parte-*` nem `emenda-*` (por exemplo `notas.md`) também passa. O nome é conferido só no nível da pasta: `sub/parte-01.md` e `sub/emenda-07.md`, num arquivo novo dentro de uma subpasta, também passam, e o `spec validate` não os lê.
+5. A única exceção é a criação de emenda: `Write` de um arquivo que ainda não existe, chamado `emenda-NN.md`, em que `NN` é o próximo número da pasta (o maior existente mais um, ou `01`). Um arquivo novo que não é `parte-*` nem `emenda-*` (por exemplo `notas.md`) também passa. O nome é conferido só no nível da pasta: `sub/parte-01.md` e `sub/emenda-07.md`, num arquivo novo dentro de uma subpasta, também passam, e o `spec validate` não os lê. O teto é `emenda-99.md`: com ela na pasta, o próximo número seria 100, que o hook ainda libera e o `spec validate` recusa com `amendment-name-invalid`.
 6. Escrever uma spec dentro de uma worktree ligada é barrado, com ou sem branch do work item.
 7. A marca é um arquivo vazio. `Edit` ou `Write` sobre uma marca que já existe é negado como qualquer arquivo da spec. Ao decidir um evento de spec, o hook grava `.frozen` em cada pasta de cada work item que tem branch local e ainda não tem a marca (efeito colateral do hook: ele passa a escrever no disco). A gravação não segue link, trata qualquer coisa que já ocupe o nome como "já marcado" e recusa uma pasta `wi-<id>__*` que é link simbólico. A cura não muda a decisão, o número da próxima emenda nem o que o `spec validate` lê (o `.frozen` não termina em `.md`).
 
@@ -529,7 +529,7 @@ Spec aprovada nunca é editada. Para corrigir um erro da spec depois da aprovaç
 
 1. Registre uma `divergence` com `resolution` `open` (`omhl append`).
 2. Pergunte ao humano se a spec estava errada. Se não estava, não há emenda: a divergência se resolve como `code-fixed` ou `accepted`.
-3. Se estava, crie `emenda-NN.md` na pasta da spec do work item, com `Write` de um arquivo novo. O hook libera só o próximo número. A emenda tem três seções `##`, na ordem:
+3. Se estava, crie `emenda-NN.md` na pasta da spec do work item, com `Write` de um arquivo novo. O hook libera só o próximo número, até `emenda-99.md`: a 100ª não cabe no padrão (seção 6). A emenda tem três seções `##`, na ordem:
 
    ```markdown
    ## Divergência
