@@ -163,6 +163,13 @@ impl AppError {
         )
     }
 
+    pub(crate) fn path_unresolvable() -> AppError {
+        AppError::plain(
+            "path-unresolvable",
+            "the physical path of the edited file cannot be resolved; the lock decided by the lexical path only",
+        )
+    }
+
     pub(crate) fn invalid_project_dir() -> AppError {
         AppError::plain(
             "invalid-project-dir",

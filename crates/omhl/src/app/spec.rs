@@ -12,10 +12,11 @@ use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::branch::work_item_id;
 use crate::ports::files::FILE_TOO_LARGE;
 use crate::ports::git::GitProbe;
+use crate::ports::paths::resolve_physical;
 use crate::ports::specs::{SpecDocument, SpecFolder, SpecStore, SpecStoreError};
 use crate::ports::workflow::{read_policy, read_workflow};
 use crate::probe::ProbeError;
-use crate::project::marker::{Located, find_marker};
+use crate::project::marker::find_marker;
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{
     Facts, Tool, Verdict, decide, has_spec_folder_component, parse_spec_path,
@@ -303,33 +304,62 @@ fn folder_violations(
 /// O evento `PreToolUse` já lido pelo adapter: `app` não conhece o formato do payload.
 pub enum SpecLockEvent {
     NotAnEdit,
-    Edit {
-        tool: Tool,
-        cwd: PathBuf,
-        file_path: PathBuf,
-    },
+    Edit { tool: Tool, file_path: PathBuf },
 }
 
-/// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. A ordem importa: o
-/// git só é consultado quando algum componente do caminho tem a forma da pasta de work item.
-pub fn spec_lock(event: SpecLockEvent) -> Result<Verdict, AppError> {
-    let SpecLockEvent::Edit {
-        tool,
-        cwd,
-        file_path,
-    } = event
-    else {
-        return Ok(Verdict::Allow);
+/// A decisão da trava e o aviso que a acompanha: o aviso vai ao stderr sem mudar a decisão.
+pub struct SpecLockOutcome {
+    pub verdict: Verdict,
+    pub notice: Option<AppError>,
+}
+
+/// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. Decide pelo caminho
+/// lexical e pelo físico (links resolvidos), e a negação de qualquer um vence; se o físico não se
+/// resolve, vale o lexical. A ordem importa: o git só é consultado para o caminho em que algum
+/// componente tem a forma da pasta de work item.
+pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
+    let SpecLockEvent::Edit { tool, file_path } = event else {
+        return Ok(SpecLockOutcome {
+            verdict: Verdict::Allow,
+            notice: None,
+        });
     };
-    if !has_spec_folder_component(&file_path) {
-        return Ok(Verdict::Allow);
+    let physical = resolve_physical(&file_path);
+    let notice = (physical.is_err() && has_spec_folder_component(&file_path))
+        .then(AppError::path_unresolvable);
+    let mut paths = vec![file_path];
+    if let Ok(physical) = physical
+        && !paths.contains(&physical)
+    {
+        paths.push(physical);
     }
-    let Some(located) = find_project(&file_path, &cwd)? else {
+
+    let mut failure = None;
+    for path in paths.iter().filter(|path| has_spec_folder_component(path)) {
+        match decide_path(tool, path) {
+            Ok(verdict @ Verdict::Deny { .. }) => return Ok(SpecLockOutcome { verdict, notice }),
+            Ok(Verdict::Allow) => {}
+            Err(error) => failure = failure.or(Some(error)),
+        }
+    }
+
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(SpecLockOutcome {
+            verdict: Verdict::Allow,
+            notice,
+        }),
+    }
+}
+
+/// O veredito para um caminho já filtrado pelo texto; sem `.omhl.toml` acima do arquivo, libera.
+fn decide_path(tool: Tool, file_path: &Path) -> Result<Verdict, AppError> {
+    let Some(located) = find_marker(nearest_existing_dir(file_path))? else {
         return Ok(Verdict::Allow);
     };
     // Arquivo inválido cai nos padrões: liberar aqui deixaria a spec congelada editável por um typo.
     let config = read_policy(&located.root).unwrap_or_default();
-    let Some(spec) = parse_spec_path(&config.specs.dir, &file_path) else {
+    let Some(spec) = parse_spec_path(&config.specs.dir, file_path) else {
         return Ok(Verdict::Allow);
     };
 
@@ -342,9 +372,8 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<Verdict, AppError> {
         .map_err(git_failed)?
         .iter()
         .any(|branch| work_item_id(branch).is_some_and(|id| id.as_str() == work_item));
-    let checkout = GitProbe::new(nearest_existing_dir(&file_path))
-        .checkout_dir()
-        .map_err(git_failed)?;
+    // Do marcador, não da pasta do arquivo: com `specs.dir` link para fora do repositório, o git a partir da pasta do arquivo não acha repositório.
+    let checkout = probe.checkout_dir().map_err(git_failed)?;
     let specs_dir = main_dir.join(&config.specs.dir);
     let store = SpecStore::new(specs_dir.clone());
     let folder_files = store
@@ -366,14 +395,6 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<Verdict, AppError> {
     };
 
     Ok(decide(tool, &spec, &facts))
-}
-
-/// O projeto do arquivo editado; o do `cwd` da sessão só vale quando o arquivo está fora de qualquer projeto.
-fn find_project(file_path: &Path, cwd: &Path) -> Result<Option<Located>, AppError> {
-    match find_marker(nearest_existing_dir(file_path))? {
-        Some(located) => Ok(Some(located)),
-        None => Ok(find_marker(cwd)?),
-    }
 }
 
 /// O alvo de um `Write` pode ainda não existir, nem a pasta dele.

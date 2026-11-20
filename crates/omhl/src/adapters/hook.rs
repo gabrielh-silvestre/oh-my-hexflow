@@ -44,17 +44,27 @@ pub fn session_start(
 
 /// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
-    pre_tool_use(stdin, out, err, |input| {
-        Ok(match check_spec_lock(spec_lock_event(input)?)? {
+    let mut notice = None;
+    let code = pre_tool_use(stdin, out, err, |input| {
+        let outcome = check_spec_lock(spec_lock_event(input)?)?;
+        notice = outcome.notice;
+
+        Ok(match outcome.verdict {
             Verdict::Allow => None,
             Verdict::Deny { reason, .. } => {
                 Some(json!({ "permissionDecision": "deny", "permissionDecisionReason": reason }))
             }
         })
-    })
+    });
+    // O aviso acompanha a decisão: a negação vai no stdout e a linha de aviso, no stderr.
+    if let Some(notice) = notice {
+        let _ = writeln!(err, "{}", notice.to_json());
+    }
+
+    code
 }
 
-/// Ferramenta que não edita sai antes de ler `cwd` e `file_path`: o evento dela não precisa deles.
+/// Ferramenta que não edita sai antes de ler o `file_path`: o evento dela não precisa dele.
 fn spec_lock_event(input: &Value) -> Result<SpecLockEvent, AppError> {
     let Some(tool) = input["tool_name"].as_str().and_then(Tool::parse) else {
         return Ok(SpecLockEvent::NotAnEdit);
@@ -62,7 +72,6 @@ fn spec_lock_event(input: &Value) -> Result<SpecLockEvent, AppError> {
 
     Ok(SpecLockEvent::Edit {
         tool,
-        cwd: absolute_path(&input["cwd"])?,
         file_path: absolute_path(&input["tool_input"]["file_path"])?,
     })
 }

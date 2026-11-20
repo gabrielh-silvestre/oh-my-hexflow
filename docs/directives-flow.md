@@ -353,7 +353,7 @@ O hook `omhl hook spec-lock` é um `PreToolUse` do Claude Code para `Edit`, `Wri
 
 O hook lê o evento no stdin e decide por regras fechadas:
 
-1. O caminho precisa estar sob `<specs.dir>/wi-<id>__<slug>/`. Senão ele sai com `0` sem abrir banco nem git. O caminho é normalizado no texto (`.` e `..`) antes do filtro.
+1. O caminho precisa estar sob `<specs.dir>/wi-<id>__<slug>/`. Senão ele sai com `0` sem abrir banco nem git. O hook avalia dois caminhos: o lexical, normalizado no texto (`.` e `..`), e o físico, com os links simbólicos resolvidos (a parte que ainda não existe é anexada no texto e um link pendente é seguido, até 40 saltos). A negação de qualquer um dos dois vence. Se o caminho físico não se resolve (laço de links, por exemplo), vale o lexical.
 2. Está congelada a spec cujo work item tem uma branch local (`tipo/wi-<id>__<slug>`). O hook só olha o disco e o git, nunca o banco.
 3. Numa spec congelada, o hook nega `Edit` e `MultiEdit` em qualquer arquivo da pasta, `Write` sobre um arquivo que já existe e `Write` de uma `parte-NN.md` nova.
 4. Numa spec congelada, nenhum arquivo se escreve numa pasta que não existe. Pasta nova do work item (por exemplo, um slug digitado errado) é negada com `spec-folder-unknown`.
@@ -372,7 +372,7 @@ A negação sai no stdout, com código de saída `0`:
 | `spec-in-linked-worktree` | O caminho está numa worktree ligada. As specs vivem só no diretório principal | Escreva no caminho do diretório principal que a mensagem informa |
 | `spec-folder-unknown` | O work item tem branch e a pasta do caminho não existe. Vale para qualquer arquivo | Escreva a emenda na pasta de spec que o work item já tem |
 
-O subcomando `hook spec-lock` nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto pelo caminho do arquivo e, se ele estiver fora de qualquer projeto, pelo `cwd` da sessão. Um `omhl` velho, sem o subcomando, é outro caso: o clap sai com `2`, e o envoltório `|| exit 1` do `hooks.json` o converte em `1` (seção 10). Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
+O subcomando `hook spec-lock` nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto só pelo caminho do arquivo (o `.omhl.toml` mais próximo acima dele); o `cwd` da sessão não entra, e um arquivo sem `.omhl.toml` acima dele é liberado em silêncio, sem abrir o git. Um `omhl` velho, sem o subcomando, é outro caso: o clap sai com `2`, e o envoltório `|| exit 1` do `hooks.json` o converte em `1` (seção 10). Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
 
 ## 8. Gap, divergência e retro
 
@@ -595,7 +595,9 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 ### Limites
 
-- O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo nem do `cwd`, o binário `omhl` não existe no `PATH`, o `omhl` do `PATH` é velho e não tem o subcomando `hook spec-lock` (o envoltório `|| exit 1` converte a saída `2` do clap em `1`, e o aviso de erro do hook fica visível no Claude Code), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
+- O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo, o binário `omhl` não existe no `PATH`, o `omhl` do `PATH` é velho e não tem o subcomando `hook spec-lock` (o envoltório `|| exit 1` converte a saída `2` do clap em `1`, e o aviso de erro do hook fica visível no Claude Code), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
+- Quando o caminho físico do arquivo não se resolve (laço de links simbólicos, mais de 40 saltos, leitura negada) e o caminho lexical tem a forma de uma pasta de work item, o hook decide só pelo lexical e deixa a linha `path-unresolvable` no stderr (a decisão não muda: sai com `0`, e o lexical pode negar). Se o lexical não tem essa forma, a escrita passa em silêncio.
+- O hook decide no instante da checagem. Se o alvo de um link simbólico mudar depois dela e antes da escrita (TOCTOU), o hook não detecta a troca.
 - O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
 - O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
 - Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`. O comando não tem a guarda `{% if branch %}`.

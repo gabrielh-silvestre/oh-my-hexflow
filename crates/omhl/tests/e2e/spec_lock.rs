@@ -1,7 +1,7 @@
 use crate::support;
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -769,6 +769,232 @@ fn it_should_deny_a_frozen_spec_when_the_session_cwd_has_no_marker_but_the_file_
 
     let reason = denied_reason(&output);
     assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_with_spec_frozen_a_frozen_spec_of_another_omhl_repository_when_cwd_is_in_a_different_one()
+ {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let other = Repo::new();
+
+    let output = repo.hook(&other.main, "Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_allow_a_spec_like_path_in_a_git_repository_without_omhl_marker() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let unmarked = TempDir::new().expect("unmarked repository directory is created");
+    let init = git_in(unmarked.path(), &["init", "-b", "main"]);
+    assert!(init.status.success(), "git init failed");
+    let spec_like = unmarked
+        .path()
+        .join(DEFAULT_SPECS)
+        .join(FOLDER)
+        .join("parte-01.md");
+
+    let output = repo.hook(&repo.main, "Edit", &spec_like);
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_allow_a_spec_like_path_outside_any_repository_without_git_error() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let outside = TempDir::new().expect("directory outside any repository is created");
+    let spec_like = outside
+        .path()
+        .join(DEFAULT_SPECS)
+        .join(FOLDER)
+        .join("parte-01.md");
+
+    let output = repo.hook(&repo.main, "Edit", &spec_like);
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_decide_an_edit_event_without_cwd() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let stdin = json!({
+        "session_id": "s1",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Edit",
+        "tool_input": { "file_path": repo.spec_file("parte-01.md"), "old_string": "a", "new_string": "b" },
+    })
+    .to_string();
+
+    let output = run_spec_lock(repo.project.xdg(), &stdin);
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+// Caminho físico: o link simbólico não tira a spec do congelamento
+
+fn link(target: &Path, at: &Path) {
+    symlink(target, at).expect("symlink is created");
+}
+
+/// `.omhl/specs` vira um link para `target`, e a spec congelada é gravada através dele.
+fn link_specs_dir_to(repo: &Repo, target: &Path) {
+    fs::create_dir_all(target).expect("link target is created");
+    fs::create_dir_all(repo.main.join(".omhl")).expect(".omhl is created");
+    link(target, &repo.main.join(DEFAULT_SPECS));
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+}
+
+#[test]
+fn it_should_deny_an_edit_through_a_symlink_to_the_specs_dir() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let alias = repo.main.join("alias");
+    link(&repo.main.join(DEFAULT_SPECS), &alias);
+
+    let output = repo.hook_in_main("Edit", &alias.join(FOLDER).join("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_an_edit_through_a_symlink_to_the_work_item_folder() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let alias = repo.main.join("alias");
+    link(&repo.folder(DEFAULT_SPECS), &alias);
+
+    let output = repo.hook_in_main("Edit", &alias.join("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_a_write_through_a_dangling_symlink_into_a_frozen_spec() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let alias = repo.main.join("alias.md");
+    link(&repo.spec_file("parte-02.md"), &alias);
+
+    let output = repo.hook_in_main("Write", &alias);
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_a_path_that_climbs_through_a_symlink_and_back_into_the_specs_dir() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let sibling = repo.main.join(".omhl/sibling");
+    fs::create_dir_all(&sibling).expect("sibling directory is created");
+    link(&sibling, &repo.main.join("link"));
+    let climbing = repo
+        .main
+        .join("link/../specs")
+        .join(FOLDER)
+        .join("parte-01.md");
+
+    let output = repo.hook_in_main("Edit", &climbing);
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_by_the_lexical_path_when_specs_dir_is_a_symlink_to_outside_the_repository() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    link_specs_dir_to(&repo, &repo.scratch.path().join("outside-specs"));
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_when_specs_dir_is_a_symlink_to_a_folder_inside_the_repository() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    link_specs_dir_to(&repo, &repo.main.join("docs/real-specs"));
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_keep_freezing_when_the_repository_root_is_reached_through_a_symlink() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let root_link = repo.scratch.path().join("root-link");
+    link(&repo.main, &root_link);
+
+    let output = repo.hook_in_main(
+        "Edit",
+        &root_link
+            .join(DEFAULT_SPECS)
+            .join(FOLDER)
+            .join("parte-01.md"),
+    );
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_decide_by_the_lexical_path_and_print_path_unresolvable_when_the_physical_path_cannot_be_resolved()
+ {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    fs::create_dir_all(repo.folder(DEFAULT_SPECS)).expect("spec folder is created");
+    let looping = repo.spec_file("parte-01.md");
+    link(Path::new("parte-01.md"), &looping);
+
+    let output = repo.hook_in_main("Edit", &looping);
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(
+        json_line(&output.stdout)["hookSpecificOutput"]["permissionDecision"],
+        json!("deny")
+    );
+    assert_eq!(
+        json_line(&output.stderr)["error"]["code"],
+        json!("path-unresolvable")
+    );
+}
+
+#[test]
+fn it_should_allow_a_symlink_that_points_outside_the_specs_dir() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let docs = repo.main.join("docs");
+    fs::create_dir_all(&docs).expect("docs directory is created");
+    let alias = repo.main.join("alias");
+    link(&docs, &alias);
+
+    let output = repo.hook_in_main("Write", &alias.join("notes.md"));
+
+    assert_allowed(&output);
 }
 
 // `specs.dir` sem pasta própria: a política inválida cai nos padrões, o congelamento não some
