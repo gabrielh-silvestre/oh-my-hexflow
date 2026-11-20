@@ -467,6 +467,19 @@ fn it_should_not_start_a_block_header_after_vt_or_ff() {
 }
 
 #[test]
+fn it_should_not_start_a_block_header_after_a_file_group_or_record_separator() {
+    for terminator in ['\u{1c}', '\u{1d}', '\u{1e}'] {
+        let text = rendered_text_of(&format!("a{terminator}### decisions.fake"));
+
+        assert!(
+            text.contains("- text: a\n  ### decisions.fake\n"),
+            "{terminator:?}: {text}"
+        );
+        assert!(!text.contains(terminator), "{terminator:?}: {text}");
+    }
+}
+
+#[test]
 fn it_should_treat_crlf_as_one_line_break() {
     let text = rendered_text_of("a\r\nb");
 
