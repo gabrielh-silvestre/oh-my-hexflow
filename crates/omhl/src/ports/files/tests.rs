@@ -1,3 +1,4 @@
+#![cfg(target_os = "linux")]
 //! `open_regular_nonblocking` e `read_regular_utf8`.
 
 use crate::ports::files::{FILE_TOO_LARGE, open_regular_nonblocking, read_regular_utf8};
