@@ -254,7 +254,7 @@ fn matrix_denial(
         deny(
             "command-outside-matrix",
             &format!(
-                "{} may run only these omhl commands (plus --help, -V and help): {}",
+                "{} may run only these omhl commands (plus -h/--help, -V/--version and <group> help): {}",
                 agent_name(role),
                 allow.commands.join(", ")
             ),

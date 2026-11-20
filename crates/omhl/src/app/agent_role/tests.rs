@@ -230,6 +230,17 @@ fn it_should_deny_a_command_outside_the_matrix() {
 }
 
 #[test]
+fn it_should_name_every_read_only_form_in_the_outside_matrix_message() {
+    let RoleVerdict::Deny { reason, .. } = ported_verdict_of(ATTEST) else {
+        panic!("expected the command outside the matrix to be denied");
+    };
+
+    for form in ["-h/--help", "-V/--version", "<group> help"] {
+        assert!(reason.contains(form), "the reason names `{form}`: {reason}");
+    }
+}
+
+#[test]
 fn it_should_allow_with_the_role_prefix() {
     let verdict = ported_verdict_of("omhl list");
 

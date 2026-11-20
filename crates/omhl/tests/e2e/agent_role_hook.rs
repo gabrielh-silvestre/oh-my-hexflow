@@ -1009,6 +1009,15 @@ fn it_should_allow_a_command_when_the_append_block_is_well_formed() {
 
 // Prefixo: só vale quando o `omhl` é provadamente o comando que o recebe
 
+#[test]
+fn it_should_name_every_read_only_form_in_the_outside_matrix_denial() {
+    let output = run_as("verifier", ATTEST);
+
+    for form in ["-h/--help", "-V/--version", "<group> help"] {
+        assert_denied_mentioning(&output, form);
+    }
+}
+
 fn assert_denied_mentioning(output: &Child, fragment: &str) {
     assert_denied(output, fragment);
     let decision = decision_of(output);
