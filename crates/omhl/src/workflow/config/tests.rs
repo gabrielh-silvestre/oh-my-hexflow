@@ -266,6 +266,15 @@ fn it_should_refuse_max_lines_zero_with_its_position() {
 }
 
 #[test]
+fn it_should_refuse_min_work_items_zero_with_its_position() {
+    let text = lines(&["version = 1", "[promotion]", "min_work_items = 0"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
 fn it_should_refuse_a_negative_max_lines_with_its_position() {
     let text = lines(&["version = 1", "[specs]", "max_lines = -5"]);
 

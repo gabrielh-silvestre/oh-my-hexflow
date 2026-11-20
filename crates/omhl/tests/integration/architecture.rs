@@ -47,7 +47,27 @@ const EXPECTED_DEPENDENCIES: &[&str] = &[
 const ATOMIC_PATHS: &[&str] = &["sync::atomic", "atomic::"];
 const MECHANICAL_FORBIDDEN_MODULES: &[&str] =
     &["adapters", "app", "facade", "ports", "runner", "byproduct"];
-const WORKFLOW_FORBIDDEN_MODULES: &[&str] = &["ports", "runner", "byproduct"];
+const WORKFLOW_FORBIDDEN_MODULES: &[&str] = &[
+    "ports",
+    "runner",
+    "byproduct",
+    "guard",
+    "render",
+    "extensions",
+];
+/// Métodos de `Path` que tocam o disco; chamados sem argumento (`path.exists()`). Os com argumento, como o `facts.exists(id)` de `workflow/spec.rs`, não acusam.
+const WORKFLOW_FS_METHODS: &[&str] = &[
+    "exists",
+    "try_exists",
+    "is_dir",
+    "is_file",
+    "is_symlink",
+    "metadata",
+    "symlink_metadata",
+    "canonicalize",
+    "read_dir",
+    "read_link",
+];
 const PORTS_FORBIDDEN_MODULES: &[&str] = &["extensions"];
 const SERVICE_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super::"];
@@ -55,6 +75,8 @@ const SPEC_GRAMMAR_LITERALS: &[&str] = &["wi-", "parte-", "emenda-"];
 const SPEC_GRAMMAR_MODULE: &str = "workflow/names.rs";
 const OUTPUT_VOCAB_LITERALS: &[&str] = &["✔", "✘", "⚠", "Next:"];
 const OUTPUT_VOCAB_MODULE: &str = "adapters/text/vocab.rs";
+const ROLE_LITERALS: &[&str] = &["OMHL_ROLE", "omhl:"];
+const ROLE_MODULE: &str = "guard/role.rs";
 const REMOVED_PORT_TERMS: &[&str] = &["mcp", "tool_call", "json-rpc"];
 const NUMERIC_CUT_NEEDLES: &[&str] = &[".min(", ".max(", ".clamp(", ".take(", "saturating_"];
 /// Cortes numéricos de `src/app` por arquivo, os únicos justificados; um corte novo entra aqui com a
@@ -75,6 +97,8 @@ const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
 const UNIT_TEST_FILE: &str = "tests.rs";
 const UNIT_TEST_SUPPORT_DIR: &str = "test_support";
 const CARGO_BIN_EXE: &str = "CARGO_BIN_EXE";
+/// O unitário que abre um FIFO numa thread e espera o resultado com `recv_timeout`.
+const UNIT_DEADLINE_SOURCE: &str = "ports/files/tests.rs";
 /// Caminhos e identificadores que um unitário não usa: processo, espera por relógio e a fachada.
 /// Casam por identificador inteiro (`App` não acusa `AppError`, `Command` solto não acusa o enum da CLI).
 const UNIT_FORBIDDEN_WHOLE: &[&str] = &[
@@ -932,7 +956,7 @@ clap = "1"
 hexlog = { path = "../hexlog" }
 regex = "=1.13.1"
 serde = "1"
-serde-saphyr = "2"
+serde-saphyr = "=2.1.1"
 serde_json = "1"
 sha2 = "=0.11.1"
 tempfile = "3"
@@ -1109,8 +1133,19 @@ fn mechanical_refs(source: &str) -> Result<usize, String> {
     forbidden_module_refs(source, MECHANICAL_FORBIDDEN_MODULES)
 }
 
+/// `std::fs` solto, agrupado (`use std::{fs, ...}`) ou em caminho, mais cada método de IO de `Path` sem argumento.
+fn std_fs_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+    let methods: usize = WORKFLOW_FS_METHODS
+        .iter()
+        .map(|method| code.matches(&format!(".{method}()")).count())
+        .sum();
+
+    Ok(occurrences(&code, "std::fs", true) + grouped_refs(&code, "std::", &["fs"]) + methods)
+}
+
 fn workflow_refs(source: &str) -> Result<usize, String> {
-    forbidden_module_refs(source, WORKFLOW_FORBIDDEN_MODULES)
+    Ok(forbidden_module_refs(source, WORKFLOW_FORBIDDEN_MODULES)? + std_fs_refs(source)?)
 }
 
 fn ports_refs(source: &str) -> Result<usize, String> {
@@ -1279,7 +1314,7 @@ fn it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner
 }
 
 #[test]
-fn it_should_keep_the_workflow_module_free_of_ports_runner_and_byproduct() {
+fn it_should_keep_the_workflow_module_free_of_guard_render_extensions_and_std_fs() {
     let mut failures = prove_both_sides(
         workflow_refs,
         &[
@@ -1289,6 +1324,26 @@ fn it_should_keep_the_workflow_module_free_of_ports_runner_and_byproduct() {
             "use crate::{project::Env, ports::git::GitProbe};",
             "use super::ports::Anything;",
             "let probe = ports::git::GitProbe::new(dir);",
+            "use crate::guard::attestation_id;",
+            "use crate::render::sort_by_id;",
+            "use crate::extensions::collect::extension_file_exists;",
+            "use crate::{project::Env, guard::Guard};",
+            "let id = guard::attestation_id(node);",
+            "let text = render::sort_by_id(nodes);",
+            "use std::fs;",
+            "use std::{fs, io};",
+            "use std::{io, fs::File};",
+            "let text = std::fs::read_to_string(path);",
+            "let found = path.exists();",
+            "let found = path.try_exists();",
+            "let found = path.is_dir();",
+            "let found = path.is_file();",
+            "let found = path.is_symlink();",
+            "let meta = path.metadata();",
+            "let meta = path.symlink_metadata();",
+            "let real = path.canonicalize();",
+            "let entries = path.read_dir();",
+            "let target = path.read_link();",
         ],
         &[
             "use crate::project::layout::OMHL_DIR;",
@@ -1296,6 +1351,16 @@ fn it_should_keep_the_workflow_module_free_of_ports_runner_and_byproduct() {
             "// use crate::ports::git::GitProbe;",
             "const P: &str = \"crate::runner::RunSpec\";",
             "use crate::reports::Thing;",
+            "// use crate::guard::attestation_id;",
+            "const P: &str = \"crate::render::sort_by_id\";",
+            "use crate::renderer::Thing;",
+            "let missing = !facts.exists(id);",
+            "// let found = path.exists();",
+            "const P: &str = \"std::fs::read_to_string path.is_dir()\";",
+            "use std::path::{Path, PathBuf};",
+            "use std::{collections::HashMap, io};",
+            "use std::fsx::Thing;",
+            "let meta = Meta::metadata(path);",
         ],
     );
 
@@ -1367,14 +1432,40 @@ fn it_should_confine_nix_to_the_process_port() {
             "let p = std::os::unix::process::parent_id();",
         ],
     );
-    let outside_process_port: Vec<PathBuf> = rust_files(&src_dir())
+    failures.extend(nix_outside_its_ports(&src_dir()));
+    let synthetic = tempfile::tempdir().expect("temporary directory");
+    write_tree(
+        synthetic.path(),
+        &[
+            ("ports/process.rs", "use nix::sys::signal::killpg;"),
+            ("ports/files.rs", "const F: i32 = nix::libc::O_NOFOLLOW;"),
+            ("ports/files/tests.rs", "use nix::unistd::mkfifo;"),
+            ("ports/specs.rs", "use nix::unistd::mkfifo;"),
+        ],
+    );
+
+    let flagged = nix_outside_its_ports(synthetic.path());
+
+    assert_eq!(flagged.len(), 1, "{flagged:?}");
+    assert!(flagged[0].contains("ports/specs.rs"), "{flagged:?}");
+    assert_no_failures(&failures);
+}
+
+/// O `nix` vive no port de processo e no port de arquivos (`O_NOFOLLOW`, `O_NONBLOCK` e o `mkfifo` do teste).
+const NIX_PORT_SOURCES: &[&str] = &["ports/process.rs", "ports/files.rs", "ports/files/tests.rs"];
+
+fn nix_outside_its_ports(root: &Path) -> Vec<String> {
+    let outside: Vec<PathBuf> = all_rust_files(root)
         .into_iter()
-        .filter(|file| relative_to_src(file) != "ports/process.rs")
+        .filter(|file| {
+            let relative = file.strip_prefix(root).unwrap_or(file);
+            !NIX_PORT_SOURCES
+                .iter()
+                .any(|port| relative == Path::new(port))
+        })
         .collect();
 
-    failures.extend(scan_paths(&outside_process_port, nix_refs));
-
-    assert_no_failures(&failures);
+    scan_paths(&outside, nix_refs)
 }
 
 #[test]
@@ -1558,6 +1649,34 @@ fn it_should_keep_the_output_vocabulary_literals_inside_the_vocab_module() {
 }
 
 #[test]
+fn it_should_keep_the_role_literals_inside_the_role_module() {
+    let mut failures = prove_both_sides(
+        |source| literal_refs(source, ROLE_LITERALS),
+        &[
+            "const VARIABLE: &str = \"OMHL_ROLE\";",
+            "const PREFIX: &str = \"omhl:\";",
+            "let role = std::env::var_os(\"OMHL_ROLE\");",
+        ],
+        &[
+            "use crate::guard::ROLE_PREFIX;",
+            "const CRITIC: &str = \"omhl:critic\";",
+            "// const VARIABLE: &str = \"OMHL_ROLE\";",
+            "let text = \"OMHL_ROLE is set by the plugin hook only\";",
+        ],
+    );
+    let outside_role: Vec<PathBuf> = rust_files(&src_dir())
+        .into_iter()
+        .filter(|path| !path.ends_with(ROLE_MODULE))
+        .collect();
+
+    failures.extend(scan_paths(&outside_role, |source| {
+        literal_refs(source, ROLE_LITERALS)
+    }));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
 fn it_should_keep_the_removed_mcp_port_out_of_the_src_layers() {
     let mut failures = prove_both_sides(
         removed_port_refs,
@@ -1683,10 +1802,20 @@ fn prove_synthetic_dir_is_flagged() -> Vec<String> {
 
 /// Número de usos proibidos a um unitário: processo, espera por relógio, fachada e o binário do cargo.
 fn unit_boundary_refs(source: &str) -> Result<usize, String> {
+    unit_boundary_refs_except(source, &[])
+}
+
+/// O unitário do FIFO é o único que espera com prazo (`recv_timeout`): o resto da trava vale para ele.
+fn unit_boundary_refs_with_deadline(source: &str) -> Result<usize, String> {
+    unit_boundary_refs_except(source, &["recv_timeout"])
+}
+
+fn unit_boundary_refs_except(source: &str, allowed: &[&str]) -> Result<usize, String> {
     let lexed = lex(source)?;
     let code = tighten(&lexed.code);
     let whole: usize = UNIT_FORBIDDEN_WHOLE
         .iter()
+        .filter(|needle| !allowed.contains(needle))
         .map(|needle| occurrences(&code, needle, true))
         .sum();
     let prefix: usize = UNIT_FORBIDDEN_PREFIX
@@ -1852,7 +1981,23 @@ fn it_should_keep_unit_test_sources_inside_the_crate_boundary() {
         ));
     }
 
-    failures.extend(scan_paths(&sources, unit_boundary_refs));
+    failures.extend(prove_both_sides(
+        unit_boundary_refs_with_deadline,
+        &[
+            "fn f() { std::thread::sleep(d); }",
+            "use std::process::Command;",
+        ],
+        &["fn f() { receiver.recv_timeout(d); }"],
+    ));
+    let (deadline_sources, other_sources): (Vec<PathBuf>, Vec<PathBuf>) = sources
+        .into_iter()
+        .partition(|path| relative_to_src(path) == UNIT_DEADLINE_SOURCE);
+
+    failures.extend(scan_paths(&other_sources, unit_boundary_refs));
+    failures.extend(scan_paths(
+        &deadline_sources,
+        unit_boundary_refs_with_deadline,
+    ));
 
     assert_no_failures(&failures);
 }

@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use crate::ports::files::read_regular_utf8;
 use crate::ports::git::GitProbe;
-use crate::probe::GitTopology;
 use crate::project::ProjectError;
 use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
 use crate::workflow::config::{INVALID_WORKFLOW_CONFIG, WorkflowConfig, parse_workflow};

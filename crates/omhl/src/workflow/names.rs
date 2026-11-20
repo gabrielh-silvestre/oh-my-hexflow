@@ -9,6 +9,8 @@ pub const PART_PREFIX: &str = "parte-";
 pub const AMENDMENT_PREFIX: &str = "emenda-";
 pub const FILE_SUFFIX: &str = ".md";
 pub const FIRST_PART_FILE: &str = "parte-01.md";
+/// Arquivo vazio na pasta de spec que a congela para sempre, mesmo sem branch do work item.
+pub const FREEZE_MARK: &str = ".frozen";
 /// Prefixo do id semântico de um work item; o que vem depois é o `<id>` da pasta.
 pub const WORK_ITEM_ID_PREFIX: &str = "work-items.";
 

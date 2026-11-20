@@ -1,5 +1,5 @@
 use crate::workflow::config::{RequireAtom, WorkflowConfig};
-use crate::workflow::matrix::{PremiseFact, PremiseKind, missing_atoms};
+use crate::workflow::matrix::{PremiseFact, PremiseKind, unsatisfied_atoms};
 
 // Função pura: a matriz de prefixos
 
@@ -38,7 +38,20 @@ fn missing_with_spec(
     premises: &[PremiseFact],
     spec_valid: bool,
 ) -> Option<Vec<RequireAtom>> {
-    missing_atoms(prefix, &WorkflowConfig::default(), premises, spec_valid)
+    missing_by_config(prefix, &WorkflowConfig::default(), premises, spec_valid)
+}
+
+/// `None` quando o prefixo não está na tabela.
+fn missing_by_config(
+    prefix: &str,
+    config: &WorkflowConfig,
+    premises: &[PremiseFact],
+    spec_valid: bool,
+) -> Option<Vec<RequireAtom>> {
+    config
+        .prefixes
+        .get(prefix)
+        .map(|required| unsatisfied_atoms(required, premises, spec_valid))
 }
 
 fn assert_missing_for(prefixes: &[&str], premises: &[PremiseFact], expected: &[RequireAtom]) {
@@ -229,14 +242,14 @@ fn config_requiring_only_spec() -> WorkflowConfig {
 
 #[test]
 fn it_should_report_the_spec_atom_when_it_is_the_only_one_required_and_the_spec_is_not_valid() {
-    let missing_for_feat = missing_atoms("feat", &config_requiring_only_spec(), &[], false);
+    let missing_for_feat = missing_by_config("feat", &config_requiring_only_spec(), &[], false);
 
     assert_eq!(missing_for_feat, Some(vec![RequireAtom::Spec]));
 }
 
 #[test]
 fn it_should_report_nothing_when_the_spec_is_the_only_atom_required_and_the_spec_is_valid() {
-    let missing_for_feat = missing_atoms("feat", &config_requiring_only_spec(), &[], true);
+    let missing_for_feat = missing_by_config("feat", &config_requiring_only_spec(), &[], true);
 
     assert_eq!(missing_for_feat, Some(vec![]));
 }
@@ -253,7 +266,7 @@ fn it_should_report_the_missing_atoms_in_the_order_of_the_require_list() {
         ],
     );
 
-    let missing_for_perf = missing_atoms("perf", &config, &[], false);
+    let missing_for_perf = missing_by_config("perf", &config, &[], false);
 
     assert_eq!(
         missing_for_perf,
@@ -277,7 +290,7 @@ fn it_should_skip_a_valid_spec_in_the_middle_of_the_require_list() {
         ],
     );
 
-    let missing_for_perf = missing_atoms("perf", &config, &[], true);
+    let missing_for_perf = missing_by_config("perf", &config, &[], true);
 
     assert_eq!(
         missing_for_perf,

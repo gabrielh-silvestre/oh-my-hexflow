@@ -1,3 +1,4 @@
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use hexlog::SemanticId;
@@ -11,10 +12,11 @@ use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::branch::work_item_id;
 use crate::ports::files::FILE_TOO_LARGE;
 use crate::ports::git::GitProbe;
-use crate::ports::specs::{SpecDocument, SpecFolder, SpecStore, SpecStoreError};
+use crate::ports::paths::resolve_physical;
+use crate::ports::specs::{FreezeMarkWrite, SpecDocument, SpecFolder, SpecStore, SpecStoreError};
 use crate::ports::workflow::{read_policy, read_workflow};
-use crate::probe::{GitTopology, ProbeError};
-use crate::project::marker::{Located, find_marker};
+use crate::probe::ProbeError;
+use crate::project::marker::find_marker;
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{
     Facts, Tool, Verdict, decide, has_spec_folder_component, parse_spec_path,
@@ -119,12 +121,20 @@ impl Engine<'_> {
     }
 }
 
+/// O que o lote já leu do disco e do banco: a pasta da spec de cada work item e os fatos do grafo.
+#[derive(Default)]
+struct AmendmentBatch {
+    folders: HashMap<String, (WorkflowConfig, SpecFolder)>,
+    facts: Option<GraphFacts>,
+}
+
 impl Engine<'_> {
     /// Antes da guarda e de qualquer escrita: cada divergência que o lote leva a `spec-stale` com
     /// `amendment` na forma `emenda-NN` precisa estar `open` e citar uma emenda existente e válida.
     /// Fora dessa forma nada é lido do disco; a guarda recusa.
     pub(super) fn check_amendment_approvals(&mut self, request: &Value) -> Result<(), AppError> {
         let items = request["items"].as_array().map_or(&[][..], Vec::as_slice);
+        let mut batch = AmendmentBatch::default();
         for (index, item) in items.iter().enumerate() {
             let body = &item["body"];
             let data = &body["data"];
@@ -140,7 +150,7 @@ impl Engine<'_> {
             else {
                 continue;
             };
-            self.check_amendment_approval(index, body, amendment)?;
+            self.check_amendment_approval(index, body, amendment, &mut batch)?;
         }
 
         Ok(())
@@ -151,6 +161,7 @@ impl Engine<'_> {
         index: usize,
         body: &Value,
         amendment: &str,
+        batch: &mut AmendmentBatch,
     ) -> Result<(), AppError> {
         let data_pointer = format!("/items/{index}/body/data");
         let id = parse_at(
@@ -180,23 +191,29 @@ impl Engine<'_> {
             }]));
         }
 
-        let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
-        let (config, folder) = read_spec_folder(&root, work_item)?;
-        let file = format!("{amendment}.md");
         let not_found = || AppError::amendment_not_found(&format!("{data_pointer}/amendment"));
-        let folder = folder.ok_or_else(not_found)?;
+        if !batch.folders.contains_key(work_item) {
+            let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
+            let (config, folder) = read_spec_folder(&root, work_item)?;
+            let folder = folder.ok_or_else(not_found)?;
+            batch.folders.insert(work_item.to_owned(), (config, folder));
+        }
+        let (config, folder) = &batch.folders[work_item];
+        let file = format!("{amendment}.md");
         let document = folder
             .amendments
             .iter()
             .find(|document| document.name == file)
             .ok_or_else(not_found)?;
 
-        let facts = self.load_spec_facts()?;
-        let violations: Vec<Violation> =
-            folder_violations(work_item, &folder, &config.specs, &facts)
-                .into_iter()
-                .filter(|violation| file_of(violation) == file)
-                .collect();
+        let facts = match &batch.facts {
+            Some(facts) => facts,
+            None => batch.facts.insert(self.load_spec_facts()?),
+        };
+        let violations: Vec<Violation> = folder_violations(work_item, folder, &config.specs, facts)
+            .into_iter()
+            .filter(|violation| file_of(violation) == file)
+            .collect();
         if !violations.is_empty() {
             return Err(AppError::amendment_invalid(&violations));
         }
@@ -284,38 +301,90 @@ fn folder_violations(
     violations
 }
 
-/// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. A ordem importa: o
-/// git só é consultado quando algum componente do caminho tem a forma da pasta de work item.
-pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
-    let Some(tool) = input["tool_name"].as_str().and_then(Tool::parse) else {
-        return Ok(Verdict::Allow);
+/// O evento `PreToolUse` já lido pelo adapter: `app` não conhece o formato do payload.
+pub enum SpecLockEvent {
+    NotAnEdit,
+    Edit { tool: Tool, file_path: PathBuf },
+}
+
+/// A decisão da trava e os avisos que a acompanham: os avisos vão ao stderr sem mudar a decisão.
+pub struct SpecLockOutcome {
+    pub verdict: Verdict,
+    pub notices: Vec<AppError>,
+}
+
+/// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. Decide pelo caminho
+/// lexical e pelo físico (links resolvidos), e a negação de qualquer um vence; se o físico não se
+/// resolve, vale o lexical. A ordem importa: o git só é consultado para o caminho em que algum
+/// componente tem a forma da pasta de work item.
+pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
+    let SpecLockEvent::Edit { tool, file_path } = event else {
+        return Ok(SpecLockOutcome {
+            verdict: Verdict::Allow,
+            notices: Vec::new(),
+        });
     };
-    let cwd = absolute_path(&input["cwd"])?;
-    let file_path = absolute_path(&input["tool_input"]["file_path"])?;
-    if !has_spec_folder_component(&file_path) {
-        return Ok(Verdict::Allow);
+    let physical = resolve_physical(&file_path);
+    let mut notices: Vec<AppError> = (physical.is_err() && has_spec_folder_component(&file_path))
+        .then(AppError::path_unresolvable)
+        .into_iter()
+        .collect();
+    let mut paths = vec![file_path];
+    if let Ok(physical) = physical
+        && !paths.contains(&physical)
+    {
+        paths.push(physical);
     }
-    let Some(located) = find_project(&file_path, &cwd)? else {
-        return Ok(Verdict::Allow);
+
+    let mut failure = None;
+    for path in paths.iter().filter(|path| has_spec_folder_component(path)) {
+        match decide_path(tool, path) {
+            Ok((verdict, healed)) => {
+                // Os dois caminhos curam o mesmo projeto: o aviso do mesmo work item sai uma vez.
+                for notice in healed {
+                    if !notices.contains(&notice) {
+                        notices.push(notice);
+                    }
+                }
+                if matches!(verdict, Verdict::Deny { .. }) {
+                    return Ok(SpecLockOutcome { verdict, notices });
+                }
+            }
+            Err(error) => failure = failure.or(Some(error)),
+        }
+    }
+
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(SpecLockOutcome {
+            verdict: Verdict::Allow,
+            notices,
+        }),
+    }
+}
+
+/// O veredito para um caminho já filtrado pelo texto, mais os avisos da cura das marcas; sem
+/// `.omhl.toml` acima do arquivo, libera.
+fn decide_path(tool: Tool, file_path: &Path) -> Result<(Verdict, Vec<AppError>), AppError> {
+    let Some(located) = find_marker(nearest_existing_dir(file_path))? else {
+        return Ok((Verdict::Allow, Vec::new()));
     };
     // Arquivo inválido cai nos padrões: liberar aqui deixaria a spec congelada editável por um typo.
     let config = read_policy(&located.root).unwrap_or_default();
-    let Some(spec) = parse_spec_path(&config.specs.dir, &file_path) else {
-        return Ok(Verdict::Allow);
+    let Some(spec) = parse_spec_path(&config.specs.dir, file_path) else {
+        return Ok((Verdict::Allow, Vec::new()));
     };
 
     let git_failed = |error: ProbeError| AppError::probe_failed(&error.message);
     let probe = GitProbe::new(&located.root);
     let main_dir = probe.main_dir().map_err(git_failed)?;
     let work_item = format!("{WORK_ITEM_ID_PREFIX}{}", spec.work_item);
-    let frozen = probe
-        .local_branches()
-        .map_err(git_failed)?
+    let branches = probe.local_branches().map_err(git_failed)?;
+    let has_branch = branches
         .iter()
         .any(|branch| work_item_id(branch).is_some_and(|id| id.as_str() == work_item));
-    let checkout = GitProbe::new(nearest_existing_dir(&file_path))
-        .checkout_dir()
-        .map_err(git_failed)?;
+    // Do marcador, não da pasta do arquivo: com `specs.dir` link para fora do repositório, o git a partir da pasta do arquivo não acha repositório.
+    let checkout = probe.checkout_dir().map_err(git_failed)?;
     let specs_dir = main_dir.join(&config.specs.dir);
     let store = SpecStore::new(specs_dir.clone());
     let folder_files = store
@@ -327,8 +396,10 @@ pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
     let folder_exists = store
         .folder_exists(&spec.folder)
         .map_err(spec_store_refusal)?;
+    let marked = store.has_freeze_mark(&spec.work_item);
     let facts = Facts {
-        frozen,
+        has_branch,
+        marked,
         folder_exists,
         linked_worktree: checkout != main_dir,
         file_exists,
@@ -336,22 +407,78 @@ pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
         main_folder: &specs_dir.join(&spec.folder),
     };
 
-    Ok(decide(tool, &spec, &facts))
+    Ok((
+        decide(tool, &spec, &facts),
+        heal_freeze_marks(&store, &branches),
+    ))
 }
 
-/// O projeto do arquivo editado; o do `cwd` da sessão só vale quando o arquivo está fora de qualquer projeto.
-fn find_project(file_path: &Path, cwd: &Path) -> Result<Option<Located>, AppError> {
-    match find_marker(nearest_existing_dir(file_path))? {
-        Some(located) => Ok(Some(located)),
-        None => Ok(find_marker(cwd)?),
-    }
+/// Grava a marca nas pastas dos work items que têm branch local: é a rede para a branch apagada
+/// depois. Nenhuma falha vira erro, só um aviso, e a decisão da trava não depende dela.
+fn heal_freeze_marks(store: &SpecStore, branches: &[String]) -> Vec<AppError> {
+    let work_items: BTreeSet<String> = branches
+        .iter()
+        .filter_map(|branch| work_item_id(branch))
+        .filter_map(|id| {
+            id.as_str()
+                .strip_prefix(WORK_ITEM_ID_PREFIX)
+                .map(str::to_owned)
+        })
+        .collect();
+    work_items
+        .into_iter()
+        .filter(|work_item| mark_work_item(store, work_item).is_err())
+        .map(|work_item| AppError::freeze_mark_unwritable(&work_item))
+        .collect()
 }
 
-fn absolute_path(value: &Value) -> Result<PathBuf, AppError> {
-    match value.as_str().map(Path::new) {
-        Some(path) if path.is_absolute() => Ok(path.to_path_buf()),
-        _ => Err(AppError::invalid_hook_input()),
+/// Marca todas as pastas possíveis; a falha de uma não deixa as outras sem marca, e o primeiro erro sai no fim.
+fn mark_work_item(store: &SpecStore, work_item: &str) -> Result<(), SpecStoreError> {
+    mark_folders(store, store.markable_folders(work_item)?).map(|_| ())
+}
+
+/// Grava a marca em cada pasta e devolve `(gravadas, já marcadas)`; a falha de uma não deixa as outras sem marca, e o primeiro erro sai no fim.
+fn mark_folders(
+    store: &SpecStore,
+    folders: Vec<String>,
+) -> Result<(Vec<String>, Vec<String>), SpecStoreError> {
+    let (mut marked, mut already) = (Vec::new(), Vec::new());
+    let mut first_error = None;
+    for folder in folders {
+        match store.write_freeze_mark(&folder) {
+            Ok(FreezeMarkWrite::Written) => marked.push(folder),
+            Ok(FreezeMarkWrite::AlreadyMarked) => already.push(folder),
+            Err(error) => first_error = first_error.or(Some(error)),
+        }
     }
+
+    first_error.map_or(Ok((marked, already)), Err)
+}
+
+/// O nascimento de uma branch de work item (o `post-start` do `wt`): grava a marca em cada pasta
+/// do work item, pela mesma gravação da cura. Não abre o banco e não exige o work item nele;
+/// branch que não é de work item não tem efeito.
+pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
+    let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
+    let Some(work_item) = work_item_id(branch).and_then(|id| {
+        id.as_str()
+            .strip_prefix(WORK_ITEM_ID_PREFIX)
+            .map(str::to_owned)
+    }) else {
+        return Ok(json!({ "marked": [], "already": [] }));
+    };
+    let main_dir = GitProbe::new(&located.root)
+        .main_dir()
+        .map_err(|error| AppError::probe_failed(&error.message))?;
+    let config = read_policy(&located.root).unwrap_or_default();
+    let store = SpecStore::new(main_dir.join(&config.specs.dir));
+
+    let folders = store
+        .markable_folders(&work_item)
+        .map_err(spec_store_refusal)?;
+    let (marked, already) = mark_folders(&store, folders).map_err(spec_store_refusal)?;
+
+    Ok(json!({ "marked": marked, "already": already }))
 }
 
 /// O alvo de um `Write` pode ainda não existir, nem a pasta dele.

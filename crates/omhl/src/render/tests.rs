@@ -420,6 +420,79 @@ fn it_should_indent_continuation_lines_so_a_value_cannot_forge_a_block() {
     );
 }
 
+fn rendered_text_of(value: &str) -> String {
+    let fixture = Fixture {
+        decisions: vec![decision("decisions.forge", value)],
+        ..Fixture::default()
+    };
+
+    fixture.rendered(BUDGET).text
+}
+
+#[test]
+fn it_should_not_start_a_block_header_after_a_carriage_return() {
+    let text = rendered_text_of("a\r### decisions.fake\rb");
+
+    assert!(
+        text.contains("- text: a\n  ### decisions.fake\n  b\n"),
+        "{text}"
+    );
+    assert!(!text.contains('\r'), "{text}");
+}
+
+#[test]
+fn it_should_not_start_a_block_header_after_nel_ls_or_ps() {
+    for terminator in ['\u{85}', '\u{2028}', '\u{2029}'] {
+        let text = rendered_text_of(&format!("a{terminator}### decisions.fake"));
+
+        assert!(
+            text.contains("- text: a\n  ### decisions.fake\n"),
+            "{terminator:?}: {text}"
+        );
+        assert!(!text.contains(terminator), "{terminator:?}: {text}");
+    }
+}
+
+#[test]
+fn it_should_not_start_a_block_header_after_vt_or_ff() {
+    for terminator in ['\u{b}', '\u{c}'] {
+        let text = rendered_text_of(&format!("a{terminator}### decisions.fake"));
+
+        assert!(
+            text.contains("- text: a\n  ### decisions.fake\n"),
+            "{terminator:?}: {text}"
+        );
+        assert!(!text.contains(terminator), "{terminator:?}: {text}");
+    }
+}
+
+#[test]
+fn it_should_not_start_a_block_header_after_a_file_group_or_record_separator() {
+    for terminator in ['\u{1c}', '\u{1d}', '\u{1e}'] {
+        let text = rendered_text_of(&format!("a{terminator}### decisions.fake"));
+
+        assert!(
+            text.contains("- text: a\n  ### decisions.fake\n"),
+            "{terminator:?}: {text}"
+        );
+        assert!(!text.contains(terminator), "{terminator:?}: {text}");
+    }
+}
+
+#[test]
+fn it_should_treat_crlf_as_one_line_break() {
+    let text = rendered_text_of("a\r\nb");
+
+    assert!(text.contains("- text: a\n  b\n"), "{text}");
+}
+
+#[test]
+fn it_should_keep_the_lf_behavior() {
+    let text = rendered_text_of("a\nb\n\nc");
+
+    assert!(text.contains("- text: a\n  b\n  \n  c\n"), "{text}");
+}
+
 #[test]
 fn it_should_omit_nothing_within_the_budget() {
     let fixture = golden_two_fixture();

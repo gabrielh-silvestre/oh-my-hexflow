@@ -343,3 +343,31 @@ fn it_should_skip_a_comment_up_to_the_line_break() {
         ["other", "other"]
     );
 }
+
+#[test]
+fn it_should_not_read_an_assignment_value_as_a_keyword() {
+    for command in ["FOO=/srv/do omhl list", "FOO=/var/if omhl list"] {
+        let line = read(command);
+
+        assert_eq!(line.commands[0].program(), Some("omhl"), "{command}");
+        assert!(!line.commands[0].follows_keyword(), "{command}");
+    }
+}
+
+#[test]
+fn it_should_not_read_a_path_named_do_as_a_keyword() {
+    let line = read("./do omhl list");
+
+    assert_eq!(line.commands[0].program(), Some("do"));
+    assert!(!line.commands[0].follows_keyword());
+}
+
+#[test]
+fn it_should_keep_reading_a_bare_keyword() {
+    for keyword in ["!", "if", "then", "elif", "else", "while", "until", "do"] {
+        let line = read(&format!("{keyword} omhl list"));
+
+        assert_eq!(line.commands[0].program(), Some("omhl"), "{keyword}");
+        assert!(line.commands[0].follows_keyword(), "{keyword}");
+    }
+}

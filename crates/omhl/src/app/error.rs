@@ -163,6 +163,22 @@ impl AppError {
         )
     }
 
+    pub(crate) fn freeze_mark_unwritable(work_item: &str) -> AppError {
+        AppError::plain(
+            "freeze-mark-unwritable",
+            &format!(
+                "the freeze mark of work item {work_item} could not be written; the lock decided without it"
+            ),
+        )
+    }
+
+    pub(crate) fn path_unresolvable() -> AppError {
+        AppError::plain(
+            "path-unresolvable",
+            "the physical path of the edited file cannot be resolved; the lock decided by the lexical path only",
+        )
+    }
+
     pub(crate) fn invalid_project_dir() -> AppError {
         AppError::plain(
             "invalid-project-dir",

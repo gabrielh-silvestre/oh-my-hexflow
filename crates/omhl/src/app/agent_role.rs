@@ -1,19 +1,21 @@
+use std::iter::Peekable;
 use std::path::Path;
 
 use serde_json::{Value, json};
 
-use crate::guard::known_role;
+use crate::guard::{ROLE_PREFIX, ROLE_VARIABLE, known_role};
 use crate::ports::files::read_regular_utf8;
 use crate::workflow::omhl_leaf::resolve_leaf;
 use crate::workflow::role_allow::{RoleAllow, parse_role_allow};
-use crate::workflow::shell::{CommandLine, SimpleCommand, read_command};
+use crate::workflow::shell::{
+    CommandLine, SimpleCommand, is_omhl_word, mentions_omhl, read_command,
+};
 
 /// O `agent_type` real dos subagentes do plugin é `oh-my-hexflow:<papel>`.
 const PLUGIN_PREFIX: &str = "oh-my-hexflow:";
-/// O papel gravado em `OMHL_ROLE` e no `agent` dos records é `omhl:<papel>`.
-const ROLE_PREFIX: &str = "omhl:";
-const ROLE_VARIABLE: &str = "OMHL_ROLE";
-const ASSIGNING_PROGRAMS: [&str; 6] = ["export", "env", "declare", "typeset", "readonly", "local"];
+const ASSIGNING_PROGRAMS: [&str; 5] = ["export", "declare", "typeset", "readonly", "local"];
+/// Com `-p` e nomes, só estes imprimem o que o nome é; `export -p` e `readonly -p` atribuem (bash 5.2).
+const PRINTING_PROGRAMS: [&str; 2] = ["declare", "typeset"];
 const AGENT_FILE_MAX_BYTES: u64 = 64 * 1024;
 const BLANKS: [char; 2] = [' ', '\t'];
 
@@ -43,11 +45,8 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
         return RoleVerdict::Pass;
     };
     let line = read_command(command);
-    if line.as_ref().is_ok_and(assigns_role_variable) {
-        return deny(
-            "role-assignment",
-            "OMHL_ROLE is set by the plugin hook only; do not assign it in a command",
-        );
+    if let Some(change) = line.as_ref().ok().and_then(role_change) {
+        return change.denial();
     }
     let Some(role) = input["agent_type"]
         .as_str()
@@ -64,7 +63,7 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
         ),
         Ok(line) => ported_agent_verdict(role, &line, input, env),
         // O erro de leitura só pesa para o agente portado, e só se o comando fala de `omhl`.
-        Err(_) if command.contains("omhl") => deny(
+        Err(_) if mentions_omhl(command) => deny(
             "command-unreadable",
             "the command has an unclosed quote or heredoc, is too long or nests too deeply, and mentions omhl; fix the command",
         ),
@@ -72,28 +71,110 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
     }
 }
 
-/// Atribuição de `OMHL_ROLE` como prefixo (também depois de embrulho) ou como argumento de `export` e afins.
-fn assigns_role_variable(line: &CommandLine) -> bool {
-    line.commands.iter().any(|simple| {
-        let (prefix, program, args) = simple.split();
-        let assigns_in_prefix = prefix.iter().any(|word| names_role_variable(word));
-        let assigns_by_builtin = program
-            .is_some_and(|program| ASSIGNING_PROGRAMS.contains(&program))
-            && args.iter().any(|word| names_role_variable(word));
+/// O que um comando faz com `OMHL_ROLE`: dá um valor a ele ou o tira do ambiente.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RoleChange {
+    Assign,
+    Unset,
+}
 
-        assigns_in_prefix || assigns_by_builtin
+impl RoleChange {
+    fn denial(self) -> RoleVerdict {
+        match self {
+            Self::Assign => deny(
+                "role-assignment",
+                "OMHL_ROLE is set by the plugin hook only; do not assign it in a command",
+            ),
+            Self::Unset => deny(
+                "role-unset",
+                "OMHL_ROLE is set by the plugin hook only; do not unset it in a command",
+            ),
+        }
+    }
+}
+
+/// A primeira mudança de `OMHL_ROLE` que algum comando faz: como prefixo (também depois de embrulho) ou como argumento de `export` e afins.
+fn role_change(line: &CommandLine) -> Option<RoleChange> {
+    line.commands.iter().find_map(|simple| {
+        let (prefix, program, args) = simple.split();
+
+        prefix_role_change(prefix)
+            .or_else(|| program.and_then(|program| builtin_role_change(program, args)))
     })
 }
 
-/// `OMHL_ROLE`, `OMHL_ROLE=`, `OMHL_ROLE+=` e o nome atrás de `env -u` / `env --unset=` (inclusive grudado).
-fn names_role_variable(word: &str) -> bool {
-    let name = word
-        .strip_prefix("--unset=")
-        .or_else(|| word.strip_prefix("-u"))
-        .unwrap_or(word);
+/// As palavras antes do programa: o valor de `env -u` / `--unset` tira o papel, `OMHL_ROLE=` em qualquer palavra o atribui.
+/// O nome nu em outra palavra (`env -i grep OMHL_ROLE file`) não muda nada.
+fn prefix_role_change(prefix: &[String]) -> Option<RoleChange> {
+    let mut words = prefix.iter().map(String::as_str).peekable();
+    while let Some(word) = words.next() {
+        let change = match env_unset_value(word, &mut words) {
+            Some(value) if value == ROLE_VARIABLE => Some(RoleChange::Unset),
+            Some(value) => assigns_role_variable(value).then_some(RoleChange::Assign),
+            None => assigns_role_variable(word).then_some(RoleChange::Assign),
+        };
+        if change.is_some() {
+            return change;
+        }
+    }
 
-    name.strip_prefix(ROLE_VARIABLE)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('=') || rest.starts_with("+="))
+    None
+}
+
+/// Os argumentos de `export` e afins: `OMHL_ROLE=` atribui e o nome nu também, salvo em `declare -p NOME` / `typeset -p NOME`.
+/// O `-p` só vale entre as opções: depois do primeiro nome ou do `--` ele já é um nome.
+fn builtin_role_change(program: &str, args: &[String]) -> Option<RoleChange> {
+    if !ASSIGNING_PROGRAMS.contains(&program) {
+        return None;
+    }
+    let option_count = args
+        .iter()
+        .take_while(|word| word.starts_with('-') && word.as_str() != "--")
+        .count();
+    let (options, names) = args.split_at(option_count);
+    let only_prints = PRINTING_PROGRAMS.contains(&program)
+        && options
+            .iter()
+            .any(|option| !option.starts_with("--") && option.contains('p'));
+
+    names
+        .iter()
+        .any(|name| assigns_role_variable(name) || (name == ROLE_VARIABLE && !only_prints))
+        .then_some(RoleChange::Assign)
+}
+
+/// O valor que o getopt do `env` dá à opção `-u`/`--unset` na palavra; `None` se a palavra não é essa opção.
+/// Num cluster `-<letras>u<resto>` o valor é `<resto>` ou, se vazio, a palavra seguinte; `--u`..`--unset` são a mesma opção longa.
+/// O `u` só abre o valor quando as letras antes dele são flags do `env` sem valor: em `-Cu` o `u` é parte do valor do `-C`.
+fn env_unset_value<'w>(
+    word: &'w str,
+    following: &mut Peekable<impl Iterator<Item = &'w str>>,
+) -> Option<&'w str> {
+    if let Some(long) = word.strip_prefix("--") {
+        let (name, attached) = match long.split_once('=') {
+            Some((name, value)) => (name, Some(value)),
+            None => (long, None),
+        };
+
+        return (!name.is_empty() && "unset".starts_with(name))
+            .then(|| attached.or_else(|| following.next()).unwrap_or_default());
+    }
+    let (flags, tail) = word.strip_prefix('-')?.split_once('u')?;
+    if !flags.chars().all(|flag| matches!(flag, 'i' | '0' | 'v')) {
+        return None;
+    }
+
+    Some(if tail.is_empty() {
+        following.peek().copied().unwrap_or_default()
+    } else {
+        tail
+    })
+}
+
+/// `OMHL_ROLE=` ou `OMHL_ROLE+=`.
+fn assigns_role_variable(word: &str) -> bool {
+    word.strip_prefix(ROLE_VARIABLE)
+        .is_some_and(|rest| rest.starts_with('=') || rest.starts_with("+="))
 }
 
 /// Papel fora da lista, comando sem `omhl`, comando composto e embrulho que o leitor não pula.
@@ -111,7 +192,7 @@ fn ported_agent_verdict(
     if reaching.is_empty() {
         return RoleVerdict::Pass;
     }
-    if known_role(&format!("{ROLE_PREFIX}{role}")).is_none() {
+    if known_role(&agent_name(role)).is_none() {
         return deny(
             "role-unknown",
             "this plugin agent has no omhl role matrix; it cannot run omhl",
@@ -119,7 +200,7 @@ fn ported_agent_verdict(
     }
 
     match reaching.as_slice() {
-        [simple] if !line.compound && simple.program() == Some("omhl") => {
+        [simple] if !line.compound && simple.program().is_some_and(is_omhl_word) => {
             role_matrix_verdict(role, line, simple, input, env)
         }
         [_] if !line.compound => deny(
@@ -152,7 +233,7 @@ fn role_matrix_verdict(
     }
 
     RoleVerdict::Allow {
-        reason: format!("the command is inside the {ROLE_PREFIX}{role} matrix"),
+        reason: format!("the command is inside the {} matrix", agent_name(role)),
         updated_input: with_role_prefix(input, role),
     }
 }
@@ -178,7 +259,8 @@ fn matrix_denial(
         deny(
             "command-outside-matrix",
             &format!(
-                "{ROLE_PREFIX}{role} may run only these omhl commands (plus --help, -V and help): {}",
+                "{} may run only these omhl commands (plus -h/--help, -V/--version and <group> help): {}",
+                agent_name(role),
                 allow.commands.join(", ")
             ),
         )
@@ -228,9 +310,17 @@ fn after_blank_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
         .map(|rest| rest.trim_start_matches(BLANKS))
 }
 
+/// O nome do papel como o banco o grava no `agent` dos records.
+fn agent_name(role: &str) -> String {
+    format!("{ROLE_PREFIX}{role}")
+}
+
 fn deny(code: &'static str, reason: &str) -> RoleVerdict {
     RoleVerdict::Deny {
         code,
-        reason: reason.to_owned(),
+        reason: format!("{code}: {reason}"),
     }
 }
+
+#[cfg(test)]
+mod tests;

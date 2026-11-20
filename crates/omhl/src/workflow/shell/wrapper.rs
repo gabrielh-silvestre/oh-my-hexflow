@@ -1,6 +1,6 @@
 /// Por que o leitor não achou o programa de um comando que embrulha outro.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Opacity {
+pub(super) enum Opacity {
     /// A opção reescreve o ambiente ou o comando (`env -i`, `env -S`, `exec -c`): a palavra com o programa pode vir dentro de outra.
     Rewriting,
     /// A opção do embrulho não está na tabela: o leitor não adivinha o que vem depois dela.
@@ -48,8 +48,9 @@ const NO_PROGRAM: Resolved = Resolved {
     opacity: None,
 };
 
+/// Igualdade exata: o bash só lê palavra reservada nua, então `./do` e `FOO=/srv/do` não são palavras reservadas.
 pub(super) fn is_keyword(word: &str) -> bool {
-    KEYWORDS.contains(&basename(word))
+    KEYWORDS.contains(&word)
 }
 
 const WRAPPERS: [Wrapper; 10] = [

@@ -199,9 +199,8 @@ impl Guard<'_, '_> {
 
     /// Premissa, gap e divergência novos exigem work item aberto; a revisão de um node existente não.
     fn check_work_item(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
-        let needs_open = node.base.is_none()
-            && self.author.client != LOADER_CLIENT
-            && matches!(node.type_name, "premise" | "gap" | "divergence");
+        let needs_open =
+            node.base.is_none() && matches!(node.type_name, "premise" | "gap" | "divergence");
         if needs_open {
             self.find_open_work_item(node)?;
         } else {
@@ -211,8 +210,9 @@ impl Guard<'_, '_> {
         Ok(())
     }
 
+    /// Só a diretiva de extension, que o `loader` grava, vale sem `confirmed_by`; a premissa do `loader` o exige.
     fn check_human_confirmation(&self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
-        if self.author.client == LOADER_CLIENT {
+        if self.author.client == LOADER_CLIENT && node.type_name == "guideline" {
             return Ok(());
         }
 

@@ -52,7 +52,7 @@ Edição direta na `develop` nunca passa pelo gate. A `develop` e a `main` saem 
 
 ## 2. Comandos
 
-Um erro sai no stderr com código de saída 1, e uma saída de sucesso no stdout. Os 21 comandos ativos imprimem texto `agent` por padrão, com `--format human` (os mesmos fatos em blocos) e `--format json` (uma linha de JSON, a forma de ler por código); um erro sai em texto (`✘ código · mensagem`). Os cinco comandos lidos por máquina (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hooks post-commit` e `gate-worktree`) seguem em JSON e recusam `--format agent|human` com erro de uso (saída 2). A decisão está no [ADR 0009](adr/0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
+Um erro sai no stderr com código de saída 1, e uma saída de sucesso no stdout. Os 21 comandos ativos imprimem texto `agent` por padrão, com `--format human` (os mesmos fatos em blocos) e `--format json` (uma linha de JSON, a forma de ler por código); um erro sai em texto (`✘ código · mensagem`). Os seis comandos lidos por máquina (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hook wt-post-start`, `hooks post-commit` e `gate-worktree`) seguem em JSON e recusam `--format agent|human` com erro de uso (saída 2). A decisão está no [ADR 0009](adr/0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
 
 | Comando | O que faz |
 |---|---|
@@ -61,6 +61,7 @@ Um erro sai no stderr com código de saída 1, e uma saída de sucesso no stdout
 | `omhl gate-worktree --branch <nome>` | Decide se a worktree da branch pode ser criada |
 | `omhl hook spec-lock` | Hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de spec congelada |
 | `omhl hook agent-role` | Hook `PreToolUse` do Claude Code para o `Bash` e o `Monitor`: lê o evento no stdin e aplica a matriz do papel ao agente portado (seção 12) |
+| `omhl hook wt-post-start --branch <nome>` | Hook `post-start` do `wt`: grava a marca `.frozen` em cada pasta `wi-<id>__*` do work item da branch nova e imprime `{"marked":[...],"already":[...]}`. Não lê stdin e não abre o banco |
 | `omhl report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |
 | `omhl report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção |
 | `omhl report retro <work-item>` | A retro de um work item, aberto ou fechado |
@@ -105,7 +106,7 @@ A confirmação é a aprovação do humano dentro da sessão. O registro leva o 
 }
 ```
 
-- `by` tem de 1 a 100 caracteres e começa com `person:`, seguido de ao menos um caractere.
+- `by` tem de 1 a 100 caracteres e começa com `person:`, seguido de um nome com ao menos 3 caracteres visíveis (espaço, controle e caracteres invisíveis, como os de largura zero, não contam).
 - Exceção: o `omhl:critic` confirma premissa técnica com `"by": "critic"`. Vale só quando o autor é `omhl:critic`, o tipo é `premise`, o `kind` é `technical` e `question` e `answer` literais estão presentes e não vazios. Outro autor com `by: "critic"`, ou o critic numa premissa de negócio que ele cria, é `confirmation-invalid`. O critic gravando diretiva ou divergência responde antes `role-record-forbidden`, e revisando premissa de negócio alheia, `role-revision-forbidden`.
 - `question` e `answer` têm de 1 a 2000 caracteres. Um texto maior é recusado, nunca truncado: o literal não pode mudar.
 - O campo é opcional em `premise`, `guideline` e `divergence`. Um record antigo, sem ele, continua válido.
@@ -116,11 +117,11 @@ A guarda do `append` impõe estas regras. A mensagem de erro traz o código e o 
 | Código | Quando |
 |---|---|
 | `confirmation-required` | Uma premissa `confirmed`, uma diretiva ou uma divergência `spec-stale` chegou sem `confirmed_by`, ou a divergência `spec-stale` chegou sem `amendment` |
-| `confirmation-invalid` | O `by` não começa com `person:` ou não tem nome depois dele (salvo a confirmação do critic, acima); uma premissa que não é `confirmed` traz `confirmed_by`; uma divergência que não é `spec-stale` traz `confirmed_by` ou `amendment`; o `amendment` não tem a forma `emenda-NN` |
+| `confirmation-invalid` | O `by` não começa com `person:` ou o nome depois dele tem menos de 3 caracteres visíveis (salvo a confirmação do critic, acima); uma premissa que não é `confirmed` traz `confirmed_by`; uma divergência que não é `spec-stale` traz `confirmed_by` ou `amendment`; o `amendment` não tem a forma `emenda-NN` |
 
 Uma premissa com `kind` e sem `work_item` responde `work-item-not-found` em `/items/0/body/data/work_item`. Uma premissa sem `kind` e sem `work_item` é permitida: ela não pertence a nenhum work item e não expira.
 
-Os records que o `omhl load` grava (cliente `loader`) estão isentos. Uma diretiva vinda de um arquivo de `.omhl/guidelines/` e uma diretiva nativa valem como confirmadas, sem `confirmed_by`.
+A guarda isenta só as diretivas que o `omhl load` grava (cliente `loader`), da confirmação humana; as demais gravações do `loader` seguem a guarda inteira ([ADR 0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md)). Uma diretiva vinda de um arquivo de `.omhl/guidelines/` e uma diretiva nativa valem como confirmadas, sem `confirmed_by`.
 
 A confirmação é autodeclarada: o `Author` do record continua sendo quem o digitou, não quem confirmou. É um rastro, não uma prova. A trava técnica contra forja de `confirmed_by` não existe nesta entrega.
 
@@ -230,9 +231,23 @@ omhl-gate = "case {{ branch }} in develop|main) exit 0;; esac; omhl gate-worktre
 - `wt config approvals list` confere. O comando sem aprovação aparece como `UNAPPROVED`.
 - Se um `wt switch` falhar com `Cannot prompt for approval`, o agente para e pede ao dono o `wt config approvals add`. Ele nunca tenta `--no-hooks`.
 
+### O hook `post-start` do `wt`
+
+O `.config/wt.toml` tem um segundo hook, que grava a marca de congelamento da spec no nascimento da branch:
+
+```toml
+[post-start]
+omhl-freeze = "case {{ branch }} in develop|main) exit 0;; esac; omhl hook wt-post-start --branch {{ branch }}"
+```
+
+- Ele roda **uma vez**, quando a worktree nasce, **em segundo plano**. Uma worktree que já existia, uma branch que já existia e uma branch criada por `git branch` ou `wt switch --no-hooks` não o disparam.
+- Ele grava a marca `.frozen` em cada pasta `wi-<id>__*` do work item da branch nova (seção 7). O `omhl hook wt-post-start` é o do `PATH`, com o mesmo cuidado do `pre-switch`: o `{{ branch }}` vai sem aspas e o `case` libera `develop` e `main`.
+- A falha é silenciosa: o `wt` não mostra a saída de um hook em segundo plano e não aborta por ele. Se o hook falhar (`omhl` velho, marca não gravável), a branch nasce sem marca. A cura do `spec-lock` é a rede: no primeiro evento de spec ela grava a marca de toda branch `wi-` local que existe (seção 7).
+- O comando do hook entra na aprovação do `wt` como o do `pre-switch` (seção 5, "A aprovação do hook"). Um hook `UNAPPROVED` faz o `wt` abortar todo `wt switch` sem terminal interativo. **O agente nunca usa `-y` nem `--no-hooks` diante de um hook `UNAPPROVED`**: ele para e pede ao dono o `wt config approvals add`. O `-y` aprovaria o hook sozinho, e o `--no-hooks` pularia o `pre-switch` junto.
+
 ## 6. A spec
 
-As specs ficam em `<specs.dir>/wi-<id>__<slug>/`, por padrão `.omhl/specs/wi-<id>__<slug>/`. A pasta tem as partes `parte-NN.md` (`NN` com dois dígitos) e, depois, as emendas `emenda-NN.md`. Elas ficam fora do git: a worktree não as recebe, e o `spec validate` acha o diretório principal sozinho, de qualquer worktree.
+As specs ficam em `<specs.dir>/wi-<id>__<slug>/`, por padrão `.omhl/specs/wi-<id>__<slug>/`. A pasta tem as partes `parte-NN.md` (`NN` com dois dígitos) e, depois, as emendas `emenda-NN.md`. Elas ficam fora do git: a worktree não as recebe, e o `spec validate` acha o diretório principal sozinho, de qualquer worktree. Cada spec admite até 99 emendas: o nome leva dois dígitos, e `emenda-100.md` não segue o padrão (limite aceito, [ADR 0010](adr/0010-spec-aprovada-congelada-para-sempre.md)).
 
 ### `omhl spec init`
 
@@ -349,30 +364,31 @@ As regras da emenda que dependem da divergência citada (`amendment-divergence-u
 
 ## 7. O congelamento
 
-O hook `omhl hook spec-lock` é um `PreToolUse` do Claude Code para `Edit`, `Write` e `MultiEdit`. Depois que a branch do work item existe, ele barra a edição da spec. **Não existe marca nem comando para descongelar**: uma spec aprovada nunca é editada. A correção entra como emenda (seção 9).
+O hook `omhl hook spec-lock` é um `PreToolUse` do Claude Code para `Edit`, `Write` e `MultiEdit`. Depois que a branch do work item existe, ele barra a edição da spec, e a marca `.frozen` mantém o bloqueio mesmo se a branch for apagada. **Não existe comando para descongelar**: só o dono, apagando o `.frozen` à mão, desfaz. Uma spec aprovada nunca é editada pelo agente. A correção entra como emenda (seção 9).
 
 O hook lê o evento no stdin e decide por regras fechadas:
 
-1. O caminho precisa estar sob `<specs.dir>/wi-<id>__<slug>/`. Senão ele sai com `0` sem abrir banco nem git. O caminho é normalizado no texto (`.` e `..`) antes do filtro.
-2. Está congelada a spec cujo work item tem uma branch local (`tipo/wi-<id>__<slug>`). O hook só olha o disco e o git, nunca o banco.
+1. O caminho precisa estar sob `<specs.dir>/wi-<id>__<slug>/`. Senão ele sai com `0` sem abrir banco nem git. O hook avalia dois caminhos: o lexical, normalizado no texto (`.` e `..`), e o físico, com os links simbólicos resolvidos (a parte que ainda não existe é anexada no texto e um link pendente é seguido, até 40 saltos). A negação de qualquer um dos dois vence. Se o caminho físico não se resolve (laço de links, por exemplo), vale o lexical.
+2. Está congelada a spec cujo work item tem uma branch local (`tipo/wi-<id>__<slug>`) **ou a marca `.frozen`** em qualquer pasta `wi-<id>__*` dele. O hook só olha o disco e o git, nunca o banco. Work item que nunca teve branch e não tem marca segue editável e não ganha marca.
 3. Numa spec congelada, o hook nega `Edit` e `MultiEdit` em qualquer arquivo da pasta, `Write` sobre um arquivo que já existe e `Write` de uma `parte-NN.md` nova.
 4. Numa spec congelada, nenhum arquivo se escreve numa pasta que não existe. Pasta nova do work item (por exemplo, um slug digitado errado) é negada com `spec-folder-unknown`.
-5. A única exceção é a criação de emenda: `Write` de um arquivo que ainda não existe, chamado `emenda-NN.md`, em que `NN` é o próximo número da pasta (o maior existente mais um, ou `01`). Um arquivo novo que não é `parte-*` nem `emenda-*` (por exemplo `notas.md`) também passa.
+5. A única exceção é a criação de emenda: `Write` de um arquivo que ainda não existe, chamado `emenda-NN.md`, em que `NN` é o próximo número da pasta (o maior existente mais um, ou `01`). Um arquivo novo que não é `parte-*` nem `emenda-*` (por exemplo `notas.md`) também passa. O nome é conferido só no nível da pasta: `sub/parte-01.md` e `sub/emenda-07.md`, num arquivo novo dentro de uma subpasta, também passam, e o `spec validate` não os lê. O teto é `emenda-99.md`: com ela na pasta, o próximo número seria 100, que o hook ainda libera e o `spec validate` recusa com `amendment-name-invalid`.
 6. Escrever uma spec dentro de uma worktree ligada é barrado, com ou sem branch do work item.
+7. A marca é um arquivo vazio. `Edit` ou `Write` sobre uma marca que já existe é negado como qualquer arquivo da spec. Ao decidir um evento de spec, o hook grava `.frozen` em cada pasta de cada work item que tem branch local e ainda não tem a marca (efeito colateral do hook: ele passa a escrever no disco). A gravação não segue link, trata qualquer coisa que já ocupe o nome como "já marcado" e recusa uma pasta `wi-<id>__*` que é link simbólico. A cura não muda a decisão, o número da próxima emenda nem o que o `spec validate` lê (o `.frozen` não termina em `.md`).
 
 A negação sai no stdout, com código de saída `0`:
 
 ```json
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"spec-frozen: the spec in <repo>/.omhl/specs/wi-w1__export-reports is frozen because the work item has a branch; to correct it, record a divergence and create the amendment <repo>/.omhl/specs/wi-w1__export-reports/emenda-01.md (Write of a new file)"}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"spec-frozen: the spec in <repo>/.omhl/specs/wi-w1__export-reports is frozen because the work item has a branch or the .frozen mark, or the mark could not be read; to correct it, record a divergence and create the amendment <repo>/.omhl/specs/wi-w1__export-reports/emenda-01.md (Write of a new file)"}}
 ```
 
 | Código | Quando | O que fazer |
 |---|---|---|
 | `spec-frozen` | A edição é de uma spec congelada. A mensagem diz o caminho da emenda que se pode criar | Registre uma `divergence` e crie a emenda (seção 9) |
 | `spec-in-linked-worktree` | O caminho está numa worktree ligada. As specs vivem só no diretório principal | Escreva no caminho do diretório principal que a mensagem informa |
-| `spec-folder-unknown` | O work item tem branch e a pasta do caminho não existe. Vale para qualquer arquivo | Escreva a emenda na pasta de spec que o work item já tem |
+| `spec-folder-unknown` | O work item está congelado (branch, marca `.frozen` ou marca ilegível) e a pasta do caminho não existe. Vale para qualquer arquivo | Escreva a emenda na pasta de spec que o work item já tem |
 
-O subcomando `hook spec-lock` nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto pelo caminho do arquivo e, se ele estiver fora de qualquer projeto, pelo `cwd` da sessão. Um `omhl` velho, sem o subcomando, é outro caso: o clap sai com `2`, e o envoltório `|| exit 1` do `hooks.json` o converte em `1` (seção 10). Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
+O grupo `hook` tem dois contratos. O primeiro vale para os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`): leem o evento no stdin, nunca saem com `2` e, em erro interno, liberam. O segundo é do `wt-post-start`: não lê stdin, é silencioso em segundo plano (sem `.omhl.toml`, sai `0` sem escrever nada; `develop`, `main` e branch que não é de work item não têm efeito) e sai `1` com `spec-store-unusable` em pasta de spec que é link simbólico (só depois de marcar as outras pastas do work item; arquivo comum que divide o prefixo `wi-<id>__` não é pasta e é pulado). No `hook spec-lock`, qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr, com uma exceção: o erro ao listar `specs.dir` ou ao ler a marca `.frozen` de uma pasta do work item (qualquer um que não seja marca ausente ou entrada que não é pasta) não libera, e a spec é tratada como congelada. O hook acha o projeto só pelo caminho do arquivo (o `.omhl.toml` mais próximo acima dele); o `cwd` da sessão não entra, e um arquivo sem `.omhl.toml` acima dele é liberado em silêncio, sem abrir o git. Um `omhl` velho, sem o subcomando, é outro caso: o clap sai com `2`, e o envoltório `|| exit 1` do `hooks.json` o converte em `1` (seção 10). Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
 
 ## 8. Gap, divergência e retro
 
@@ -397,7 +413,7 @@ omhl report answers --work-item work-items.w1 --format json
 | Campo | Valores |
 |---|---|
 | `state` | `open`: nenhuma resposta. `answered`: há resposta. `needs-human`: a resposta não é de pessoa (`autonomous` ou `critic`) e contraria uma diretiva confirmada; o gap segue contando como aberto no validador e na retro |
-| `answerer` | `human` quando a premissa que responde está confirmada (`confirmed` com `confirmed_by`) e o `by` começa com `person:`; `critic` quando o `by` é `critic`; `autonomous` em qualquer outro caso, inclusive a premissa antiga `confirmed` sem `confirmed_by` e a `assumed` com `confirmed_by` |
+| `answerer` | `human` quando a premissa que responde está confirmada (`confirmed` com `confirmed_by`) e o `by` é `person:` seguido de ao menos 3 caracteres visíveis; `critic` quando o `by` é `critic`; `autonomous` em qualquer outro caso, inclusive a premissa antiga `confirmed` sem `confirmed_by` e a `assumed` com `confirmed_by` |
 | `no_criterion` | `true` quando nenhuma diretiva confirmada sustenta a resposta |
 
 Com mais de uma resposta, vale a premissa confirmada por pessoa. Sem ela, vale a confirmada pelo critic. Sem nenhuma das duas, vale a primeira em ordem de gravação; um empate entre respostas do mesmo respondente também cai na primeira gravada. A cadeira aceita o papel `omhl:critic`, que responde só gap técnico (subseção abaixo). O agente `oh-my-hexflow:critic` cumpre esse papel (seção 12).
@@ -513,7 +529,7 @@ Spec aprovada nunca é editada. Para corrigir um erro da spec depois da aprovaç
 
 1. Registre uma `divergence` com `resolution` `open` (`omhl append`).
 2. Pergunte ao humano se a spec estava errada. Se não estava, não há emenda: a divergência se resolve como `code-fixed` ou `accepted`.
-3. Se estava, crie `emenda-NN.md` na pasta da spec do work item, com `Write` de um arquivo novo. O hook libera só o próximo número. A emenda tem três seções `##`, na ordem:
+3. Se estava, crie `emenda-NN.md` na pasta da spec do work item, com `Write` de um arquivo novo. O hook libera só o próximo número, até `emenda-99.md`: a 100ª não cabe no padrão (seção 6). A emenda tem três seções `##`, na ordem:
 
    ```markdown
    ## Divergência
@@ -541,7 +557,7 @@ Spec aprovada nunca é editada. Para corrigir um erro da spec depois da aprovaç
 
 Nunca tente editar a spec nem procure como descongelá-la.
 
-A `parte-NN.md` original fica intacta. O valor vigente de um item é o da emenda aprovada de maior `NN` que o cita. A emenda só corrige item que existe; item novo exige um work item novo. O estado "aprovada" vive no grafo (a divergência `spec-stale`), não numa marca em disco. Uma emenda `pending` não vincula e não reprova o validador; só a aprovada inválida reprova.
+A `parte-NN.md` original fica intacta. O valor vigente de um item é o da emenda aprovada de maior `NN` que o cita. A emenda só corrige item que existe; item novo exige um work item novo. O estado "aprovada" vive no grafo (a divergência `spec-stale`); o `.frozen` marca a pasta como congelada, não a emenda como aprovada, e o `spec validate` não o lê. Uma emenda `pending` não vincula e não reprova o validador; só a aprovada inválida reprova.
 
 O `append` recusa a revisão `spec-stale` antes de gravar qualquer coisa se a emenda não é válida:
 
@@ -577,6 +593,8 @@ O gate do `wt` e o hook `spec-lock` estão ativos. A ativação seguiu esta orde
 2. Rode `omhl hooks install`.
 3. Só então versione o `.config/wt.toml` e as entradas `PreToolUse` em `plugin/hooks/hooks.json`: `Edit|Write|MultiEdit` para o `spec-lock` e `Bash|Monitor` para o `agent-role`.
 4. O dono roda `wt config approvals add` e confere com `wt config approvals list` (seção 5), antes de qualquer `wt switch` do agente.
+5. Para o hook `post-start`: reinstale o `omhl` no `PATH` (passo 1). O hook chama o subcomando `hook wt-post-start`, e um binário velho sai com `2` em segundo plano, sem marcar nada e sem aviso.
+6. O dono roda `wt config approvals add` e confere com `wt config approvals list` que nada aparece `UNAPPROVED`, **antes de qualquer `wt switch`**. O `[post-start]` é um comando novo no `.config/wt.toml`; sem a aprovação e sem terminal interativo, o `wt` aborta todo `wt switch`, inclusive para a `develop`.
 
 Depois de puxar mudanças, recompile e reinstale o `omhl` do `PATH` antes de usar o plugin; a reinstalação cobre também o hook `agent-role`, que o plugin chama do mesmo binário. Um `omhl` velho, sem o subcomando `hook spec-lock`, sairia com `2` (erro de uso do clap), e em `PreToolUse` isso bloquearia todo `Edit` e `Write`. O hook roda como `omhl hook spec-lock || exit 1`, que converte essa saída em `1` (erro não bloqueante, pois só a saída `2` bloqueia): a escrita passa, o Claude Code mostra o aviso de erro do hook, e o congelamento fica sem efeito até a reinstalação (limite abaixo). O mesmo vale para o binário ausente (saída `127`). A negação legítima vai por JSON com saída `0` e não depende do código de saída.
 
@@ -595,7 +613,14 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 ### Limites
 
-- O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo nem do `cwd`, o binário `omhl` não existe no `PATH`, o `omhl` do `PATH` é velho e não tem o subcomando `hook spec-lock` (o envoltório `|| exit 1` converte a saída `2` do clap em `1`, e o aviso de erro do hook fica visível no Claude Code), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
+- O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo, o binário `omhl` não existe no `PATH`, o `omhl` do `PATH` é velho e não tem o subcomando `hook spec-lock` (o envoltório `|| exit 1` converte a saída `2` do clap em `1`, e o aviso de erro do hook fica visível no Claude Code), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
+- A liberação por erro tem uma exceção: com o caminho já reconhecido como spec de um work item, o erro ao listar `specs.dir` (inclusive com mais de 10 000 entradas) ou ao ler a marca `.frozen` de uma pasta do work item congela em vez de liberar, sem linha de erro no stderr; a razão da negação cobre esse caso (`or the mark could not be read`). Só a marca ausente (`NotFound`) e a entrada que não é pasta (`NotADirectory`, como um arquivo comum `wi-<id>__0`) contam como "sem marca". Qualquer branch local com o id do work item o congela, mesmo criada por outra pessoa, e a marca só sai à mão (ADR 0010).
+- Quando o caminho físico do arquivo não se resolve (laço de links simbólicos, mais de 40 saltos, leitura negada) e o caminho lexical tem a forma de uma pasta de work item, o hook decide só pelo lexical e deixa a linha `path-unresolvable` no stderr (a decisão não muda: sai com `0`, e o lexical pode negar). Se o lexical não tem essa forma, a escrita passa em silêncio.
+- Quando a cura não consegue gravar a marca de um work item (pasta que é link simbólico, pasta sem permissão de escrita), o hook deixa a linha `freeze-mark-unwritable` no stderr e decide como se a cura não existisse (sai com `0`, e a branch ou uma marca já existente ainda negam). Uma branch criada fora do `wt` e apagada antes de qualquer `Edit` ou `Write` de spec nunca recebe a marca e fica editável.
+- Uma branch `wi-` criada fora do `wt` (`git branch`, `git switch -c`, `wt switch --no-hooks`) não dispara o `post-start`. Se for apagada sem nenhum evento de spec no meio, também não deixa marca: é o residual do congelamento.
+- O hook decide no instante da checagem. Se o alvo de um link simbólico mudar depois dela e antes da escrita (TOCTOU), o hook não detecta a troca.
+- O `spec-lock` acha o checkout pela raiz do `.omhl.toml`, não pela pasta do arquivo. Numa worktree ligada aninhada dentro do diretório principal e sem `.omhl.toml` próprio (branch anterior ao marcador), o marcador achado é o do principal, `linked_worktree` sai falso e o `spec-in-linked-worktree` não dispara. O fluxo do `wt` cria worktrees irmãs, então isso não acontece nele.
+- O `git` que o `omhl` chama (`ports/git.rs`) roda sem as variáveis `GIT_*` herdadas, com `GIT_OPTIONAL_LOCKS=0`, `LC_ALL=C`, `--no-optional-locks` e `core.fsmonitor=false`. Ele não define `GIT_CONFIG_NOSYSTEM` nem `GIT_CONFIG_GLOBAL` (e descarta os que vierem do ambiente), então a configuração do sistema e a do usuário continuam valendo para as respostas do git. Risco aceito: essa configuração é do dono da máquina, e o `omhl` não a isola.
 - O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
 - O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
 - Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`. O comando não tem a guarda `{% if branch %}`.
@@ -607,6 +632,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - O hook `agent-role` protege contra o erro do agente, não contra a má-fé. Escapam dele, e o comando grava como `claude`, sem a matriz do papel: `bash -c`, `sudo` e os outros programas que executam comando sem estar na lista de embrulhos, `cargo run -p omhl -- append`, as ferramentas que não são o `Bash` nem o `Monitor`, um evento que o hook não consegue ler (stdin acima de 1 MiB ou JSON inválido: o erro vai ao stderr, a saída é `0` e o comando roda sem prefixo), o `omhl` velho ou ausente no `PATH` (o `|| exit 1` deixa o comando rodar sem prefixo; o Claude Code só mostra o aviso de erro do hook na transcrição) e um nome escondido por escape. A lista completa está em "Limites" no [ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md).
 - A spec vive no diretório principal, fora do git. Ela não vai com um clone e some com o diretório.
 - A busca de pastas de spec lê até 10 000 entradas e recusa (`spec-store-unusable`) o work item que tem mais de uma pasta `wi-<id>__*`, mesmo a segunda vazia.
+- A leitura de uma pasta de spec soma os bytes das partes e emendas lidas e recusa (`spec-store-unusable`) a pasta que passa de 16 MiB; cada arquivo segue limitado a 64 KiB, e 198 arquivos desse tamanho (cerca de 12,4 MiB) cabem.
 - O `spec-invalid` e o `amendment-invalid` mostram até 20 detalhes por erro.
 - O `close` de um work item com retro depende de a pasta de spec ser legível e de o `workflow.toml` ser válido (seção 8).
 
@@ -727,6 +753,6 @@ O hook é a entrada `PreToolUse` do `Bash` e do `Monitor` (matcher `Bash|Monitor
 
 - **Quem é o agente.** O `agent_type` do evento é `oh-my-hexflow:<papel>` para um subagente do plugin. Sessão principal e agentes de outros plugins passam sem mudança.
 - **O que o agente portado roda.** O arquivo `plugin/agents/<papel>.md` traz no frontmatter o `omhl-allow` com os comandos do papel. O hook lê esse arquivo em `${CLAUDE_PLUGIN_ROOT}`, confere o comando `omhl` contra a lista e, quando está dentro, responde `allow` e escreve `OMHL_ROLE=omhl:<papel>` na frente do comando. Com o `allow`, o Claude Code pula o prompt de permissão desse comando nos modos `default` e `auto`, salvo regra `deny` ou `ask` das configurações do dono e as ações que nenhum modo aprova ([doc de hooks do Claude Code, "PreToolUse decision control"](https://code.claude.com/docs/en/hooks)).
-- **O que o hook nega** (resposta `deny` com o motivo, saída `0`; as negações de comando valem para o agente portado quando o comando chega ao `omhl`: o programa é o próprio `omhl`; ou o programa é uma expansão (`$X`, `${...}`) ou o embrulho reescreve o comando (`env -i`, `env -S`, `exec -c`), e o texto do comando menciona `omhl`; ou o embrulho tem uma opção que o leitor não conhece, e alguma palavra tem `omhl` como nome do arquivo, ou o comando menciona `omhl` e alguma palavra contém `$`): papel sem matriz; comando `omhl` fora da lista do papel; comando composto que contém `omhl` (pipe, `&&`, `||`, `;`, `&`, subshell, substituição `$(...)` ou crase, segunda linha); comando em que algo antes do `omhl` impede o prefixo (comentário, linha em branco, redirecionamento, `!` ou palavra de controle como `if`; só espaços e os embrulhos conhecidos, como `env`, `timeout` e `time`, podem vir antes); expansão (`$X`, `${...}`) na posição do programa ou da folha, quando alguma palavra do comando contém `omhl`; heredoc sem aspas no terminador com `$(` ou crase no corpo; embrulho com opção que o leitor não conhece (quando uma palavra do comando é `omhl`); comando que menciona `omhl` e tem aspa ou heredoc sem fechar, passa de 64 níveis de aninhamento ou de 256 KiB; `CLAUDE_PLUGIN_ROOT` ausente, ou arquivo do agente ilegível ou sem um `omhl-allow` válido. Um evento ilegível não é negado: o hook sai com `0`, escreve o erro no stderr e o comando roda sem prefixo ([ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md), "Limites").
-- **A atribuição de `OMHL_ROLE` à mão** (`OMHL_ROLE=...`, `export`, `env -u OMHL_ROLE` e afins) é negada para qualquer origem, a sessão principal inclusive, salvo quando o hook não consegue ler o comando (aspa ou heredoc sem fechar, aninhamento acima de 64 níveis ou comando acima de 256 KiB): nesse caso a sessão principal passa e a atribuição vale ([ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md), "Limites").
+- **O que o hook nega** (resposta `deny` com o motivo, saída `0`; a razão começa pelo código da negação, `<código>: <texto>`, como a do `spec-frozen`; as negações de comando valem para o agente portado quando o comando chega ao `omhl`: o programa é o próprio `omhl`; ou o programa é uma expansão (`$X`, `${...}`) ou o embrulho reescreve o comando (`env -i`, `env -S`, `exec -c`), e o texto do comando menciona `omhl`; ou o embrulho tem uma opção que o leitor não conhece, e alguma palavra tem `omhl` como nome do arquivo, ou o comando menciona `omhl` e alguma palavra contém `$`): papel sem matriz; comando `omhl` fora da lista do papel; comando composto que contém `omhl` (pipe, `&&`, `||`, `;`, `&`, subshell, substituição `$(...)` ou crase, segunda linha); comando em que algo antes do `omhl` impede o prefixo (comentário, linha em branco, redirecionamento, `!` ou palavra de controle como `if`; só espaços e os embrulhos conhecidos, como `env`, `timeout` e `time`, podem vir antes); expansão (`$X`, `${...}`) na posição do programa ou da folha, quando alguma palavra do comando contém `omhl`; heredoc sem aspas no terminador com `$(` ou crase no corpo; embrulho com opção que o leitor não conhece (quando uma palavra do comando é `omhl`); comando que menciona `omhl` e tem aspa ou heredoc sem fechar, passa de 64 níveis de aninhamento ou de 256 KiB; `CLAUDE_PLUGIN_ROOT` ausente, ou arquivo do agente ilegível ou sem um `omhl-allow` válido. Um evento ilegível não é negado: o hook sai com `0`, escreve o erro no stderr e o comando roda sem prefixo ([ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md), "Limites").
+- **A atribuição de `OMHL_ROLE` à mão** (`OMHL_ROLE=...`, `export` e afins) é negada para qualquer origem, a sessão principal inclusive, com o código `role-assignment`; tirar o papel com `env -u`/`--unset` é negado com o código `role-unset`. O hook lê o `-u` como o getopt do `env`: vale o cluster (`-iu OMHL_ROLE`, `-iuOMHL_ROLE`) e a abreviação da opção longa (`--uns=OMHL_ROLE`), e o `u` só abre o valor depois de flags sem valor (`i`, `0`, `v`). O nome nu de `OMHL_ROLE` só é negado como valor de `-u`/`--unset` ou como argumento de `export`, `readonly`, `local`, `declare` e `typeset` (`declare` e `typeset` com `-p` antes do `--` só imprimem e passam). Passam, portanto, `declare -p OMHL_ROLE`, `typeset -p OMHL_ROLE` e `env -i grep OMHL_ROLE file`, enquanto `declare -- -p OMHL_ROLE` e `export -p OMHL_ROLE` seguem negados. A negação tem uma exceção: quando o hook não consegue ler o comando (aspa ou heredoc sem fechar, aninhamento acima de 64 níveis ou comando acima de 256 KiB): nesse caso a sessão principal passa e a atribuição vale ([ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md), "Limites").
 - **A matriz tem três cópias que um teste mantém iguais:** a matriz compilada no `omhl` (`nodes`, `relations`, `retire`, com as condições finas do `append`), o `omhl-allow` de cada agente (`commands` e as listas do `append`) e a tabela única de `docs/directives-flow.md` (seção 8). A decisão e o limite estão no [ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md).

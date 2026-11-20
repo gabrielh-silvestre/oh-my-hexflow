@@ -174,13 +174,30 @@ fn push_label(text: &mut String, label: &str) {
     text.push_str(": ");
 }
 
-/// Each LF of a value becomes LF plus two spaces, so a value can never forge a block header.
+/// Each line break of a value (LF, CR, CRLF as one, VT, FF, FS, GS, RS, NEL, LS, PS) becomes LF
+/// plus two spaces, so a value can never forge a block header.
 fn push_value(text: &mut String, value: &str) {
-    for (index, part) in value.split('\n').enumerate() {
-        if index > 0 {
-            text.push_str("\n  ");
+    let mut chars = value.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if !matches!(
+            ch,
+            '\n' | '\r'
+                | '\u{b}'
+                | '\u{c}'
+                | '\u{1c}'
+                | '\u{1d}'
+                | '\u{1e}'
+                | '\u{85}'
+                | '\u{2028}'
+                | '\u{2029}'
+        ) {
+            text.push(ch);
+            continue;
         }
-        text.push_str(part);
+        if ch == '\r' && chars.peek() == Some(&'\n') {
+            chars.next();
+        }
+        text.push_str("\n  ");
     }
 }
 
