@@ -1,0 +1,252 @@
+use std::path::Path;
+
+use serde_json::{Value, json};
+
+use super::{AgentRoleEnv, RoleVerdict, agent_role};
+
+const GROUPS: [&str; 2] = ["spec", "report"];
+const PORTED_AGENT: &str = "oh-my-hexflow:verifier";
+const ATTEST: &str = "omhl attest checks.run-tests work-items.w1 --outcome pass";
+
+/// O que o corpus afirma de cada veredito: o `Allow` e o `Deny` sem o texto da razão.
+#[derive(Debug, PartialEq)]
+enum Expected {
+    Pass,
+    Allow,
+    Deny(&'static str),
+}
+
+/// Um comando do corpus com o veredito de cada origem: a sessão principal (sem `agent_type`) e o agente portado.
+struct CorpusEntry {
+    command: &'static str,
+    main_session: Expected,
+    ported_agent: Expected,
+}
+
+fn corpus_entry(
+    command: &'static str,
+    main_session: Expected,
+    ported_agent: Expected,
+) -> CorpusEntry {
+    CorpusEntry {
+        command,
+        main_session,
+        ported_agent,
+    }
+}
+
+/// Negado com `role-assignment` nas duas origens.
+fn denied_from_both_origins(command: &'static str) -> CorpusEntry {
+    corpus_entry(
+        command,
+        Expected::Deny("role-assignment"),
+        Expected::Deny("role-assignment"),
+    )
+}
+
+/// A raiz de fixtures tem `agents/<papel>.md` legível para os sete papéis: a negação vem da regra mirada.
+fn plugin_root() -> &'static Path {
+    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"))
+}
+
+fn tool_call(command: &str, agent_type: Option<&str>) -> Value {
+    let mut event = json!({ "tool_input": { "command": command } });
+    if let Some(agent_type) = agent_type {
+        event["agent_type"] = json!(agent_type);
+    }
+
+    event
+}
+
+fn verdict_of(command: &str, agent_type: Option<&str>) -> RoleVerdict {
+    let env = AgentRoleEnv {
+        plugin_root: Some(plugin_root()),
+        groups: &GROUPS,
+    };
+
+    agent_role(&tool_call(command, agent_type), &env)
+}
+
+fn ported_verdict_of(command: &str) -> RoleVerdict {
+    verdict_of(command, Some(PORTED_AGENT))
+}
+
+fn assert_verdict_denies_with_code(verdict: RoleVerdict, code: &str) {
+    match verdict {
+        RoleVerdict::Deny { code: actual, .. } => assert_eq!(actual, code),
+        other => panic!("expected a deny with code {code}, got {other:?}"),
+    }
+}
+
+fn expected_of(verdict: &RoleVerdict) -> Expected {
+    match verdict {
+        RoleVerdict::Pass => Expected::Pass,
+        RoleVerdict::Allow { .. } => Expected::Allow,
+        RoleVerdict::Deny { code, .. } => Expected::Deny(code),
+    }
+}
+
+// Regras do hook, uma por teste
+
+#[test]
+fn it_should_deny_role_assignment_in_the_prefix() {
+    let verdict = verdict_of("OMHL_ROLE=x omhl list", None);
+
+    assert_verdict_denies_with_code(verdict, "role-assignment");
+}
+
+#[test]
+fn it_should_deny_heredoc_substitution() {
+    let verdict = ported_verdict_of("omhl append <<EOF\n$(id)\nEOF\n");
+
+    assert_verdict_denies_with_code(verdict, "heredoc-substitution");
+}
+
+#[test]
+fn it_should_deny_command_unreadable_when_the_command_mentions_omhl() {
+    let verdict = ported_verdict_of("omhl list \"unclosed");
+
+    assert_verdict_denies_with_code(verdict, "command-unreadable");
+}
+
+#[test]
+fn it_should_deny_a_compound_command() {
+    let verdict = ported_verdict_of("omhl list | head");
+
+    assert_verdict_denies_with_code(verdict, "compound-command");
+}
+
+#[test]
+fn it_should_deny_a_command_outside_the_matrix() {
+    let verdict = ported_verdict_of(ATTEST);
+
+    assert_verdict_denies_with_code(verdict, "command-outside-matrix");
+}
+
+#[test]
+fn it_should_allow_with_the_role_prefix() {
+    let verdict = ported_verdict_of("omhl list");
+
+    assert_eq!(
+        verdict,
+        RoleVerdict::Allow {
+            reason: "the command is inside the omhl:verifier matrix".to_owned(),
+            updated_input: json!({ "command": "OMHL_ROLE=omhl:verifier omhl list" }),
+        }
+    );
+}
+
+#[test]
+fn it_should_put_the_prefix_after_time_and_its_options() {
+    let verdict = ported_verdict_of("time -p omhl list");
+
+    assert_eq!(
+        verdict,
+        RoleVerdict::Allow {
+            reason: "the command is inside the omhl:verifier matrix".to_owned(),
+            updated_input: json!({ "command": "time -p OMHL_ROLE=omhl:verifier omhl list" }),
+        }
+    );
+}
+
+#[test]
+fn it_should_deny_a_bare_reserved_word_with_role_prefix_unreachable() {
+    let verdict = ported_verdict_of("! omhl list");
+
+    assert_verdict_denies_with_code(verdict, "role-prefix-unreachable");
+}
+
+// Corpus diferencial da regra de `OMHL_ROLE`
+
+/// Os comandos negados hoje com `role-assignment` nas duas origens, mais os que hoje escapam da regra
+/// (cada um com o veredito de cada origem) e os falsos positivos que a S5 vai liberar.
+fn role_variable_corpus() -> Vec<CorpusEntry> {
+    let mut corpus: Vec<CorpusEntry> = [
+        "OMHL_ROLE=x omhl list",
+        "OMHL_ROLE+=x omhl list",
+        "export OMHL_ROLE=x",
+        "export OMHL_ROLE",
+        "export -p OMHL_ROLE=x",
+        "readonly OMHL_ROLE",
+        "readonly -p OMHL_ROLE=x",
+        "local OMHL_ROLE=x",
+        "declare -x OMHL_ROLE=x",
+        "declare OMHL_ROLE=x",
+        "declare -p OMHL_ROLE=x",
+        "declare -- -p OMHL_ROLE=x",
+        "typeset -x OMHL_ROLE=x",
+        "env OMHL_ROLE=x omhl list",
+        "env -i OMHL_ROLE=x omhl list",
+        "env -i -u OMHL_ROLE omhl list",
+        "env -iu OMHL_ROLE omhl list",
+        "env -u OMHL_ROLE",
+        "env -u OMHL_ROLE omhl list",
+        "env -uOMHL_ROLE",
+        "env -uOMHL_ROLE omhl list",
+        "env --unset=OMHL_ROLE",
+        "env --unset=OMHL_ROLE omhl list",
+        "env --unset OMHL_ROLE",
+        "env --unset OMHL_ROLE omhl list",
+        "env --uns OMHL_ROLE omhl list",
+    ]
+    .into_iter()
+    .map(denied_from_both_origins)
+    .collect();
+
+    // Escapam da regra na sessão principal; o agente portado é negado por opacidade do embrulho.
+    corpus.extend([
+        corpus_entry(
+            "env -iuOMHL_ROLE omhl list",
+            Expected::Pass,
+            Expected::Deny("wrapper-unreadable"),
+        ),
+        corpus_entry(
+            "env --uns=OMHL_ROLE omhl list",
+            Expected::Pass,
+            Expected::Deny("wrapper-unreadable"),
+        ),
+    ]);
+
+    // Falsos positivos de hoje, que a S5 vai liberar (o nome nu só é argumento de `grep` ou de `-p`).
+    corpus.extend(
+        [
+            "env -i grep OMHL_ROLE file",
+            "declare -p OMHL_ROLE",
+            "typeset -p OMHL_ROLE",
+        ]
+        .into_iter()
+        .map(denied_from_both_origins),
+    );
+
+    corpus
+}
+
+#[test]
+fn it_should_keep_the_current_denials_of_the_role_variable_corpus() {
+    let mismatches: Vec<String> = role_variable_corpus()
+        .into_iter()
+        .flat_map(|entry| {
+            [
+                ("main session", None, entry.main_session),
+                ("ported agent", Some(PORTED_AGENT), entry.ported_agent),
+            ]
+            .into_iter()
+            .filter_map(move |(origin, agent_type, expected)| {
+                let actual = expected_of(&verdict_of(entry.command, agent_type));
+
+                (actual != expected).then(|| {
+                    format!(
+                        "`{}` from the {origin}: expected {expected:?}, got {actual:?}",
+                        entry.command
+                    )
+                })
+            })
+        })
+        .collect();
+
+    assert!(
+        mismatches.is_empty(),
+        "verdicts changed:\n{}",
+        mismatches.join("\n")
+    );
+}

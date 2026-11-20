@@ -234,3 +234,6 @@ fn deny(code: &'static str, reason: &str) -> RoleVerdict {
         reason: reason.to_owned(),
     }
 }
+
+#[cfg(test)]
+mod tests;
