@@ -434,14 +434,25 @@ fn heal_freeze_marks(store: &SpecStore, branches: &[String]) -> Vec<AppError> {
 
 /// Marca todas as pastas possíveis; a falha de uma não deixa as outras sem marca, e o primeiro erro sai no fim.
 fn mark_work_item(store: &SpecStore, work_item: &str) -> Result<(), SpecStoreError> {
+    mark_folders(store, store.markable_folders(work_item)?).map(|_| ())
+}
+
+/// Grava a marca em cada pasta e devolve `(gravadas, já marcadas)`; a falha de uma não deixa as outras sem marca, e o primeiro erro sai no fim.
+fn mark_folders(
+    store: &SpecStore,
+    folders: Vec<String>,
+) -> Result<(Vec<String>, Vec<String>), SpecStoreError> {
+    let (mut marked, mut already) = (Vec::new(), Vec::new());
     let mut first_error = None;
-    for folder in store.markable_folders(work_item)? {
-        if let Err(error) = store.write_freeze_mark(&folder) {
-            first_error = first_error.or(Some(error));
+    for folder in folders {
+        match store.write_freeze_mark(&folder) {
+            Ok(FreezeMarkWrite::Written) => marked.push(folder),
+            Ok(FreezeMarkWrite::AlreadyMarked) => already.push(folder),
+            Err(error) => first_error = first_error.or(Some(error)),
         }
     }
 
-    first_error.map_or(Ok(()), Err)
+    first_error.map_or(Ok((marked, already)), Err)
 }
 
 /// O nascimento de uma branch de work item (o `post-start` do `wt`): grava a marca em cada pasta
@@ -462,21 +473,10 @@ pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
     let config = read_policy(&located.root).unwrap_or_default();
     let store = SpecStore::new(main_dir.join(&config.specs.dir));
 
-    let (mut marked, mut already) = (Vec::new(), Vec::new());
-    let mut first_error = None;
-    for folder in store
+    let folders = store
         .markable_folders(&work_item)
-        .map_err(spec_store_refusal)?
-    {
-        match store.write_freeze_mark(&folder) {
-            Ok(FreezeMarkWrite::Written) => marked.push(folder),
-            Ok(FreezeMarkWrite::AlreadyMarked) => already.push(folder),
-            Err(error) => first_error = first_error.or(Some(error)),
-        }
-    }
-    if let Some(error) = first_error {
-        return Err(spec_store_refusal(error));
-    }
+        .map_err(spec_store_refusal)?;
+    let (marked, already) = mark_folders(&store, folders).map_err(spec_store_refusal)?;
 
     Ok(json!({ "marked": marked, "already": already }))
 }
