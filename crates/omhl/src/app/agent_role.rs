@@ -6,7 +6,9 @@ use crate::guard::known_role;
 use crate::ports::files::read_regular_utf8;
 use crate::workflow::omhl_leaf::resolve_leaf;
 use crate::workflow::role_allow::{RoleAllow, parse_role_allow};
-use crate::workflow::shell::{CommandLine, SimpleCommand, read_command};
+use crate::workflow::shell::{
+    CommandLine, SimpleCommand, is_omhl_word, mentions_omhl, read_command,
+};
 
 /// O `agent_type` real dos subagentes do plugin é `oh-my-hexflow:<papel>`.
 const PLUGIN_PREFIX: &str = "oh-my-hexflow:";
@@ -64,7 +66,7 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
         ),
         Ok(line) => ported_agent_verdict(role, &line, input, env),
         // O erro de leitura só pesa para o agente portado, e só se o comando fala de `omhl`.
-        Err(_) if command.contains("omhl") => deny(
+        Err(_) if mentions_omhl(command) => deny(
             "command-unreadable",
             "the command has an unclosed quote or heredoc, is too long or nests too deeply, and mentions omhl; fix the command",
         ),
@@ -119,7 +121,7 @@ fn ported_agent_verdict(
     }
 
     match reaching.as_slice() {
-        [simple] if !line.compound && simple.program() == Some("omhl") => {
+        [simple] if !line.compound && simple.program().is_some_and(is_omhl_word) => {
             role_matrix_verdict(role, line, simple, input, env)
         }
         [_] if !line.compound => deny(

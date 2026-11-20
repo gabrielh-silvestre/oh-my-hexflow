@@ -11,6 +11,7 @@ use self::wrapper::{Opacity, Resolved, basename};
 
 /// Maior comando que o leitor aceita (256 KiB): acima disso ele não lê.
 const MAX_COMMAND_BYTES: usize = 256 * 1024;
+const OMHL: &str = "omhl";
 
 /// O leitor não sabe o que o comando faz: aspas ou heredoc sem fechar, aninhamento ou tamanho acima do limite.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,7 +74,7 @@ impl SimpleCommand {
     /// `mentions_omhl` vem do texto cru do comando inteiro (`CommandLine::mentions_omhl`).
     pub fn may_run_omhl(&self, mentions_omhl: bool) -> bool {
         match self.resolved.opacity {
-            None if self.program() == Some("omhl") => true,
+            None if self.program().is_some_and(is_omhl_word) => true,
             // O programa é uma expansão (`$X`, `${...}`): o bash decide o que roda, o leitor não sabe.
             None => {
                 self.resolved
@@ -83,11 +84,21 @@ impl SimpleCommand {
             }
             Some(Opacity::Rewriting) => mentions_omhl,
             Some(Opacity::UnknownOption) => {
-                self.words.iter().any(|word| basename(word) == "omhl")
+                self.words.iter().any(|word| is_omhl_word(word))
                     || (mentions_omhl && self.words.iter().any(|word| word.contains('$')))
             }
         }
     }
+}
+
+/// O texto cru tem `omhl` em qualquer lugar; sensível a caixa.
+pub fn mentions_omhl(text: &str) -> bool {
+    text.contains(OMHL)
+}
+
+/// A palavra é o programa `omhl`, com ou sem diretório na frente.
+pub fn is_omhl_word(word: &str) -> bool {
+    basename(word) == OMHL
 }
 
 pub fn read_command(command: &str) -> Result<CommandLine, ReadError> {
@@ -117,7 +128,7 @@ pub fn read_command(command: &str) -> Result<CommandLine, ReadError> {
         compound,
         clean_start,
         executes_heredoc: lexed.executes_heredoc,
-        mentions_omhl: command.contains("omhl"),
+        mentions_omhl: mentions_omhl(command),
     })
 }
 
