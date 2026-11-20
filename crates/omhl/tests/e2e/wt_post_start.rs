@@ -174,6 +174,37 @@ fn it_should_refuse_a_symlinked_spec_folder() {
 }
 
 #[test]
+fn it_should_mark_the_real_folder_when_a_regular_file_shares_the_prefix() {
+    let repo = Repo::new();
+    repo.seed(LOGIN);
+    fs::write(repo.folder("wi-w1__0"), "").expect("file is planted");
+
+    let output = repo.wt_post_start(BRANCH);
+
+    assert_success(&output);
+    assert_eq!(
+        json_line(&output.stdout),
+        json!({ "marked": [LOGIN], "already": [] })
+    );
+    assert!(repo.folder(LOGIN).join(MARK).is_file());
+}
+
+#[test]
+fn it_should_mark_the_other_folders_before_refusing_a_symlinked_one() {
+    let repo = Repo::new();
+    repo.seed(LOGIN);
+    let real = repo.project.dir().join("real-folder");
+    fs::create_dir_all(&real).expect("real folder is created");
+    symlink(&real, repo.folder("wi-w1__0")).expect("symlink is created");
+
+    let output = repo.wt_post_start(BRANCH);
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert!(repo.folder(LOGIN).join(MARK).is_file());
+    assert!(!real.join(MARK).exists());
+}
+
+#[test]
 fn it_should_leave_the_spec_files_byte_identical() {
     let repo = Repo::new();
     repo.seed(LOGIN);

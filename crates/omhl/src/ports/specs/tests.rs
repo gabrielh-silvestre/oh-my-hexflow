@@ -239,7 +239,7 @@ fn it_should_find_the_mark_in_any_folder_of_the_work_item() {
 
     let marked = store.has_freeze_mark("w1");
 
-    assert_eq!(marked, Ok(true));
+    assert!(marked);
 }
 
 #[test]
@@ -250,7 +250,54 @@ fn it_should_not_refuse_the_mark_lookup_when_the_work_item_has_two_folders() {
 
     let marked = store.has_freeze_mark("w1");
 
-    assert_eq!(marked, Ok(false));
+    assert!(!marked);
+}
+
+#[test]
+fn it_should_treat_a_non_directory_entry_as_without_mark() {
+    let (dir, store) = store();
+    seed(dir.path(), FOLDER, &["parte-01.md"]);
+    fs::write(dir.path().join("wi-w1__0"), "").unwrap();
+    let target = dir.path().join("plain-file");
+    fs::write(&target, "").unwrap();
+    symlink(&target, dir.path().join("wi-w1__1")).unwrap();
+
+    let marked = store.has_freeze_mark("w1");
+
+    assert!(!marked);
+}
+
+#[test]
+fn it_should_treat_a_mark_lookup_error_other_than_missing_as_marked() {
+    let (dir, store) = store();
+    seed(dir.path(), FOLDER, &["parte-01.md"]);
+    symlink("wi-w1__0", dir.path().join("wi-w1__0")).unwrap();
+
+    let marked = store.has_freeze_mark("w1");
+
+    assert!(marked);
+}
+
+#[test]
+fn it_should_treat_an_unreadable_specs_dir_as_marked() {
+    let (dir, store) = store();
+    seed_entries(dir.path(), ENTRIES_MAX + 1);
+
+    let marked = store.has_freeze_mark("w1");
+
+    assert!(marked);
+}
+
+#[test]
+fn it_should_list_only_directories_and_symlinks_as_markable_folders() {
+    let (dir, store) = store();
+    seed(dir.path(), FOLDER, &["parte-01.md"]);
+    fs::write(dir.path().join("wi-w1__0"), "").unwrap();
+    symlink(dir.path().join(FOLDER), dir.path().join("wi-w1__1")).unwrap();
+
+    let folders = store.markable_folders("w1");
+
+    assert_eq!(folders, Ok(vec!["wi-w1__1".to_owned(), FOLDER.to_owned()]));
 }
 
 #[test]

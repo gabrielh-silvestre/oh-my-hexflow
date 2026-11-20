@@ -390,9 +390,7 @@ fn decide_path(tool: Tool, file_path: &Path) -> Result<(Verdict, Vec<AppError>),
     let folder_exists = store
         .folder_exists(&spec.folder)
         .map_err(spec_store_refusal)?;
-    let marked = store
-        .has_freeze_mark(&spec.work_item)
-        .map_err(spec_store_refusal)?;
+    let marked = store.has_freeze_mark(&spec.work_item);
     let facts = Facts {
         has_branch,
         marked,
@@ -428,11 +426,16 @@ fn heal_freeze_marks(store: &SpecStore, branches: &[String]) -> Vec<AppError> {
         .collect()
 }
 
+/// Marca todas as pastas possíveis; a falha de uma não deixa as outras sem marca, e o primeiro erro sai no fim.
 fn mark_work_item(store: &SpecStore, work_item: &str) -> Result<(), SpecStoreError> {
-    store
-        .folders_of(work_item)?
-        .iter()
-        .try_for_each(|folder| store.write_freeze_mark(folder).map(drop))
+    let mut first_error = None;
+    for folder in store.markable_folders(work_item)? {
+        if let Err(error) = store.write_freeze_mark(&folder) {
+            first_error = first_error.or(Some(error));
+        }
+    }
+
+    first_error.map_or(Ok(()), Err)
 }
 
 /// O nascimento de uma branch de work item (o `post-start` do `wt`): grava a marca em cada pasta
@@ -454,14 +457,19 @@ pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
     let store = SpecStore::new(main_dir.join(&config.specs.dir));
 
     let (mut marked, mut already) = (Vec::new(), Vec::new());
-    for folder in store.folders_of(&work_item).map_err(spec_store_refusal)? {
-        match store
-            .write_freeze_mark(&folder)
-            .map_err(spec_store_refusal)?
-        {
-            FreezeMarkWrite::Written => marked.push(folder),
-            FreezeMarkWrite::AlreadyMarked => already.push(folder),
+    let mut first_error = None;
+    for folder in store
+        .markable_folders(&work_item)
+        .map_err(spec_store_refusal)?
+    {
+        match store.write_freeze_mark(&folder) {
+            Ok(FreezeMarkWrite::Written) => marked.push(folder),
+            Ok(FreezeMarkWrite::AlreadyMarked) => already.push(folder),
+            Err(error) => first_error = first_error.or(Some(error)),
         }
+    }
+    if let Some(error) = first_error {
+        return Err(spec_store_refusal(error));
     }
 
     Ok(json!({ "marked": marked, "already": already }))

@@ -1316,6 +1316,49 @@ fn it_should_deny_when_a_second_folder_of_the_work_item_has_the_mark() {
     assert!(reason.contains(FROZEN), "reason: {reason}");
 }
 
+/// Arquivo comum que divide o prefixo `wi-w1__` com a pasta real e vem antes dela na ordem de bytes.
+fn plant_regular_file(repo: &Repo) {
+    fs::write(repo.main.join(DEFAULT_SPECS).join("wi-w1__0"), "").expect("file is planted");
+}
+
+#[test]
+fn it_should_deny_when_a_regular_file_shares_the_work_item_folder_prefix() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    plant_regular_file(&repo);
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_with_the_mark_only_in_the_real_folder_when_a_regular_file_shares_the_prefix() {
+    let repo = Repo::new();
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    fs::write(repo.spec_file(MARK), "").expect("mark is written");
+    plant_regular_file(&repo);
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_write_the_mark_in_the_real_folder_when_a_regular_file_shares_the_prefix() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    plant_regular_file(&repo);
+
+    repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    assert!(repo.spec_file(MARK).is_file());
+}
+
 #[test]
 fn it_should_not_create_a_mark_for_a_work_item_without_a_branch() {
     let repo = Repo::new();

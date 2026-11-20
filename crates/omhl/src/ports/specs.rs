@@ -138,15 +138,36 @@ impl SpecStore {
             .collect())
     }
 
-    /// A marca em qualquer pasta do work item; não segue link: uma marca que é link também congela.
-    pub fn has_freeze_mark(&self, work_item: &str) -> Result<bool, SpecStoreError> {
-        for folder in self.folders_of(work_item)? {
-            if exists_without_following(&self.dir.join(folder).join(FREEZE_MARK))? {
-                return Ok(true);
-            }
-        }
+    /// As pastas do work item que podem receber a marca: o que não é pasta nem link (arquivo comum,
+    /// FIFO) fica de fora; o link entra porque `write_freeze_mark` o recusa com erro.
+    pub fn markable_folders(&self, work_item: &str) -> Result<Vec<String>, SpecStoreError> {
+        Ok(self
+            .folders_of(work_item)?
+            .into_iter()
+            .filter(|folder| {
+                fs::symlink_metadata(self.dir.join(folder))
+                    .map_or(true, |metadata| metadata.is_dir() || metadata.is_symlink())
+            })
+            .collect())
+    }
 
-        Ok(false)
+    /// A marca em qualquer pasta do work item; não segue link: uma marca que é link também congela.
+    /// Na dúvida congela: quem chega aqui já tem um caminho reconhecido como spec do work item, então
+    /// falha ao listar `specs/` ou ao ler a marca nunca libera a escrita. Só entrada que não é pasta
+    /// (`NotADirectory`) ou sem marca (`NotFound`) conta como sem marca.
+    pub fn has_freeze_mark(&self, work_item: &str) -> bool {
+        let Ok(folders) = self.folders_of(work_item) else {
+            return true;
+        };
+
+        folders.iter().any(|folder| {
+            match fs::symlink_metadata(self.dir.join(folder).join(FREEZE_MARK)) {
+                Ok(_) => true,
+                Err(error) => {
+                    !matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory)
+                }
+            }
+        })
     }
 
     /// A única gravação da marca. Pasta que é link é recusada (o link é a própria pasta); `create_new`
