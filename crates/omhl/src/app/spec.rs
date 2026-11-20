@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use hexlog::SemanticId;
@@ -119,12 +120,20 @@ impl Engine<'_> {
     }
 }
 
+/// O que o lote já leu do disco e do banco: a pasta da spec de cada work item e os fatos do grafo.
+#[derive(Default)]
+struct AmendmentBatch {
+    folders: HashMap<String, (WorkflowConfig, SpecFolder)>,
+    facts: Option<GraphFacts>,
+}
+
 impl Engine<'_> {
     /// Antes da guarda e de qualquer escrita: cada divergência que o lote leva a `spec-stale` com
     /// `amendment` na forma `emenda-NN` precisa estar `open` e citar uma emenda existente e válida.
     /// Fora dessa forma nada é lido do disco; a guarda recusa.
     pub(super) fn check_amendment_approvals(&mut self, request: &Value) -> Result<(), AppError> {
         let items = request["items"].as_array().map_or(&[][..], Vec::as_slice);
+        let mut batch = AmendmentBatch::default();
         for (index, item) in items.iter().enumerate() {
             let body = &item["body"];
             let data = &body["data"];
@@ -140,7 +149,7 @@ impl Engine<'_> {
             else {
                 continue;
             };
-            self.check_amendment_approval(index, body, amendment)?;
+            self.check_amendment_approval(index, body, amendment, &mut batch)?;
         }
 
         Ok(())
@@ -151,6 +160,7 @@ impl Engine<'_> {
         index: usize,
         body: &Value,
         amendment: &str,
+        batch: &mut AmendmentBatch,
     ) -> Result<(), AppError> {
         let data_pointer = format!("/items/{index}/body/data");
         let id = parse_at(
@@ -180,23 +190,29 @@ impl Engine<'_> {
             }]));
         }
 
-        let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
-        let (config, folder) = read_spec_folder(&root, work_item)?;
-        let file = format!("{amendment}.md");
         let not_found = || AppError::amendment_not_found(&format!("{data_pointer}/amendment"));
-        let folder = folder.ok_or_else(not_found)?;
+        if !batch.folders.contains_key(work_item) {
+            let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
+            let (config, folder) = read_spec_folder(&root, work_item)?;
+            let folder = folder.ok_or_else(not_found)?;
+            batch.folders.insert(work_item.to_owned(), (config, folder));
+        }
+        let (config, folder) = &batch.folders[work_item];
+        let file = format!("{amendment}.md");
         let document = folder
             .amendments
             .iter()
             .find(|document| document.name == file)
             .ok_or_else(not_found)?;
 
-        let facts = self.load_spec_facts()?;
-        let violations: Vec<Violation> =
-            folder_violations(work_item, &folder, &config.specs, &facts)
-                .into_iter()
-                .filter(|violation| file_of(violation) == file)
-                .collect();
+        let facts = match &batch.facts {
+            Some(facts) => facts,
+            None => batch.facts.insert(self.load_spec_facts()?),
+        };
+        let violations: Vec<Violation> = folder_violations(work_item, folder, &config.specs, facts)
+            .into_iter()
+            .filter(|violation| file_of(violation) == file)
+            .collect();
         if !violations.is_empty() {
             return Err(AppError::amendment_invalid(&violations));
         }
