@@ -51,9 +51,7 @@ pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Wri
 
         Ok(match outcome.verdict {
             Verdict::Allow => None,
-            Verdict::Deny { reason, .. } => {
-                Some(json!({ "permissionDecision": "deny", "permissionDecisionReason": reason }))
-            }
+            Verdict::Deny { reason, .. } => Some(deny_decision(&reason)),
         })
     });
     // Os avisos acompanham a decisão: a negação vai no stdout e uma linha por aviso, no stderr.
@@ -92,9 +90,7 @@ pub fn agent_role(
     pre_tool_use(stdin, out, err, |input| {
         Ok(match check_agent_role(input, &role_env) {
             RoleVerdict::Pass => None,
-            RoleVerdict::Deny { reason, .. } => {
-                Some(json!({ "permissionDecision": "deny", "permissionDecisionReason": reason }))
-            }
+            RoleVerdict::Deny { reason, .. } => Some(deny_decision(&reason)),
             RoleVerdict::Allow {
                 reason,
                 updated_input,
@@ -105,6 +101,10 @@ pub fn agent_role(
             })),
         })
     })
+}
+
+fn deny_decision(reason: &str) -> Value {
+    json!({ "permissionDecision": "deny", "permissionDecisionReason": reason })
 }
 
 /// `decide` devolve os campos da decisão (sem o nome do evento); `None` deixa o stdout vazio.

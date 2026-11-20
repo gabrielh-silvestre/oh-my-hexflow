@@ -111,7 +111,7 @@ fn ported_agent_verdict(
     if reaching.is_empty() {
         return RoleVerdict::Pass;
     }
-    if known_role(&format!("{ROLE_PREFIX}{role}")).is_none() {
+    if known_role(&agent_name(role)).is_none() {
         return deny(
             "role-unknown",
             "this plugin agent has no omhl role matrix; it cannot run omhl",
@@ -152,7 +152,7 @@ fn role_matrix_verdict(
     }
 
     RoleVerdict::Allow {
-        reason: format!("the command is inside the {ROLE_PREFIX}{role} matrix"),
+        reason: format!("the command is inside the {} matrix", agent_name(role)),
         updated_input: with_role_prefix(input, role),
     }
 }
@@ -178,7 +178,8 @@ fn matrix_denial(
         deny(
             "command-outside-matrix",
             &format!(
-                "{ROLE_PREFIX}{role} may run only these omhl commands (plus --help, -V and help): {}",
+                "{} may run only these omhl commands (plus --help, -V and help): {}",
+                agent_name(role),
                 allow.commands.join(", ")
             ),
         )
@@ -226,6 +227,11 @@ fn after_blank_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
     text.strip_prefix(word)
         .filter(|rest| rest.starts_with(BLANKS))
         .map(|rest| rest.trim_start_matches(BLANKS))
+}
+
+/// O nome do papel como o banco o grava no `agent` dos records.
+fn agent_name(role: &str) -> String {
+    format!("{ROLE_PREFIX}{role}")
 }
 
 fn deny(code: &'static str, reason: &str) -> RoleVerdict {

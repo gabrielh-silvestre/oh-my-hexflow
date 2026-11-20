@@ -1,6 +1,6 @@
 /// Por que o leitor não achou o programa de um comando que embrulha outro.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Opacity {
+pub(super) enum Opacity {
     /// A opção reescreve o ambiente ou o comando (`env -i`, `env -S`, `exec -c`): a palavra com o programa pode vir dentro de outra.
     Rewriting,
     /// A opção do embrulho não está na tabela: o leitor não adivinha o que vem depois dela.
