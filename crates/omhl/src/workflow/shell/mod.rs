@@ -46,11 +46,7 @@ pub struct SimpleCommand {
 impl SimpleCommand {
     /// O programa real (basename) depois de pular atribuições e embrulhos; `None` se o leitor não o achou.
     pub fn program(&self) -> Option<&str> {
-        self.resolved.program_at.map(|at| self.program_word(at))
-    }
-
-    fn program_word(&self, at: usize) -> &str {
-        basename(&self.words[at])
+        self.resolved.program_at.map(|at| basename(&self.words[at]))
     }
 
     /// O comando em três partes: as palavras antes do programa (atribuições, embrulhos e suas opções), o programa real e as palavras depois dele.
@@ -58,7 +54,7 @@ impl SimpleCommand {
         match self.resolved.program_at {
             Some(at) => (
                 &self.words[..at],
-                Some(self.program_word(at)),
+                Some(basename(&self.words[at])),
                 &self.words[at + 1..],
             ),
             None => (&self.words, None, &[]),
