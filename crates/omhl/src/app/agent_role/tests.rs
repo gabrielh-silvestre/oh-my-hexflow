@@ -73,7 +73,16 @@ fn ported_verdict_of(command: &str) -> RoleVerdict {
 
 fn assert_verdict_denies_with_code(verdict: RoleVerdict, code: &str) {
     match verdict {
-        RoleVerdict::Deny { code: actual, .. } => assert_eq!(actual, code),
+        RoleVerdict::Deny {
+            code: actual,
+            reason,
+        } => {
+            assert_eq!(actual, code);
+            assert!(
+                reason.starts_with(&format!("{code}: ")),
+                "the reason starts with `{code}: `: {reason}"
+            );
+        }
         other => panic!("expected a deny with code {code}, got {other:?}"),
     }
 }
@@ -154,6 +163,44 @@ fn it_should_deny_a_bare_reserved_word_with_role_prefix_unreachable() {
     let verdict = ported_verdict_of("! omhl list");
 
     assert_verdict_denies_with_code(verdict, "role-prefix-unreachable");
+}
+
+#[test]
+fn it_should_carry_the_code_of_each_denial() {
+    let without_plugin_root = AgentRoleEnv {
+        plugin_root: None,
+        groups: &GROUPS,
+    };
+    let denials = [
+        ("role-assignment", verdict_of("OMHL_ROLE=x omhl list", None)),
+        (
+            "heredoc-substitution",
+            ported_verdict_of("omhl append <<EOF\n$(id)\nEOF\n"),
+        ),
+        (
+            "command-unreadable",
+            ported_verdict_of("omhl list \"unclosed"),
+        ),
+        (
+            "role-unknown",
+            verdict_of("omhl list", Some("oh-my-hexflow:janitor")),
+        ),
+        ("wrapper-unreadable", ported_verdict_of("env -i omhl list")),
+        ("compound-command", ported_verdict_of("omhl list | head")),
+        ("command-outside-matrix", ported_verdict_of(ATTEST)),
+        ("role-prefix-unreachable", ported_verdict_of("! omhl list")),
+        (
+            "role-matrix-unreadable",
+            agent_role(
+                &tool_call("omhl list", Some(PORTED_AGENT)),
+                &without_plugin_root,
+            ),
+        ),
+    ];
+
+    for (code, verdict) in denials {
+        assert_verdict_denies_with_code(verdict, code);
+    }
 }
 
 // Corpus diferencial da regra de `OMHL_ROLE`

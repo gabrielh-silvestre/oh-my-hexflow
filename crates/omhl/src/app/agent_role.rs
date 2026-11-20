@@ -236,7 +236,7 @@ fn agent_name(role: &str) -> String {
 fn deny(code: &'static str, reason: &str) -> RoleVerdict {
     RoleVerdict::Deny {
         code,
-        reason: reason.to_owned(),
+        reason: format!("{code}: {reason}"),
     }
 }
 

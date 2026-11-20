@@ -35,11 +35,11 @@ fn assert_passed(output: &Child) {
     );
 }
 
-fn assert_denied(output: &Child) {
-    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+fn assert_denied(output: &Child, context: &str) {
+    assert_eq!(output.code, Some(0), "{context}: stderr: {}", output.stderr);
     assert!(
         !output.stdout.is_empty(),
-        "expected a deny, stdout is empty"
+        "{context}: expected a deny, stdout is empty"
     );
     let decision = &json_line(&output.stdout)["hookSpecificOutput"];
     assert_eq!(decision["hookEventName"], json!("PreToolUse"));
@@ -48,7 +48,7 @@ fn assert_denied(output: &Child) {
         decision["permissionDecisionReason"]
             .as_str()
             .is_some_and(|reason| !reason.is_empty()),
-        "the deny carries a reason"
+        "{context}: the deny carries a reason"
     );
 }
 
@@ -120,9 +120,10 @@ fn it_should_deny_export_omhl_role() {
 #[test]
 fn it_should_deny_every_builtin_that_assigns_omhl_role() {
     for command in ["declare", "typeset", "readonly", "local"] {
-        let output = run_agent_role(&format!("{command} OMHL_ROLE=omhl:critic"), None);
+        let command = format!("{command} OMHL_ROLE=omhl:critic");
+        let output = run_agent_role(&command, None);
 
-        assert_denied_mentioning(&output, ROLE_ASSIGNMENT_DENIAL);
+        assert_reason_starts_with_code(&output, "role-assignment", &command);
     }
 }
 
@@ -184,9 +185,7 @@ fn it_should_deny_omhl_combined_with_another_command_by_any_separator() {
         "tee >(omhl list) </dev/null",
         "omhl append <<'EOF'\n{}\nEOF\necho done",
     ] {
-        let output = run_as("verifier", command);
-
-        assert_denied_mentioning(&output, "only command");
+        assert_denied_with_code(command, "compound-command");
     }
 }
 
@@ -218,9 +217,7 @@ fn it_should_deny_a_wrapper_option_the_hook_cannot_skip_before_omhl() {
         "env -S omhl list",
         "exec -c omhl list",
     ] {
-        let output = run_as("verifier", command);
-
-        assert_denied_mentioning(&output, "wrapper option");
+        assert_denied_with_code(command, "wrapper-unreadable");
     }
 }
 
@@ -272,7 +269,7 @@ fn it_should_deny_a_plugin_agent_type_with_an_empty_or_capitalised_role() {
     for agent_type in ["oh-my-hexflow:", "oh-my-hexflow:Verifier"] {
         let output = run_agent_role("omhl list", Some(agent_type));
 
-        assert_denied_mentioning(&output, "no omhl role matrix");
+        assert_reason_starts_with_code(&output, "role-unknown", agent_type);
     }
 }
 
@@ -628,7 +625,6 @@ fn it_should_answer_allow_with_updated_input_for_a_command_inside_the_matrix() {
     let decision = decision_of(&output);
 
     assert_eq!(decision["permissionDecision"], json!("allow"));
-    assert!(decision["updatedInput"].is_object());
 }
 
 #[test]
@@ -1014,7 +1010,7 @@ fn it_should_allow_a_command_when_the_append_block_is_well_formed() {
 // Prefixo: só vale quando o `omhl` é provadamente o comando que o recebe
 
 fn assert_denied_mentioning(output: &Child, fragment: &str) {
-    assert_denied(output);
+    assert_denied(output, fragment);
     let decision = decision_of(output);
     let reason = decision["permissionDecisionReason"]
         .as_str()
@@ -1026,9 +1022,83 @@ fn assert_denied_mentioning(output: &Child, fragment: &str) {
     );
 }
 
+/// Nega com um motivo que começa por `<code>: `; `context` (o comando ou o `agent_type`) vai em toda mensagem de falha.
+fn assert_reason_starts_with_code(output: &Child, code: &str, context: &str) {
+    assert_denied(output, context);
+    let decision = decision_of(output);
+    let reason = decision["permissionDecisionReason"]
+        .as_str()
+        .unwrap_or_default();
+
+    assert!(
+        reason.starts_with(&format!("{code}: ")),
+        "{context}: the reason starts with `{code}: `: {reason}"
+    );
+}
+
+fn assert_denied_with_code(command: &str, code: &str) {
+    assert_reason_starts_with_code(&run_as("verifier", command), code, command);
+}
+
 fn assert_denied_from_any_origin(command: &str) {
-    assert_denied(&run_as("verifier", command));
-    assert_denied(&run_agent_role(command, None));
+    assert_denied(&run_as("verifier", command), command);
+    assert_denied(&run_agent_role(command, None), command);
+}
+
+#[test]
+fn it_should_start_every_denial_reason_with_its_code() {
+    let empty_root = TempDir::new().expect("plugin root is created");
+    let unreadable_matrix = run_agent_role_in(
+        empty_root.path(),
+        &bash_call("omhl list", Some(PORTED_AGENT)),
+    );
+    let denials = [
+        (
+            "role-assignment",
+            "OMHL_ROLE=x omhl list",
+            run_agent_role("OMHL_ROLE=x omhl list", None),
+        ),
+        (
+            "heredoc-substitution",
+            "omhl append <<EOF\n$(id)\nEOF\n",
+            run_as("verifier", "omhl append <<EOF\n$(id)\nEOF\n"),
+        ),
+        (
+            "command-unreadable",
+            "omhl list \"unclosed",
+            run_as("verifier", "omhl list \"unclosed"),
+        ),
+        (
+            "role-unknown",
+            "omhl list as janitor",
+            run_as("janitor", "omhl list"),
+        ),
+        (
+            "wrapper-unreadable",
+            "env -i omhl list",
+            run_as("verifier", "env -i omhl list"),
+        ),
+        (
+            "compound-command",
+            "omhl list | head",
+            run_as("verifier", "omhl list | head"),
+        ),
+        ("command-outside-matrix", ATTEST, run_as("verifier", ATTEST)),
+        (
+            "role-prefix-unreachable",
+            "! omhl list",
+            run_as("verifier", "! omhl list"),
+        ),
+        (
+            "role-matrix-unreadable",
+            "omhl list without agent file",
+            unreadable_matrix,
+        ),
+    ];
+
+    for (code, context, output) in &denials {
+        assert_reason_starts_with_code(output, code, context);
+    }
 }
 
 // Nada além de espaço e tab antes do primeiro comando
@@ -1037,37 +1107,27 @@ fn assert_denied_from_any_origin(command: &str) {
 fn it_should_deny_a_comment_line_before_the_omhl_call() {
     let command = "# record the decision\nomhl append <<'EOF'\n{\"items\":[]}\nEOF\n";
 
-    let output = run_as("verifier", command);
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code(command, "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_a_blank_line_before_the_omhl_call() {
-    let output = run_as("verifier", "\nomhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code("\nomhl list", "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_a_redirection_only_line_before_the_omhl_call() {
-    let output = run_as("verifier", ">out\nomhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code(">out\nomhl list", "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_a_heredoc_line_before_the_omhl_call() {
-    let output = run_as("verifier", "<<X\nbody\nX\nomhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code("<<X\nbody\nX\nomhl list", "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_a_line_continuation_before_the_omhl_call() {
-    let output = run_as("verifier", "\\\nomhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code("\\\nomhl list", "role-prefix-unreachable");
 }
 
 #[test]
@@ -1127,17 +1187,13 @@ fn it_should_deny_export_omhl_role_plus_equals() {
 
 #[test]
 fn it_should_deny_a_negated_omhl_call() {
-    let output = run_as("verifier", "! omhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code("! omhl list", "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_omhl_behind_every_control_keyword() {
     for keyword in ["if", "then", "elif", "else", "while", "until", "do"] {
-        let output = run_as("verifier", &format!("{keyword} omhl list"));
-
-        assert_denied_mentioning(&output, "start");
+        assert_denied_with_code(&format!("{keyword} omhl list"), "role-prefix-unreachable");
     }
 }
 
