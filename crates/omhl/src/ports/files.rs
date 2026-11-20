@@ -32,7 +32,7 @@ pub(crate) fn read_regular_utf8(path: &Path, max_bytes: u64) -> Result<String, &
 /// Abre sem seguir link e sem travar num FIFO sem escritor; o que o descritor aberto mostra
 /// que não é arquivo regular volta como `not-regular-file`. Cobre a troca do arquivo depois da
 /// pré-checagem por `symlink_metadata`.
-pub(crate) fn open_regular_nonblocking(path: &Path) -> Result<File, &'static str> {
+fn open_regular_nonblocking(path: &Path) -> Result<File, &'static str> {
     let file = open_without_following_or_blocking(path)?;
     if !file.metadata().map_err(|_| "io-error")?.is_file() {
         return Err("not-regular-file");
