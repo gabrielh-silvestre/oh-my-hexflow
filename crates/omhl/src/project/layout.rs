@@ -3,6 +3,7 @@ pub const CHECKS_DIR: &str = "checks";
 pub const GUIDELINES_DIR: &str = "guidelines";
 pub const PROJECTION_DIR: &str = "projection";
 pub const SPECS_DIR: &str = "specs";
+pub const NOTES_DIR: &str = "notes";
 pub const WORKFLOW_FILE: &str = "workflow.toml";
 pub const GITIGNORE_NAME: &str = ".gitignore";
 pub const LOCK_NAME: &str = ".lock";
