@@ -113,7 +113,7 @@ fn collect_leaves(command: &clap::Command, prefix: &str, leaves: &mut Vec<(Strin
 }
 
 pub struct Doc {
-    /// Relativo ao diretório de skills: `mechanical-checks/references/attest.md`.
+    /// Relativo ao diretório de skills: `review/references/attest.md`.
     pub path: String,
     pub text: String,
 }

@@ -1,5 +1,24 @@
 # omhl get
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| analyst | 2 | `omhl get gaps.<nome>` |
+| analyst | 2 | `omhl get premises.<nome>` |
+| analyst | 2 | `omhl get work-items.<id>` |
+| architect | 5, 7 | `omhl get decisions.<nome>` |
+| code-reviewer | 9 | `omhl get guidelines.<nome>` |
+| code-reviewer | 9 | `omhl get premises.<nome>` |
+| critic | 3 | `omhl get premises.<nome>` |
+| planner | 4 | `omhl get work-items.<id>` |
+| security-reviewer | 9 | `omhl get guidelines.<nome>` |
+| security-reviewer | 9 | `omhl get premises.<nome>` |
+| sessao | review 2 | `omhl get` |
+| sessao | interview 1, interview 2 | `omhl get work-items.<id>` |
+| verifier | 8, 9 | `omhl get decisions.<nome>` |
+| verifier | 9 | `omhl get divergences.<nome>` |
+
 ## Quando usar
 
 Para ler um nó do banco quando você já sabe o id: um work item, uma premissa, um check, uma diretiva. O `get` devolve a revisão vigente do nó. Se você não sabe o id, use `omhl list`. É somente leitura.

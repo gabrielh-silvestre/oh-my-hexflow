@@ -1,5 +1,12 @@
 # omhl report answers
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| planner | 4 | `omhl report answers --work-item work-items.<id>` |
+| sessao | plan-consensus 3 | `omhl report answers --work-item work-items.<id>` |
+
 ## Quando usar
 
 Para ver o estado de cada gap (dúvida técnica aberta durante a execução): se está aberto, quem o respondeu e se uma diretiva confirmada sustenta a resposta. Use antes de escrever a spec ou de fechar o work item, para saber que dúvidas ainda esperam resposta e quais respostas o humano ainda não viu. É somente leitura.

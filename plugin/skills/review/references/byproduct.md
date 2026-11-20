@@ -1,5 +1,11 @@
 # omhl byproduct
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | review regras | `omhl byproduct <check> <work-item> --tail 40` |
+
 ## Quando usar
 
 Para ler a saída guardada de um check mecânico, depois de um `check run` reprovado (ou de um aprovado, para conferir). É a forma de saber **por que** um check falhou: o erro `checks-failed` só diz qual check reprovou e o comando para ler a saída. O comando é somente leitura e devolve as últimas linhas da saída (`stdout` e `stderr` do comando) da attestation **mais recente** do par check e work item.
@@ -27,7 +33,7 @@ Texto no stdout, saída 0: `✔ byproduct · <check> · <work item> · <outcome>
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `invalid-arguments` (saída 1): o `--tail` está fora de 1 a 500. O ponteiro é `/tail` e a mensagem diz a regra (`tail must be between 1 and 500`). Use um valor dentro do intervalo.
 - `check-not-found` (saída 1): o check não existe no banco. Confira o id e rode `omhl load`.

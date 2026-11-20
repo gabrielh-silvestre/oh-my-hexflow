@@ -1,5 +1,11 @@
 # omhl report retro
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | review 8 | `omhl report retro` |
+
 ## Quando usar
 
 Para ler a retro de um work item, aberto ou fechado, sem fechá-lo: o mesmo relatório que o `omhl close` imprime no campo `retro`. Use antes do `close` para ver o que a retro vai trazer, ou depois dele para propor melhorias. É somente leitura.
@@ -20,11 +26,11 @@ Texto no stdout, saída 0. Sem retro sai `✔ report retro · none`: o work item
 - `no_criterion`: os gaps respondidos sem uma diretiva que sustente a resposta (`gap` e `answered_by`).
 - `open_gaps`: os gaps `open` e `needs-human`.
 
-A retro traz só ids e nomes de arquivo, nunca o texto de uma divergência, spec ou emenda. Proponha as melhorias como descrito em [SKILL.md](../SKILL.md).
+A retro traz só ids e nomes de arquivo, nunca o texto de uma divergência, spec ou emenda. Proponha as melhorias como descrito em [fechamento.md](fechamento.md).
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. A pasta da spec e o `workflow.toml` só são lidos quando há retro. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. A pasta da spec e o `workflow.toml` só são lidos quando há retro. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `work-item-not-found` (saída 1): o work item não existe. O ponteiro é `/work_item`. Confira o id.
 - `INVALID_INPUT` (saída 1): o id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.

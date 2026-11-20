@@ -1,5 +1,9 @@
 # omhl render
 
+## Quem usa, em qual etapa e com qual filtro
+
+Nenhuma etapa do ciclo a roda.
+
 ## Quando usar
 
 Para ler o contexto de sessão do projeto: os checks, as diretivas, as decisões e as premissas que valem agora, em texto. É o mesmo texto que o hook `SessionStart` injeta no começo da sessão. Use para reler o contexto no meio do trabalho, por exemplo depois de gravar uma premissa ou de fechar um work item. É somente leitura.

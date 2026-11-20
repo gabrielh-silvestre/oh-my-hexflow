@@ -1,5 +1,11 @@
 # omhl check retire
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | review regras | `omhl check retire` |
+
 ## Quando usar
 
 Para descartar de vez um check cujo arquivo foi apagado da árvore e cujo apagamento já foi mergeado. Sem isso o `omhl load` só lista o id em `orphans`, o `omhl check run` avisa `check-orphaned` a cada execução e o gate de pull request continua cobrando uma attestation que ninguém grava mais. **A retirada é definitiva** e vale para todos os clones e branches: o id nunca volta. Se a sua branch é anterior ao check (o arquivo ainda não existia nela), não aposente: rebaseie sobre a `main` ou restaure o arquivo.
@@ -16,7 +22,7 @@ Texto no stdout, saída 0: `✔ check retire · retired <id>`. Com `--format jso
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `check-not-orphaned` (saída 1): o arquivo do check ainda existe na árvore. Apague-o (e mergeie a remoção) antes, ou desista da retirada.
 - `check-not-found` (saída 1): o id não é um check vigente do projeto (inclui o que já foi aposentado). Confira o id.

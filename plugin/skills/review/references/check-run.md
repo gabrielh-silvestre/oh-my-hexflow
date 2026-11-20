@@ -1,5 +1,12 @@
 # omhl check run
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | review regras | `omhl check run` |
+| sessao | review 8 | `omhl check run --event before-merge` |
+
 ## Quando usar
 
 Para rodar os checks mecânicos (os que têm `run`) de um evento, ou um check só, e gravar a attestation de cada um para o work item da branch atual. Os hooks do git chamam o comando sozinhos (`--event before-commit` no `pre-commit`, `--event before-pr --pre-push` no `pre-push`). À mão, use `--event before-merge` para registrar o status do CI, ou `--check <id>` para repetir um check. Só roda no Linux. Se mexeu num check, rode `omhl load` antes.
@@ -37,7 +44,7 @@ Com `--format json`, a saída é uma linha no stdout: `event`, `work_item`, `rec
 
 ## Erros
 
-Um erro sai no stderr com saída 1: texto por padrão, uma linha JSON com `--format json`. Os códigos abaixo valem nos dois formatos. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Isso inclui faltar `--event` e `--check`, e usar `--pre-push` sem `--event before-pr`. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr com saída 1: texto por padrão, uma linha JSON com `--format json`. Os códigos abaixo valem nos dois formatos. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Isso inclui faltar `--event` e `--check`, e usar `--pre-push` sem `--event before-pr`. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `checks-failed` (saída 1): um check bloqueante reprovou. Cada `details` com `failed` diz como ler a saída (`omhl byproduct <check> <work-item> --tail 40`). Na `develop` não há `byproduct`: a cauda vem em `context.output_tail`. No JSON, o `error.context` traz `event`, `work_item` (ausente na `develop`) e `summary` (`planned`, `passed`, `failed`, `blocking_failed` e `not_run`; `failed` conta todo reprovado, e `blocking_failed` só os bloqueantes), e o `context` de cada `details` com `failed` traz `blocking`, `concern` e `variant` (se declarados), `run`, `timeout_secs`, `exit_code` (ausente sem código), `duration_ms`, `timed_out` e `truncated`. Corrija o código e repita. A saída (inclusive `context.output_tail`) pode ter segredos: não a copie para PR, issue, commit, `--note` nem `omhl append`, e não a repita ao usuário (regra em [byproduct.md](byproduct.md)).
 - `check-not-run` (saída 1): um problema impediu o veredito, e nada foi gravado para o check. Cada `details` traz o motivo e um `context.kind`: `spawn-failed` (o binário do `run` não existe no `PATH` do git: `context.kind` `spawn-not-found`; sem permissão para executá-lo: `spawn-permission-denied`), `spec-stale` (o TOML diverge do banco: rode `omhl load`), `spec-invalid`, `command-changed-tree` (o check alterou a árvore: mantenha-o somente leitura) ou `not-run` (o check restante não rodou). Siga o `hint` do contexto e repita.

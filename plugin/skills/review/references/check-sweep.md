@@ -1,5 +1,11 @@
 # omhl check sweep
 
+## Quem usa, em qual etapa e com qual filtro
+
+Nenhuma etapa do ciclo a roda.
+
+A varredura global é do dono e só roda com a aprovação do humano: `SKILL.md` da `review`, seção Regras.
+
 ## Quando usar
 
 Quando sobrou processo de um check cujo `omhl` já saiu (Ctrl+C, `kill`, queda do terminal). Antes de rodar, peça a aprovação do humano: o comando vale para **qualquer raiz de projeto da máquina**, do mesmo usuário, e pode encerrar um servidor (`sccache`, daemon do Gradle) que outra sessão ainda usa. Para o caso comum, rode o `omhl check run`: ele já varre, em silêncio, os órfãos do próprio projeto no começo de cada execução. Este comando faz a varredura sob demanda. Só roda no Linux.
@@ -16,7 +22,7 @@ Texto no stdout, saída 0, também quando não há alvo: `✔ check sweep · N s
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
 - `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.

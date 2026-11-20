@@ -1,5 +1,11 @@
 # omhl project
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | plan-consensus 6, plan-consensus 7, plan-consensus 8, review 4, review 7 | `omhl project` |
+
 ## Quando usar
 
 Para regenerar a projeção do projeto: um arquivo Markdown por work item em `.omhl/projection/`, com tudo o que está vigente para ele (decisões, premissas, attestations, relations, e as seções de gaps e de divergências). Use quando precisar ler o estado de um work item como arquivo, ou depois de gravar registros e querer a projeção em dia. Não grava nenhum registro no banco; só escreve arquivos, e só dentro de `.omhl/projection/`.

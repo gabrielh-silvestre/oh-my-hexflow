@@ -1,10 +1,46 @@
 # omhl list
 
+- [Quem usa](#quem-usa-em-qual-etapa-e-com-qual-filtro)
 - [Quando usar](#quando-usar)
 - [Entradas](#entradas)
 - [Saída](#saída)
 - [Erros](#erros)
 - [Exemplos](#exemplos)
+
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| analyst | 2 | `omhl list --type gap --where work_item=work-items.<id>` |
+| analyst | 2 | `omhl list --type premise --where work_item=work-items.<id>` |
+| architect | 5, 7 | `omhl list --type decision --where work_item=work-items.<id>` |
+| architect | 5, 7 | `omhl list --type guideline` |
+| architect | 5, 7 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
+| code-reviewer | 9 | `omhl list --type decision --where work_item=work-items.<id>` |
+| code-reviewer | 9 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
+| code-reviewer | 9 | `omhl list --type guideline` |
+| code-reviewer | 9 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
+| critic | 6, 7 | `omhl list --type decision --where work_item=work-items.<id>` |
+| critic | 3 | `omhl list --type gap --where work_item=work-items.<id> --where kind=technical` |
+| critic | 6, 7 | `omhl list --type guideline` |
+| critic | 3 | `omhl list --type premise --where work_item=work-items.<id> --where kind=technical --where status=assumed` |
+| critic | 6, 7 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
+| planner | 4 | `omhl list --type gap --where work_item=work-items.<id>` |
+| planner | 4 | `omhl list --type guideline` |
+| planner | 4 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
+| planner | 4 | `omhl list --type work-item` |
+| security-reviewer | 9 | `omhl list --type decision --where work_item=work-items.<id>` |
+| security-reviewer | 9 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
+| security-reviewer | 9 | `omhl list --type guideline` |
+| security-reviewer | 9 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
+| sessao | review 2 | `omhl list` |
+| sessao | plan-consensus 5, review 6 | `omhl list --type decision --where work_item=work-items.<id>` |
+| sessao | review 6 | `omhl list --type decision --where work_item=work-items.<id> --format json` |
+| sessao | review 1, review 2, review 3, review 5 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
+| sessao | plan-consensus 1 | `omhl list --type gap --where work_item=work-items.<id>` |
+| sessao | review 6 | `omhl list --type premise --where work_item=work-items.<id> --format json` |
+| sessao | interview 3, plan-consensus 2 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
+| verifier | 9 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
 
 ## Quando usar
 
