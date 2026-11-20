@@ -5,7 +5,9 @@ const GUIDELINE: &str = "guideline";
 const ANSWERS: &str = "answers";
 const SUPPORTS: &str = "supports";
 const CONTRADICTS: &str = "contradicts";
-pub const PERSON_PREFIX: &str = "person:";
+const PERSON_PREFIX: &str = "person:";
+/// Menor nome de pessoa, em caracteres visíveis, que vale como confirmação humana.
+const MIN_VISIBLE_NAME_CHARS: usize = 3;
 /// `confirmed_by.by` da premissa técnica que o `omhl:critic` confirma.
 pub const CRITIC_CONFIRMATION: &str = "critic";
 
@@ -86,10 +88,41 @@ fn answerer_of(data: &Value) -> Answerer {
         .then(|| confirmer(data))
         .flatten();
     match by {
-        Some(by) if by.starts_with(PERSON_PREFIX) => Answerer::Human,
+        Some(by) if is_person_confirmer(by) => Answerer::Human,
         Some(CRITIC_CONFIRMATION) => Answerer::Critic,
         _ => Answerer::Autonomous,
     }
+}
+
+/// `person:<nome>` com ao menos 3 caracteres visíveis no nome.
+pub fn is_person_confirmer(by: &str) -> bool {
+    by.strip_prefix(PERSON_PREFIX).is_some_and(|name| {
+        name.chars().filter(|c| is_visible(*c)).count() >= MIN_VISIBLE_NAME_CHARS
+    })
+}
+
+/// O `is_whitespace` e o `is_control` deixam passar os invisíveis de largura zero, bidi e seletores; a lista os cobre.
+fn is_visible(c: char) -> bool {
+    !c.is_whitespace()
+        && !c.is_control()
+        && !matches!(
+            c,
+            '\u{00AD}'
+                | '\u{034F}'
+                | '\u{061C}'
+                | '\u{115F}'
+                | '\u{1160}'
+                | '\u{180E}'
+                | '\u{200B}'..='\u{200F}'
+                | '\u{202A}'..='\u{202E}'
+                | '\u{2060}'..='\u{2069}'
+                | '\u{2800}'
+                | '\u{3164}'
+                | '\u{FE00}'..='\u{FE0F}'
+                | '\u{FEFF}'
+                | '\u{FFA0}'
+                | '\u{E0000}'..='\u{E007F}'
+        )
 }
 
 /// `confirmed_by.by` do node, quando existe.

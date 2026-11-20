@@ -106,7 +106,7 @@ A confirmação é a aprovação do humano dentro da sessão. O registro leva o 
 }
 ```
 
-- `by` tem de 1 a 100 caracteres e começa com `person:`, seguido de ao menos um caractere.
+- `by` tem de 1 a 100 caracteres e começa com `person:`, seguido de um nome com ao menos 3 caracteres visíveis (espaço, controle e caracteres invisíveis, como os de largura zero, não contam).
 - Exceção: o `omhl:critic` confirma premissa técnica com `"by": "critic"`. Vale só quando o autor é `omhl:critic`, o tipo é `premise`, o `kind` é `technical` e `question` e `answer` literais estão presentes e não vazios. Outro autor com `by: "critic"`, ou o critic numa premissa de negócio que ele cria, é `confirmation-invalid`. O critic gravando diretiva ou divergência responde antes `role-record-forbidden`, e revisando premissa de negócio alheia, `role-revision-forbidden`.
 - `question` e `answer` têm de 1 a 2000 caracteres. Um texto maior é recusado, nunca truncado: o literal não pode mudar.
 - O campo é opcional em `premise`, `guideline` e `divergence`. Um record antigo, sem ele, continua válido.
@@ -117,7 +117,7 @@ A guarda do `append` impõe estas regras. A mensagem de erro traz o código e o 
 | Código | Quando |
 |---|---|
 | `confirmation-required` | Uma premissa `confirmed`, uma diretiva ou uma divergência `spec-stale` chegou sem `confirmed_by`, ou a divergência `spec-stale` chegou sem `amendment` |
-| `confirmation-invalid` | O `by` não começa com `person:` ou não tem nome depois dele (salvo a confirmação do critic, acima); uma premissa que não é `confirmed` traz `confirmed_by`; uma divergência que não é `spec-stale` traz `confirmed_by` ou `amendment`; o `amendment` não tem a forma `emenda-NN` |
+| `confirmation-invalid` | O `by` não começa com `person:` ou o nome depois dele tem menos de 3 caracteres visíveis (salvo a confirmação do critic, acima); uma premissa que não é `confirmed` traz `confirmed_by`; uma divergência que não é `spec-stale` traz `confirmed_by` ou `amendment`; o `amendment` não tem a forma `emenda-NN` |
 
 Uma premissa com `kind` e sem `work_item` responde `work-item-not-found` em `/items/0/body/data/work_item`. Uma premissa sem `kind` e sem `work_item` é permitida: ela não pertence a nenhum work item e não expira.
 
@@ -413,7 +413,7 @@ omhl report answers --work-item work-items.w1 --format json
 | Campo | Valores |
 |---|---|
 | `state` | `open`: nenhuma resposta. `answered`: há resposta. `needs-human`: a resposta não é de pessoa (`autonomous` ou `critic`) e contraria uma diretiva confirmada; o gap segue contando como aberto no validador e na retro |
-| `answerer` | `human` quando a premissa que responde está confirmada (`confirmed` com `confirmed_by`) e o `by` começa com `person:`; `critic` quando o `by` é `critic`; `autonomous` em qualquer outro caso, inclusive a premissa antiga `confirmed` sem `confirmed_by` e a `assumed` com `confirmed_by` |
+| `answerer` | `human` quando a premissa que responde está confirmada (`confirmed` com `confirmed_by`) e o `by` é `person:` seguido de ao menos 3 caracteres visíveis; `critic` quando o `by` é `critic`; `autonomous` em qualquer outro caso, inclusive a premissa antiga `confirmed` sem `confirmed_by` e a `assumed` com `confirmed_by` |
 | `no_criterion` | `true` quando nenhuma diretiva confirmada sustenta a resposta |
 
 Com mais de uma resposta, vale a premissa confirmada por pessoa. Sem ela, vale a confirmada pelo critic. Sem nenhuma das duas, vale a primeira em ordem de gravação; um empate entre respostas do mesmo respondente também cai na primeira gravada. A cadeira aceita o papel `omhl:critic`, que responde só gap técnico (subseção abaixo). O agente `oh-my-hexflow:critic` cumpre esse papel (seção 12).

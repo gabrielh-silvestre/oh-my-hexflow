@@ -1527,6 +1527,68 @@ fn it_should_refuse_a_confirmation_whose_author_has_only_the_person_prefix() {
     );
 }
 
+/// Grava uma diretiva confirmada por `confirmed_by` e devolve a recusa da guarda.
+fn guideline_refusal_confirmed_by(confirmed_by: Value) -> OmhlError {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(guideline_data(), "confirmed_by", confirmed_by);
+
+    appended_by_agent(&mut omhl, "guidelines.small-prs", "guideline", data)
+        .expect_err("the append is refused")
+}
+
+#[test]
+fn it_should_refuse_a_person_with_only_blanks() {
+    let error = guideline_refusal_confirmed_by(confirmation("person:   \t "));
+
+    assert_eq!(
+        error,
+        rule(RuleCode::ConfirmationInvalid, CONFIRMED_BY_BY_POINTER)
+    );
+}
+
+#[test]
+fn it_should_refuse_a_person_with_two_visible_characters() {
+    let error = guideline_refusal_confirmed_by(confirmation("person:ab"));
+
+    assert_eq!(
+        error,
+        rule(RuleCode::ConfirmationInvalid, CONFIRMED_BY_BY_POINTER)
+    );
+}
+
+#[test]
+fn it_should_refuse_a_person_made_of_invisible_characters() {
+    let invisible = confirmation("person:\u{200B}\u{202E}\u{FEFF}\u{3164}");
+
+    let error = guideline_refusal_confirmed_by(invisible);
+
+    assert_eq!(
+        error,
+        rule(RuleCode::ConfirmationInvalid, CONFIRMED_BY_BY_POINTER)
+    );
+}
+
+#[test]
+fn it_should_refuse_a_malformed_confirmed_by() {
+    let malformed = [
+        json!("person:gabriel"),
+        json!(null),
+        json!({ "by": 7, "question": "q", "answer": "a" }),
+        json!({ "question": "q", "answer": "a" }),
+    ];
+
+    for confirmed_by in malformed {
+        let error = guideline_refusal_confirmed_by(confirmed_by.clone());
+
+        assert_eq!(
+            error,
+            rule(RuleCode::ConfirmationInvalid, CONFIRMED_BY_BY_POINTER),
+            "{confirmed_by}"
+        );
+    }
+}
+
 // R3
 
 #[test]
