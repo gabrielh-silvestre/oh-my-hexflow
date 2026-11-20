@@ -101,7 +101,8 @@ Os comandos abaixo rodam dentro de um projeto marcado e imprimem texto para o
 agente (`--format agent`, o padrão). `--format human` mostra os mesmos fatos em
 blocos, e `--format json` devolve a linha de JSON, que é a forma de ler a saída
 por código. Os comandos lidos por máquina (`hook session-start`,
-`hook spec-lock`, `hook agent-role`, `hooks post-commit` e `gate-worktree`)
+`hook spec-lock`, `hook agent-role`, `hook wt-post-start`, `hooks post-commit` e
+`gate-worktree`)
 seguem em JSON e recusam `--format agent|human` com erro de uso (saída 2). A
 decisão está no
 [ADR 0009](docs/adr/0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
@@ -149,6 +150,7 @@ decisão está no
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
 | `hook spec-lock` | Roda o hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de uma spec congelada |
 | `hook agent-role` | Roda o hook `PreToolUse` do Claude Code para o `Bash` e o `Monitor`: aplica a matriz do papel ao agente portado |
+| `hook wt-post-start --branch <nome>` | Roda o hook `post-start` do `wt`: grava a marca `.frozen` em cada pasta de spec do work item da branch nova. Não lê stdin e fica mudo sem `.omhl.toml` |
 | `spec init <work-item> <slug>` | Cria a pasta da spec de um work item aberto, com a primeira parte, no diretório principal |
 | `spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
 | `report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |

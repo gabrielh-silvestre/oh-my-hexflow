@@ -52,7 +52,7 @@ Edição direta na `develop` nunca passa pelo gate. A `develop` e a `main` saem 
 
 ## 2. Comandos
 
-Um erro sai no stderr com código de saída 1, e uma saída de sucesso no stdout. Os 21 comandos ativos imprimem texto `agent` por padrão, com `--format human` (os mesmos fatos em blocos) e `--format json` (uma linha de JSON, a forma de ler por código); um erro sai em texto (`✘ código · mensagem`). Os cinco comandos lidos por máquina (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hooks post-commit` e `gate-worktree`) seguem em JSON e recusam `--format agent|human` com erro de uso (saída 2). A decisão está no [ADR 0009](adr/0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
+Um erro sai no stderr com código de saída 1, e uma saída de sucesso no stdout. Os 21 comandos ativos imprimem texto `agent` por padrão, com `--format human` (os mesmos fatos em blocos) e `--format json` (uma linha de JSON, a forma de ler por código); um erro sai em texto (`✘ código · mensagem`). Os seis comandos lidos por máquina (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hook wt-post-start`, `hooks post-commit` e `gate-worktree`) seguem em JSON e recusam `--format agent|human` com erro de uso (saída 2). A decisão está no [ADR 0009](adr/0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
 
 | Comando | O que faz |
 |---|---|
@@ -61,6 +61,7 @@ Um erro sai no stderr com código de saída 1, e uma saída de sucesso no stdout
 | `omhl gate-worktree --branch <nome>` | Decide se a worktree da branch pode ser criada |
 | `omhl hook spec-lock` | Hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de spec congelada |
 | `omhl hook agent-role` | Hook `PreToolUse` do Claude Code para o `Bash` e o `Monitor`: lê o evento no stdin e aplica a matriz do papel ao agente portado (seção 12) |
+| `omhl hook wt-post-start --branch <nome>` | Hook `post-start` do `wt`: grava a marca `.frozen` em cada pasta `wi-<id>__*` do work item da branch nova e imprime `{"marked":[...],"already":[...]}`. Não lê stdin e não abre o banco |
 | `omhl report answers [--work-item <id>]` | Estado de cada gap, quem o respondeu e se uma diretiva sustenta a resposta. Recusa um work item que não existe |
 | `omhl report recurrences [--min <n>]` | Premissas repetidas em work items suficientes para sugerir a promoção |
 | `omhl report retro <work-item>` | A retro de um work item, aberto ou fechado |
@@ -373,7 +374,7 @@ A negação sai no stdout, com código de saída `0`:
 | `spec-in-linked-worktree` | O caminho está numa worktree ligada. As specs vivem só no diretório principal | Escreva no caminho do diretório principal que a mensagem informa |
 | `spec-folder-unknown` | O work item tem branch e a pasta do caminho não existe. Vale para qualquer arquivo | Escreva a emenda na pasta de spec que o work item já tem |
 
-O subcomando `hook spec-lock` nunca sai com `2`. Qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto só pelo caminho do arquivo (o `.omhl.toml` mais próximo acima dele); o `cwd` da sessão não entra, e um arquivo sem `.omhl.toml` acima dele é liberado em silêncio, sem abrir o git. Um `omhl` velho, sem o subcomando, é outro caso: o clap sai com `2`, e o envoltório `|| exit 1` do `hooks.json` o converte em `1` (seção 10). Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
+O grupo `hook` tem dois contratos. O primeiro vale para os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`): leem o evento no stdin, nunca saem com `2` e, em erro interno, liberam. O segundo é do `wt-post-start`: não lê stdin, é silencioso em segundo plano (sem `.omhl.toml`, sai `0` sem escrever nada; `develop`, `main` e branch que não é de work item não têm efeito) e sai `1` com `spec-store-unusable` em pasta de spec que é link simbólico. No `hook spec-lock`, qualquer erro interno (git, leitura, JSON) libera a escrita, sai com `0` e deixa uma linha de erro no stderr. O hook acha o projeto só pelo caminho do arquivo (o `.omhl.toml` mais próximo acima dele); o `cwd` da sessão não entra, e um arquivo sem `.omhl.toml` acima dele é liberado em silêncio, sem abrir o git. Um `omhl` velho, sem o subcomando, é outro caso: o clap sai com `2`, e o envoltório `|| exit 1` do `hooks.json` o converte em `1` (seção 10). Um `.omhl/workflow.toml` inválido não libera: o hook decide com os padrões (com um `specs.dir` customizado e o arquivo inválido, a pasta customizada fica sem trava, pois o `specs.dir` não é legível).
 
 ## 8. Gap, divergência e retro
 
