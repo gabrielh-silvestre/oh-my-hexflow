@@ -13,7 +13,7 @@ const PLUGIN_PREFIX: &str = "oh-my-hexflow:";
 /// O papel gravado em `OMHL_ROLE` e no `agent` dos records é `omhl:<papel>`.
 const ROLE_PREFIX: &str = "omhl:";
 const ROLE_VARIABLE: &str = "OMHL_ROLE";
-const ASSIGNING_PROGRAMS: [&str; 6] = ["export", "env", "declare", "typeset", "readonly", "local"];
+const ASSIGNING_PROGRAMS: [&str; 5] = ["export", "declare", "typeset", "readonly", "local"];
 const AGENT_FILE_MAX_BYTES: u64 = 64 * 1024;
 const BLANKS: [char; 2] = [' ', '\t'];
 
