@@ -30,7 +30,7 @@ O gate de worktree (`omhl gate-worktree`) continua só leitura. As cinco specs q
 
 **Teto de 99 emendas (D7).** O padrão `emenda-NN.md` tem dois dígitos. Com `emenda-99.md` na pasta, o hook sugere e libera `emenda-100.md`, e o `spec validate` a recusa com `amendment-name-invalid`. O teto de 99 emendas por spec é um limite aceito: só registro, sem código novo.
 
-**Dois contratos no grupo `hook`.** Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o stdin, nunca saem com `2` e, em erro interno, liberam. O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai `1` com `spec-store-unusable` em pasta de spec que é link simbólico. O comando é lido por máquina, então entra nos "seis adiados" de formato de saída do [ADR 0009](0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
+**Dois contratos no grupo `hook`.** Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o stdin, nunca saem com `2` e, em erro interno, liberam (exceção: o `spec-lock` que falha ao listar `specs.dir` ou ao ler a marca congela). O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai `1` com `spec-store-unusable` em pasta de spec que é link simbólico. O comando é lido por máquina, então entra nos "seis adiados" de formato de saída do [ADR 0009](0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
 
 ## Alternativas descartadas
 
@@ -54,6 +54,7 @@ O gate de worktree (`omhl gate-worktree`) continua só leitura. As cinco specs q
 - Uma branch criada fora do `wt` (`git branch`, `git switch -c`, `wt switch --no-hooks`) não dispara o `post-start`. Se for apagada sem nenhum evento de spec no meio, não deixa marca e a spec volta a ser editável.
 - Há uma janela entre a checagem do hook e a escrita (TOCTOU): se o alvo de um link mudar nesse intervalo, o hook não detecta.
 - Um `specs.dir` que é link simbólico continua congelando, porque a decisão vale também pelo caminho lexical.
+- Qualquer branch local com o id do work item o congela, mesmo criada por outra pessoa; a marca só sai à mão.
 
 ## Follow-ups
 
