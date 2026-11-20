@@ -178,9 +178,9 @@ fn push_label(text: &mut String, label: &str) {
 /// plus two spaces, so a value can never forge a block header.
 fn push_value(text: &mut String, value: &str) {
     let mut chars = value.chars().peekable();
-    while let Some(char) = chars.next() {
+    while let Some(ch) = chars.next() {
         if !matches!(
-            char,
+            ch,
             '\n' | '\r'
                 | '\u{b}'
                 | '\u{c}'
@@ -191,10 +191,10 @@ fn push_value(text: &mut String, value: &str) {
                 | '\u{2028}'
                 | '\u{2029}'
         ) {
-            text.push(char);
+            text.push(ch);
             continue;
         }
-        if char == '\r' && chars.peek() == Some(&'\n') {
+        if ch == '\r' && chars.peek() == Some(&'\n') {
             chars.next();
         }
         text.push_str("\n  ");
