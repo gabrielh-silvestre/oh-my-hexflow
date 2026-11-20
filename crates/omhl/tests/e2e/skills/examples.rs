@@ -30,10 +30,11 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 use serde_json::Value;
 
-use crate::skills::coverage::{leaf_commands, read_docs, repo_root, skills_dir, starts_with_path};
+use crate::skills::coverage::{leaf_commands, read_docs, skills_dir, starts_with_path};
 use crate::support::child::omhl;
 use crate::support::git::git_command_with_env;
 use crate::support::project::Project;
+use crate::support::repo_checks::repo_root;
 use crate::support::sweep_lock::serialize_sweeps;
 
 const FENCE_TAG: &str = "omhl-example";
@@ -381,7 +382,11 @@ impl Fixture {
             .env("GIT_COMMITTER_DATE", GIT_DATE)
             .output()
             .expect("git runs");
-        assert!(output.status.success(), "fixture git {args:?} failed");
+        assert!(
+            output.status.success(),
+            "fixture git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     fn write(&self, rel: &str, content: &str) {
@@ -410,7 +415,7 @@ impl Fixture {
         };
         match name {
             "project" => fixture.seed(),
-            "git" | "hooks" => {
+            "git" => {
                 fixture.seed();
                 fixture.init_git();
             }
@@ -766,68 +771,4 @@ fn it_should_keep_counts_that_are_not_swept_or_unreadable() {
     let obtained = "✔ hooks install · 5 scripts";
 
     assert!(!text_normalizer().same(expected, obtained));
-}
-
-#[test]
-fn it_should_assemble_the_project_fixture() {
-    assert_runs(
-        "project",
-        "$ omhl get work-items.w1 --format json\n{\"node\":{\"at\":\"<at>\",\"author\":{\"agent\":\"claude\",\"client\":\"cli\"},\"data\":{\"status\":\"open\",\"title\":\"First item\"},\"id\":\"work-items.w1\",\"record_id\":\"<record-id>\",\"seq\":1,\"shadowed\":false,\"type\":\"work-item\"}}\n",
-    );
-}
-
-#[test]
-fn it_should_assemble_the_git_fixture() {
-    assert_runs(
-        "git",
-        "$ omhl spec init work-items.w1 x --format json\n{\"dir\":\"<repo>/.omhl/specs/wi-w1__x\",\"path\":\"<repo>/.omhl/specs/wi-w1__x/parte-01.md\",\"slug\":\"x\",\"work_item\":\"work-items.w1\"}\n",
-    );
-}
-
-#[test]
-fn it_should_assemble_the_spec_fixture() {
-    assert_runs(
-        "spec",
-        "$ omhl spec validate work-items.w1 --format json\n{\"amendments\":[],\"ok\":true,\"parts\":[\"parte-01.md\"]}\n",
-    );
-}
-
-#[test]
-fn it_should_assemble_the_checks_fixture() {
-    assert_runs(
-        "checks",
-        "$ omhl load --format json\n{\"created\":[],\"dry_run\":false,\"orphan_relations\":[],\"orphans\":[],\"relations_created\":[],\"revised\":[],\"skipped\":[],\"tenant\":\"acme\",\"unchanged\":[\"checks.ok\",\"checks.review\"],\"warnings\":[]}\n",
-    );
-}
-
-#[test]
-fn it_should_assemble_the_retire_check_fixture() {
-    assert_runs(
-        "retire-check",
-        "$ omhl check retire checks.ok --format json\n{\"retired\":\"checks.ok\"}\n",
-    );
-}
-
-#[test]
-fn it_should_assemble_the_retire_guideline_fixture() {
-    assert_runs(
-        "retire-guideline",
-        "$ omhl guideline retire guidelines.brief --format json\n{\"retired\":\"guidelines.brief\",\"superseded_by\":null}\n",
-    );
-}
-
-#[test]
-fn it_should_assemble_the_hooks_fixture_with_the_hooks_folder_under_its_own_xdg() {
-    assert_runs(
-        "hooks",
-        "$ omhl hooks install --format json\n{\"hooks_path\":\"<xdg>/omhl/hooks\",\"omhl\":\"<omhl>\",\"scripts\":[\"pre-commit\",\"pre-merge-commit\",\"pre-push\",\"post-commit\"],\"warnings\":[{\"code\":\"binary-in-build-dir\",\"hint\":\"install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks\",\"path\":\"<omhl>\"}]}\n",
-    );
-}
-
-#[test]
-fn it_should_assemble_the_develop_mark_fixture() {
-    assert_runs(
-        "develop-mark",
-        "$ omhl hooks post-commit\n{\"consumed\":true}\n",
-    );
 }

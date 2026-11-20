@@ -14,7 +14,7 @@ O `omhl` tinha duas portas para o agente: a CLI e o adapter MCP (`omhl mcp`, `ad
 
 O `omhl` tem uma única interface para o agente: a CLI. O adapter MCP é removido junto com o que só ele usava (`parse_tool_call`, `Caller::mcp`, `AppError::unknown_tool`). **CLI direto, UTCP descartado.**
 
-O Claude Code usa a CLI por quatro skills do plugin, com instruções em `references/` verificadas por um teste de cobertura (`skill_coverage`) e por um teste que executa os exemplos (`skill_examples`), ambos num binário de teste (`tests/skills.rs`) rodado pelo `checks.test-suite` (até o work item `perf2`; ver Consequências). As skills e os testes chegaram no PR #16, do mesmo work item; o primeiro PR deste ADR registrou só a decisão. O hook `session-start` e o `spec-lock` ficam fora das skills.
+O Claude Code usa a CLI por seis skills do plugin, com instruções em `references/` verificadas por um teste de cobertura (`skill_coverage`) e por um teste que executa os exemplos (`skill_examples`), ambos num binário de teste (`tests/skills.rs`) rodado pelo `checks.test-suite` (até o work item `perf2`; ver Consequências). As skills e os testes chegaram no PR #16, do mesmo work item; o primeiro PR deste ADR registrou só a decisão. O hook `session-start` e o `spec-lock` ficam fora das skills.
 
 **Nota de 2026-11-18 (work item `perf3`).** Os testes `skill_coverage` e `skill_examples` agora ficam em `crates/omhl/tests/e2e/skills/` (`coverage.rs` e `examples.rs`), no binário e2e, e não mais em `tests/skills.rs`. O layout de `tests/` mudou; ver [Testes unitários no gate, integração no CI](../mechanical-gates.md#testes-unitários-no-gate-integração-no-ci).
 

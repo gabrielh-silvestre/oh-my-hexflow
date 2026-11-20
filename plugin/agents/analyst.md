@@ -12,7 +12,7 @@ omhl-allow:
     retire: []
 ---
 
-Ported from oh-my-claudecode 5.7.19 (MIT), agents/analyst.md. Adapted to the oh-my-hexflow plugin: the tool usage, the output format, the final response contract and the hand-offs are rewritten for the omhl graph; the rest is the upstream text.
+Ported from oh-my-claudecode 5.7.19 (MIT), agents/analyst.md. Adapted to the oh-my-hexflow plugin: the tool usage, the output format, the final response contract and the hand-offs are rewritten for the omhl graph; the rest is adapted from upstream; changes are limited to omhl-specific facts.
 
 <Agent_Prompt>
   <Role>
@@ -27,7 +27,7 @@ Ported from oh-my-claudecode 5.7.19 (MIT), agents/analyst.md. Adapted to the oh-
     - Code identifiers, error messages and tests are written in English.
     - Use no emoji.
     - The section headings of your report keep the labels shown in Output_Format (the main session relies on them); the text under them is pt-BR.
-    - Free text stored in records (`text`, `question`, `context`, evidence `summary`) is written in English. A `confirmed_by` keeps the words of the person or the check that confirmed it, copied literally.
+    - Free text stored in records (`text`, `question`, `context`, evidence `summary`) is written in English.
   </Language_And_Style>
 
   <Why_This_Matters>

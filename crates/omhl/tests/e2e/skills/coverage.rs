@@ -9,8 +9,13 @@
 //! Convenções que as skills seguem:
 //! - citação: `omhl <caminho completo>` dentro de crases ou numa linha `$ omhl ...` (a prosa solta
 //!   "omhl é..." não conta);
-//! - código de erro: o primeiro trecho entre crases de um item de lista da seção "Erros"
-//!   (`- \`no-marker\` (saída 1): ...`); o erro de uso do clap (saída 2) não tem código e não é conferido.
+//! - código de erro: todo trecho entre crases do começo de um item de lista da seção "Erros" (antes do
+//!   primeiro `:`) que tenha forma de código, como em `- \`no-marker\` (saída 1): ...` ou
+//!   `- \`a\` e \`b\`: ...`; um ponteiro (`/limit`) não é código, e o erro de uso do clap (saída 2) não
+//!   tem código e não é conferido;
+//! - frontmatter: todo `SKILL.md` abre com `name:` igual à pasta e `description:` não vazia;
+//! - página órfã: toda página de `references/` que não é de uma folha é linkada pelo `SKILL.md` da sua skill;
+//! - dono único: cada folha tem uma única página de referência, em uma única skill.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,6 +25,7 @@ use omhl::adapters::cli::Cli;
 use regex::Regex;
 use tempfile::TempDir;
 
+use crate::support::repo_checks::repo_root;
 use crate::support::scan::prove_both_sides;
 
 pub const MAX_SKILL_LINES: usize = 80;
@@ -30,7 +36,7 @@ const TITLES: [&str; 5] = [
     "## Erros",
     "## Exemplos",
 ];
-const PREFIXES: [&str; 7] = [
+const PREFIXES: [&str; 10] = [
     "subcommands not cited by any skill under plugin/skills",
     "cited subcommands that do not exist",
     "SKILL.md files above 80 lines",
@@ -38,11 +44,10 @@ const PREFIXES: [&str; 7] = [
     "error codes cited in Erros that are not a literal in crates/*/src",
     "options missing from the Entradas section of their reference",
     "markdown paths that do not resolve to a file inside plugin/",
+    "SKILL.md files without the house frontmatter (name equal to the folder, non-empty description)",
+    "reference pages not linked from the SKILL.md of their skill",
+    "commands with a reference page in more than one skill",
 ];
-
-pub fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 pub fn skills_dir() -> PathBuf {
     repo_root().join("plugin/skills")
@@ -195,16 +200,21 @@ fn is_group_mention(words: &[String], leaves: &[String]) -> bool {
     })
 }
 
-/// Códigos do primeiro trecho entre crases de cada item de lista da seção "Erros".
+/// Todos os códigos (`kebab-case` ou `MAIUSCULO_COM_SUBLINHADO`) entre crases no começo de cada item de lista
+/// da seção "Erros", antes do primeiro `:`; `/limit` (ponteiro) e texto depois do `:` não entram.
 fn error_codes(text: &str) -> Vec<String> {
-    let bullet = Regex::new(r"^\s*[-*] `([^`]+)`").expect("regex");
+    let bullet = Regex::new(r"^\s*[-*] (`[^:]*)").expect("regex");
+    let code = Regex::new(r"`([A-Za-z][A-Za-z0-9_-]*)`").expect("regex");
     let mut in_section = false;
     let mut codes = Vec::new();
     for line in text.lines() {
         if line.starts_with("## ") {
             in_section = line.trim_end() == "## Erros";
-        } else if in_section && let Some(captures) = bullet.captures(line) {
-            codes.push(captures[1].to_owned());
+        } else if in_section && let Some(head) = bullet.captures(line) {
+            codes.extend(
+                code.captures_iter(&head[1])
+                    .map(|found| found[1].to_owned()),
+            );
         }
     }
 
@@ -272,6 +282,41 @@ fn unresolved_paths(skills: &Path, plugin: &Path, doc: &Doc) -> Vec<String> {
         .collect()
 }
 
+/// `---`, `name: <pasta>`, `description: <não vazia>`, `---`: o frontmatter da casa.
+fn has_house_frontmatter(skill: &str, text: &str) -> bool {
+    let mut lines = text.lines();
+
+    lines.next() == Some("---")
+        && lines.next() == Some(format!("name: {skill}").as_str())
+        && lines
+            .next()
+            .and_then(|line| line.strip_prefix("description: "))
+            .is_some_and(|description| !description.trim().is_empty())
+        && lines.next() == Some("---")
+}
+
+/// Página de `references/` que não é de uma folha e que o `SKILL.md` da sua skill não linka.
+fn is_orphan_page(docs: &[Doc], leaves: &[String], page: &Doc) -> bool {
+    let Some((skill, relative)) = page.path.split_once('/') else {
+        return false;
+    };
+    let is_leaf_page = leaves
+        .iter()
+        .any(|leaf| relative == format!("references/{}.md", leaf.replace(' ', "-")));
+    if !relative.starts_with("references/") || is_leaf_page {
+        return false;
+    }
+
+    !docs
+        .iter()
+        .filter(|doc| doc.path == format!("{skill}/SKILL.md"))
+        .any(|doc| {
+            md_targets(&doc.text)
+                .iter()
+                .any(|(_, target)| target.trim_start_matches("./") == relative)
+        })
+}
+
 #[derive(Default)]
 pub struct Findings {
     uncited: Vec<String>,
@@ -281,10 +326,13 @@ pub struct Findings {
     unknown_codes: Vec<String>,
     missing_options: Vec<String>,
     unresolved_paths: Vec<String>,
+    bad_frontmatter: Vec<String>,
+    orphan_pages: Vec<String>,
+    duplicate_owners: Vec<String>,
 }
 
 impl Findings {
-    fn lists(&self) -> [&Vec<String>; 7] {
+    fn lists(&self) -> [&Vec<String>; 10] {
         [
             &self.uncited,
             &self.nonexistent,
@@ -293,10 +341,13 @@ impl Findings {
             &self.unknown_codes,
             &self.missing_options,
             &self.unresolved_paths,
+            &self.bad_frontmatter,
+            &self.orphan_pages,
+            &self.duplicate_owners,
         ]
     }
 
-    fn counts(&self) -> [usize; 7] {
+    fn counts(&self) -> [usize; 10] {
         self.lists().map(|list| list.len())
     }
 
@@ -346,6 +397,12 @@ pub fn check(
                 .bad_references
                 .push(format!("{leaf}: file missing"));
         }
+        if versions.len() > 1 {
+            let owners: Vec<&str> = versions.iter().map(|doc| doc.path.as_str()).collect();
+            findings
+                .duplicate_owners
+                .push(format!("{leaf}: {}", owners.join(" + ")));
+        }
         for doc in versions {
             let section = entradas(&doc.text);
             for option in local.iter().chain(globals) {
@@ -382,6 +439,14 @@ pub fn check(
         if doc.path.ends_with("/SKILL.md") && doc.text.lines().count() > MAX_SKILL_LINES {
             findings.long_skills.push(doc.path.clone());
         }
+        if let Some(skill) = doc.path.strip_suffix("/SKILL.md")
+            && !has_house_frontmatter(skill, &doc.text)
+        {
+            findings.bad_frontmatter.push(doc.path.clone());
+        }
+        if is_orphan_page(&docs, &leaves, doc) {
+            findings.orphan_pages.push(doc.path.clone());
+        }
         for code in error_codes(&doc.text) {
             if !sources.contains(&format!("\"{code}\"")) {
                 findings.unknown_codes.push(format!("{}: {code}", doc.path));
@@ -397,6 +462,14 @@ pub fn check(
 const SYNTHETIC_LEAVES: [(&str, &str); 2] = [("list", "--limit"), ("check run", "--event")];
 const SYNTHETIC_GLOBAL: &str = "--db";
 const SYNTHETIC_SOURCES: &str = r#"fn code() -> &'static str { "known-code" }"#;
+const BOTH_CITED: &str = "Run `omhl list` and `omhl check run`.\n";
+
+/// `SKILL.md` sintético com o frontmatter da casa para a skill `name`.
+fn skill_md(name: &str, body: &str) -> String {
+    format!(
+        "---\nname: {name}\ndescription: Protocolo de teste. Use sempre.\n---\n# {name}\n\n{body}"
+    )
+}
 
 /// Página completa: a seção "Entradas" cita a opção da folha e a global.
 fn reference(leaf: &str, errors: &str) -> String {
@@ -424,10 +497,7 @@ fn page(leaf: &str, entradas: &str, usage: &str, errors: &str) -> String {
 fn tree(changes: &[(&str, Option<String>)]) -> String {
     let known = "- `known-code` (saída 1): the thing failed.";
     let mut files = std::collections::BTreeMap::from([
-        (
-            "s/SKILL.md".to_owned(),
-            "# s\n\nRun `omhl list` and `omhl check run`.\n".to_owned(),
-        ),
+        ("s/SKILL.md".to_owned(), skill_md("s", BOTH_CITED)),
         ("s/references/list.md".to_owned(), reference("list", known)),
         (
             "s/references/check-run.md".to_owned(),
@@ -491,19 +561,18 @@ fn count_of(kind: usize) -> impl Fn(&str) -> Result<usize, String> {
     }
 }
 
-/// As seis falhas, cada uma isolada, contra a árvore completa que não reprova nenhuma.
+/// As dez falhas, cada uma isolada, contra a árvore completa que não reprova nenhuma.
 pub fn prove_checks() -> Vec<String> {
     let complete = tree(&[]);
-    let both = "# s\n\nRun `omhl list` and `omhl check run`.\n";
-    let uncited = tree(&[("s/SKILL.md", Some("Run `omhl list`.\n".to_owned()))]);
-    let nonexistent = tree(&[(
-        "s/SKILL.md",
-        Some(format!("{both}Also `omhl listt` and `omhl check nope`.\n")),
-    )]);
-    let long = tree(&[(
-        "s/SKILL.md",
-        Some(format!("{both}{}", "filler\n".repeat(MAX_SKILL_LINES))),
-    )]);
+    let skill_with = |body: &str| tree(&[("s/SKILL.md", Some(skill_md("s", body)))]);
+    let uncited = skill_with("Run `omhl list`.\n");
+    let nonexistent = skill_with(&format!(
+        "{BOTH_CITED}Also `omhl listt` and `omhl check nope`.\n"
+    ));
+    let long = skill_with(&format!(
+        "{BOTH_CITED}{}",
+        "filler\n".repeat(MAX_SKILL_LINES)
+    ));
     let no_file = tree(&[("s/references/check-run.md", None)]);
     let no_title = tree(&[(
         "s/references/list.md",
@@ -513,7 +582,7 @@ pub fn prove_checks() -> Vec<String> {
         "s/references/list.md",
         Some(reference("list", "- `ghost-code` (saída 1): x.")),
     )]);
-    let group_only = tree(&[("s/SKILL.md", Some(format!("{both}See `omhl check`.\n")))]);
+    let group_only = skill_with(&format!("{BOTH_CITED}See `omhl check`.\n"));
     let clap_usage = tree(&[(
         "s/references/list.md",
         Some(reference(
@@ -521,9 +590,20 @@ pub fn prove_checks() -> Vec<String> {
             "- Saída 2: erro de uso do clap, sem código.",
         )),
     )]);
-    let hook_group = tree(&[(
-        "s/SKILL.md",
-        Some(format!("{both}Not ours: `omhl hook x`.\n")),
+    let hook_group = skill_with(&format!("{BOTH_CITED}Not ours: `omhl hook x`.\n"));
+    let two_codes = tree(&[(
+        "s/references/list.md",
+        Some(reference(
+            "list",
+            "- `known-code` e `ghost-code` (saída 1): x.",
+        )),
+    )]);
+    let code_with_pointer = tree(&[(
+        "s/references/list.md",
+        Some(reference(
+            "list",
+            "- `known-code` em `/limit` (saída 1): o `ghost-code` só aparece depois do dois-pontos.",
+        )),
     )]);
 
     let known = "- `known-code` (saída 1): x.";
@@ -555,13 +635,39 @@ pub fn prove_checks() -> Vec<String> {
         "See [c](check-run.md#erros), [s](../SKILL.md), [w](https://x.dev/y.md), `emenda-NN.md`.",
     );
 
+    let frontmatter_of = |text: String| tree(&[("s/SKILL.md", Some(text))]);
+    let no_frontmatter = frontmatter_of(format!("# s\n\n{BOTH_CITED}"));
+    let wrong_name = frontmatter_of(skill_md("s", BOTH_CITED).replace("name: s", "name: other"));
+    let empty_description = frontmatter_of(skill_md("s", BOTH_CITED).replace(
+        "description: Protocolo de teste. Use sempre.",
+        "description: ",
+    ));
+
+    let extra_page = ("s/references/extra.md", Some("# extra\n".to_owned()));
+    let orphan_page = tree(std::slice::from_ref(&extra_page));
+    let linked_page = tree(&[
+        extra_page,
+        (
+            "s/SKILL.md",
+            Some(skill_md(
+                "s",
+                &format!("{BOTH_CITED}See [e](references/extra.md).\n"),
+            )),
+        ),
+    ]);
+
+    let second_owner = tree(&[
+        ("t/SKILL.md", Some(skill_md("t", "Nothing.\n"))),
+        ("t/references/list.md", Some(reference("list", known))),
+    ]);
+
     let mut failures = Vec::new();
     for (kind, flagged) in [
         (0, vec![uncited]),
         (1, vec![nonexistent]),
         (2, vec![long]),
         (3, vec![no_file, no_title]),
-        (4, vec![ghost]),
+        (4, vec![ghost, two_codes]),
         (
             5,
             vec![
@@ -572,6 +678,9 @@ pub fn prove_checks() -> Vec<String> {
             ],
         ),
         (6, vec![link_to_nothing, link_outside_plugin, docs_path]),
+        (7, vec![no_frontmatter, wrong_name, empty_description]),
+        (8, vec![orphan_page]),
+        (9, vec![second_owner]),
     ] {
         let flagged: Vec<&str> = flagged.iter().map(String::as_str).collect();
         let accepted = [
@@ -580,6 +689,8 @@ pub fn prove_checks() -> Vec<String> {
             clap_usage.as_str(),
             hook_group.as_str(),
             links_inside.as_str(),
+            code_with_pointer.as_str(),
+            linked_page.as_str(),
         ];
         failures.extend(
             prove_both_sides(count_of(kind), &flagged, &accepted)

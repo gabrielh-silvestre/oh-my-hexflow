@@ -1,11 +1,12 @@
 use crate::support;
 
 use std::fs;
-use std::path::Path;
 
 use serde_json::json;
 use support::agent_examples::agent_file;
+use support::fences::{FenceLine, lines_by_fence};
 use support::hook::{bash_call, decision_of, run_agent_role_in};
+use support::repo_checks::repo_root;
 
 // Hook agent-role: cada comando `omhl` do prompt, como escrito, é liberado com o papel do agente
 
@@ -13,21 +14,18 @@ use support::hook::{bash_call, decision_of, run_agent_role_in};
 fn fenced_omhl_commands(role: &str) -> Vec<String> {
     let file = fs::read_to_string(agent_file(role)).expect("the agent file is readable");
     let mut commands = Vec::new();
-    let mut open: Option<Vec<&str>> = None;
+    let mut block: Vec<&str> = Vec::new();
 
-    for line in file.lines() {
-        match (line.trim_start().starts_with("```"), open.take()) {
-            (true, Some(block)) => {
+    for (place, line) in lines_by_fence(&file) {
+        match place {
+            FenceLine::Open => block.clear(),
+            FenceLine::Inside => block.push(line),
+            FenceLine::Close => {
                 if block.first().is_some_and(|first| first.starts_with("omhl")) {
                     commands.push(block.join("\n"));
                 }
             }
-            (true, None) => open = Some(Vec::new()),
-            (false, Some(mut block)) => {
-                block.push(line);
-                open = Some(block);
-            }
-            (false, None) => {}
+            FenceLine::Outside => {}
         }
     }
 
@@ -35,7 +33,7 @@ fn fenced_omhl_commands(role: &str) -> Vec<String> {
 }
 
 fn assert_hook_allows_every_fenced_command(role: &str) {
-    let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugin");
+    let plugin_root = repo_root().join("plugin");
     let agent_type = format!("oh-my-hexflow:{role}");
     let commands = fenced_omhl_commands(role);
     assert!(!commands.is_empty(), "{role} shows no omhl command");

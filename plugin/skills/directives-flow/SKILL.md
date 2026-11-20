@@ -10,22 +10,19 @@ O humano define diretivas (`guideline`) e premissas (`premise`). Você escolhe o
 ## Regras que valem o tempo todo
 
 - **Grave pela CLI.** Rode `omhl append` no Bash, com o JSON no stdin, e [`omhl attest`](../mechanical-checks/references/attest.md) para a attestation. O `agent` gravado depende de quem roda: `claude` na sessão principal, `omhl:<papel>` num agente do plugin e `user` para o dono fora do Claude Code ([roles.md](references/roles.md)). Nenhum canal prova a confirmação: o `confirmed_by` vale pelo que você grava, então grave-o só com a resposta real do humano. Isso vale para work item, premissa, gap, divergência e relation.
-- **Só o humano confirma.** Uma diretiva ou uma premissa de negócio sugerida por você fica pendente e não vincula. Para confirmar, pergunte ao humano dentro da sessão e grave o campo `confirmed_by` com `by` no formato `person:<nome>`, em que `<nome>` identifica o humano que confirmou na sessão. Se não souber o nome, pergunte ao humano; não invente. Grave também a pergunta e a resposta literais, copiadas exatamente como foram ditas. Nunca resuma, traduza nem corrija o texto. Nunca invente uma confirmação.
-- **Premissa técnica pode ser autônoma.** Registre-a com `status` `assumed`, sem `confirmed_by`. O humano a confirma depois, se quiser.
+- **Só o humano confirma.** Uma diretiva ou uma premissa de negócio sugerida por você fica pendente e não vincula. Para confirmar, pergunte ao humano dentro da sessão e grave o campo `confirmed_by` com `by` no formato `person:<nome>`, em que `<nome>` identifica o humano que confirmou na sessão. Se não souber o nome, pergunte ao humano; não invente. Grave também a pergunta e a resposta literais, copiadas exatamente como foram ditas. Nunca resuma, traduza nem corrija o texto. Nunca invente uma confirmação. O critic confirma só premissa técnica (próxima regra).
+- **Premissa técnica pode ser autônoma.** Registre-a com `status` `assumed`, sem `confirmed_by`. O critic a confirma no consenso ([roles.md](references/roles.md)) ou o humano, depois, se quiser.
 - **Decisão técnica se apoia numa âncora.** Registre-a como `decision` (com `work_item`, `text` e `evidence`) e ligue-a por `rests-on` a uma diretiva ou premissa confirmada. Sem isso o `omhl gate-pr` reprova `decisions-anchored`.
 - **Reaproveite o texto de uma premissa.** Antes de registrar uma premissa, rode [omhl report recurrences](../query-and-integrity/references/report-recurrences.md) `--min 2` e, se uma premissa anterior significa a mesma coisa, copie o texto exato dela. Assim a promoção na 3ª ocorrência agrupa as duas.
 
 ## A ordem do protocolo
 
-0. Em `feat` e `fix`, comece pela entrevista de negócio, antes do work item: a skill [interview](../interview/SKILL.md) esclarece o pedido, propõe o prefixo, o id e o slug e grava o work item e as premissas de negócio confirmadas (passos 1 a 4); depois siga do passo 5.
-   - Nos demais prefixos a entrevista só roda a pedido do dono. Em `chore` e `docs`, o consenso segue o caminho leve da [plan-consensus](../plan-consensus/SKILL.md).
-1. Escolha o prefixo (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` ou `docs`), o id e o slug. A branch será `tipo/wi-<id>__<slug>`.
-2. Grave o work item com `omhl append`: `work-items.<id>`, tipo `work-item`, `title` e `status` `open`. A guarda recusa premissa sem um work item aberto.
-3. Sugira as premissas (`kind` `business` ou `technical`, com o `work_item`).
-4. Peça a confirmação do humano e grave a premissa `confirmed` com `confirmed_by`.
-5. Para `feat/` e `fix/`, rode `omhl spec init work-items.<id> <slug>`, escreva a spec e rode `omhl spec validate work-items.<id>` até passar.
-6. Confira o gate com `omhl gate-worktree --branch <nome>`. Só então rode `wt switch -c <branch>`.
-7. Com a worktree criada, o commit e o push rodam os checks (skill `mechanical-checks`). Ao terminar, confira e feche com a skill `work-item-closing`.
+A ordem é a do [cycle.md](references/cycle.md), a fonte do ciclo dentro das skills. Em `feat` e `fix` ela começa pela entrevista de negócio, antes do work item (skill [interview](../interview/SKILL.md)); nos demais prefixos a entrevista só roda a pedido do dono, e em `chore` e `docs` o consenso segue o caminho leve da [plan-consensus](../plan-consensus/SKILL.md). O que ele não repete:
+
+- O prefixo e o slug dão a branch `tipo/wi-<id>__<slug>`; os prefixos e o que cada um exige estão na [matrix.md](references/matrix.md).
+- O work item leva `title` e `status` `open`: a guarda recusa premissa sem um work item aberto.
+- A spec nasce com `omhl spec init work-items.<id> <slug>` e vale quando `omhl spec validate work-items.<id>` passa; `feat/` e `fix/` a exigem.
+- Só rode `wt switch -c <branch>` depois que `omhl gate-worktree --branch <nome>` permitir. Com a worktree criada, o commit e o push rodam os checks (skill `mechanical-checks`); ao terminar, confira e feche com a skill `work-item-closing`.
 
 ## Se o `wt switch` falhar com `Cannot prompt for approval`
 

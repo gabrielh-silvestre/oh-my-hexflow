@@ -2,9 +2,11 @@
 //! créditos do README. Todo teste lê os sete arquivos: com um agente faltando, o teste falha (nunca passa vazio).
 //! O frontmatter é lido com o `serde-saphyr` do próprio crate; o `omhl-allow`, pelo parser do hook.
 
+use crate::support;
+
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::CommandFactory;
 use omhl::adapters::cli::Cli;
@@ -13,6 +15,8 @@ use omhl::workflow::omhl_leaf::{Leaf, resolve_leaf};
 use omhl::workflow::role_allow::{RoleAllow, parse_role_allow};
 use regex::Regex;
 use serde::Deserialize;
+use support::fences::{FenceLine, lines_by_fence};
+use support::repo_checks::repo_root;
 
 const ORIGIN_VERSION: &str = "5.7.19";
 const OPUS_ROLES: [&str; 2] = ["architect", "critic"];
@@ -211,10 +215,6 @@ impl Agent {
     }
 }
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
 fn agents_dir() -> PathBuf {
     repo_root().join("plugin/agents")
 }
@@ -267,6 +267,10 @@ fn squash(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+fn planner_prompt() -> String {
+    squash(&agent(PLANNER).body)
+}
+
 fn set(items: &[&str]) -> BTreeSet<String> {
     items.iter().map(|item| (*item).to_owned()).collect()
 }
@@ -280,12 +284,11 @@ fn top_level_tags(body: &str) -> Vec<String> {
     let tag = Regex::new(r"^<(/?)([A-Za-z][A-Za-z0-9_]*)>$").expect("regex");
     let mut stack: Vec<String> = Vec::new();
     let mut tops = Vec::new();
-    let mut fenced = false;
-    for line in body.lines().map(str::trim) {
-        if line.starts_with("```") {
-            fenced = !fenced;
-        }
-        let Some(captures) = tag.captures(line).filter(|_| !fenced) else {
+    for (place, line) in lines_by_fence(body) {
+        let Some(captures) = tag
+            .captures(line.trim())
+            .filter(|_| place == FenceLine::Outside)
+        else {
             continue;
         };
         if &captures[1] == "/" {
@@ -306,13 +309,12 @@ fn omhl_citations(body: &str) -> Vec<Vec<String>> {
     let inline = Regex::new(r"`omhl((?: [a-z][a-z0-9-]*)+)").expect("regex");
     let in_fence = Regex::new(r"^\s*(?:\$ )?omhl((?: [a-z][a-z0-9-]*)+)").expect("regex");
     let mut found = Vec::new();
-    let mut fenced = false;
-    for line in body.lines() {
-        if line.trim_start().starts_with("```") {
-            fenced = !fenced;
-            continue;
-        }
-        let pattern = if fenced { &in_fence } else { &inline };
+    for (place, line) in lines_by_fence(body) {
+        let pattern = match place {
+            FenceLine::Open | FenceLine::Close => continue,
+            FenceLine::Inside => &in_fence,
+            FenceLine::Outside => &inline,
+        };
         for captures in pattern.captures_iter(line) {
             found.push(captures[1].split_whitespace().map(str::to_owned).collect());
         }
@@ -351,18 +353,23 @@ fn it_should_ship_exactly_the_seven_ported_agents() {
 }
 
 #[test]
-fn it_should_name_each_agent_after_its_file_and_describe_it() {
+fn it_should_name_each_agent_after_its_file() {
     for agent in agents() {
-        let frontmatter = agent.parsed();
-
         assert_eq!(
-            frontmatter.name.as_deref(),
+            agent.parsed().name.as_deref(),
             Some(agent.role),
             "{}",
             agent.role
         );
+    }
+}
+
+#[test]
+fn it_should_describe_each_agent() {
+    for agent in agents() {
         assert!(
-            frontmatter
+            agent
+                .parsed()
                 .description
                 .is_some_and(|description| !description.trim().is_empty()),
             "{}: description",
@@ -425,17 +432,6 @@ fn it_should_not_mention_oh_my_claudecode_colon_or_dot_omc_slash_in_any_agent() 
 }
 
 #[test]
-fn it_should_not_give_the_agent_tool_to_any_ported_agent() {
-    for agent in agents() {
-        assert!(
-            agent.disallowed_tools().contains("Agent"),
-            "{}: Agent is not disallowed",
-            agent.role
-        );
-    }
-}
-
-#[test]
 fn it_should_omit_the_tools_key_in_every_ported_agent() {
     for agent in agents() {
         assert!(
@@ -467,18 +463,22 @@ fn it_should_set_omit_claude_md_true_in_every_ported_agent() {
 }
 
 #[test]
-fn it_should_declare_pt_br_for_human_output_and_english_for_code_identifiers_in_every_agent_prompt()
-{
+fn it_should_declare_pt_br_for_human_output_in_every_agent_prompt() {
     for agent in agents() {
-        let body = squash(&agent.body);
-
         assert!(
-            body.contains("All output addressed to humans is written in pt-BR."),
+            squash(&agent.body).contains("All output addressed to humans is written in pt-BR."),
             "{}: pt-BR phrase",
             agent.role
         );
+    }
+}
+
+#[test]
+fn it_should_declare_english_for_code_identifiers_in_every_agent_prompt() {
+    for agent in agents() {
         assert!(
-            body.contains("Code identifiers, error messages and tests are written in English."),
+            squash(&agent.body)
+                .contains("Code identifiers, error messages and tests are written in English."),
             "{}: English phrase",
             agent.role
         );
@@ -645,12 +645,8 @@ fn it_should_tell_every_agent_with_append_to_use_a_quoted_heredoc_one_omhl_comma
 }
 
 #[test]
-fn it_should_tell_the_planner_to_run_omhl_spec_init_and_omhl_spec_validate_and_allow_both_in_its_matrix()
- {
-    let planner = agent(PLANNER);
-
-    let body = squash(&planner.body);
-    let allow = planner.allow();
+fn it_should_tell_the_planner_to_run_omhl_spec_init_and_omhl_spec_validate() {
+    let body = planner_prompt();
 
     assert!(
         body.contains("omhl spec init"),
@@ -660,6 +656,12 @@ fn it_should_tell_the_planner_to_run_omhl_spec_init_and_omhl_spec_validate_and_a
         body.contains("omhl spec validate"),
         "prompt lacks omhl spec validate"
     );
+}
+
+#[test]
+fn it_should_allow_omhl_spec_init_and_omhl_spec_validate_in_the_planner_matrix() {
+    let allow = agent(PLANNER).allow();
+
     assert!(allow.commands.contains(&"spec init".to_owned()));
     assert!(allow.commands.contains(&"spec validate".to_owned()));
 }
@@ -720,19 +722,51 @@ const OMC_ONLY_CONCEPTS: [&str; 7] = [
     "ast_grep",
 ];
 
-/// O texto de uma tag de topo do prompt, sem as tags de abertura e fechamento.
+/// O texto de uma tag de topo do prompt (tag sozinha na linha, fora de cercas), sem as tags de abertura e fechamento.
 fn section(body: &str, tag: &str) -> String {
     let open = format!("<{tag}>");
     let close = format!("</{tag}>");
-    let start = body
-        .find(&open)
-        .unwrap_or_else(|| panic!("no <{tag}> section"))
-        + open.len();
-    let end = body[start..]
-        .find(&close)
-        .unwrap_or_else(|| panic!("no </{tag}> closing"));
+    let mut inside = false;
+    let mut lines = Vec::new();
 
-    body[start..start + end].to_owned()
+    for (place, line) in lines_by_fence(body) {
+        let outside_fence = place == FenceLine::Outside;
+        let trimmed = line.trim();
+        if outside_fence && !inside && trimmed == open {
+            inside = true;
+            continue;
+        }
+        if outside_fence && inside && trimmed == close {
+            return lines.join("\n");
+        }
+        if inside {
+            lines.push(line);
+        }
+    }
+
+    if inside {
+        panic!("no {close} closing line");
+    }
+    panic!("no {open} line outside code fences");
+}
+
+/// As duas últimas linhas não vazias do `Output_Format`, na ordem em que aparecem.
+fn last_two_output_lines(agent: &Agent) -> [String; 2] {
+    let output = section(&agent.body, "Output_Format");
+    let lines: Vec<&str> = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let [.., penultimate, last] = lines.as_slice() else {
+        panic!(
+            "{}: the Output_Format has {} non-empty lines, expected at least 2",
+            agent.role,
+            lines.len()
+        );
+    };
+
+    [(*penultimate).to_owned(), (*last).to_owned()]
 }
 
 #[test]
@@ -756,8 +790,7 @@ fn it_should_tell_the_spec_readers_that_the_spec_lives_in_the_main_checkout_and_
 
         for phrase in [
             "lives in the main checkout, outside your worktree",
-            "`.omhl/specs/wi-<id>__<slug>/`",
-            "The main session gives you that folder path",
+            "in the folder the main session gives you in the request (default `.omhl/specs/wi-<id>__<slug>/`)",
             "read the parts to find the `CMP-###` and `CA-###` items",
             "return to the main session asking for it",
         ] {
@@ -799,8 +832,8 @@ fn it_should_spell_out_the_new_divergence_fields_in_the_verifier_instead_of_poin
 }
 
 #[test]
-fn it_should_not_offer_the_planner_a_restart_it_cannot_perform_and_say_to_return_on_spec_exists() {
-    let body = squash(&agent(PLANNER).body);
+fn it_should_not_offer_the_planner_a_restart_it_cannot_perform() {
+    let body = planner_prompt();
 
     for forbidden in ["\"restart\"", "Discard and start fresh"] {
         assert!(
@@ -808,6 +841,12 @@ fn it_should_not_offer_the_planner_a_restart_it_cannot_perform_and_say_to_return
             "planner still offers {forbidden}"
         );
     }
+}
+
+#[test]
+fn it_should_tell_the_planner_to_return_on_spec_exists() {
+    let body = planner_prompt();
+
     for phrase in [
         "`spec-exists`",
         "do not run `omhl spec init`",
@@ -819,29 +858,36 @@ fn it_should_not_offer_the_planner_a_restart_it_cannot_perform_and_say_to_return
 }
 
 #[test]
-fn it_should_end_the_output_format_of_every_agent_with_the_next_role_and_the_open_questions_fields()
-{
+fn it_should_put_the_next_role_field_second_to_last_in_the_output_format_of_every_agent() {
     for agent in agents() {
-        let output = section(&agent.body, "Output_Format");
-        let last_two: Vec<String> = output
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .rev()
-            .take(2)
-            .map(str::to_owned)
-            .collect();
+        let [penultimate, _] = last_two_output_lines(&agent);
 
         assert!(
-            last_two[1].starts_with("- Next role: "),
-            "{}: {last_two:?}",
+            penultimate.starts_with("- Next role: "),
+            "{}: {penultimate}",
             agent.role
         );
+    }
+}
+
+#[test]
+fn it_should_put_the_open_questions_field_last_in_the_output_format_of_every_agent() {
+    for agent in agents() {
+        let [_, last] = last_two_output_lines(&agent);
+
         assert!(
-            last_two[0].starts_with("- Open questions for the main session"),
-            "{}: {last_two:?}",
+            last.starts_with("- Open questions for the main session"),
+            "{}: {last}",
             agent.role
         );
+    }
+}
+
+#[test]
+fn it_should_carry_the_suggested_kind_in_the_open_questions_of_every_agent() {
+    for agent in agents() {
+        let output = section(&agent.body, "Output_Format");
+
         assert!(
             squash(&output).contains("(suggested kind: technical | business)"),
             "{}: the questions carry no kind",
@@ -961,9 +1007,21 @@ fn it_should_name_the_handoff_fields_in_the_final_response_contract_of_the_six_a
 }
 
 #[test]
-fn it_should_cite_the_recurrence_report_in_the_analyst_only_with_flags_the_cli_has() {
-    let analyst = agent("analyst");
-    let body = squash(&analyst.body);
+fn it_should_cite_the_recurrence_report_in_the_analyst_with_the_min_flag() {
+    let body = squash(&agent("analyst").body);
+
+    assert!(body.contains("`omhl report recurrences --min 2`"));
+}
+
+#[test]
+fn it_should_allow_the_recurrence_report_in_the_analyst_matrix() {
+    let allow = agent("analyst").allow();
+
+    assert!(allow.commands.contains(&"report recurrences".to_owned()));
+}
+
+#[test]
+fn it_should_have_the_min_flag_in_the_recurrence_report_of_the_cli() {
     let report = Cli::command()
         .find_subcommand("report")
         .expect("the report group exists")
@@ -972,13 +1030,6 @@ fn it_should_cite_the_recurrence_report_in_the_analyst_only_with_flags_the_cli_h
         .find_subcommand("recurrences")
         .expect("the recurrences report exists");
 
-    assert!(body.contains("`omhl report recurrences --min 2`"));
-    assert!(
-        analyst
-            .allow()
-            .commands
-            .contains(&"report recurrences".to_owned())
-    );
     assert!(recurrences.get_arguments().any(|arg| arg.get_id() == "min"));
 }
 

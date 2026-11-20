@@ -8,6 +8,7 @@ pub mod child;
 pub mod cycle;
 pub mod directives_flow_e2e;
 pub mod ext;
+pub mod fences;
 pub mod forge;
 pub mod gate;
 pub mod git;

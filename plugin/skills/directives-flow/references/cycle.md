@@ -11,8 +11,8 @@ O ciclo tem dez passos.
 3. **Confirmação.** O que é de negócio vai ao humano, que confirma dentro da sessão. O que é técnico vai ao critic (`oh-my-hexflow:critic`). Gap sem `kind` vai ao humano.
 4. **Planner.** O `oh-my-hexflow:planner` cria a spec com `omhl spec init` e a escreve em `.omhl/specs/wi-<id>__<slug>/`; ele a valida com `omhl spec validate` até passar.
 5. **Architect.** O `oh-my-hexflow:architect` grava cada `decision` com `rests-on` para a âncora. Ele não responde gap: a resposta é uma premissa.
-6. **Critic.** O `oh-my-hexflow:critic` grava `decision` com `supports` ou `contradicts`, confirma premissa técnica e responde gap `technical`.
-7. **Consenso.** O `oh-my-hexflow:planner` (quando a spec muda), o `oh-my-hexflow:architect` e o `oh-my-hexflow:critic` repetem em no máximo 3 voltas. Sem aceite na terceira, a sessão principal para e mostra o impasse ao dono. O veredito do critic fica só na mensagem entre os agentes.
+6. **Critic.** O `oh-my-hexflow:critic` grava, para cada decisão do architect que avalia, uma `decision` própria com `rests-on` e liga a ela, para a decisão do architect, um `supports` ou `contradicts`; confirma premissa técnica e responde gap `technical`.
+7. **Consenso.** A volta 1 são os passos 5 e 6; sem aceite, o `oh-my-hexflow:architect` (e o `oh-my-hexflow:planner`, se a spec muda) revê e o `oh-my-hexflow:critic` julga de novo, em no máximo 3 voltas no total. Sem aceite na terceira, a sessão principal para e mostra o impasse ao dono. O veredito do critic fica só na mensagem entre os agentes.
 8. **Spec e worktree.** Com o aceite, o `oh-my-hexflow:verifier` retira os `contradicts` resolvidos; então vêm a conferência final com `omhl spec validate`, `omhl gate-worktree`, a worktree e a implementação.
 9. **Revisão.** O `oh-my-hexflow:code-reviewer`, o `oh-my-hexflow:security-reviewer` e o `oh-my-hexflow:verifier` revisam a entrega.
 10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic ([tracking-table.md](tracking-table.md)); depois vêm `omhl gate-pr` e `omhl close`, pela skill [work-item-closing](../../work-item-closing/SKILL.md).
