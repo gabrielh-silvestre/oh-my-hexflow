@@ -75,6 +75,8 @@ const SPEC_GRAMMAR_LITERALS: &[&str] = &["wi-", "parte-", "emenda-"];
 const SPEC_GRAMMAR_MODULE: &str = "workflow/names.rs";
 const OUTPUT_VOCAB_LITERALS: &[&str] = &["✔", "✘", "⚠", "Next:"];
 const OUTPUT_VOCAB_MODULE: &str = "adapters/text/vocab.rs";
+const ROLE_LITERALS: &[&str] = &["OMHL_ROLE", "omhl:"];
+const ROLE_MODULE: &str = "guard/role.rs";
 const REMOVED_PORT_TERMS: &[&str] = &["mcp", "tool_call", "json-rpc"];
 const NUMERIC_CUT_NEEDLES: &[&str] = &[".min(", ".max(", ".clamp(", ".take(", "saturating_"];
 /// Cortes numéricos de `src/app` por arquivo, os únicos justificados; um corte novo entra aqui com a
@@ -1614,6 +1616,34 @@ fn it_should_keep_the_output_vocabulary_literals_inside_the_vocab_module() {
         .collect();
 
     failures.extend(scan_paths(&adapters_outside_vocab, output_vocab_refs));
+
+    assert_no_failures(&failures);
+}
+
+#[test]
+fn it_should_keep_the_role_literals_inside_the_role_module() {
+    let mut failures = prove_both_sides(
+        |source| literal_refs(source, ROLE_LITERALS),
+        &[
+            "const VARIABLE: &str = \"OMHL_ROLE\";",
+            "const PREFIX: &str = \"omhl:\";",
+            "let role = std::env::var_os(\"OMHL_ROLE\");",
+        ],
+        &[
+            "use crate::guard::ROLE_PREFIX;",
+            "const CRITIC: &str = \"omhl:critic\";",
+            "// const VARIABLE: &str = \"OMHL_ROLE\";",
+            "let text = \"OMHL_ROLE is set by the plugin hook only\";",
+        ],
+    );
+    let outside_role: Vec<PathBuf> = rust_files(&src_dir())
+        .into_iter()
+        .filter(|path| !path.ends_with(ROLE_MODULE))
+        .collect();
+
+    failures.extend(scan_paths(&outside_role, |source| {
+        literal_refs(source, ROLE_LITERALS)
+    }));
 
     assert_no_failures(&failures);
 }

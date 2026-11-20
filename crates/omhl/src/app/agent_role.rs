@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-use crate::guard::known_role;
+use crate::guard::{ROLE_PREFIX, ROLE_VARIABLE, known_role};
 use crate::ports::files::read_regular_utf8;
 use crate::workflow::omhl_leaf::resolve_leaf;
 use crate::workflow::role_allow::{RoleAllow, parse_role_allow};
@@ -12,9 +12,6 @@ use crate::workflow::shell::{
 
 /// O `agent_type` real dos subagentes do plugin é `oh-my-hexflow:<papel>`.
 const PLUGIN_PREFIX: &str = "oh-my-hexflow:";
-/// O papel gravado em `OMHL_ROLE` e no `agent` dos records é `omhl:<papel>`.
-const ROLE_PREFIX: &str = "omhl:";
-const ROLE_VARIABLE: &str = "OMHL_ROLE";
 const ASSIGNING_PROGRAMS: [&str; 5] = ["export", "declare", "typeset", "readonly", "local"];
 const AGENT_FILE_MAX_BYTES: u64 = 64 * 1024;
 const BLANKS: [char; 2] = [' ', '\t'];
