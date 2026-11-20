@@ -47,7 +47,27 @@ const EXPECTED_DEPENDENCIES: &[&str] = &[
 const ATOMIC_PATHS: &[&str] = &["sync::atomic", "atomic::"];
 const MECHANICAL_FORBIDDEN_MODULES: &[&str] =
     &["adapters", "app", "facade", "ports", "runner", "byproduct"];
-const WORKFLOW_FORBIDDEN_MODULES: &[&str] = &["ports", "runner", "byproduct"];
+const WORKFLOW_FORBIDDEN_MODULES: &[&str] = &[
+    "ports",
+    "runner",
+    "byproduct",
+    "guard",
+    "render",
+    "extensions",
+];
+/// Métodos de `Path` que tocam o disco; chamados sem argumento (`path.exists()`). Os com argumento, como o `facts.exists(id)` de `workflow/spec.rs`, não acusam.
+const WORKFLOW_FS_METHODS: &[&str] = &[
+    "exists",
+    "try_exists",
+    "is_dir",
+    "is_file",
+    "is_symlink",
+    "metadata",
+    "symlink_metadata",
+    "canonicalize",
+    "read_dir",
+    "read_link",
+];
 const PORTS_FORBIDDEN_MODULES: &[&str] = &["extensions"];
 const SERVICE_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const ADAPTERS_ALLOWED: &[&str] = &["crate::app", "crate::project::Env", "super::"];
@@ -1109,8 +1129,19 @@ fn mechanical_refs(source: &str) -> Result<usize, String> {
     forbidden_module_refs(source, MECHANICAL_FORBIDDEN_MODULES)
 }
 
+/// `std::fs` solto, agrupado (`use std::{fs, ...}`) ou em caminho, mais cada método de IO de `Path` sem argumento.
+fn std_fs_refs(source: &str) -> Result<usize, String> {
+    let code = tighten(&lex(source)?.code);
+    let methods: usize = WORKFLOW_FS_METHODS
+        .iter()
+        .map(|method| code.matches(&format!(".{method}()")).count())
+        .sum();
+
+    Ok(occurrences(&code, "std::fs", true) + grouped_refs(&code, "std::", &["fs"]) + methods)
+}
+
 fn workflow_refs(source: &str) -> Result<usize, String> {
-    forbidden_module_refs(source, WORKFLOW_FORBIDDEN_MODULES)
+    Ok(forbidden_module_refs(source, WORKFLOW_FORBIDDEN_MODULES)? + std_fs_refs(source)?)
 }
 
 fn ports_refs(source: &str) -> Result<usize, String> {
@@ -1279,7 +1310,7 @@ fn it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner
 }
 
 #[test]
-fn it_should_keep_the_workflow_module_free_of_ports_runner_and_byproduct() {
+fn it_should_keep_the_workflow_module_free_of_guard_render_extensions_and_std_fs() {
     let mut failures = prove_both_sides(
         workflow_refs,
         &[
@@ -1289,6 +1320,26 @@ fn it_should_keep_the_workflow_module_free_of_ports_runner_and_byproduct() {
             "use crate::{project::Env, ports::git::GitProbe};",
             "use super::ports::Anything;",
             "let probe = ports::git::GitProbe::new(dir);",
+            "use crate::guard::attestation_id;",
+            "use crate::render::sort_by_id;",
+            "use crate::extensions::collect::extension_file_exists;",
+            "use crate::{project::Env, guard::Guard};",
+            "let id = guard::attestation_id(node);",
+            "let text = render::sort_by_id(nodes);",
+            "use std::fs;",
+            "use std::{fs, io};",
+            "use std::{io, fs::File};",
+            "let text = std::fs::read_to_string(path);",
+            "let found = path.exists();",
+            "let found = path.try_exists();",
+            "let found = path.is_dir();",
+            "let found = path.is_file();",
+            "let found = path.is_symlink();",
+            "let meta = path.metadata();",
+            "let meta = path.symlink_metadata();",
+            "let real = path.canonicalize();",
+            "let entries = path.read_dir();",
+            "let target = path.read_link();",
         ],
         &[
             "use crate::project::layout::OMHL_DIR;",
@@ -1296,6 +1347,16 @@ fn it_should_keep_the_workflow_module_free_of_ports_runner_and_byproduct() {
             "// use crate::ports::git::GitProbe;",
             "const P: &str = \"crate::runner::RunSpec\";",
             "use crate::reports::Thing;",
+            "// use crate::guard::attestation_id;",
+            "const P: &str = \"crate::render::sort_by_id\";",
+            "use crate::renderer::Thing;",
+            "let missing = !facts.exists(id);",
+            "// let found = path.exists();",
+            "const P: &str = \"std::fs::read_to_string path.is_dir()\";",
+            "use std::path::{Path, PathBuf};",
+            "use std::{collections::HashMap, io};",
+            "use std::fsx::Thing;",
+            "let meta = Meta::metadata(path);",
         ],
     );
 

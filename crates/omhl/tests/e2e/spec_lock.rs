@@ -910,6 +910,26 @@ fn it_should_deny_a_spec_inside_a_linked_worktree_of_an_unrelated_branch() {
     assert!(reason.contains(IN_WORKTREE), "reason: {reason}");
 }
 
+// Ferramenta que não edita
+
+#[test]
+fn it_should_allow_a_non_edit_tool_event_without_cwd() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let stdin = json!({
+        "session_id": "s1",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Read",
+        "tool_input": { "file_path": repo.spec_file("parte-01.md") },
+    })
+    .to_string();
+
+    let output = run_spec_lock(repo.project.xdg(), &stdin);
+
+    assert_allowed(&output);
+}
+
 // Erro interno libera
 
 #[test]

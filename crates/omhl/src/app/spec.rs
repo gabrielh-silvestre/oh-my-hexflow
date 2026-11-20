@@ -300,14 +300,27 @@ fn folder_violations(
     violations
 }
 
+/// O evento `PreToolUse` já lido pelo adapter: `app` não conhece o formato do payload.
+pub enum SpecLockEvent {
+    NotAnEdit,
+    Edit {
+        tool: Tool,
+        cwd: PathBuf,
+        file_path: PathBuf,
+    },
+}
+
 /// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. A ordem importa: o
 /// git só é consultado quando algum componente do caminho tem a forma da pasta de work item.
-pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
-    let Some(tool) = input["tool_name"].as_str().and_then(Tool::parse) else {
+pub fn spec_lock(event: SpecLockEvent) -> Result<Verdict, AppError> {
+    let SpecLockEvent::Edit {
+        tool,
+        cwd,
+        file_path,
+    } = event
+    else {
         return Ok(Verdict::Allow);
     };
-    let cwd = absolute_path(&input["cwd"])?;
-    let file_path = absolute_path(&input["tool_input"]["file_path"])?;
     if !has_spec_folder_component(&file_path) {
         return Ok(Verdict::Allow);
     }
@@ -360,13 +373,6 @@ fn find_project(file_path: &Path, cwd: &Path) -> Result<Option<Located>, AppErro
     match find_marker(nearest_existing_dir(file_path))? {
         Some(located) => Ok(Some(located)),
         None => Ok(find_marker(cwd)?),
-    }
-}
-
-fn absolute_path(value: &Value) -> Result<PathBuf, AppError> {
-    match value.as_str().map(Path::new) {
-        Some(path) if path.is_absolute() => Ok(path.to_path_buf()),
-        _ => Err(AppError::invalid_hook_input()),
     }
 }
 

@@ -27,10 +27,10 @@ pub mod runtime;
 pub use crate::extensions::model::ExtensionKind;
 pub use crate::mechanical::RUNNABLE_EVENTS;
 pub use crate::workflow::config::INVALID_WORKFLOW_CONFIG;
-pub use crate::workflow::lock::Verdict;
+pub use crate::workflow::lock::{Tool, Verdict};
 
 pub use self::agent_role::{AgentRoleEnv, RoleVerdict, agent_role};
-pub use self::spec::spec_lock;
+pub use self::spec::{SpecLockEvent, spec_lock};
 
 use std::path::{Path, PathBuf};
 
