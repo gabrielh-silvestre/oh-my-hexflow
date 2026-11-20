@@ -1691,22 +1691,23 @@ fn it_should_run_every_allowed_rewritten_command_with_omhl_role_in_the_omhl_envi
 
 // `OMHL_ROLE` no bash e no zsh: o que o hook nega e o que ele libera
 
-/// Cada tentativa de mudar o papel que o hook deve negar, com o código da negação.
-const ROLE_BYPASS_ATTEMPTS: [(&str, &str); 14] = [
-    ("export -p OMHL_ROLE=x", "role-assignment"),
-    ("export -p OMHL_ROLE", "role-assignment"),
-    ("readonly -p OMHL_ROLE", "role-assignment"),
-    ("readonly -p OMHL_ROLE=x", "role-assignment"),
-    ("declare -x OMHL_ROLE=x", "role-assignment"),
-    ("declare OMHL_ROLE=x", "role-assignment"),
-    ("declare -p OMHL_ROLE=x", "role-assignment"),
-    ("declare -- -p OMHL_ROLE=x", "role-assignment"),
-    ("declare -- -p OMHL_ROLE", "role-assignment"),
-    ("env -iu OMHL_ROLE omhl list", "role-unset"),
-    ("env -iuOMHL_ROLE omhl list", "role-unset"),
-    ("env -i -u OMHL_ROLE omhl list", "role-unset"),
-    ("env --uns=OMHL_ROLE omhl list", "role-unset"),
-    ("OMHL_ROLE=x omhl list", "role-assignment"),
+/// Cada tentativa de mudar o papel que o hook deve negar, com o código da negação e se algum shell da ferramenta muda mesmo o papel.
+/// Com `false`, nem o bash 5.2 nem o zsh 5.9 mudam o papel: a negação é defensiva e só o veredito do hook é conferido.
+const ROLE_BYPASS_ATTEMPTS: [(&str, &str, bool); 14] = [
+    ("export -p OMHL_ROLE=x", "role-assignment", true),
+    ("export -p OMHL_ROLE", "role-assignment", false),
+    ("readonly -p OMHL_ROLE", "role-assignment", false),
+    ("readonly -p OMHL_ROLE=x", "role-assignment", true),
+    ("declare -x OMHL_ROLE=x", "role-assignment", true),
+    ("declare OMHL_ROLE=x", "role-assignment", true),
+    ("declare -p OMHL_ROLE=x", "role-assignment", false),
+    ("declare -- -p OMHL_ROLE=x", "role-assignment", true),
+    ("declare -- -p OMHL_ROLE", "role-assignment", false),
+    ("env -iu OMHL_ROLE omhl list", "role-unset", true),
+    ("env -iuOMHL_ROLE omhl list", "role-unset", true),
+    ("env -i -u OMHL_ROLE omhl list", "role-unset", true),
+    ("env --uns=OMHL_ROLE omhl list", "role-unset", true),
+    ("OMHL_ROLE=x omhl list", "role-assignment", true),
 ];
 
 /// Citam o nome nu de `OMHL_ROLE` sem mudar o papel.
@@ -1716,12 +1717,11 @@ const RELEASED_ROLE_MENTIONS: [&str; 3] = [
     "typeset -p OMHL_ROLE",
 ];
 
-/// O papel que o próprio shell enxerga depois de rodar o comando, com `omhl:verifier` no ambiente de partida.
-fn role_after_running_in(shell: &str, flags: &[&str], command: &str) -> String {
-    let probe = format!("{command}\nprintf 'role=%s\\n' \"${{OMHL_ROLE-unset}}\"");
+/// A última linha impressa pelo script no shell, com `omhl:verifier` no ambiente de partida.
+fn last_line_in(shell: &str, flags: &[&str], script: &str) -> String {
     let ran = Command::new(shell)
         .args(flags)
-        .arg(&probe)
+        .arg(script)
         .env("OMHL_ROLE", "omhl:verifier")
         .env_remove("BASH_ENV")
         .env_remove("ENV")
@@ -1735,10 +1735,45 @@ fn role_after_running_in(shell: &str, flags: &[&str], command: &str) -> String {
         .to_owned()
 }
 
+/// O papel que o próprio shell enxerga depois de rodar o comando.
+fn role_after_running_in(shell: &str, flags: &[&str], command: &str) -> String {
+    last_line_in(
+        shell,
+        flags,
+        &format!("{command}\nprintf 'role=%s\\n' \"${{OMHL_ROLE-unset}}\""),
+    )
+}
+
+/// O papel que o processo filho enxerga: o `omhl list` do comando vira uma sonda que imprime o papel.
+fn role_seen_by_child_in(shell: &str, flags: &[&str], command: &str) -> String {
+    let probe = "sh -c 'printf \"role=%s\\n\" \"${OMHL_ROLE-unset}\"'";
+
+    last_line_in(shell, flags, &command.replace("omhl list", probe))
+}
+
 #[test]
 fn it_should_deny_every_attempt_to_change_the_role_from_any_origin() {
-    for (command, code) in ROLE_BYPASS_ATTEMPTS {
+    for (command, code, changes_role) in ROLE_BYPASS_ATTEMPTS {
         assert_denied_from_any_origin_with_code(command, code);
+
+        if !changes_role {
+            continue;
+        }
+
+        let roles: Vec<String> = tool_shells()
+            .into_iter()
+            .map(|(shell, flags)| match command.contains("omhl list") {
+                true => role_seen_by_child_in(shell, flags, command),
+                false => role_after_running_in(shell, flags, command),
+            })
+            .collect();
+
+        assert!(
+            roles
+                .iter()
+                .any(|role| role.starts_with("role=") && role != "role=omhl:verifier"),
+            "no tool shell changes the role with {command:?}: {roles:?}"
+        );
     }
 }
 
