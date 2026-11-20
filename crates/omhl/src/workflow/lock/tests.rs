@@ -520,4 +520,30 @@ mod lock {
 
         assert_eq!(denial(verdict).0, FROZEN);
     }
+
+    #[test]
+    fn it_should_allow_a_new_file_named_like_a_part_inside_a_subfolder() {
+        let verdict = verdict(
+            Tool::Write,
+            "sub/parte-01.md",
+            &["parte-01.md"],
+            true,
+            false,
+        );
+
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    #[test]
+    fn it_should_allow_a_new_file_named_like_an_amendment_inside_a_subfolder() {
+        let verdict = verdict(
+            Tool::Write,
+            "sub/emenda-07.md",
+            &["parte-01.md"],
+            true,
+            false,
+        );
+
+        assert_eq!(verdict, Verdict::Allow);
+    }
 }

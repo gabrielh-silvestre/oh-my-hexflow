@@ -1339,3 +1339,21 @@ fn it_should_not_change_the_next_amendment_number_after_the_cure() {
 
     assert_allowed(&output);
 }
+
+// Regra do `Write` novo fora da família
+
+#[test]
+fn it_should_allow_a_family_named_file_in_a_subfolder_of_a_frozen_spec() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let outputs = [
+        repo.hook_in_main("Write", &repo.spec_file("sub/parte-01.md")),
+        repo.hook_in_main("Write", &repo.spec_file("sub/emenda-07.md")),
+    ];
+
+    for output in &outputs {
+        assert_allowed(output);
+    }
+}
