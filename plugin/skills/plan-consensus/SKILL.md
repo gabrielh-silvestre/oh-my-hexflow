@@ -30,7 +30,7 @@ Você é a sessão principal: chama cada agente como `oh-my-hexflow:<papel>`, um
 
 ## Caminho leve (`chore` e `docs`)
 
-Em `chore` e `docs` não há spec, e a entrevista só roda a pedido do dono. Faça os passos 1 a 3, pule os passos 4 a 9 e, no passo 10, rode só o `omhl gate-worktree`: sem planner nem voltas e sem verifier. O critic só roda o modo do passo 3 (confirmar as premissas técnicas e responder os gaps técnicos), porque não há plano nem decisão a julgar. Os demais prefixos seguem o caminho completo, com as 3 voltas.
+Em `chore` e `docs` não há spec, e a entrevista só roda a pedido do dono. Faça os itens 1 a 3 da lista (passos 2 e 3 do cycle.md), pule os itens 4 a 9 (passos 4 a 7 do cycle.md e o começo do passo 8) e, no item 10, rode só o `omhl gate-worktree`: sem planner nem voltas e sem o verifier do passo 8 do cycle.md; a revisão do passo 9 segue a skill `review`. O critic só roda o modo do item 3 (confirmar as premissas técnicas e responder os gaps técnicos), porque não há plano nem decisão a julgar. Os demais prefixos seguem o caminho completo, com as 3 voltas.
 
 ## O que fazer com a resposta de cada agente
 
