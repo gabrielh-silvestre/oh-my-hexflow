@@ -397,7 +397,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 ### 3.22 Adapters novos de `omhl::ports`
 
-- `ports/process`: `ProcessRunner::{new, bound_to_parent}` (`impl CommandRunner`), `sweep_strays`, `sweep_project_strays`, `sweep_strays_in`, `SweepReport`, `SweptProcess`. Esconde o guardião (um `sh` líder de grupo próprio que mata o grupo do comando quando o `omhl` morre), a amarração ao pai com `set_pdeathsig`, a espera do líder com `waitid`, o `killpg` com carência de 2 segundos, a marca `OMHL_RUN_ID` no ambiente do comando e a leitura de `/proc`, com o prazo de 1 segundo. Só Linux: fora dele, `run` devolve `UnsupportedPlatform`. É o único arquivo que usa `nix::` (travado: `it_should_confine_nix_to_the_process_port`).
+- `ports/process`: `ProcessRunner::{new, bound_to_parent}` (`impl CommandRunner`), `sweep_strays`, `sweep_project_strays`, `sweep_strays_in`, `SweepReport`, `SweptProcess`. Esconde o guardião (um `sh` líder de grupo próprio que mata o grupo do comando quando o `omhl` morre), a amarração ao pai com `set_pdeathsig`, a espera do líder com `waitid`, o `killpg` com carência de 2 segundos, a marca `OMHL_RUN_ID` no ambiente do comando e a leitura de `/proc`, com o prazo de 1 segundo. Só Linux: fora dele, `run` devolve `UnsupportedPlatform`. Com `ports/files` (as flags `O_NOFOLLOW` e `O_NONBLOCK` da abertura e o `mkfifo` do teste dele), é um dos dois que usam `nix::` (travado: `it_should_confine_nix_to_the_process_port`).
 - `ports/pipes`: as leitoras de `stdout` e `stderr` do runner. São `thread::spawn` soltas, que mandam a saída em pedaços por um canal e descartam o que passa do teto `max_stream_bytes`; assim um descendente fugido que segura o cano não prende o runner. Travado: nada de `thread::scope` nesses arquivos (`it_should_not_scope_the_threads_of_the_pipe_readers`).
 - `ports/blob`: `BlobStore::new(<pasta do banco>)` (`impl ByproductStore`). Guarda `blobs/<2 primeiros hex>/<hash>` e confere o SHA-256 na leitura. O conteúdo, montado por `byproduct::encode`, começa com a linha `omhl-byproduct v1 stdout=<n> stderr=<n>`. Grava em nome temporário único e renomeia.
 - `ports/hooks`: `HookInstaller`. É onde ficam `fs`, `chmod` e `git config` do `omhl hooks install`, nunca em `app/`.
@@ -471,7 +471,7 @@ As regras de camada e de vocabulário varrem as fontes de produção: ignoram o 
 | O hook não procura o marcador duas vezes | `it_should_not_search_the_marker_twice_in_the_hook` |
 | `mechanical` não importa `adapters`, `app`, `facade`, `ports`, `runner` nem `byproduct` | `it_should_keep_the_mechanical_module_free_of_adapters_app_facade_ports_runner_and_byproduct` |
 | `runner` e `byproduct` não importam `adapters`, `app` nem `facade` | `it_should_keep_runner_and_byproduct_free_of_adapters_app_and_facade` |
-| `nix::` só em `ports/process.rs` | `it_should_confine_nix_to_the_process_port` |
+| `nix::` só em `ports/process.rs`, `ports/files.rs` e `ports/files/tests.rs` | `it_should_confine_nix_to_the_process_port` |
 | `Command`, `Child` e `Stdio` de `std::process` só em `ports/` | `it_should_confine_process_spawning_types_to_the_ports_module` (e `it_should_not_flag_the_exit_code_type_or_the_clap_command_enum_outside_the_ports_module`) |
 | Sem `thread::scope` nas leitoras de cano | `it_should_not_scope_the_threads_of_the_pipe_readers` |
 | Os adapters só importam `app` e `project::Env` | `it_should_keep_adapters_from_importing_the_inner_modules_other_than_app_and_the_project_env` |

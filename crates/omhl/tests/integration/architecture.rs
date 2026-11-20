@@ -97,6 +97,8 @@ const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
 const UNIT_TEST_FILE: &str = "tests.rs";
 const UNIT_TEST_SUPPORT_DIR: &str = "test_support";
 const CARGO_BIN_EXE: &str = "CARGO_BIN_EXE";
+/// O unitário que abre um FIFO numa thread e espera o resultado com `recv_timeout`.
+const UNIT_DEADLINE_SOURCE: &str = "ports/files/tests.rs";
 /// Caminhos e identificadores que um unitário não usa: processo, espera por relógio e a fachada.
 /// Casam por identificador inteiro (`App` não acusa `AppError`, `Command` solto não acusa o enum da CLI).
 const UNIT_FORBIDDEN_WHOLE: &[&str] = &[
@@ -1430,14 +1432,40 @@ fn it_should_confine_nix_to_the_process_port() {
             "let p = std::os::unix::process::parent_id();",
         ],
     );
-    let outside_process_port: Vec<PathBuf> = rust_files(&src_dir())
+    failures.extend(nix_outside_its_ports(&src_dir()));
+    let synthetic = tempfile::tempdir().expect("temporary directory");
+    write_tree(
+        synthetic.path(),
+        &[
+            ("ports/process.rs", "use nix::sys::signal::killpg;"),
+            ("ports/files.rs", "const F: i32 = nix::libc::O_NOFOLLOW;"),
+            ("ports/files/tests.rs", "use nix::unistd::mkfifo;"),
+            ("ports/specs.rs", "use nix::unistd::mkfifo;"),
+        ],
+    );
+
+    let flagged = nix_outside_its_ports(synthetic.path());
+
+    assert_eq!(flagged.len(), 1, "{flagged:?}");
+    assert!(flagged[0].contains("ports/specs.rs"), "{flagged:?}");
+    assert_no_failures(&failures);
+}
+
+/// O `nix` vive no port de processo e no port de arquivos (`O_NOFOLLOW`, `O_NONBLOCK` e o `mkfifo` do teste).
+const NIX_PORT_SOURCES: &[&str] = &["ports/process.rs", "ports/files.rs", "ports/files/tests.rs"];
+
+fn nix_outside_its_ports(root: &Path) -> Vec<String> {
+    let outside: Vec<PathBuf> = all_rust_files(root)
         .into_iter()
-        .filter(|file| relative_to_src(file) != "ports/process.rs")
+        .filter(|file| {
+            let relative = file.strip_prefix(root).unwrap_or(file);
+            !NIX_PORT_SOURCES
+                .iter()
+                .any(|port| relative == Path::new(port))
+        })
         .collect();
 
-    failures.extend(scan_paths(&outside_process_port, nix_refs));
-
-    assert_no_failures(&failures);
+    scan_paths(&outside, nix_refs)
 }
 
 #[test]
@@ -1774,10 +1802,20 @@ fn prove_synthetic_dir_is_flagged() -> Vec<String> {
 
 /// Número de usos proibidos a um unitário: processo, espera por relógio, fachada e o binário do cargo.
 fn unit_boundary_refs(source: &str) -> Result<usize, String> {
+    unit_boundary_refs_except(source, &[])
+}
+
+/// O unitário do FIFO é o único que espera com prazo (`recv_timeout`): o resto da trava vale para ele.
+fn unit_boundary_refs_with_deadline(source: &str) -> Result<usize, String> {
+    unit_boundary_refs_except(source, &["recv_timeout"])
+}
+
+fn unit_boundary_refs_except(source: &str, allowed: &[&str]) -> Result<usize, String> {
     let lexed = lex(source)?;
     let code = tighten(&lexed.code);
     let whole: usize = UNIT_FORBIDDEN_WHOLE
         .iter()
+        .filter(|needle| !allowed.contains(needle))
         .map(|needle| occurrences(&code, needle, true))
         .sum();
     let prefix: usize = UNIT_FORBIDDEN_PREFIX
@@ -1943,7 +1981,23 @@ fn it_should_keep_unit_test_sources_inside_the_crate_boundary() {
         ));
     }
 
-    failures.extend(scan_paths(&sources, unit_boundary_refs));
+    failures.extend(prove_both_sides(
+        unit_boundary_refs_with_deadline,
+        &[
+            "fn f() { std::thread::sleep(d); }",
+            "use std::process::Command;",
+        ],
+        &["fn f() { receiver.recv_timeout(d); }"],
+    ));
+    let (deadline_sources, other_sources): (Vec<PathBuf>, Vec<PathBuf>) = sources
+        .into_iter()
+        .partition(|path| relative_to_src(path) == UNIT_DEADLINE_SOURCE);
+
+    failures.extend(scan_paths(&other_sources, unit_boundary_refs));
+    failures.extend(scan_paths(
+        &deadline_sources,
+        unit_boundary_refs_with_deadline,
+    ));
 
     assert_no_failures(&failures);
 }
