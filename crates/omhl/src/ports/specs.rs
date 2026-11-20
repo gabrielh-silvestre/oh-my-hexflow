@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::ports::files::{FILE_TOO_LARGE, list_sorted_capped, read_regular_utf8};
 use crate::project::layout::{EXT_FILE_MAX_BYTES, GITIGNORE_CONTENT, GITIGNORE_NAME};
 use crate::workflow::names::{
-    AMENDMENT_PREFIX, FILE_SUFFIX, FIRST_PART_FILE, PART_PREFIX, folder_prefix,
+    AMENDMENT_PREFIX, FILE_SUFFIX, FIRST_PART_FILE, FREEZE_MARK, PART_PREFIX, folder_prefix,
 };
 
 /// Teto próprio da busca por prefixo; o `DIR_ENTRIES_MAX` (100) é das pastas de extension.
@@ -17,6 +17,13 @@ pub enum SpecStoreError {
     Exists,
     /// O motivo nunca traz nome de arquivo nem conteúdo.
     Unusable(&'static str),
+}
+
+/// `AlreadyMarked` vale para qualquer coisa que ocupe o nome da marca: arquivo, link, diretório ou FIFO.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FreezeMarkWrite {
+    Written,
+    AlreadyMarked,
 }
 
 /// Um arquivo `parte-*.md` ou `emenda-*.md` da pasta de spec.
@@ -111,6 +118,46 @@ impl SpecStore {
 
     pub fn folder_exists(&self, folder: &str) -> Result<bool, SpecStoreError> {
         exists_without_following(&self.dir.join(folder))
+    }
+
+    /// Todas as pastas `wi-<id>__*` do work item, sem recusar a segunda: quem lê a marca precisa ver todas.
+    pub fn folders_of(&self, work_item: &str) -> Result<Vec<String>, SpecStoreError> {
+        let prefix = folder_prefix(work_item);
+
+        Ok(list_names(&self.dir)?
+            .into_iter()
+            .filter(|name| name.starts_with(&prefix))
+            .collect())
+    }
+
+    /// A marca em qualquer pasta do work item; não segue link: uma marca que é link também congela.
+    pub fn has_freeze_mark(&self, work_item: &str) -> Result<bool, SpecStoreError> {
+        for folder in self.folders_of(work_item)? {
+            if exists_without_following(&self.dir.join(folder).join(FREEZE_MARK))? {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// A única gravação da marca. Pasta que é link é recusada (o link é a própria pasta); `create_new`
+    /// não segue link no último componente.
+    pub fn write_freeze_mark(&self, folder: &str) -> Result<FreezeMarkWrite, SpecStoreError> {
+        let folder = self.dir.join(folder);
+        if fs::symlink_metadata(&folder).is_ok_and(|metadata| metadata.is_symlink()) {
+            return Err(SpecStoreError::Unusable("the spec folder is a symlink"));
+        }
+
+        match write_new(&folder.join(FREEZE_MARK), "") {
+            Ok(()) => Ok(FreezeMarkWrite::Written),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                Ok(FreezeMarkWrite::AlreadyMarked)
+            }
+            Err(_) => Err(SpecStoreError::Unusable(
+                "the freeze mark cannot be written",
+            )),
+        }
     }
 
     /// Mais de uma pasta `wi-<id>__*` é recusa: escolher uma deixaria a outra ser lida ou ignorada ao acaso.

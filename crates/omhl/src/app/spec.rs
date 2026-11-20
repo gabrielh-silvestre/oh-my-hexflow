@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use hexlog::SemanticId;
@@ -307,10 +307,10 @@ pub enum SpecLockEvent {
     Edit { tool: Tool, file_path: PathBuf },
 }
 
-/// A decisão da trava e o aviso que a acompanha: o aviso vai ao stderr sem mudar a decisão.
+/// A decisão da trava e os avisos que a acompanham: os avisos vão ao stderr sem mudar a decisão.
 pub struct SpecLockOutcome {
     pub verdict: Verdict,
-    pub notice: Option<AppError>,
+    pub notices: Vec<AppError>,
 }
 
 /// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. Decide pelo caminho
@@ -321,12 +321,14 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
     let SpecLockEvent::Edit { tool, file_path } = event else {
         return Ok(SpecLockOutcome {
             verdict: Verdict::Allow,
-            notice: None,
+            notices: Vec::new(),
         });
     };
     let physical = resolve_physical(&file_path);
-    let notice = (physical.is_err() && has_spec_folder_component(&file_path))
-        .then(AppError::path_unresolvable);
+    let mut notices: Vec<AppError> = (physical.is_err() && has_spec_folder_component(&file_path))
+        .then(AppError::path_unresolvable)
+        .into_iter()
+        .collect();
     let mut paths = vec![file_path];
     if let Ok(physical) = physical
         && !paths.contains(&physical)
@@ -337,8 +339,11 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
     let mut failure = None;
     for path in paths.iter().filter(|path| has_spec_folder_component(path)) {
         match decide_path(tool, path) {
-            Ok(verdict @ Verdict::Deny { .. }) => return Ok(SpecLockOutcome { verdict, notice }),
-            Ok(Verdict::Allow) => {}
+            Ok((verdict @ Verdict::Deny { .. }, healed)) => {
+                notices.extend(healed);
+                return Ok(SpecLockOutcome { verdict, notices });
+            }
+            Ok((Verdict::Allow, healed)) => notices.extend(healed),
             Err(error) => failure = failure.or(Some(error)),
         }
     }
@@ -347,29 +352,29 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
         Some(error) => Err(error),
         None => Ok(SpecLockOutcome {
             verdict: Verdict::Allow,
-            notice,
+            notices,
         }),
     }
 }
 
-/// O veredito para um caminho já filtrado pelo texto; sem `.omhl.toml` acima do arquivo, libera.
-fn decide_path(tool: Tool, file_path: &Path) -> Result<Verdict, AppError> {
+/// O veredito para um caminho já filtrado pelo texto, mais os avisos da cura das marcas; sem
+/// `.omhl.toml` acima do arquivo, libera.
+fn decide_path(tool: Tool, file_path: &Path) -> Result<(Verdict, Vec<AppError>), AppError> {
     let Some(located) = find_marker(nearest_existing_dir(file_path))? else {
-        return Ok(Verdict::Allow);
+        return Ok((Verdict::Allow, Vec::new()));
     };
     // Arquivo inválido cai nos padrões: liberar aqui deixaria a spec congelada editável por um typo.
     let config = read_policy(&located.root).unwrap_or_default();
     let Some(spec) = parse_spec_path(&config.specs.dir, file_path) else {
-        return Ok(Verdict::Allow);
+        return Ok((Verdict::Allow, Vec::new()));
     };
 
     let git_failed = |error: ProbeError| AppError::probe_failed(&error.message);
     let probe = GitProbe::new(&located.root);
     let main_dir = probe.main_dir().map_err(git_failed)?;
     let work_item = format!("{WORK_ITEM_ID_PREFIX}{}", spec.work_item);
-    let frozen = probe
-        .local_branches()
-        .map_err(git_failed)?
+    let branches = probe.local_branches().map_err(git_failed)?;
+    let has_branch = branches
         .iter()
         .any(|branch| work_item_id(branch).is_some_and(|id| id.as_str() == work_item));
     // Do marcador, não da pasta do arquivo: com `specs.dir` link para fora do repositório, o git a partir da pasta do arquivo não acha repositório.
@@ -385,8 +390,12 @@ fn decide_path(tool: Tool, file_path: &Path) -> Result<Verdict, AppError> {
     let folder_exists = store
         .folder_exists(&spec.folder)
         .map_err(spec_store_refusal)?;
+    let marked = store
+        .has_freeze_mark(&spec.work_item)
+        .map_err(spec_store_refusal)?;
     let facts = Facts {
-        frozen,
+        has_branch,
+        marked,
         folder_exists,
         linked_worktree: checkout != main_dir,
         file_exists,
@@ -394,7 +403,36 @@ fn decide_path(tool: Tool, file_path: &Path) -> Result<Verdict, AppError> {
         main_folder: &specs_dir.join(&spec.folder),
     };
 
-    Ok(decide(tool, &spec, &facts))
+    Ok((
+        decide(tool, &spec, &facts),
+        heal_freeze_marks(&store, &branches),
+    ))
+}
+
+/// Grava a marca nas pastas dos work items que têm branch local: é a rede para a branch apagada
+/// depois. Nenhuma falha vira erro, só um aviso, e a decisão da trava não depende dela.
+fn heal_freeze_marks(store: &SpecStore, branches: &[String]) -> Vec<AppError> {
+    let work_items: BTreeSet<String> = branches
+        .iter()
+        .filter_map(|branch| work_item_id(branch))
+        .filter_map(|id| {
+            id.as_str()
+                .strip_prefix(WORK_ITEM_ID_PREFIX)
+                .map(str::to_owned)
+        })
+        .collect();
+    work_items
+        .into_iter()
+        .filter(|work_item| mark_work_item(store, work_item).is_err())
+        .map(|work_item| AppError::freeze_mark_unwritable(&work_item))
+        .collect()
+}
+
+fn mark_work_item(store: &SpecStore, work_item: &str) -> Result<(), SpecStoreError> {
+    store
+        .folders_of(work_item)?
+        .iter()
+        .try_for_each(|folder| store.write_freeze_mark(folder).map(drop))
 }
 
 /// O alvo de um `Write` pode ainda não existir, nem a pasta dele.

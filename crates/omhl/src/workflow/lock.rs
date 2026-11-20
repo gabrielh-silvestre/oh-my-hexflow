@@ -1,6 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
-use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, PART_PREFIX, work_item_of_folder};
+use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, FREEZE_MARK, PART_PREFIX, work_item_of_folder};
 use super::spec::amendment_number;
 
 const FROZEN: &str = "spec-frozen";
@@ -42,7 +42,9 @@ pub enum Verdict {
 
 pub struct Facts<'a> {
     /// Existe branch local cujo work item é o do segmento da pasta.
-    pub frozen: bool,
+    pub has_branch: bool,
+    /// Alguma pasta `wi-<id>__*` do work item tem a marca `.frozen`.
+    pub marked: bool,
     /// O caminho está dentro de uma worktree ligada, não no diretório principal.
     pub linked_worktree: bool,
     /// A pasta `wi-<id>__<slug>` do caminho já existe no diretório principal.
@@ -101,7 +103,7 @@ pub fn next_amendment(folder_files: &[String]) -> String {
     format!("{AMENDMENT_PREFIX}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
-/// Ordem: worktree ligada; sem branch libera; congelada nega qualquer arquivo em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
+/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {
@@ -112,7 +114,7 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
             ),
         };
     }
-    if !facts.frozen {
+    if !(facts.has_branch || facts.marked) {
         return Verdict::Allow;
     }
     if !facts.folder_exists {
@@ -132,7 +134,7 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     Verdict::Deny {
         code: FROZEN,
         reason: format!(
-            "{FROZEN}: the spec in {} is frozen because the work item has a branch; to correct it, record a divergence and create the amendment {} (Write of a new file)",
+            "{FROZEN}: the spec in {} is frozen because the work item has a branch or the {FREEZE_MARK} mark; to correct it, record a divergence and create the amendment {} (Write of a new file)",
             facts.main_folder.display(),
             amendment.display()
         ),

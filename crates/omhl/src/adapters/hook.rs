@@ -44,10 +44,10 @@ pub fn session_start(
 
 /// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
-    let mut notice = None;
+    let mut notices = Vec::new();
     let code = pre_tool_use(stdin, out, err, |input| {
         let outcome = check_spec_lock(spec_lock_event(input)?)?;
-        notice = outcome.notice;
+        notices = outcome.notices;
 
         Ok(match outcome.verdict {
             Verdict::Allow => None,
@@ -56,8 +56,8 @@ pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Wri
             }
         })
     });
-    // O aviso acompanha a decisão: a negação vai no stdout e a linha de aviso, no stderr.
-    if let Some(notice) = notice {
+    // Os avisos acompanham a decisão: a negação vai no stdout e uma linha por aviso, no stderr.
+    for notice in notices {
         let _ = writeln!(err, "{}", notice.to_json());
     }
 

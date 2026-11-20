@@ -163,6 +163,15 @@ impl AppError {
         )
     }
 
+    pub(crate) fn freeze_mark_unwritable(work_item: &str) -> AppError {
+        AppError::plain(
+            "freeze-mark-unwritable",
+            &format!(
+                "the freeze mark of work item {work_item} could not be written; the lock decided without it"
+            ),
+        )
+    }
+
     pub(crate) fn path_unresolvable() -> AppError {
         AppError::plain(
             "path-unresolvable",

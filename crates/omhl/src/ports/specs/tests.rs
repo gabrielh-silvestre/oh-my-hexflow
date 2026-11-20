@@ -1,7 +1,8 @@
 //! `SpecStore`: as pastas `wi-<id>__<slug>` de um diretório de specs.
 
-use crate::ports::specs::{SpecStore, SpecStoreError};
+use crate::ports::specs::{FreezeMarkWrite, SpecStore, SpecStoreError};
 use std::fs;
+use std::os::unix::fs::symlink;
 use std::path::Path;
 
 const FOLDER: &str = "wi-w1__login";
@@ -195,4 +196,89 @@ fn it_should_tell_whether_a_spec_folder_exists() {
     let missing = store.folder_exists("wi-w1__other");
 
     assert_eq!((existing, missing), (Ok(true), Ok(false)));
+}
+
+#[test]
+fn it_should_find_the_mark_in_any_folder_of_the_work_item() {
+    let (dir, store) = store();
+    seed(dir.path(), FOLDER, &["parte-01.md"]);
+    seed(dir.path(), "wi-w1__other", &[".frozen"]);
+
+    let marked = store.has_freeze_mark("w1");
+
+    assert_eq!(marked, Ok(true));
+}
+
+#[test]
+fn it_should_not_refuse_the_mark_lookup_when_the_work_item_has_two_folders() {
+    let (dir, store) = store();
+    seed(dir.path(), FOLDER, &["parte-01.md"]);
+    seed(dir.path(), "wi-w1__other", &["parte-01.md"]);
+
+    let marked = store.has_freeze_mark("w1");
+
+    assert_eq!(marked, Ok(false));
+}
+
+#[test]
+fn it_should_write_the_mark_once_and_report_already_on_the_second_write() {
+    let (dir, store) = store();
+    seed(dir.path(), FOLDER, &["parte-01.md"]);
+
+    let writes = [
+        store.write_freeze_mark(FOLDER),
+        store.write_freeze_mark(FOLDER),
+    ];
+
+    assert_eq!(
+        writes,
+        [
+            Ok(FreezeMarkWrite::Written),
+            Ok(FreezeMarkWrite::AlreadyMarked)
+        ]
+    );
+    assert!(dir.path().join(FOLDER).join(".frozen").is_file());
+}
+
+#[test]
+fn it_should_report_already_for_a_mark_that_is_a_symlink_or_a_directory() {
+    let (dir, store) = store();
+    let folders = ["wi-w1__link", "wi-w2__dir"];
+    for folder in folders {
+        seed(dir.path(), folder, &[]);
+    }
+    symlink("nowhere", dir.path().join(folders[0]).join(".frozen")).unwrap();
+    fs::create_dir(dir.path().join(folders[1]).join(".frozen")).unwrap();
+
+    let writes = folders.map(|folder| store.write_freeze_mark(folder));
+
+    assert_eq!(writes, [Ok(FreezeMarkWrite::AlreadyMarked); 2]);
+}
+
+#[test]
+fn it_should_not_write_a_mark_into_a_symlinked_folder() {
+    let (dir, store) = store();
+    seed(dir.path(), "real", &[]);
+    symlink(dir.path().join("real"), dir.path().join(FOLDER)).unwrap();
+
+    let write = store.write_freeze_mark(FOLDER);
+
+    assert_eq!(
+        write,
+        Err(SpecStoreError::Unusable("the spec folder is a symlink"))
+    );
+    assert!(!dir.path().join("real").join(".frozen").exists());
+}
+
+#[test]
+fn it_should_not_count_the_mark_as_a_spec_file() {
+    let (dir, store) = store();
+    seed(dir.path(), FOLDER, &["parte-01.md", ".frozen"]);
+
+    let spec = store.read_folder("w1").unwrap().unwrap();
+    let amendments = store.amendment_names("w1");
+
+    assert_eq!(spec.parts.len(), 1);
+    assert!(spec.amendments.is_empty());
+    assert_eq!(amendments, Ok(Vec::new()));
 }

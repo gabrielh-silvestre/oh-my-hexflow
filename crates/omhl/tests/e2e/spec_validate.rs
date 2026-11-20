@@ -319,6 +319,18 @@ fn it_should_ignore_files_that_are_neither_parts_nor_amendments() {
     assert_eq!(json_line(&output.stdout)["parts"], json!(["parte-01.md"]));
 }
 
+#[test]
+fn it_should_ignore_the_freeze_mark() {
+    let fixture = Fixture::new();
+    fixture.write("parte-01.md", &valid_part());
+    fixture.write(".frozen", &[]);
+
+    let output = fixture.validate_from_linked();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(json_line(&output.stdout)["parts"], json!(["parte-01.md"]));
+}
+
 // Spec reprovada
 
 #[test]

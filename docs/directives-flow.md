@@ -349,21 +349,22 @@ As regras da emenda que dependem da divergência citada (`amendment-divergence-u
 
 ## 7. O congelamento
 
-O hook `omhl hook spec-lock` é um `PreToolUse` do Claude Code para `Edit`, `Write` e `MultiEdit`. Depois que a branch do work item existe, ele barra a edição da spec. **Não existe marca nem comando para descongelar**: uma spec aprovada nunca é editada. A correção entra como emenda (seção 9).
+O hook `omhl hook spec-lock` é um `PreToolUse` do Claude Code para `Edit`, `Write` e `MultiEdit`. Depois que a branch do work item existe, ele barra a edição da spec, e a marca `.frozen` mantém o bloqueio mesmo se a branch for apagada. **Não existe comando para descongelar**: só o dono, apagando o `.frozen` à mão, desfaz. Uma spec aprovada nunca é editada pelo agente. A correção entra como emenda (seção 9).
 
 O hook lê o evento no stdin e decide por regras fechadas:
 
 1. O caminho precisa estar sob `<specs.dir>/wi-<id>__<slug>/`. Senão ele sai com `0` sem abrir banco nem git. O hook avalia dois caminhos: o lexical, normalizado no texto (`.` e `..`), e o físico, com os links simbólicos resolvidos (a parte que ainda não existe é anexada no texto e um link pendente é seguido, até 40 saltos). A negação de qualquer um dos dois vence. Se o caminho físico não se resolve (laço de links, por exemplo), vale o lexical.
-2. Está congelada a spec cujo work item tem uma branch local (`tipo/wi-<id>__<slug>`). O hook só olha o disco e o git, nunca o banco.
+2. Está congelada a spec cujo work item tem uma branch local (`tipo/wi-<id>__<slug>`) **ou a marca `.frozen`** em qualquer pasta `wi-<id>__*` dele. O hook só olha o disco e o git, nunca o banco. Work item que nunca teve branch e não tem marca segue editável e não ganha marca.
 3. Numa spec congelada, o hook nega `Edit` e `MultiEdit` em qualquer arquivo da pasta, `Write` sobre um arquivo que já existe e `Write` de uma `parte-NN.md` nova.
 4. Numa spec congelada, nenhum arquivo se escreve numa pasta que não existe. Pasta nova do work item (por exemplo, um slug digitado errado) é negada com `spec-folder-unknown`.
 5. A única exceção é a criação de emenda: `Write` de um arquivo que ainda não existe, chamado `emenda-NN.md`, em que `NN` é o próximo número da pasta (o maior existente mais um, ou `01`). Um arquivo novo que não é `parte-*` nem `emenda-*` (por exemplo `notas.md`) também passa.
 6. Escrever uma spec dentro de uma worktree ligada é barrado, com ou sem branch do work item.
+7. A marca é um arquivo vazio. `Edit` ou `Write` sobre uma marca que já existe é negado como qualquer arquivo da spec. Ao decidir um evento de spec, o hook grava `.frozen` em cada pasta de cada work item que tem branch local e ainda não tem a marca (efeito colateral do hook: ele passa a escrever no disco). A gravação não segue link, trata qualquer coisa que já ocupe o nome como "já marcado" e recusa uma pasta `wi-<id>__*` que é link simbólico. A cura não muda a decisão, o número da próxima emenda nem o que o `spec validate` lê (o `.frozen` não termina em `.md`).
 
 A negação sai no stdout, com código de saída `0`:
 
 ```json
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"spec-frozen: the spec in <repo>/.omhl/specs/wi-w1__export-reports is frozen because the work item has a branch; to correct it, record a divergence and create the amendment <repo>/.omhl/specs/wi-w1__export-reports/emenda-01.md (Write of a new file)"}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"spec-frozen: the spec in <repo>/.omhl/specs/wi-w1__export-reports is frozen because the work item has a branch or the .frozen mark; to correct it, record a divergence and create the amendment <repo>/.omhl/specs/wi-w1__export-reports/emenda-01.md (Write of a new file)"}}
 ```
 
 | Código | Quando | O que fazer |
@@ -541,7 +542,7 @@ Spec aprovada nunca é editada. Para corrigir um erro da spec depois da aprovaç
 
 Nunca tente editar a spec nem procure como descongelá-la.
 
-A `parte-NN.md` original fica intacta. O valor vigente de um item é o da emenda aprovada de maior `NN` que o cita. A emenda só corrige item que existe; item novo exige um work item novo. O estado "aprovada" vive no grafo (a divergência `spec-stale`), não numa marca em disco. Uma emenda `pending` não vincula e não reprova o validador; só a aprovada inválida reprova.
+A `parte-NN.md` original fica intacta. O valor vigente de um item é o da emenda aprovada de maior `NN` que o cita. A emenda só corrige item que existe; item novo exige um work item novo. O estado "aprovada" vive no grafo (a divergência `spec-stale`); o `.frozen` marca a pasta como congelada, não a emenda como aprovada, e o `spec validate` não o lê. Uma emenda `pending` não vincula e não reprova o validador; só a aprovada inválida reprova.
 
 O `append` recusa a revisão `spec-stale` antes de gravar qualquer coisa se a emenda não é válida:
 
@@ -597,6 +598,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 - O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo, o binário `omhl` não existe no `PATH`, o `omhl` do `PATH` é velho e não tem o subcomando `hook spec-lock` (o envoltório `|| exit 1` converte a saída `2` do clap em `1`, e o aviso de erro do hook fica visível no Claude Code), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
 - Quando o caminho físico do arquivo não se resolve (laço de links simbólicos, mais de 40 saltos, leitura negada) e o caminho lexical tem a forma de uma pasta de work item, o hook decide só pelo lexical e deixa a linha `path-unresolvable` no stderr (a decisão não muda: sai com `0`, e o lexical pode negar). Se o lexical não tem essa forma, a escrita passa em silêncio.
+- Quando a cura não consegue gravar a marca de um work item (pasta que é link simbólico, pasta sem permissão de escrita), o hook deixa a linha `freeze-mark-unwritable` no stderr e decide como se a cura não existisse (sai com `0`, e a branch ou uma marca já existente ainda negam). Uma branch criada fora do `wt` e apagada antes de qualquer `Edit` ou `Write` de spec nunca recebe a marca e fica editável.
 - O hook decide no instante da checagem. Se o alvo de um link simbólico mudar depois dela e antes da escrita (TOCTOU), o hook não detecta a troca.
 - O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
 - O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
