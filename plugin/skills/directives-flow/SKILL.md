@@ -17,7 +17,7 @@ O humano define diretivas (`guideline`) e premissas (`premise`). Você escolhe o
 
 ## A ordem do protocolo
 
-A ordem é a do [cycle.md](references/cycle.md), a fonte do ciclo dentro das skills. O que ele não repete:
+A ordem é a do [cycle.md](references/cycle.md), a fonte do ciclo dentro das skills. Em `feat` e `fix` ela começa pela entrevista de negócio, antes do work item (skill [interview](../interview/SKILL.md)); nos demais prefixos a entrevista só roda a pedido do dono, e em `chore` e `docs` o consenso segue o caminho leve da [plan-consensus](../plan-consensus/SKILL.md). O que ele não repete:
 
 - O prefixo e o slug dão a branch `tipo/wi-<id>__<slug>`; os prefixos e o que cada um exige estão na [matrix.md](references/matrix.md).
 - O work item leva `title` e `status` `open`: a guarda recusa premissa sem um work item aberto.

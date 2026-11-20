@@ -22,7 +22,7 @@ Os exemplos de saída vêm de uma execução real do `omhl` num repositório des
 | 8 | Retro | `omhl close` | Ao fechar o work item, o `omhl` imprime um relatório somente leitura. O agente propõe melhorias, cada uma só vale com a confirmação do humano |
 | 9 | Promoção | Agente e humano | Premissa repetida em 3 work items distintos vira sugestão de diretiva. O humano confirma |
 
-Ordem do protocolo, antes do código: escolher prefixo, id e slug; gravar o work item (`work-items.<id>`); sugerir as premissas; confirmar com o humano; criar e validar a spec; só então `wt switch -c`.
+Ordem do protocolo, antes do código: em `feat` e `fix`, fazer a entrevista de negócio (skill `interview`, seção 12); escolher prefixo, id e slug; gravar o work item (`work-items.<id>`); sugerir as premissas; confirmar com o humano; criar e validar a spec; só então `wt switch -c`.
 
 A tabela descreve o protocolo sem dizer quem o cumpre. Com os agentes do plugin, cada etapa tem um papel `oh-my-hexflow:<papel>` e há uma volta de consenso entre o architect e o critic antes da conferência final da spec: o ciclo de dez passos está na seção 12.
 
@@ -677,6 +677,10 @@ Cada recusa desta seção traz a causa em `message` e o próximo passo em `next_
 
 O plugin traz sete agentes (`oh-my-hexflow:analyst`, `planner`, `architect`, `critic`, `code-reviewer`, `security-reviewer` e `verifier`) e duas skills que conduzem a sessão principal por eles: [`plan-consensus`](../plugin/skills/plan-consensus/SKILL.md), dos passos 2 a 8, e [`review`](../plugin/skills/review/SKILL.md), dos passos 9 e 10. O ciclo abaixo é o da seção 1 com os papéis nomeados e a volta de consenso. A sessão principal chama um agente por vez, como `oh-my-hexflow:<papel>`, e um resumo dos mesmos passos está em [`cycle.md`](../plugin/skills/directives-flow/references/cycle.md).
 
+**Antes do passo 1.** Em `feat` e `fix`, a sessão principal conduz a entrevista de negócio com o dono (skill [`interview`](../plugin/skills/interview/SKILL.md)): rodadas de perguntas até a ambiguidade chegar a 20% ou menos, e só então o passo 1 grava o work item e as premissas de negócio confirmadas. Nos outros prefixos a entrevista só roda a pedido do dono. O estado das rodadas fica em `.omhl/notes/`, fora do banco e fora da spec.
+
+**Caminho leve (`chore` e `docs`).** Não há spec: o consenso fica nos passos 2 e 3 (o critic só no modo do passo 3), sem planner nem voltas e sem os passos 4 a 7, e o passo 8 se reduz ao `omhl gate-worktree`.
+
 ### Os dez passos
 
 1. **Work item.** A sessão principal grava `work-items.<id>` com `omhl append`, com o prefixo e o slug escolhidos.
@@ -701,7 +705,8 @@ flowchart TD
   P7 -- "sim" --> P8A["8 verifier: retira contradicts resolvidos"]
   P7 -- "não" --> LIM{"3 voltas feitas?"}
   P8A -- "FAIL ou INCOMPLETE" --> LIM
-  LIM -- "não" --> P5
+  LIM -- "não, e a spec não muda" --> P5
+  LIM -- "não, e a spec muda" --> P4
   LIM -- "sim" --> ESC["Impasse: a sessão principal para e escala ao dono"]
   P8A -- "ok" --> P8B["8 spec validate, gate-worktree, worktree e implementação"]
   P8B --> P9["9 code-reviewer e security-reviewer"]
