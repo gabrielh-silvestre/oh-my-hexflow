@@ -267,10 +267,25 @@ fn it_should_put_the_prefix_after_time_and_its_options() {
 }
 
 #[test]
-fn it_should_deny_a_bare_reserved_word_with_role_prefix_unreachable() {
-    let verdict = ported_verdict_of("! omhl list");
+fn it_should_keep_denying_a_bare_reserved_word_with_role_prefix_unreachable() {
+    for keyword in ["!", "if", "then", "elif", "else", "while", "until", "do"] {
+        let verdict = ported_verdict_of(&format!("{keyword} omhl list"));
 
-    assert_verdict_denies_with_code(verdict, "role-prefix-unreachable");
+        assert_verdict_denies_with_code(verdict, "role-prefix-unreachable");
+    }
+}
+
+#[test]
+fn it_should_put_the_prefix_before_an_assignment_whose_value_ends_in_a_keyword_name() {
+    let verdict = ported_verdict_of("FOO=/srv/do omhl list");
+
+    assert_eq!(
+        verdict,
+        RoleVerdict::Allow {
+            reason: "the command is inside the omhl:verifier matrix".to_owned(),
+            updated_input: json!({ "command": "OMHL_ROLE=omhl:verifier FOO=/srv/do omhl list" }),
+        }
+    );
 }
 
 #[test]

@@ -1217,6 +1217,27 @@ fn it_should_deny_omhl_behind_every_control_keyword() {
 }
 
 #[test]
+fn it_should_allow_an_omhl_call_after_an_assignment_whose_value_ends_in_a_keyword_name() {
+    for keyword in ["do", "if"] {
+        let command = format!("FOO=/srv/{keyword} omhl list");
+        let output = run_as("verifier", &command);
+
+        assert_eq!(
+            decision_of(&output)["updatedInput"]["command"],
+            json!(format!(
+                "OMHL_ROLE=omhl:verifier FOO=/srv/{keyword} omhl list"
+            )),
+            "{command}"
+        );
+    }
+}
+
+#[test]
+fn it_should_pass_a_path_named_do_followed_by_omhl() {
+    assert_passed(&run_as("verifier", "./do omhl list"));
+}
+
+#[test]
 fn it_should_put_the_prefix_after_time_and_its_p_option() {
     let output = run_as("verifier", "time -p omhl list");
 

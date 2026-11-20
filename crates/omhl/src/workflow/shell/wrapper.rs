@@ -48,8 +48,9 @@ const NO_PROGRAM: Resolved = Resolved {
     opacity: None,
 };
 
+/// Igualdade exata: o bash só lê palavra reservada nua, então `./do` e `FOO=/srv/do` não são palavras reservadas.
 pub(super) fn is_keyword(word: &str) -> bool {
-    KEYWORDS.contains(&basename(word))
+    KEYWORDS.contains(&word)
 }
 
 const WRAPPERS: [Wrapper; 10] = [
