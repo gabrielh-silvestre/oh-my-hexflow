@@ -42,9 +42,14 @@ impl RoleAllow {
 pub fn parse_role_allow(agent_file: &str) -> Result<RoleAllow, String> {
     let yaml = frontmatter(agent_file).ok_or("the agent file has no frontmatter")?;
     // `no_schema`: um item como `1` ou `true` não vira texto sozinho; o YAML precisa citá-lo.
-    let options = serde_saphyr::options! { no_schema: true };
+    // `with_snippet: false` e os caracteres de controle em espaço: a razão do hook sai numa linha só.
+    let options = serde_saphyr::options! { no_schema: true, with_snippet: false };
     let parsed: Frontmatter =
-        serde_saphyr::from_str_with_options(yaml, options).map_err(|error| error.to_string())?;
+        serde_saphyr::from_str_with_options(yaml, options).map_err(|error| {
+            error
+                .to_string()
+                .replace(|character: char| character.is_control(), " ")
+        })?;
     let allow = parsed
         .omhl_allow
         .ok_or("the frontmatter has no omhl-allow")?;
