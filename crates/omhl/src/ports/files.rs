@@ -46,7 +46,8 @@ fn open_without_following_or_blocking(path: &Path) -> Result<File, &'static str>
 
     fs::OpenOptions::new()
         .read(true)
-        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK)
+        // O_NOCTTY: se a troca trouxer um tty, ele não vira terminal de controle do processo
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY)
         .open(path)
         .map_err(|error| match error.raw_os_error() {
             Some(nix::libc::ELOOP) => "symlink",
