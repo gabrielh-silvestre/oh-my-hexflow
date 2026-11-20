@@ -305,7 +305,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Papel.** Traduz um protocolo externo (linha de comando, evento de hook) em `Action` e imprime o resultado; não conhece o domínio.
 
-**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`, `hook::spec_lock` e `hook::agent_role(stdin, out, err, env, groups) -> ExitCode` (os dois de `PreToolUse`, ligados a `omhl hook spec-lock` e `omhl hook agent-role`). `main.rs` (28 linhas) só monta o `Env` e chama `cli::run`.
+**Interface.** `cli::run(args, stdin, out, err, env) -> ExitCode` (com os tipos clap `Cli`, `Command`, `ActionCommand`, `HookEvent`), `hook::session_start(stdin, out, err, env) -> ExitCode`, `hook::spec_lock` e `hook::agent_role(stdin, out, err, env, groups) -> ExitCode` (os dois de `PreToolUse`, ligados a `omhl hook spec-lock` e `omhl hook agent-role`). O `omhl hook wt-post-start` não passa por `hook`: o braço `HookEvent::WtPostStart` de `cli::run` chama `app::wt_post_start`. `main.rs` (29 linhas) só monta o `Env` e chama `cli::run`.
 
 **Escondido.** Em `hook.rs`: a saída `hookSpecificOutput` e o aviso de extensions (só códigos e contagens). O `agent_role` lê o evento, lê `CLAUDE_PLUGIN_ROOT`, pede ao clap os comandos que têm subcomando e responde `allow` (com o `updatedInput`) ou `deny` em JSON, sempre com saída `0`; a decisão em si é de `app::agent_role` (3.24).
 
@@ -419,9 +419,10 @@ Os tipos `Command`, `Child` e `Stdio` de `std::process` só aparecem em `ports/`
 O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só onde cada parte mora.
 
 - `workflow/` (`config`, `gap`, `lock`, `matrix`, `names`, `omhl_leaf`, `recurrence`, `retro`, `role_allow`, `shell`, `spec`): as regras puras do fluxo. A configuração de `.omhl/workflow.toml`, o estado dos gaps, a decisão do `spec-lock`, a matriz de prefixos do gate de worktree, a gramática da pasta e dos arquivos da spec (`names`), a recorrência de premissas, a retro e o validador de spec, mais o leitor de comando do hook `agent-role` (`omhl_leaf`, `role_allow` e `shell/`, descritos abaixo). Travado: não importa `ports`, `runner`, `byproduct`, `guard`, `render` nem `extensions`, e não toca o disco: nem `std::fs` nem os métodos de IO de `Path` chamados sem argumento (`exists`, `try_exists`, `is_dir`, `is_file`, `is_symlink`, `metadata`, `symlink_metadata`, `canonicalize`, `read_dir`, `read_link`) (`WORKFLOW_FORBIDDEN_MODULES` e `WORKFLOW_FS_METHODS` em `crates/omhl/tests/integration/architecture.rs`, `it_should_keep_the_workflow_module_free_of_guard_render_extensions_and_std_fs`).
-- `ports/specs`: `SpecStore` (`has_spec`, `read_folder`, `folder_files`, `file_exists`, `create_first_part`) lê e cria a pasta de spec, com teto por arquivo e por número de entradas.
+- `ports/specs`: `SpecStore` (`has_spec`, `read_folder`, `folder_files`, `file_exists`, `folders_of`, `markable_folders`, `has_freeze_mark`, `write_freeze_mark`, `create_first_part`) lê e cria a pasta de spec, com teto por arquivo, por número de entradas e agregado de 16 MiB por pasta. `write_freeze_mark` é a única gravação da marca `.frozen` ([ADR 0010](adr/0010-spec-aprovada-congelada-para-sempre.md)); `has_freeze_mark` não segue link e, na dúvida, devolve `true`.
 - `ports/workflow`: `read_workflow` lê e valida o `.omhl/workflow.toml`.
-- `ports/files`: `list_sorted_capped`, que veio de `extensions/files.rs` (travado por `PORTS_FORBIDDEN_MODULES`).
+- `ports/files`: `list_sorted_capped`, que veio de `extensions/files.rs` (travado por `PORTS_FORBIDDEN_MODULES`), `read_regular_utf8` e `open_regular_nonblocking`, que abre sem seguir link e sem travar num FIFO sem escritor.
+- `ports/paths`: `resolve_physical` devolve o caminho sem link simbólico: resolve o ancestral existente, anexa a cauda que falta no texto, segue um link pendente até o destino e para em 40 saltos. Só o `spec-lock` o usa.
 - `ports/git`: `GitProbe` expõe `main_dir`, `worktree_branches` e `local_branches` como métodos próprios. O gate de worktree e o `spec-lock` os usam.
 
 #### O hook `agent-role`
