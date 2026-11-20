@@ -121,7 +121,7 @@ A guarda do `append` impõe estas regras. A mensagem de erro traz o código e o 
 
 Uma premissa com `kind` e sem `work_item` responde `work-item-not-found` em `/items/0/body/data/work_item`. Uma premissa sem `kind` e sem `work_item` é permitida: ela não pertence a nenhum work item e não expira.
 
-Os records que o `omhl load` grava (cliente `loader`) estão isentos. Uma diretiva vinda de um arquivo de `.omhl/guidelines/` e uma diretiva nativa valem como confirmadas, sem `confirmed_by`.
+A guarda isenta só as diretivas que o `omhl load` grava (cliente `loader`), da confirmação humana; as demais gravações do `loader` seguem a guarda inteira ([ADR 0004](adr/0004-executor-e-loader-como-fronteira-da-guarda.md)). Uma diretiva vinda de um arquivo de `.omhl/guidelines/` e uma diretiva nativa valem como confirmadas, sem `confirmed_by`.
 
 A confirmação é autodeclarada: o `Author` do record continua sendo quem o digitou, não quem confirmou. É um rastro, não uma prova. A trava técnica contra forja de `confirmed_by` não existe nesta entrega.
 

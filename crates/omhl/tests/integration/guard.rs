@@ -1679,7 +1679,7 @@ fn it_should_refuse_a_guideline_from_the_cli_without_a_confirmation() {
 }
 
 #[test]
-fn it_should_accept_a_guideline_without_a_confirmation_from_the_loader() {
+fn it_should_still_accept_a_loader_guideline_without_confirmed_by() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
     let item = node_item("guidelines.small-prs", "guideline", guideline_data());
@@ -1687,6 +1687,41 @@ fn it_should_accept_a_guideline_without_a_confirmation_from_the_loader() {
     let result = appended(&mut omhl, loader_author(), vec![item]);
 
     assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_a_loader_premise_without_confirmed_by() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let item = node_item("premises.p-1", "premise", confirmed_premise_data());
+
+    let result = appended(&mut omhl, loader_author(), vec![item]);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::ConfirmationRequired, CONFIRMED_BY_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_loader_premise_without_an_open_work_item() {
+    let harness = closable_harness();
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    close_pull_request(&mut omhl);
+    let data = premise_data("tests are fast", Some(PR_7));
+
+    let result = appended(
+        &mut omhl,
+        loader_author(),
+        vec![node_item("premises.p-1", "premise", data)],
+    );
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::WorkItemClosed, WORK_ITEM_POINTER))
+    );
 }
 
 // kind obrigatório na diretiva
