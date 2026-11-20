@@ -45,8 +45,8 @@ const ACTIVE: [(&str, &[&str]); 21] = [
     ("report retro", &["report", "retro", WORK_ITEM]),
 ];
 
-/// Os 5 comandos adiados (padrão `json`, só JSON).
-const DEFERRED: [(&str, &[&str]); 5] = [
+/// Os 6 comandos adiados (padrão `json`, só JSON).
+const DEFERRED: [(&str, &[&str]); 6] = [
     ("hook session-start", &["hook", "session-start"]),
     ("hook spec-lock", &["hook", "spec-lock"]),
     ("hook agent-role", &["hook", "agent-role"]),
@@ -54,6 +54,10 @@ const DEFERRED: [(&str, &[&str]); 5] = [
     (
         "gate-worktree",
         &["gate-worktree", "--branch", "feat/wi-payroll__x"],
+    ),
+    (
+        "hook wt-post-start",
+        &["hook", "wt-post-start", "--branch", "feat/wi-x__y"],
     ),
 ];
 
@@ -284,6 +288,8 @@ deferred_json!(hooks_post_commit, 3, 1, "", NO_MARKER_ERROR);
 
 deferred_json!(gate_worktree, 4, 0, "", "");
 
+deferred_json!(hook_wt_post_start, 5, 0, "", "");
+
 #[test]
 fn it_should_print_the_session_context_with_format_json_as_without_the_flag() {
     let project = Project::new("acme");
@@ -313,7 +319,7 @@ fn it_should_list_the_twenty_one_agent_commands_in_the_root_help() {
 }
 
 #[test]
-fn it_should_list_the_five_json_commands_in_the_root_help() {
+fn it_should_list_the_six_json_commands_in_the_root_help() {
     let help = omhl(&["--help"]).run().stdout;
 
     assert_eq!(listed_under(&help, "json"), sorted_paths(&DEFERRED));

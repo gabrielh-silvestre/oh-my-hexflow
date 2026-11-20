@@ -37,7 +37,7 @@ pub struct Cli {
 pub enum Command {
     #[command(flatten)]
     Action(ActionCommand),
-    /// Run a Claude Code hook.
+    /// Run a hook of the `omhl hook` group: the Claude Code events (`session-start`, `spec-lock`, `agent-role`) or the `wt` hook (`wt-post-start`).
     Hook {
         #[command(subcommand)]
         event: HookEvent,
@@ -169,7 +169,7 @@ pub enum OutputFormat {
 
 #[derive(Debug, Subcommand)]
 pub enum HooksCommand {
-    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit) of this clone; these are git hooks, unrelated to the Claude Code hook `omhl hook session-start`.
+    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit) of this clone; these are git hooks, unrelated to the `omhl hook` group (Claude Code events and the `wt` hook).
     Install {
         #[arg(long)]
         force: bool,
@@ -216,6 +216,7 @@ pub enum ReportCommand {
 }
 
 #[derive(Debug, Subcommand)]
+/// O grupo tem dois contratos. Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o evento no stdin, nunca saem com 2 e, em erro interno, liberam. O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai 1 em pasta de spec que é link simbólico.
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,
@@ -223,6 +224,12 @@ pub enum HookEvent {
     SpecLock,
     /// Impose the role matrix on the Bash tool of plugin agents; reads the PreToolUse event on stdin.
     AgentRole,
+    /// Write the freeze mark in every spec folder of the work item of a new branch (the `post-start` hook of `wt`); does not read stdin, prints JSON, and stays silent without a project marker.
+    WtPostStart {
+        /// Name of the new branch.
+        #[arg(long)]
+        branch: String,
+    },
 }
 
 pub fn run(
@@ -270,19 +277,38 @@ pub fn run(
                 .collect();
             hook::agent_role(stdin, out, err, env, &groups)
         }
+        Command::Hook {
+            event: HookEvent::WtPostStart { branch },
+        } => {
+            let format = format.unwrap_or_else(|| default_format(key));
+            let result = start_dir(project_dir.as_deref())
+                .and_then(|dir| crate::app::wt_post_start(&dir, &branch));
+
+            report_silent_without_marker(result, format, key, out, err)
+        }
         Command::Action(command) => {
-            // O `pre-switch` do `wt` roda em qualquer repositório: sem marcador o gate não tem o que decidir.
-            let silent_without_marker = matches!(key, CommandKey::GateWorktree);
             let format = format.unwrap_or_else(|| default_format(key));
             let result = start_dir(project_dir.as_deref())
                 .and_then(|dir| execute(command, stdin, &dir, db, env));
-            match &result {
-                Err(error) if silent_without_marker && error.code() == "no-marker" => {
-                    ExitCode::SUCCESS
-                }
-                _ => report(result, format, key, out, err),
-            }
+
+            report_silent_without_marker(result, format, key, out, err)
         }
+    }
+}
+
+/// Os hooks do `wt` (`pre-switch`, `post-start`) rodam em qualquer repositório: sem marcador não há o que decidir nem marcar.
+fn report_silent_without_marker(
+    result: Result<Value, AppError>,
+    format: OutputFormat,
+    key: CommandKey,
+    out: &mut impl std::io::Write,
+    err: &mut impl std::io::Write,
+) -> ExitCode {
+    let silent_without_marker =
+        matches!(key, CommandKey::GateWorktree | CommandKey::HookWtPostStart);
+    match &result {
+        Err(error) if silent_without_marker && error.code() == "no-marker" => ExitCode::SUCCESS,
+        _ => report(result, format, key, out, err),
     }
 }
 
@@ -414,6 +440,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::HookSessionStart => "hook session-start",
         CommandKey::HookSpecLock => "hook spec-lock",
         CommandKey::HookAgentRole => "hook agent-role",
+        CommandKey::HookWtPostStart => "hook wt-post-start",
     }
 }
 
@@ -429,6 +456,9 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Hook {
             event: HookEvent::AgentRole,
         } => CommandKey::HookAgentRole,
+        Command::Hook {
+            event: HookEvent::WtPostStart { .. },
+        } => CommandKey::HookWtPostStart,
         Command::Action(ActionCommand::List { .. }) => CommandKey::List,
         Command::Action(ActionCommand::Get { .. }) => CommandKey::Get,
         Command::Action(ActionCommand::Append) => CommandKey::Append,

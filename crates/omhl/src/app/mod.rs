@@ -30,7 +30,7 @@ pub use crate::workflow::config::INVALID_WORKFLOW_CONFIG;
 pub use crate::workflow::lock::{Tool, Verdict};
 
 pub use self::agent_role::{AgentRoleEnv, RoleVerdict, agent_role};
-pub use self::spec::{SpecLockEvent, SpecLockOutcome, spec_lock};
+pub use self::spec::{SpecLockEvent, SpecLockOutcome, spec_lock, wt_post_start};
 
 use std::path::{Path, PathBuf};
 

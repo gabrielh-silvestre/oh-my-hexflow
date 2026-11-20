@@ -13,7 +13,7 @@ use crate::mechanical::branch::work_item_id;
 use crate::ports::files::FILE_TOO_LARGE;
 use crate::ports::git::GitProbe;
 use crate::ports::paths::resolve_physical;
-use crate::ports::specs::{SpecDocument, SpecFolder, SpecStore, SpecStoreError};
+use crate::ports::specs::{FreezeMarkWrite, SpecDocument, SpecFolder, SpecStore, SpecStoreError};
 use crate::ports::workflow::{read_policy, read_workflow};
 use crate::probe::ProbeError;
 use crate::project::marker::find_marker;
@@ -433,6 +433,38 @@ fn mark_work_item(store: &SpecStore, work_item: &str) -> Result<(), SpecStoreErr
         .folders_of(work_item)?
         .iter()
         .try_for_each(|folder| store.write_freeze_mark(folder).map(drop))
+}
+
+/// O nascimento de uma branch de work item (o `post-start` do `wt`): grava a marca em cada pasta
+/// do work item, pela mesma gravação da cura. Não abre o banco e não exige o work item nele;
+/// branch que não é de work item não tem efeito.
+pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
+    let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
+    let Some(work_item) = work_item_id(branch).and_then(|id| {
+        id.as_str()
+            .strip_prefix(WORK_ITEM_ID_PREFIX)
+            .map(str::to_owned)
+    }) else {
+        return Ok(json!({ "marked": [], "already": [] }));
+    };
+    let main_dir = GitProbe::new(&located.root)
+        .main_dir()
+        .map_err(|error| AppError::probe_failed(&error.message))?;
+    let config = read_policy(&located.root).unwrap_or_default();
+    let store = SpecStore::new(main_dir.join(&config.specs.dir));
+
+    let (mut marked, mut already) = (Vec::new(), Vec::new());
+    for folder in store.folders_of(&work_item).map_err(spec_store_refusal)? {
+        match store
+            .write_freeze_mark(&folder)
+            .map_err(spec_store_refusal)?
+        {
+            FreezeMarkWrite::Written => marked.push(folder),
+            FreezeMarkWrite::AlreadyMarked => already.push(folder),
+        }
+    }
+
+    Ok(json!({ "marked": marked, "already": already }))
 }
 
 /// O alvo de um `Write` pode ainda não existir, nem a pasta dele.

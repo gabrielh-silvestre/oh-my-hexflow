@@ -353,6 +353,10 @@ const LEAF_SAMPLES: &[(&str, &str)] = &[
     ("hook session-start", "omhl hook session-start"),
     ("hook spec-lock", "omhl hook spec-lock"),
     ("hook agent-role", "omhl hook agent-role"),
+    (
+        "hook wt-post-start",
+        "omhl hook wt-post-start --branch feat/wi-x__y",
+    ),
 ];
 
 /// Um comando de um papel e o veredito que a matriz de referência dá a ele.
@@ -567,6 +571,13 @@ fn it_should_deny_every_hook_event_to_every_role() {
         "hook spec-lock",
         "hook agent-role",
     ]));
+
+    cases.iter().for_each(assert_case);
+}
+
+#[test]
+fn it_should_deny_hook_wt_post_start_for_every_role() {
+    let cases = cases_for(&samples_of(&["hook wt-post-start"]));
 
     cases.iter().for_each(assert_case);
 }
