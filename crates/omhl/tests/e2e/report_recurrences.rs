@@ -429,6 +429,24 @@ fn it_should_keep_the_group_when_the_confirmed_guideline_has_a_different_text() 
 }
 
 #[test]
+fn it_should_not_suggest_a_recurrence_covered_by_a_native_directive() {
+    let project = Project::new("acme");
+    let native_text = "By default, ask before committing and pushing at the end of a task; a project guideline may state a different policy.";
+    seed(
+        &project,
+        vec![
+            premise_node("premises.p1", W1, "technical", native_text),
+            premise_node("premises.p2", W2, "technical", native_text),
+            premise_node("premises.p3", W3, "technical", native_text),
+        ],
+    );
+
+    let report = report(&project);
+
+    assert!(group_texts(&report).is_empty(), "{report}");
+}
+
+#[test]
 fn it_should_refuse_a_guideline_without_confirmed_by_as_confirmation_required() {
     let project = Project::new("acme");
     seed_three_occurrences(&project);
