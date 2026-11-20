@@ -173,6 +173,39 @@ fn it_should_flag_a_part_over_the_byte_limit_without_reading_it() {
     );
 }
 
+fn seed_parts_of_the_per_file_cap(dir: &Path, count: usize) {
+    let folder = dir.join(FOLDER);
+    fs::create_dir_all(&folder).unwrap();
+    let content = "a".repeat(BYTES_MAX);
+    for index in 0..count {
+        fs::write(folder.join(format!("parte-{index:03}.md")), &content).unwrap();
+    }
+}
+
+#[test]
+fn it_should_refuse_a_spec_folder_over_the_aggregate_byte_cap() {
+    let (dir, store) = store();
+    // 257 * 64 KiB passa de 16 MiB por um arquivo.
+    seed_parts_of_the_per_file_cap(dir.path(), 257);
+
+    let folder = store.read_folder("w1");
+
+    assert_eq!(
+        folder.err(),
+        Some(SpecStoreError::Unusable("the spec folder is too large"))
+    );
+}
+
+#[test]
+fn it_should_accept_198_files_of_the_per_file_cap() {
+    let (dir, store) = store();
+    seed_parts_of_the_per_file_cap(dir.path(), 198);
+
+    let folder = store.read_folder("w1").unwrap().unwrap();
+
+    assert_eq!(folder.parts.len(), 198);
+}
+
 #[test]
 fn it_should_refuse_a_part_that_is_a_directory() {
     let (dir, store) = store();

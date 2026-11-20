@@ -11,6 +11,9 @@ use crate::workflow::names::{
 /// Teto próprio da busca por prefixo; o `DIR_ENTRIES_MAX` (100) é das pastas de extension.
 const SPEC_ENTRIES_MAX: usize = 10_000;
 
+/// Teto agregado de uma pasta de spec; 198 arquivos de `EXT_FILE_MAX_BYTES` (cerca de 12,4 MiB) cabem.
+const SPEC_FOLDER_BYTES_MAX: usize = 16 * 1024 * 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecStoreError {
     /// Já existe uma pasta `wi-<id>__*`.
@@ -67,6 +70,7 @@ impl SpecStore {
             parts: Vec::new(),
             amendments: Vec::new(),
         };
+        let mut total_bytes = 0;
         for name in list_names(&folder)?
             .into_iter()
             .filter(|name| name.ends_with(FILE_SUFFIX))
@@ -84,6 +88,10 @@ impl SpecStore {
                 Err(FILE_TOO_LARGE) => (String::new(), true),
                 Err(_) => return Err(SpecStoreError::Unusable("a spec file cannot be read")),
             };
+            total_bytes += text.len();
+            if total_bytes > SPEC_FOLDER_BYTES_MAX {
+                return Err(SpecStoreError::Unusable("the spec folder is too large"));
+            }
             target.push(SpecDocument {
                 name,
                 text,

@@ -629,6 +629,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - O hook `agent-role` protege contra o erro do agente, não contra a má-fé. Escapam dele, e o comando grava como `claude`, sem a matriz do papel: `bash -c`, `sudo` e os outros programas que executam comando sem estar na lista de embrulhos, `cargo run -p omhl -- append`, as ferramentas que não são o `Bash` nem o `Monitor`, um evento que o hook não consegue ler (stdin acima de 1 MiB ou JSON inválido: o erro vai ao stderr, a saída é `0` e o comando roda sem prefixo), o `omhl` velho ou ausente no `PATH` (o `|| exit 1` deixa o comando rodar sem prefixo; o Claude Code só mostra o aviso de erro do hook na transcrição) e um nome escondido por escape. A lista completa está em "Limites" no [ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md).
 - A spec vive no diretório principal, fora do git. Ela não vai com um clone e some com o diretório.
 - A busca de pastas de spec lê até 10 000 entradas e recusa (`spec-store-unusable`) o work item que tem mais de uma pasta `wi-<id>__*`, mesmo a segunda vazia.
+- A leitura de uma pasta de spec soma os bytes das partes e emendas lidas e recusa (`spec-store-unusable`) a pasta que passa de 16 MiB; cada arquivo segue limitado a 64 KiB, e 198 arquivos desse tamanho (cerca de 12,4 MiB) cabem.
 - O `spec-invalid` e o `amendment-invalid` mostram até 20 detalhes por erro.
 - O `close` de um work item com retro depende de a pasta de spec ser legível e de o `workflow.toml` ser válido (seção 8).
 
