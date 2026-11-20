@@ -339,11 +339,17 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
     let mut failure = None;
     for path in paths.iter().filter(|path| has_spec_folder_component(path)) {
         match decide_path(tool, path) {
-            Ok((verdict @ Verdict::Deny { .. }, healed)) => {
-                notices.extend(healed);
-                return Ok(SpecLockOutcome { verdict, notices });
+            Ok((verdict, healed)) => {
+                // Os dois caminhos curam o mesmo projeto: o aviso do mesmo work item sai uma vez.
+                for notice in healed {
+                    if !notices.contains(&notice) {
+                        notices.push(notice);
+                    }
+                }
+                if matches!(verdict, Verdict::Deny { .. }) {
+                    return Ok(SpecLockOutcome { verdict, notices });
+                }
             }
-            Ok((Verdict::Allow, healed)) => notices.extend(healed),
             Err(error) => failure = failure.or(Some(error)),
         }
     }

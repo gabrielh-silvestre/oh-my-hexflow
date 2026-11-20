@@ -1303,6 +1303,34 @@ fn it_should_keep_the_decision_when_the_mark_cannot_be_written() {
 }
 
 #[test]
+fn it_should_report_the_unwritable_mark_once_when_both_paths_run_the_cure() {
+    let repo = Repo::new();
+    repo.branch(OTHER_BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let real = repo.main.join("real-folder");
+    fs::create_dir_all(&real).expect("real folder is created");
+    link(&real, &repo.main.join(DEFAULT_SPECS).join(OTHER_FOLDER));
+    // O texto difere do caminho físico, então os dois passam pela cura.
+    let detour = repo
+        .main
+        .join(DEFAULT_SPECS)
+        .join("../specs")
+        .join(FOLDER)
+        .join("parte-01.md");
+
+    let output = repo.hook_in_main("Edit", &detour);
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout: {}", output.stdout);
+    assert_eq!(
+        output.stderr.matches("freeze-mark-unwritable").count(),
+        1,
+        "stderr: {}",
+        output.stderr
+    );
+}
+
+#[test]
 fn it_should_deny_when_a_second_folder_of_the_work_item_has_the_mark() {
     let repo = Repo::new();
     repo.seed(DEFAULT_SPECS, "parte-01.md");
