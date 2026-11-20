@@ -459,7 +459,7 @@ fn is_id(token: &str, prefix: &str) -> bool {
 }
 
 /// `text` tem exatamente `len` dígitos ASCII.
-pub(crate) fn is_digits(text: &str, len: usize) -> bool {
+fn is_digits(text: &str, len: usize) -> bool {
     text.len() == len && text.bytes().all(|byte| byte.is_ascii_digit())
 }
 

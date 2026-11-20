@@ -22,13 +22,20 @@ pub fn missing_atoms(
 ) -> Option<Vec<RequireAtom>> {
     let required = config.prefixes.get(prefix)?;
 
-    Some(
-        required
-            .iter()
-            .copied()
-            .filter(|atom| !is_satisfied(*atom, premises, spec_valid))
-            .collect(),
-    )
+    Some(unsatisfied_atoms(required, premises, spec_valid))
+}
+
+/// Os átomos de `required` que as premissas e a validação da spec não satisfazem, na ordem de `required`.
+pub fn unsatisfied_atoms(
+    required: &[RequireAtom],
+    premises: &[PremiseFact],
+    spec_valid: bool,
+) -> Vec<RequireAtom> {
+    required
+        .iter()
+        .copied()
+        .filter(|atom| !is_satisfied(*atom, premises, spec_valid))
+        .collect()
 }
 
 fn is_satisfied(atom: RequireAtom, premises: &[PremiseFact], spec_valid: bool) -> bool {

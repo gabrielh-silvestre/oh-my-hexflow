@@ -6,12 +6,12 @@ use serde_json::{Value, json};
 use super::App;
 use super::error::AppError;
 use crate::error::OmhlError;
-use crate::mechanical::branch::{BranchKind, branch_prefix, classify};
+use crate::mechanical::branch::{branch_prefix, work_item_id};
 use crate::ports::git::GitProbe;
 use crate::ports::workflow::read_workflow;
 use crate::project::marker::find_marker;
-use crate::workflow::config::{RequireAtom, WorkflowConfig};
-use crate::workflow::matrix::missing_atoms;
+use crate::workflow::config::RequireAtom;
+use crate::workflow::matrix::unsatisfied_atoms;
 
 const BRANCH_POINTER: &str = "/branch";
 
@@ -26,9 +26,9 @@ pub(super) struct PendingLookup {
     branch: String,
     prefix: String,
     work_item: SemanticId,
+    required: Vec<RequireAtom>,
     without_facts: Vec<RequireAtom>,
     main_dir: PathBuf,
-    config: WorkflowConfig,
 }
 
 /// Ordem da decisão (d): marcador, `develop` e `main`, branch com worktree, formato e prefixo, matriz.
@@ -48,12 +48,14 @@ pub(super) fn decide(start: &Path, branch: &str) -> Result<Decision, AppError> {
 
     let main_dir = probe.main_dir().map_err(|_| AppError::main_dir_unknown())?;
     let config = read_workflow(&main_dir)?;
-    let (Some(prefix), BranchKind::WorkItem(work_item)) = (branch_prefix(branch), classify(branch))
-    else {
+    let (Some(prefix), Some(work_item)) = (branch_prefix(branch), work_item_id(branch)) else {
         return Err(AppError::prefix_not_allowed(BRANCH_POINTER));
     };
-    let without_facts = missing_atoms(prefix, &config, &[], false)
+    let required = config
+        .prefixes
+        .get(prefix)
         .ok_or_else(|| AppError::prefix_not_allowed(BRANCH_POINTER))?;
+    let without_facts = unsatisfied_atoms(required, &[], false);
     if without_facts.is_empty() {
         return Ok(Decision::Final(allowed(branch, "matrix-satisfied")));
     }
@@ -62,9 +64,9 @@ pub(super) fn decide(start: &Path, branch: &str) -> Result<Decision, AppError> {
         branch: branch.to_owned(),
         prefix: prefix.to_owned(),
         work_item,
+        required: required.clone(),
         without_facts,
         main_dir,
-        config,
     }))
 }
 
@@ -74,9 +76,9 @@ pub(super) fn finish(app: &mut App<'_>, pending: PendingLookup) -> Result<Value,
         branch,
         prefix,
         work_item,
+        required,
         without_facts,
         main_dir,
-        config,
     } = pending;
     if let Some(code) = app.work_item_refusal(&work_item)? {
         return Err(OmhlError::rule(code, BRANCH_POINTER).into());
@@ -84,8 +86,7 @@ pub(super) fn finish(app: &mut App<'_>, pending: PendingLookup) -> Result<Value,
     let premises = app.premise_facts(&work_item)?;
     let spec_valid =
         !without_facts.contains(&RequireAtom::Spec) || app.spec_is_valid(&work_item)?;
-    let missing = missing_atoms(&prefix, &config, &premises, spec_valid)
-        .ok_or_else(|| AppError::prefix_not_allowed(BRANCH_POINTER))?;
+    let missing = unsatisfied_atoms(&required, &premises, spec_valid);
     if missing.is_empty() {
         return Ok(allowed(&branch, "matrix-satisfied"));
     }
