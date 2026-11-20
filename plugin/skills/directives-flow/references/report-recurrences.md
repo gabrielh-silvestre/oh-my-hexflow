@@ -1,5 +1,13 @@
 # omhl report recurrences
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| analyst | 2 | `omhl report recurrences --min 2` |
+
+A sessão também o roda antes de gravar premissa: [directives-flow](../SKILL.md), seção Regras.
+
 ## Quando usar
 
 Em dois momentos. Antes de registrar uma premissa, com `--min 2`, para achar uma premissa anterior que significa a mesma coisa e copiar o texto exato dela (assim a promoção agrupa as duas). E no fim de um work item, sem `--min`, para ver as premissas repetidas em work items suficientes para sugerir a promoção a diretiva. O relatório só lê: sugerir a promoção é com você, a confirmação é do humano, e só então a `guideline` é gravada, com `confirmed_by`. É somente leitura.

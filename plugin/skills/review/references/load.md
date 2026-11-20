@@ -1,5 +1,11 @@
 # omhl load
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | review regras | `omhl load` |
+
 ## Quando usar
 
 Depois de criar, editar ou apagar um arquivo em `.omhl/` (check ou diretiva), para o banco refletir os arquivos. Rode-o antes de qualquer `omhl check run` que venha depois de uma mudança num check: o `check run` recusa com `spec-stale` se o TOML e o banco divergem. `--dry-run` mostra o plano sem gravar nada.
@@ -17,7 +23,7 @@ Texto no stdout, saída 0: `✔ loaded` (ou `✔ dry run`, que não grava nada) 
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `extensions-invalid` (saída 1): algum arquivo de `.omhl/` é inválido. Os `details` trazem o `path` e o `code` do problema (por exemplo `event-unsupported`, para um evento fora de `before-commit`, `before-pr` e `before-merge`, ou `rule-two-streams`, para uma regra com padrão em `stdout` e em `stderr`). Corrija o TOML e rode de novo.
 - `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.

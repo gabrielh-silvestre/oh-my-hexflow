@@ -1,5 +1,11 @@
 # omhl attest
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | review 8, review regras | `omhl attest` |
+
 ## Quando usar
 
 Para gravar à mão o desfecho de um check **manual** (sem o campo `run`) sobre um work item, depois de o humano revisá-lo. O registro é do par check e work item, preso ao commit atual. Um check com `run` é mecânico: quem grava o desfecho dele é o `omhl check run`, nunca você (a recusa é `check-run-author`).
@@ -20,7 +26,7 @@ Texto no stdout, saída 0: `✔ attest · <check> · <work item> · <outcome> ·
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta de `--outcome` ou de um argumento é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta de `--outcome` ou de um argumento é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `invalid-arguments` (saída 1): o `--outcome` não é um dos três valores. O ponteiro `/outcome` e a mensagem dizem a regra. Corrija o valor.
 - `check-run-author` (saída 1): o check tem `run`. Só o `omhl check run` grava o desfecho dele. Use um check manual ou rode o check.

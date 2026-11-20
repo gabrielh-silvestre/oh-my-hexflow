@@ -1,5 +1,11 @@
 # omhl verify
 
+## Quem usa, em qual etapa e com qual filtro
+
+Nenhuma etapa do ciclo a roda.
+
+A leitura do símbolo do `verify` (sai 0 com a cadeia quebrada) é regra da base: [directives-flow](../SKILL.md), seção Consulta.
+
 ## Quando usar
 
 Para provar que o banco do projeto não foi adulterado: o `verify` percorre a cadeia de hashes de todos os registros do projeto e diz se ela fecha. Use quando suspeitar de corrupção, depois de restaurar um banco de backup, ou antes de confiar numa attestation. É somente leitura.

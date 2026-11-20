@@ -47,23 +47,24 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
 
 O plugin liga os hooks `SessionStart` e `PreToolUse` (`hook spec-lock` para
 `Edit`, `Write` e `MultiEdit`, e `hook agent-role` para o `Bash`, em
-`plugin/hooks/hooks.json`). O agente grava e consulta pela CLI, guiado por seis
-skills em `plugin/skills/`:
+`plugin/hooks/hooks.json`). O agente grava e consulta pela CLI, guiado por quatro
+skills de workflow em `plugin/skills/`:
 
 | Skill | O que cobre |
 |---|---|
-| `directives-flow` | O fluxo por diretivas e premissas: `append`, `attest`, `spec init`, `spec validate`, `gate-worktree` e `guideline retire`. Traz também o ciclo com os agentes, os papéis e o template da tabela do PR. |
-| `mechanical-checks` | Os checks mecânicos: `load`, `check run`, `check retire`, `check sweep`, `byproduct`, `hooks install` e `hooks post-commit`. |
-| `work-item-closing` | O fechamento do work item: `gate-pr`, `close` e `report retro`. |
-| `query-and-integrity` | A consulta e a integridade do banco: `get`, `list`, `verify`, `project`, `render`, `report answers` e `report recurrences`. |
+| `directives-flow` | O fluxo por diretivas e premissas: `append`, `spec init`, `spec validate`, `gate-worktree` e `guideline retire`, e a consulta ao banco: `get`, `list`, `verify`, `project`, `render`, `report answers` e `report recurrences`. Traz também o ciclo com os agentes, os papéis e o template da tabela do PR. |
+| `interview` | A entrevista de negócio com o dono, antes do work item: placar de ambiguidade, rodadas de perguntas e a gravação do work item e das premissas confirmadas. |
 | `plan-consensus` | O consenso do plano: chama o analyst, o planner, o architect e o critic em sequência, limita a 3 voltas, escala o impasse ao dono e retira os `contradicts` resolvidos antes do `spec validate`. |
-| `review` | A revisão da entrega: chama o code-reviewer, o security-reviewer e o verifier, grava os achados, monta a tabela do PR e confere o `gate-pr`. |
+| `review` | A revisão da entrega: chama o code-reviewer, o security-reviewer e o verifier, grava os achados, monta a tabela do PR e confere o `gate-pr`. Traz também os checks mecânicos (`load`, `check run`, `check retire`, `check sweep`, `byproduct`, `hooks install`, `hooks post-commit` e `attest`) e o fechamento do work item (`gate-pr`, `close` e `report retro`). |
 
-As quatro primeiras skills têm um `SKILL.md` curto e, por subcomando, um
+As sete skills `role-*` (`role-analyst`, `role-planner` e as demais) não são chamadas pela sessão: são as vistas por papel, pré-carregadas pelos agentes do plugin.
+
+A `directives-flow` e a `review` têm um `SKILL.md` curto e, por subcomando, um
 `references/<subcomando>.md` com cinco títulos fixos (`Quando usar`, `Entradas`,
-`Saída`, `Erros`, `Exemplos`). `plan-consensus` e `review` não têm `references/`
-próprio: usam as páginas de apoio da `directives-flow` (`cycle.md`, `roles.md` e
-`tracking-table.md`), que não seguem os cinco títulos. Um teste de cobertura
+`Saída`, `Erros`, `Exemplos`), aberto por uma tabela de quem usa o comando e em
+qual etapa. `plan-consensus` e `interview` usam as páginas de apoio da
+`directives-flow` (`cycle.md`, `roles.md` e `tracking-table.md`), que não seguem
+os cinco títulos. Um teste de cobertura
 exige que todo subcomando folha da CLI, exceto o grupo `hook`, seja citado por
 uma skill e tenha a sua `references/`. Outro teste roda os exemplos (`omhl-example`) contra o binário
 real e reprova a skill que descreve uma saída que o `omhl` não dá. Os detalhes

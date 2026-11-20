@@ -15,7 +15,7 @@ O ciclo tem dez passos.
 7. **Consenso.** A volta 1 são os passos 5 e 6; sem aceite, o `oh-my-hexflow:architect` (e o `oh-my-hexflow:planner`, se a spec muda) revê e o `oh-my-hexflow:critic` julga de novo, em no máximo 3 voltas no total. Sem aceite na terceira, a sessão principal para e mostra o impasse ao dono. O veredito do critic fica só na mensagem entre os agentes.
 8. **Spec e worktree.** Com o aceite, o `oh-my-hexflow:verifier` retira os `contradicts` resolvidos; então vêm a conferência final com `omhl spec validate`, `omhl gate-worktree`, a worktree e a implementação.
 9. **Revisão.** O `oh-my-hexflow:code-reviewer`, o `oh-my-hexflow:security-reviewer` e o `oh-my-hexflow:verifier` revisam a entrega.
-10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic ([tracking-table.md](tracking-table.md)); depois vêm `omhl gate-pr` e `omhl close`, pela skill [work-item-closing](../../work-item-closing/SKILL.md).
+10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic ([tracking-table.md](tracking-table.md)); depois vêm `omhl gate-pr` e `omhl close`, pela skill [review](../../review/SKILL.md), passo 8.
 
 Os papéis de cada passo, como dado: as skills `role-<papel>` dos agentes e os testes leem este bloco; a lista numerada acima é a prosa.
 

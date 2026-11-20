@@ -1,10 +1,17 @@
 # omhl close
 
+- [Quem usa](#quem-usa-em-qual-etapa-e-com-qual-filtro)
 - [Quando usar](#quando-usar)
 - [Entradas](#entradas)
 - [Saída](#saída)
 - [Erros](#erros)
 - [Exemplos](#exemplos)
+
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | review 8, review regras | `omhl close` |
 
 ## Quando usar
 
@@ -31,11 +38,11 @@ Com `--format json` é uma linha JSON com três campos:
 - `report`: o mesmo relatório do `omhl gate-pr` (`gate`, `passed`, `questions`, `chain_head`).
 - `retro`: `null` quando não há divergência nem gap respondido sem critério; senão, o relatório do `omhl report retro`. A retro lê os fatos antes de gravar, então o `close` nunca devolve erro depois de gravar.
 
-**O `close` fecha mesmo com o gate reprovado** (`report.passed: false` no JSON, `⚠` no texto): o resultado fica gravado no work item. Depois do fechamento, a premissa do work item sai do contexto de sessão (`omhl render`) e continua na projeção. Quando `retro` vem preenchido, proponha uma melhoria por item, como em [SKILL.md](../SKILL.md).
+**O `close` fecha mesmo com o gate reprovado** (`report.passed: false` no JSON, `⚠` no texto): o resultado fica gravado no work item. Depois do fechamento, a premissa do work item sai do contexto de sessão (`omhl render`) e continua na projeção. Quando `retro` vem preenchido, proponha uma melhoria por item, como em [fechamento.md](fechamento.md).
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Quando há retro e a leitura dos fatos falha, o `close` recusa sem gravar nada. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Quando há retro e a leitura dos fatos falha, o `close` recusa sem gravar nada. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `work-item-not-found` (saída 1): o work item não existe. O ponteiro é `/work_item`. Confira o id.
 - `invalid-transition` (saída 1): o work item já está fechado. Um work item fechado não fecha de novo.

@@ -1,5 +1,11 @@
 # omhl gate-pr
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | review 8, review regras | `omhl gate-pr` |
+
 ## Quando usar
 
 Antes de abrir ou mergear o pull request de um work item, para saber se tudo o que o gate cobra já está registrado. É somente leitura: não grava nada e vale para work item aberto ou fechado. O gate cobra o **commit atual** (`HEAD`): depois de qualquer commit novo, os checks precisam ser atestados de novo. O `omhl close` roda esse mesmo gate e grava o resultado.
@@ -24,7 +30,7 @@ Um check que reprovou no `check run` não conta: a pergunta dele sai com `matche
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Um gate reprovado **não** é erro. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Um gate reprovado **não** é erro. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `work-item-not-found` (saída 1): o work item não existe (ou o id é de outro tipo de node). O ponteiro é `/work_item`. Confira o id.
 - `INVALID_INPUT` (saída 1): o id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.

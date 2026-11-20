@@ -1,5 +1,11 @@
 # omhl hooks install
 
+## Quem usa, em qual etapa e com qual filtro
+
+| Papel | Etapa | Comando |
+|---|---|---|
+| sessao | review regras | `omhl hooks install` |
+
 ## Quando usar
 
 Uma vez por clone, para o git chamar os checks sozinho: grava os quatro scripts (`pre-commit`, `pre-merge-commit`, `pre-push`, `post-commit`) numa pasta única do usuário e aponta o `core.hooksPath` do clone para ela. Sem isso o clone não tem hook, e o gate de pull request cobra a falta depois. São hooks do **git**, sem relação com o hook `omhl hook session-start` do Claude Code.
@@ -17,7 +23,7 @@ Texto no stdout, saída 0: `✔ hooks install · 4 scripts`, as linhas `hooks pa
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
 
 - `hooks-existing` (saída 1): `core.hooksPath` não está definido e `.git/hooks` tem algum arquivo que não seja `*.sample`. **Pare.** Não use `--force` nem mova os hooks por conta própria: peça ao humano e mostre a ele o que existe (`ls -la "$(git rev-parse --git-path hooks)"`, ignorando os `*.sample`, e o conteúdo de cada arquivo que não seja óbvio). Diga que esses hooks deixam de rodar, que não há backup e que a pasta de hooks do usuário vale para todos os clones. Só rode `omhl hooks install --force` depois de o humano autorizar nessa conversa.
 - `hooks-path-conflict` (saída 1): `core.hooksPath` já aponta para outra pasta, local ou global. **Pare.** Rode `git config --show-origin --get-all core.hooksPath` e mostre ao humano o valor, o escopo (local ou global) e o que a pasta contém. Diga que o `--force` grava `core.hooksPath` local e descarta o valor anterior sem registro, e que os hooks daquela pasta deixam de rodar neste clone. Só rode `omhl hooks install --force` depois de o humano autorizar nessa conversa.
