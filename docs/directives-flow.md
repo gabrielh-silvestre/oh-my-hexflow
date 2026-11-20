@@ -231,6 +231,20 @@ omhl-gate = "case {{ branch }} in develop|main) exit 0;; esac; omhl gate-worktre
 - `wt config approvals list` confere. O comando sem aprovação aparece como `UNAPPROVED`.
 - Se um `wt switch` falhar com `Cannot prompt for approval`, o agente para e pede ao dono o `wt config approvals add`. Ele nunca tenta `--no-hooks`.
 
+### O hook `post-start` do `wt`
+
+O `.config/wt.toml` tem um segundo hook, que grava a marca de congelamento da spec no nascimento da branch:
+
+```toml
+[post-start]
+omhl-freeze = "case {{ branch }} in develop|main) exit 0;; esac; omhl hook wt-post-start --branch {{ branch }}"
+```
+
+- Ele roda **uma vez**, quando a worktree nasce, **em segundo plano**. Uma worktree que já existia, uma branch que já existia e uma branch criada por `git branch` ou `wt switch --no-hooks` não o disparam.
+- Ele grava a marca `.frozen` em cada pasta `wi-<id>__*` do work item da branch nova (seção 7). O `omhl hook wt-post-start` é o do `PATH`, com o mesmo cuidado do `pre-switch`: o `{{ branch }}` vai sem aspas e o `case` libera `develop` e `main`.
+- A falha é silenciosa: o `wt` não mostra a saída de um hook em segundo plano e não aborta por ele. Se o hook falhar (`omhl` velho, marca não gravável), a branch nasce sem marca. A cura do `spec-lock` é a rede: no primeiro evento de spec ela grava a marca de toda branch `wi-` local que existe (seção 7).
+- O comando do hook entra na aprovação do `wt` como o do `pre-switch` (seção 5, "A aprovação do hook"). Um hook `UNAPPROVED` faz o `wt` abortar todo `wt switch` sem terminal interativo. **O agente nunca usa `-y` nem `--no-hooks` diante de um hook `UNAPPROVED`**: ele para e pede ao dono o `wt config approvals add`. O `-y` aprovaria o hook sozinho, e o `--no-hooks` pularia o `pre-switch` junto.
+
 ## 6. A spec
 
 As specs ficam em `<specs.dir>/wi-<id>__<slug>/`, por padrão `.omhl/specs/wi-<id>__<slug>/`. A pasta tem as partes `parte-NN.md` (`NN` com dois dígitos) e, depois, as emendas `emenda-NN.md`. Elas ficam fora do git: a worktree não as recebe, e o `spec validate` acha o diretório principal sozinho, de qualquer worktree.
@@ -579,6 +593,8 @@ O gate do `wt` e o hook `spec-lock` estão ativos. A ativação seguiu esta orde
 2. Rode `omhl hooks install`.
 3. Só então versione o `.config/wt.toml` e as entradas `PreToolUse` em `plugin/hooks/hooks.json`: `Edit|Write|MultiEdit` para o `spec-lock` e `Bash|Monitor` para o `agent-role`.
 4. O dono roda `wt config approvals add` e confere com `wt config approvals list` (seção 5), antes de qualquer `wt switch` do agente.
+5. Para o hook `post-start`: reinstale o `omhl` no `PATH` (passo 1). O hook chama o subcomando `hook wt-post-start`, e um binário velho sai com `2` em segundo plano, sem marcar nada e sem aviso.
+6. O dono roda `wt config approvals add` e confere com `wt config approvals list` que nada aparece `UNAPPROVED`, **antes de qualquer `wt switch`**. O `[post-start]` é um comando novo no `.config/wt.toml`; sem a aprovação e sem terminal interativo, o `wt` aborta todo `wt switch`, inclusive para a `develop`.
 
 Depois de puxar mudanças, recompile e reinstale o `omhl` do `PATH` antes de usar o plugin; a reinstalação cobre também o hook `agent-role`, que o plugin chama do mesmo binário. Um `omhl` velho, sem o subcomando `hook spec-lock`, sairia com `2` (erro de uso do clap), e em `PreToolUse` isso bloquearia todo `Edit` e `Write`. O hook roda como `omhl hook spec-lock || exit 1`, que converte essa saída em `1` (erro não bloqueante, pois só a saída `2` bloqueia): a escrita passa, o Claude Code mostra o aviso de erro do hook, e o congelamento fica sem efeito até a reinstalação (limite abaixo). O mesmo vale para o binário ausente (saída `127`). A negação legítima vai por JSON com saída `0` e não depende do código de saída.
 
@@ -600,6 +616,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - O hook libera a escrita (o Claude Code trata a falha do hook como não bloqueante) quando: o `.omhl.toml` é inválido (por exemplo `version = 99`: saída `invalid-marker` no stderr), não há `.omhl.toml` acima do arquivo, o binário `omhl` não existe no `PATH`, o `omhl` do `PATH` é velho e não tem o subcomando `hook spec-lock` (o envoltório `|| exit 1` converte a saída `2` do clap em `1`, e o aviso de erro do hook fica visível no Claude Code), o hook passa de 10 s de timeout ou o stdin passa de 1 MiB (`input-too-large`).
 - Quando o caminho físico do arquivo não se resolve (laço de links simbólicos, mais de 40 saltos, leitura negada) e o caminho lexical tem a forma de uma pasta de work item, o hook decide só pelo lexical e deixa a linha `path-unresolvable` no stderr (a decisão não muda: sai com `0`, e o lexical pode negar). Se o lexical não tem essa forma, a escrita passa em silêncio.
 - Quando a cura não consegue gravar a marca de um work item (pasta que é link simbólico, pasta sem permissão de escrita), o hook deixa a linha `freeze-mark-unwritable` no stderr e decide como se a cura não existisse (sai com `0`, e a branch ou uma marca já existente ainda negam). Uma branch criada fora do `wt` e apagada antes de qualquer `Edit` ou `Write` de spec nunca recebe a marca e fica editável.
+- Uma branch `wi-` criada fora do `wt` (`git branch`, `git switch -c`, `wt switch --no-hooks`) não dispara o `post-start`. Se for apagada sem nenhum evento de spec no meio, também não deixa marca: é o residual do congelamento.
 - O hook decide no instante da checagem. Se o alvo de um link simbólico mudar depois dela e antes da escrita (TOCTOU), o hook não detecta a troca.
 - O hook de congelamento vale para `Edit`, `Write` e `MultiEdit`. Uma escrita por Bash (`sed -i`, redirecionamento) não passa por ele, inclusive em spec e emenda aprovadas. O `spec validate` confere de novo só a estrutura da emenda aprovada e as citações do grafo: nenhum digest guarda o conteúdo aprovado, então uma troca por Bash que mantém a estrutura válida continua `approved`.
 - O `MultiEdit` fica no `matcher` por compatibilidade: a referência atual de ferramentas do Claude Code não o lista. O `NotebookEdit` não passa pelo hook; só importa para um `.ipynb` dentro de `specs.dir`.
