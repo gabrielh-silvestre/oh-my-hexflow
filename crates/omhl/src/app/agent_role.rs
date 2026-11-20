@@ -42,11 +42,8 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
         return RoleVerdict::Pass;
     };
     let line = read_command(command);
-    if line.as_ref().is_ok_and(assigns_role_variable) {
-        return deny(
-            "role-assignment",
-            "OMHL_ROLE is set by the plugin hook only; do not assign it in a command",
-        );
+    if let Some(change) = line.as_ref().ok().and_then(role_change) {
+        return change.denial();
     }
     let Some(role) = input["agent_type"]
         .as_str()
@@ -71,27 +68,91 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
     }
 }
 
-/// Atribuição de `OMHL_ROLE` como prefixo (também depois de embrulho) ou como argumento de `export` e afins.
-fn assigns_role_variable(line: &CommandLine) -> bool {
-    line.commands.iter().any(|simple| {
-        let (prefix, program, args) = simple.split();
-        let assigns_in_prefix = prefix.iter().any(|word| names_role_variable(word));
-        let assigns_by_builtin = program
-            .is_some_and(|program| ASSIGNING_PROGRAMS.contains(&program))
-            && args.iter().any(|word| names_role_variable(word));
+/// O que um comando faz com `OMHL_ROLE`: dá um valor a ele ou o tira do ambiente.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RoleChange {
+    Assign,
+    Unset,
+}
 
-        assigns_in_prefix || assigns_by_builtin
+impl RoleChange {
+    fn denial(self) -> RoleVerdict {
+        match self {
+            Self::Assign => deny(
+                "role-assignment",
+                "OMHL_ROLE is set by the plugin hook only; do not assign it in a command",
+            ),
+            Self::Unset => deny(
+                "role-unset",
+                "OMHL_ROLE is set by the plugin hook only; do not unset it in a command",
+            ),
+        }
+    }
+}
+
+/// A primeira mudança de `OMHL_ROLE` que algum comando faz: como prefixo (também depois de embrulho) ou como argumento de `export` e afins.
+fn role_change(line: &CommandLine) -> Option<RoleChange> {
+    line.commands.iter().find_map(|simple| {
+        let (prefix, program, args) = simple.split();
+        let builtin_args = if program.is_some_and(|program| ASSIGNING_PROGRAMS.contains(&program)) {
+            args
+        } else {
+            &[]
+        };
+
+        prefix_role_change(prefix).or_else(|| {
+            builtin_args
+                .iter()
+                .any(|word| names_role_variable(word))
+                .then_some(RoleChange::Assign)
+        })
     })
 }
 
-/// `OMHL_ROLE`, `OMHL_ROLE=`, `OMHL_ROLE+=` e o nome atrás de `env -u` / `env --unset=` (inclusive grudado).
-fn names_role_variable(word: &str) -> bool {
-    let name = word
-        .strip_prefix("--unset=")
-        .or_else(|| word.strip_prefix("-u"))
-        .unwrap_or(word);
+/// As palavras antes do programa: o valor de `env -u` / `--unset` tira o papel, qualquer outra menção o atribui.
+fn prefix_role_change(prefix: &[String]) -> Option<RoleChange> {
+    let mut words = prefix.iter().map(String::as_str);
+    while let Some(word) = words.next() {
+        let change = match env_unset_value(word, &mut words) {
+            Some(value) if value == ROLE_VARIABLE => Some(RoleChange::Unset),
+            Some(value) => names_role_variable(value).then_some(RoleChange::Assign),
+            None => names_role_variable(word).then_some(RoleChange::Assign),
+        };
+        if change.is_some() {
+            return change;
+        }
+    }
 
-    name.strip_prefix(ROLE_VARIABLE)
+    None
+}
+
+/// O valor que o getopt do `env` dá à opção `-u`/`--unset` na palavra; `None` se a palavra não é essa opção.
+/// Num cluster `-<letras>u<resto>` o valor é `<resto>` ou, se vazio, a palavra seguinte; `--u`..`--unset` são a mesma opção longa.
+fn env_unset_value<'w>(
+    word: &'w str,
+    following: &mut impl Iterator<Item = &'w str>,
+) -> Option<&'w str> {
+    if let Some(long) = word.strip_prefix("--") {
+        let (name, attached) = match long.split_once('=') {
+            Some((name, value)) => (name, Some(value)),
+            None => (long, None),
+        };
+
+        return (!name.is_empty() && "unset".starts_with(name))
+            .then(|| attached.or_else(|| following.next()).unwrap_or_default());
+    }
+    let (_, tail) = word.strip_prefix('-')?.split_once('u')?;
+
+    Some(if tail.is_empty() {
+        following.next().unwrap_or_default()
+    } else {
+        tail
+    })
+}
+
+/// `OMHL_ROLE`, `OMHL_ROLE=` ou `OMHL_ROLE+=`.
+fn names_role_variable(word: &str) -> bool {
+    word.strip_prefix(ROLE_VARIABLE)
         .is_some_and(|rest| rest.is_empty() || rest.starts_with('=') || rest.starts_with("+="))
 }
 

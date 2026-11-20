@@ -1040,6 +1040,11 @@ fn assert_denied_with_code(command: &str, code: &str) {
     assert_reason_starts_with_code(&run_as("verifier", command), code, command);
 }
 
+fn assert_denied_from_any_origin_with_code(command: &str, code: &str) {
+    assert_denied_with_code(command, code);
+    assert_reason_starts_with_code(&run_agent_role(command, None), code, command);
+}
+
 fn assert_denied_from_any_origin(command: &str) {
     assert_denied(&run_as("verifier", command), command);
     assert_denied(&run_agent_role(command, None), command);
@@ -1057,6 +1062,11 @@ fn it_should_start_every_denial_reason_with_its_code() {
             "role-assignment",
             "OMHL_ROLE=x omhl list",
             run_agent_role("OMHL_ROLE=x omhl list", None),
+        ),
+        (
+            "role-unset",
+            "env -u OMHL_ROLE omhl list",
+            run_agent_role("env -u OMHL_ROLE omhl list", None),
         ),
         (
             "heredoc-substitution",
@@ -1148,22 +1158,22 @@ fn it_should_not_hide_the_matrix_denial_behind_the_start_rule() {
 
 #[test]
 fn it_should_deny_env_u_omhl_role() {
-    assert_denied_from_any_origin("env -u OMHL_ROLE omhl list");
+    assert_denied_from_any_origin_with_code("env -u OMHL_ROLE omhl list", "role-unset");
 }
 
 #[test]
 fn it_should_deny_env_with_u_glued_to_omhl_role() {
-    assert_denied_from_any_origin("env -uOMHL_ROLE omhl list");
+    assert_denied_from_any_origin_with_code("env -uOMHL_ROLE omhl list", "role-unset");
 }
 
 #[test]
 fn it_should_deny_env_unset_equals_omhl_role() {
-    assert_denied_from_any_origin("env --unset=OMHL_ROLE omhl list");
+    assert_denied_from_any_origin_with_code("env --unset=OMHL_ROLE omhl list", "role-unset");
 }
 
 #[test]
 fn it_should_deny_env_unset_separated_omhl_role() {
-    assert_denied_from_any_origin("env --unset OMHL_ROLE omhl list");
+    assert_denied_from_any_origin_with_code("env --unset OMHL_ROLE omhl list", "role-unset");
 }
 
 // `OMHL_ROLE+=`

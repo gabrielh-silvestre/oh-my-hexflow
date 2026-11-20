@@ -44,6 +44,15 @@ fn denied_from_both_origins(command: &'static str) -> CorpusEntry {
     )
 }
 
+/// Negado com `role-unset` nas duas origens.
+fn unset_denied_from_both_origins(command: &'static str) -> CorpusEntry {
+    corpus_entry(
+        command,
+        Expected::Deny("role-unset"),
+        Expected::Deny("role-unset"),
+    )
+}
+
 /// A raiz de fixtures tem `agents/<papel>.md` legível para os sete papéis: a negação vem da regra mirada.
 fn plugin_root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"))
@@ -102,6 +111,47 @@ fn it_should_deny_role_assignment_in_the_prefix() {
     let verdict = verdict_of("OMHL_ROLE=x omhl list", None);
 
     assert_verdict_denies_with_code(verdict, "role-assignment");
+}
+
+#[test]
+fn it_should_deny_env_unset_with_its_own_code() {
+    let commands = [
+        "env -u OMHL_ROLE omhl list",
+        "env -uOMHL_ROLE omhl list",
+        "env --unset=OMHL_ROLE omhl list",
+        "env --unset OMHL_ROLE omhl list",
+    ];
+
+    for command in commands {
+        assert_verdict_denies_with_code(verdict_of(command, None), "role-unset");
+    }
+}
+
+#[test]
+fn it_should_read_the_value_of_u_like_getopt() {
+    let commands = [
+        "env -iu OMHL_ROLE omhl list",
+        "env -iuOMHL_ROLE omhl list",
+        "env -i -u OMHL_ROLE omhl list",
+        "env --uns=OMHL_ROLE omhl list",
+        "env --un OMHL_ROLE omhl list",
+    ];
+
+    for command in commands {
+        assert_verdict_denies_with_code(verdict_of(command, None), "role-unset");
+        assert_verdict_denies_with_code(ported_verdict_of(command), "role-unset");
+    }
+}
+
+#[test]
+fn it_should_not_deny_env_unset_of_another_variable() {
+    let verdict = ported_verdict_of("env -u HOME omhl list");
+
+    assert_eq!(
+        expected_of(&verdict),
+        Expected::Allow,
+        "the unset value is `HOME`: {verdict:?}"
+    );
 }
 
 #[test]
@@ -173,6 +223,7 @@ fn it_should_carry_the_code_of_each_denial() {
     };
     let denials = [
         ("role-assignment", verdict_of("OMHL_ROLE=x omhl list", None)),
+        ("role-unset", verdict_of("env -u OMHL_ROLE omhl list", None)),
         (
             "heredoc-substitution",
             ported_verdict_of("omhl append <<EOF\n$(id)\nEOF\n"),
@@ -205,8 +256,8 @@ fn it_should_carry_the_code_of_each_denial() {
 
 // Corpus diferencial da regra de `OMHL_ROLE`
 
-/// Os comandos negados hoje com `role-assignment` nas duas origens, mais os que hoje escapam da regra
-/// (cada um com o veredito de cada origem) e os falsos positivos que a S5 vai liberar.
+/// Os comandos negados com `role-assignment` nas duas origens, os negados com `role-unset`
+/// e os falsos positivos que a S5 vai liberar.
 fn role_variable_corpus() -> Vec<CorpusEntry> {
     let mut corpus: Vec<CorpusEntry> = [
         "OMHL_ROLE=x omhl list",
@@ -224,35 +275,33 @@ fn role_variable_corpus() -> Vec<CorpusEntry> {
         "typeset -x OMHL_ROLE=x",
         "env OMHL_ROLE=x omhl list",
         "env -i OMHL_ROLE=x omhl list",
-        "env -i -u OMHL_ROLE omhl list",
-        "env -iu OMHL_ROLE omhl list",
-        "env -u OMHL_ROLE",
-        "env -u OMHL_ROLE omhl list",
-        "env -uOMHL_ROLE",
-        "env -uOMHL_ROLE omhl list",
-        "env --unset=OMHL_ROLE",
-        "env --unset=OMHL_ROLE omhl list",
-        "env --unset OMHL_ROLE",
-        "env --unset OMHL_ROLE omhl list",
-        "env --uns OMHL_ROLE omhl list",
     ]
     .into_iter()
     .map(denied_from_both_origins)
     .collect();
 
-    // Escapam da regra na sessão principal; o agente portado é negado por opacidade do embrulho.
-    corpus.extend([
-        corpus_entry(
+    // Tiram o papel com `env -u`/`--unset`: o código é `role-unset`, não mais `role-assignment`.
+    corpus.extend(
+        [
+            "env -i -u OMHL_ROLE omhl list",
+            "env -iu OMHL_ROLE omhl list",
+            "env -u OMHL_ROLE",
+            "env -u OMHL_ROLE omhl list",
+            "env -uOMHL_ROLE",
+            "env -uOMHL_ROLE omhl list",
+            "env --unset=OMHL_ROLE",
+            "env --unset=OMHL_ROLE omhl list",
+            "env --unset OMHL_ROLE",
+            "env --unset OMHL_ROLE omhl list",
+            "env --uns OMHL_ROLE omhl list",
+            // Endurecimento da S5: o getopt lê o valor de `-u` no cluster `-iu...` e na abreviação `--uns=`;
+            // antes escapavam da regra na sessão principal e o agente portado era negado por opacidade.
             "env -iuOMHL_ROLE omhl list",
-            Expected::Pass,
-            Expected::Deny("wrapper-unreadable"),
-        ),
-        corpus_entry(
             "env --uns=OMHL_ROLE omhl list",
-            Expected::Pass,
-            Expected::Deny("wrapper-unreadable"),
-        ),
-    ]);
+        ]
+        .into_iter()
+        .map(unset_denied_from_both_origins),
+    );
 
     // Falsos positivos de hoje, que a S5 vai liberar (o nome nu só é argumento de `grep` ou de `-p`).
     corpus.extend(
