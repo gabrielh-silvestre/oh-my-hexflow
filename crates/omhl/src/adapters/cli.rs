@@ -216,7 +216,7 @@ pub enum ReportCommand {
 }
 
 #[derive(Debug, Subcommand)]
-// O grupo tem dois contratos. Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o evento no stdin, nunca saem com 2 e, em erro interno, liberam. O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai 1 em pasta de spec que é link simbólico.
+// O grupo tem dois contratos. Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o evento no stdin, nunca saem com 2 e, em erro interno, liberam (exceção: o `spec-lock` que falha ao listar `specs.dir` ou ao ler a marca congela). O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai 1 em pasta de spec que é link simbólico.
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,
