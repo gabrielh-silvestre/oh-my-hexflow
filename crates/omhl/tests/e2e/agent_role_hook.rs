@@ -1181,6 +1181,13 @@ fn it_should_deny_env_unset_equals_omhl_role() {
 }
 
 #[test]
+fn it_should_deny_env_unset_after_a_cluster_ending_in_u_that_is_not_the_unset_option() {
+    let command = "env -Cu -u OMHL_ROLE omhl list";
+
+    assert_reason_starts_with_code(&run_agent_role(command, None), "role-unset", command);
+}
+
+#[test]
 fn it_should_deny_env_unset_separated_omhl_role() {
     assert_denied_from_any_origin_with_code("env --unset OMHL_ROLE omhl list", "role-unset");
 }

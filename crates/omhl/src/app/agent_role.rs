@@ -1,3 +1,4 @@
+use std::iter::Peekable;
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -105,7 +106,7 @@ fn role_change(line: &CommandLine) -> Option<RoleChange> {
 /// As palavras antes do programa: o valor de `env -u` / `--unset` tira o papel, `OMHL_ROLE=` em qualquer palavra o atribui.
 /// O nome nu em outra palavra (`env -i grep OMHL_ROLE file`) não muda nada.
 fn prefix_role_change(prefix: &[String]) -> Option<RoleChange> {
-    let mut words = prefix.iter().map(String::as_str);
+    let mut words = prefix.iter().map(String::as_str).peekable();
     while let Some(word) = words.next() {
         let change = match env_unset_value(word, &mut words) {
             Some(value) if value == ROLE_VARIABLE => Some(RoleChange::Unset),
@@ -144,9 +145,10 @@ fn builtin_role_change(program: &str, args: &[String]) -> Option<RoleChange> {
 
 /// O valor que o getopt do `env` dá à opção `-u`/`--unset` na palavra; `None` se a palavra não é essa opção.
 /// Num cluster `-<letras>u<resto>` o valor é `<resto>` ou, se vazio, a palavra seguinte; `--u`..`--unset` são a mesma opção longa.
+/// O `u` só abre o valor quando as letras antes dele são flags do `env` sem valor: em `-Cu` o `u` é parte do valor do `-C`.
 fn env_unset_value<'w>(
     word: &'w str,
-    following: &mut impl Iterator<Item = &'w str>,
+    following: &mut Peekable<impl Iterator<Item = &'w str>>,
 ) -> Option<&'w str> {
     if let Some(long) = word.strip_prefix("--") {
         let (name, attached) = match long.split_once('=') {
@@ -157,10 +159,13 @@ fn env_unset_value<'w>(
         return (!name.is_empty() && "unset".starts_with(name))
             .then(|| attached.or_else(|| following.next()).unwrap_or_default());
     }
-    let (_, tail) = word.strip_prefix('-')?.split_once('u')?;
+    let (flags, tail) = word.strip_prefix('-')?.split_once('u')?;
+    if !flags.chars().all(|flag| matches!(flag, 'i' | '0' | 'v')) {
+        return None;
+    }
 
     Some(if tail.is_empty() {
-        following.next().unwrap_or_default()
+        following.peek().copied().unwrap_or_default()
     } else {
         tail
     })

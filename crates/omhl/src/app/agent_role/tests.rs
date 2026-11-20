@@ -155,6 +155,18 @@ fn it_should_read_the_value_of_u_like_getopt() {
 }
 
 #[test]
+fn it_should_not_read_a_cluster_with_a_value_flag_before_u_as_the_unset_option() {
+    let commands = [
+        "env -Cu -u OMHL_ROLE omhl list",
+        "env -C/sys/devices/system/cpu -u OMHL_ROLE omhl list",
+    ];
+
+    for command in commands {
+        assert_verdict_denies_with_code(verdict_of(command, None), "role-unset");
+    }
+}
+
+#[test]
 fn it_should_not_deny_env_unset_of_another_variable() {
     let verdict = ported_verdict_of("env -u HOME omhl list");
 
