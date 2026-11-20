@@ -121,7 +121,7 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
         return Verdict::Deny {
             code: FOLDER_UNKNOWN,
             reason: format!(
-                "{FOLDER_UNKNOWN}: the work item has a branch and {} does not exist; spec files are only written in the existing spec folder of the work item",
+                "{FOLDER_UNKNOWN}: the work item is frozen (it has a branch or the {FREEZE_MARK} mark, or the mark could not be read) and {} does not exist; spec files are only written in the existing spec folder of the work item",
                 facts.main_folder.display()
             ),
         };
@@ -134,7 +134,7 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     Verdict::Deny {
         code: FROZEN,
         reason: format!(
-            "{FROZEN}: the spec in {} is frozen because the work item has a branch or the {FREEZE_MARK} mark; to correct it, record a divergence and create the amendment {} (Write of a new file)",
+            "{FROZEN}: the spec in {} is frozen because the work item has a branch or the {FREEZE_MARK} mark, or the mark could not be read; to correct it, record a divergence and create the amendment {} (Write of a new file)",
             facts.main_folder.display(),
             amendment.display()
         ),

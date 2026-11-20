@@ -1331,6 +1331,25 @@ fn it_should_report_the_unwritable_mark_once_when_both_paths_run_the_cure() {
 }
 
 #[test]
+fn it_should_say_the_mark_could_not_be_read_when_the_specs_dir_listing_fails() {
+    let repo = Repo::new();
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let specs = repo.main.join(DEFAULT_SPECS);
+    for index in 0..10_001 {
+        fs::write(specs.join(format!("filler-{index}")), "").expect("filler is written");
+    }
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+    assert!(
+        reason.contains("mark could not be read"),
+        "reason: {reason}"
+    );
+}
+
+#[test]
 fn it_should_deny_when_a_second_folder_of_the_work_item_has_the_mark() {
     let repo = Repo::new();
     repo.seed(DEFAULT_SPECS, "parte-01.md");
