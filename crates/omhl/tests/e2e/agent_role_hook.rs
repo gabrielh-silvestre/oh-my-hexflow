@@ -1560,6 +1560,21 @@ fn is_on_path(program: &str) -> bool {
     std::env::split_paths(&path).any(|dir| dir.join(program).is_file())
 }
 
+/// O Bash da ferramenta roda no shell do usuário (bash ou zsh); `-f` poupa o zsh do `~/.zshenv` de quem roda o teste.
+fn tool_shells() -> Vec<(&'static str, &'static [&'static str])> {
+    let mut shells: Vec<(&str, &[&str])> = vec![("bash", &["-c"])];
+    if is_on_path("zsh") {
+        shells.push(("zsh", &["-f", "-c"]));
+    } else {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "zsh must be installed in CI: the tool shell may be zsh"
+        );
+    }
+
+    shells
+}
+
 const BASH_ONLY: [&str; 3] = [
     "time -p omhl list",
     "time -- omhl list",
@@ -1587,16 +1602,7 @@ fn it_should_run_every_allowed_rewritten_command_with_omhl_role_in_the_omhl_envi
         std::env::var("PATH").expect("PATH is set")
     );
 
-    // O Bash da ferramenta roda no shell do usuário (bash ou zsh); `-f` poupa o zsh do `~/.zshenv` de quem roda o teste.
-    let mut shells: Vec<(&str, &[&str])> = vec![("bash", &["-c"])];
-    if is_on_path("zsh") {
-        shells.push(("zsh", &["-f", "-c"]));
-    } else {
-        assert!(
-            std::env::var_os("CI").is_none(),
-            "zsh must be installed in CI: the tool shell may be zsh"
-        );
-    }
+    let shells = tool_shells();
 
     for command in [
         "omhl list",
@@ -1642,6 +1648,78 @@ fn it_should_run_every_allowed_rewritten_command_with_omhl_role_in_the_omhl_envi
                 "omhl:verifier",
                 "{shell}: {command:?} became {rewritten:?}"
             );
+        }
+    }
+}
+
+// `OMHL_ROLE` no bash e no zsh: o que o hook nega e o que ele libera
+
+/// Cada tentativa de mudar o papel que o hook deve negar, com o código da negação.
+const ROLE_BYPASS_ATTEMPTS: [(&str, &str); 14] = [
+    ("export -p OMHL_ROLE=x", "role-assignment"),
+    ("export -p OMHL_ROLE", "role-assignment"),
+    ("readonly -p OMHL_ROLE", "role-assignment"),
+    ("readonly -p OMHL_ROLE=x", "role-assignment"),
+    ("declare -x OMHL_ROLE=x", "role-assignment"),
+    ("declare OMHL_ROLE=x", "role-assignment"),
+    ("declare -p OMHL_ROLE=x", "role-assignment"),
+    ("declare -- -p OMHL_ROLE=x", "role-assignment"),
+    ("declare -- -p OMHL_ROLE", "role-assignment"),
+    ("env -iu OMHL_ROLE omhl list", "role-unset"),
+    ("env -iuOMHL_ROLE omhl list", "role-unset"),
+    ("env -i -u OMHL_ROLE omhl list", "role-unset"),
+    ("env --uns=OMHL_ROLE omhl list", "role-unset"),
+    ("OMHL_ROLE=x omhl list", "role-assignment"),
+];
+
+/// Citam o nome nu de `OMHL_ROLE` sem mudar o papel.
+const RELEASED_ROLE_MENTIONS: [&str; 3] = [
+    "env -i grep OMHL_ROLE file",
+    "declare -p OMHL_ROLE",
+    "typeset -p OMHL_ROLE",
+];
+
+/// O papel que o próprio shell enxerga depois de rodar o comando, com `omhl:verifier` no ambiente de partida.
+fn role_after_running_in(shell: &str, flags: &[&str], command: &str) -> String {
+    let probe = format!("{command}\nprintf 'role=%s\\n' \"${{OMHL_ROLE-unset}}\"");
+    let ran = Command::new(shell)
+        .args(flags)
+        .arg(&probe)
+        .env("OMHL_ROLE", "omhl:verifier")
+        .env_remove("BASH_ENV")
+        .env_remove("ENV")
+        .output()
+        .expect("the shell runs the command");
+
+    String::from_utf8_lossy(&ran.stdout)
+        .lines()
+        .last()
+        .unwrap_or_default()
+        .to_owned()
+}
+
+#[test]
+fn it_should_deny_every_attempt_to_change_the_role_from_any_origin() {
+    for (command, code) in ROLE_BYPASS_ATTEMPTS {
+        assert_denied_from_any_origin_with_code(command, code);
+    }
+}
+
+#[test]
+fn it_should_release_a_bare_role_name_that_only_a_search_or_a_print_reads() {
+    for command in RELEASED_ROLE_MENTIONS {
+        assert_passed(&run_agent_role(command, None));
+        assert_passed(&run_agent_role(command, Some(PORTED_AGENT)));
+    }
+}
+
+#[test]
+fn it_should_keep_the_role_in_bash_and_zsh_after_a_released_bare_role_name() {
+    for command in RELEASED_ROLE_MENTIONS {
+        for (shell, flags) in tool_shells() {
+            let role = role_after_running_in(shell, flags, command);
+
+            assert_eq!(role, "role=omhl:verifier", "{shell}: {command}");
         }
     }
 }

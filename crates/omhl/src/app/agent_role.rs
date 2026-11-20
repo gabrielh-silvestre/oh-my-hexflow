@@ -13,6 +13,8 @@ use crate::workflow::shell::{
 /// O `agent_type` real dos subagentes do plugin é `oh-my-hexflow:<papel>`.
 const PLUGIN_PREFIX: &str = "oh-my-hexflow:";
 const ASSIGNING_PROGRAMS: [&str; 5] = ["export", "declare", "typeset", "readonly", "local"];
+/// Com `-p` e nomes, só estes imprimem o que o nome é; `export -p` e `readonly -p` atribuem (bash 5.2).
+const PRINTING_PROGRAMS: [&str; 2] = ["declare", "typeset"];
 const AGENT_FILE_MAX_BYTES: u64 = 64 * 1024;
 const BLANKS: [char; 2] = [' ', '\t'];
 
@@ -94,29 +96,21 @@ impl RoleChange {
 fn role_change(line: &CommandLine) -> Option<RoleChange> {
     line.commands.iter().find_map(|simple| {
         let (prefix, program, args) = simple.split();
-        let builtin_args = if program.is_some_and(|program| ASSIGNING_PROGRAMS.contains(&program)) {
-            args
-        } else {
-            &[]
-        };
 
-        prefix_role_change(prefix).or_else(|| {
-            builtin_args
-                .iter()
-                .any(|word| names_role_variable(word))
-                .then_some(RoleChange::Assign)
-        })
+        prefix_role_change(prefix)
+            .or_else(|| program.and_then(|program| builtin_role_change(program, args)))
     })
 }
 
-/// As palavras antes do programa: o valor de `env -u` / `--unset` tira o papel, qualquer outra menção o atribui.
+/// As palavras antes do programa: o valor de `env -u` / `--unset` tira o papel, `OMHL_ROLE=` em qualquer palavra o atribui.
+/// O nome nu em outra palavra (`env -i grep OMHL_ROLE file`) não muda nada.
 fn prefix_role_change(prefix: &[String]) -> Option<RoleChange> {
     let mut words = prefix.iter().map(String::as_str);
     while let Some(word) = words.next() {
         let change = match env_unset_value(word, &mut words) {
             Some(value) if value == ROLE_VARIABLE => Some(RoleChange::Unset),
-            Some(value) => names_role_variable(value).then_some(RoleChange::Assign),
-            None => names_role_variable(word).then_some(RoleChange::Assign),
+            Some(value) => assigns_role_variable(value).then_some(RoleChange::Assign),
+            None => assigns_role_variable(word).then_some(RoleChange::Assign),
         };
         if change.is_some() {
             return change;
@@ -124,6 +118,28 @@ fn prefix_role_change(prefix: &[String]) -> Option<RoleChange> {
     }
 
     None
+}
+
+/// Os argumentos de `export` e afins: `OMHL_ROLE=` atribui e o nome nu também, salvo em `declare -p NOME` / `typeset -p NOME`.
+/// O `-p` só vale entre as opções: depois do primeiro nome ou do `--` ele já é um nome.
+fn builtin_role_change(program: &str, args: &[String]) -> Option<RoleChange> {
+    if !ASSIGNING_PROGRAMS.contains(&program) {
+        return None;
+    }
+    let option_count = args
+        .iter()
+        .take_while(|word| word.starts_with('-') && word.as_str() != "--")
+        .count();
+    let (options, names) = args.split_at(option_count);
+    let only_prints = PRINTING_PROGRAMS.contains(&program)
+        && options
+            .iter()
+            .any(|option| !option.starts_with("--") && option.contains('p'));
+
+    names
+        .iter()
+        .any(|name| assigns_role_variable(name) || (name == ROLE_VARIABLE && !only_prints))
+        .then_some(RoleChange::Assign)
 }
 
 /// O valor que o getopt do `env` dá à opção `-u`/`--unset` na palavra; `None` se a palavra não é essa opção.
@@ -150,10 +166,10 @@ fn env_unset_value<'w>(
     })
 }
 
-/// `OMHL_ROLE`, `OMHL_ROLE=` ou `OMHL_ROLE+=`.
-fn names_role_variable(word: &str) -> bool {
+/// `OMHL_ROLE=` ou `OMHL_ROLE+=`.
+fn assigns_role_variable(word: &str) -> bool {
     word.strip_prefix(ROLE_VARIABLE)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('=') || rest.starts_with("+="))
+        .is_some_and(|rest| rest.starts_with('=') || rest.starts_with("+="))
 }
 
 /// Papel fora da lista, comando sem `omhl`, comando composto e embrulho que o leitor não pula.

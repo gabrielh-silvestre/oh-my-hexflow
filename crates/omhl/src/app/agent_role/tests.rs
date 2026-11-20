@@ -7,6 +7,12 @@ use super::{AgentRoleEnv, RoleVerdict, agent_role};
 const GROUPS: [&str; 2] = ["spec", "report"];
 const PORTED_AGENT: &str = "oh-my-hexflow:verifier";
 const ATTEST: &str = "omhl attest checks.run-tests work-items.w1 --outcome pass";
+/// Os falsos positivos que a S5 libera: o nome nu só é argumento de `grep` ou do `-p` de `declare`/`typeset`.
+const RELEASED_FALSE_POSITIVES: [&str; 3] = [
+    "env -i grep OMHL_ROLE file",
+    "declare -p OMHL_ROLE",
+    "typeset -p OMHL_ROLE",
+];
 
 /// O que o corpus afirma de cada veredito: o `Allow` e o `Deny` sem o texto da razão.
 #[derive(Debug, PartialEq)]
@@ -51,6 +57,11 @@ fn unset_denied_from_both_origins(command: &'static str) -> CorpusEntry {
         Expected::Deny("role-unset"),
         Expected::Deny("role-unset"),
     )
+}
+
+/// Liberado nas duas origens.
+fn passed_from_both_origins(command: &'static str) -> CorpusEntry {
+    corpus_entry(command, Expected::Pass, Expected::Pass)
 }
 
 /// A raiz de fixtures tem `agents/<papel>.md` legível para os sete papéis: a negação vem da regra mirada.
@@ -152,6 +163,42 @@ fn it_should_not_deny_env_unset_of_another_variable() {
         Expected::Allow,
         "the unset value is `HOME`: {verdict:?}"
     );
+}
+
+#[test]
+fn it_should_not_deny_a_bare_role_name_as_an_argument_of_grep() {
+    let command = "env -i grep OMHL_ROLE file";
+
+    assert_eq!(verdict_of(command, None), RoleVerdict::Pass);
+    assert_eq!(ported_verdict_of(command), RoleVerdict::Pass);
+}
+
+#[test]
+fn it_should_not_deny_declare_or_typeset_p_of_the_bare_role_name() {
+    for command in ["declare -p OMHL_ROLE", "typeset -p OMHL_ROLE"] {
+        assert_eq!(verdict_of(command, None), RoleVerdict::Pass, "{command}");
+        assert_eq!(ported_verdict_of(command), RoleVerdict::Pass, "{command}");
+    }
+}
+
+#[test]
+fn it_should_deny_declare_with_p_after_the_double_dash() {
+    let commands = [
+        "declare -- -p OMHL_ROLE=x",
+        "declare -- -p OMHL_ROLE",
+        "typeset -- -p OMHL_ROLE",
+    ];
+
+    for command in commands {
+        assert_verdict_denies_with_code(verdict_of(command, None), "role-assignment");
+    }
+}
+
+#[test]
+fn it_should_deny_a_p_that_comes_after_a_name() {
+    let verdict = verdict_of("declare -i foo -p OMHL_ROLE", None);
+
+    assert_verdict_denies_with_code(verdict, "role-assignment");
 }
 
 #[test]
@@ -257,7 +304,7 @@ fn it_should_carry_the_code_of_each_denial() {
 // Corpus diferencial da regra de `OMHL_ROLE`
 
 /// Os comandos negados com `role-assignment` nas duas origens, os negados com `role-unset`
-/// e os falsos positivos que a S5 vai liberar.
+/// e os falsos positivos que a S5 libera.
 fn role_variable_corpus() -> Vec<CorpusEntry> {
     let mut corpus: Vec<CorpusEntry> = [
         "OMHL_ROLE=x omhl list",
@@ -303,15 +350,10 @@ fn role_variable_corpus() -> Vec<CorpusEntry> {
         .map(unset_denied_from_both_origins),
     );
 
-    // Falsos positivos de hoje, que a S5 vai liberar (o nome nu só é argumento de `grep` ou de `-p`).
     corpus.extend(
-        [
-            "env -i grep OMHL_ROLE file",
-            "declare -p OMHL_ROLE",
-            "typeset -p OMHL_ROLE",
-        ]
-        .into_iter()
-        .map(denied_from_both_origins),
+        RELEASED_FALSE_POSITIVES
+            .into_iter()
+            .map(passed_from_both_origins),
     );
 
     corpus
@@ -344,5 +386,34 @@ fn it_should_keep_the_current_denials_of_the_role_variable_corpus() {
         mismatches.is_empty(),
         "verdicts changed:\n{}",
         mismatches.join("\n")
+    );
+}
+
+#[test]
+fn it_should_deny_every_command_of_the_differential_corpus_except_the_approved() {
+    let wrongly_decided: Vec<String> = role_variable_corpus()
+        .into_iter()
+        .flat_map(|entry| {
+            [("main session", None), ("ported agent", Some(PORTED_AGENT))]
+                .into_iter()
+                .filter_map(move |(origin, agent_type)| {
+                    let verdict = verdict_of(entry.command, agent_type);
+                    let denied = matches!(verdict, RoleVerdict::Deny { .. });
+                    let approved = RELEASED_FALSE_POSITIVES.contains(&entry.command);
+
+                    (denied == approved).then(|| {
+                    format!(
+                        "`{}` from the {origin}: approved to pass = {approved}, got {verdict:?}",
+                        entry.command
+                    )
+                })
+                })
+        })
+        .collect();
+
+    assert!(
+        wrongly_decided.is_empty(),
+        "wrong verdicts:\n{}",
+        wrongly_decided.join("\n")
     );
 }
