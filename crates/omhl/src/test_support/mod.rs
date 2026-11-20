@@ -15,6 +15,7 @@
 //! - `role_view.rs`, de `workflow/role_allow.rs`: `frontmatter` (o recorte entre as linhas `---`, com `\r\n`) e o `no_schema` da leitura (no `Cycle`, junto de `strict_booleans`);
 //!   de `tests/e2e/skills/coverage.rs`: a varredura de folhas (`leaf_commands`) e o padrão de citação (`citations`);
 //!   de `tests/e2e/skills/orchestration.rs`: `body` (como `skill_body`) e o padrão de `numbered_steps`;
+//! - `role_view/who_uses.rs`, de `tests/e2e/skills/workflow.rs`: `BASE_LEAVES` e `WHO_USES_HEADING`;
 //! - `graphs/tests.rs`, de `tests/integration/catalogs.rs`: `PREVIOUS_DECISIONS_CATALOG_V3`, `catalog`, `catalog_from`, `confirmation`,
 //!   `confirmed`, `gap`, `is_accepted`, `old_decisions_guideline`, `old_decisions_premise`, `plain` e `with`;
 //! - `workflow/spec/tests.rs`, de `tests/e2e/spec_validate.rs`: `AMENDMENT_MOTIVE_BODY_LINE`, `PART_CA_LINE`, `PART_CMP_LINE`,

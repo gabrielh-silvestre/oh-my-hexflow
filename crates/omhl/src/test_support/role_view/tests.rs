@@ -1,8 +1,10 @@
 use std::fs;
 use std::path::PathBuf;
 
+use super::who_uses::{BASE_LEAVES, WHO_USES_ANCHOR, WhoUsesClass, anchor_findings, who_uses};
 use super::{
-    Cycle, agent_skills, check, cycle_prose, parse_cycle, prove_both_sides, session_checks,
+    Cycle, agent_skills, check, cli_leaves, cycle_prose, parse_cycle, prove_both_sides,
+    session_checks,
 };
 use crate::workflow::role_allow::{RoleAllow, parse_role_allow};
 
@@ -73,6 +75,13 @@ etapas:
     grava: {nodes: [], relations: [], retire: []}
 nao_usados: [help]
 "#;
+
+const WORKFLOW_SKILL: &str = "---\nname: plan-consensus\n---\n# X\n\n1. Rode. A sessão confere com `omhl list --type premise --where work_item=work-items.<id>`.\n\n## Comando para referência\n\n| Comando | Referência |\n|---|---|\n| `omhl get` | [get.md](get.md) |\n";
+const WORKFLOW_SKILL_WITHOUT_CITATION: &str = "---\nname: plan-consensus\n---\n# X\n\n1. Rode.\n";
+
+const WHO_USES_PAGE: &str = "# omhl list\n\n## Quem usa, em qual etapa e com qual filtro\n\n| Papel | Etapa | Comando |\n|---|---|---|\n| scribe | 2, 3 | `omhl list --type premise --where work_item=work-items.<id>` |\n| sessao | plan-consensus 1 | `omhl list --type premise --where work_item=work-items.<id>` |\n\n## Quando usar\n";
+const SCRIBE_ROW: &str =
+    "| scribe | 2, 3 | `omhl list --type premise --where work_item=work-items.<id>` |\n";
 
 const VIEW_RECORDING_WITHOUT_APPEND_IN_ALLOW: &str = r#"role: scribe
 etapas:
@@ -479,4 +488,182 @@ fn it_should_reject_a_session_check_that_cites_a_leaf_the_cli_lacks() {
         found,
         ["passos sem conferência: [1: folha inexistente frobnicate]"]
     );
+}
+
+fn who_uses_of_list(page: &str, workflow_skill: &str) -> Vec<String> {
+    let view = skill_with(VIEW);
+
+    who_uses(
+        "list",
+        page,
+        &[("scribe", view.as_str())],
+        &[("plan-consensus", workflow_skill)],
+    )
+}
+
+/// Confere que `WHO_USES_PAGE` passa e que `mutated` não, e devolve as linhas que `mutated` provoca.
+fn rejected_page(mutated: &str) -> Vec<String> {
+    let failures = prove_both_sides(
+        |page| Ok(who_uses_of_list(page, WORKFLOW_SKILL).len()),
+        &[mutated],
+        &[WHO_USES_PAGE],
+    );
+    assert!(failures.is_empty(), "{failures:?}");
+
+    who_uses_of_list(mutated, WORKFLOW_SKILL)
+}
+
+fn synthetic_anchor_findings(cli: &[&str], anchor: &[(&str, WhoUsesClass)]) -> Vec<String> {
+    let view = skill_with(VIEW);
+    let leaves: Vec<String> = cli.iter().map(|leaf| (*leaf).to_owned()).collect();
+
+    anchor_findings(
+        &leaves,
+        &["append"],
+        anchor,
+        &[("scribe", view.as_str())],
+        &[("plan-consensus", WORKFLOW_SKILL)],
+    )
+}
+
+fn migrated_page(leaf: &str) -> String {
+    let file = format!("{}.md", leaf.replace(' ', "-"));
+    let found: Vec<String> = skill_dirs_with_a_file()
+        .iter()
+        .map(|dir| format!("skills/{dir}/references/{file}"))
+        .filter(|relative| plugin_dir().join(relative).is_file())
+        .collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "{leaf} must have exactly one page: {found:?}"
+    );
+
+    read_plugin(&found[0])
+}
+
+fn shipped_texts(names: &[&str], file: impl Fn(&str) -> String) -> Vec<(String, String)> {
+    names
+        .iter()
+        .map(|name| ((*name).to_owned(), read_plugin(&file(name))))
+        .collect()
+}
+
+fn borrowed(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
+    pairs
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.as_str()))
+        .collect()
+}
+
+#[test]
+fn it_should_reject_a_who_uses_row_the_views_do_not_project() {
+    let found = rejected_page(
+        &WHO_USES_PAGE.replace("| sessao |", "| critic | 3 | `omhl list` |\n| sessao |"),
+    );
+
+    assert_eq!(
+        found,
+        ["quem usa da página list: [sobra: critic | 3 | omhl list]"]
+    );
+}
+
+#[test]
+fn it_should_reject_a_projected_row_missing_from_the_page() {
+    let found = rejected_page(&WHO_USES_PAGE.replace(SCRIBE_ROW, ""));
+
+    assert_eq!(
+        found,
+        [
+            "quem usa da página list: [falta: scribe | 2, 3 | omhl list --type premise --where work_item=work-items.<id>]"
+        ]
+    );
+}
+
+#[test]
+fn it_should_reject_a_session_row_the_workflow_skills_do_not_cite() {
+    let found = who_uses_of_list(WHO_USES_PAGE, WORKFLOW_SKILL_WITHOUT_CITATION);
+
+    assert_eq!(
+        found,
+        [
+            "quem usa da página list: [sobra: sessao | plan-consensus 1 | omhl list --type premise --where work_item=work-items.<id>]"
+        ]
+    );
+}
+
+#[test]
+fn it_should_reject_a_projection_class_the_anchor_does_not_expect() {
+    let found = synthetic_anchor_findings(
+        &["append", "get", "list"],
+        &[
+            ("get", WhoUsesClass::RolesOnly),
+            ("list", WhoUsesClass::RolesOnly),
+        ],
+    );
+
+    assert_eq!(
+        found,
+        ["classe divergente da âncora: [list: esperado RolesOnly, projetado Session]"]
+    );
+}
+
+#[test]
+fn it_should_reject_a_migrated_page_missing_from_the_anchor() {
+    let found = synthetic_anchor_findings(
+        &["append", "get", "list", "verify"],
+        &[
+            ("get", WhoUsesClass::RolesOnly),
+            ("list", WhoUsesClass::Session),
+        ],
+    );
+
+    assert_eq!(found, ["folhas fora da âncora: [verify]"]);
+}
+
+#[test]
+fn it_should_reject_an_anchor_entry_with_no_cli_leaf() {
+    let found = synthetic_anchor_findings(
+        &["append", "get", "list"],
+        &[
+            ("get", WhoUsesClass::RolesOnly),
+            ("list", WhoUsesClass::Session),
+            ("render", WhoUsesClass::NoRole),
+        ],
+    );
+
+    assert_eq!(found, ["âncora sem folha na CLI: [render]"]);
+}
+
+#[test]
+fn it_should_accept_the_shipped_who_uses_tables() {
+    let views = shipped_texts(&ROLES, |role| format!("skills/role-{role}/SKILL.md"));
+    let workflow = shipped_texts(&WORKFLOW_SKILLS, |skill| format!("skills/{skill}/SKILL.md"));
+
+    for (leaf, _) in WHO_USES_ANCHOR {
+        let found = who_uses(
+            leaf,
+            &migrated_page(leaf),
+            &borrowed(&views),
+            &borrowed(&workflow),
+        );
+
+        assert_eq!(found, Vec::<String>::new(), "{leaf}");
+    }
+}
+
+#[test]
+fn it_should_keep_the_who_uses_classes_equal_to_the_anchor() {
+    let views = shipped_texts(&ROLES, |role| format!("skills/role-{role}/SKILL.md"));
+    let workflow = shipped_texts(&WORKFLOW_SKILLS, |skill| format!("skills/{skill}/SKILL.md"));
+
+    let found = anchor_findings(
+        &cli_leaves(),
+        &BASE_LEAVES,
+        &WHO_USES_ANCHOR,
+        &borrowed(&views),
+        &borrowed(&workflow),
+    );
+
+    assert_eq!(found, Vec::<String>::new());
 }
