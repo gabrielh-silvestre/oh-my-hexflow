@@ -17,6 +17,22 @@ O ciclo tem dez passos.
 9. **Revisão.** O `oh-my-hexflow:code-reviewer`, o `oh-my-hexflow:security-reviewer` e o `oh-my-hexflow:verifier` revisam a entrega.
 10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic ([tracking-table.md](tracking-table.md)); depois vêm `omhl gate-pr` e `omhl close`, pela skill [work-item-closing](../../work-item-closing/SKILL.md).
 
+Os papéis de cada passo, como dado: as skills `role-<papel>` dos agentes e os testes leem este bloco; a lista numerada acima é a prosa.
+
+```yaml omhl-cycle
+etapas:
+  - {n: 1,  nome: work-item,        papeis: [sessao]}
+  - {n: 2,  nome: analyst,          papeis: [analyst]}
+  - {n: 3,  nome: confirmacao,      papeis: [critic, sessao]}
+  - {n: 4,  nome: planner,          papeis: [planner]}
+  - {n: 5,  nome: architect,        papeis: [architect]}
+  - {n: 6,  nome: critic,           papeis: [critic]}
+  - {n: 7,  nome: consenso,         papeis: [planner, architect, critic]}
+  - {n: 8,  nome: spec-e-worktree,  papeis: [verifier, sessao]}
+  - {n: 9,  nome: revisao,          papeis: [code-reviewer, security-reviewer, verifier]}
+  - {n: 10, nome: pr-e-fechamento,  papeis: [sessao]}
+```
+
 **Caminho leve (`chore` e `docs`).** Não há spec: o consenso fica nos passos 2 e 3 (o critic só no modo do passo 3), sem planner nem voltas e sem os passos 4 a 7, e o passo 8 se reduz ao `omhl gate-worktree`. A skill [plan-consensus](../../plan-consensus/SKILL.md) descreve o caminho na seção "Caminho leve".
 
 **Sem `name`.** A sessão principal chama os agentes `oh-my-hexflow:*` sem o parâmetro `name`. Com `name`, o agente roda sem a matriz `omhl-allow` e sem a vista pré-carregada (a skill dele não chega), e, pelo desenho do hook `agent-role`, o que ele gravar deve sair como `claude`.
