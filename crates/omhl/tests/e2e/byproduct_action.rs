@@ -35,6 +35,7 @@ const BOLD_SHA: &str = "a70000123a86ac68ca89f9d24c68274450d0219382a369353d812518
 const BWINDOW_SHA: &str = "246f6399fcbb83c92c027d999aec980cae16c2e6f0a828a3161844f2f6ccf515";
 const BNEW_SHA: &str = "ee08c8b2e66a380ea0f78adb2f10ca49ed60f588af8dade87cd957e9d0c89feb";
 const BTWOLONG_SHA: &str = "8e42172b4b8e767a12b5b636416fe8334fe22f234130d2ac62348d95a353fe3b";
+const BSECRET_SHA: &str = "161396cc48aa255b2254043d79d51620e24bf2e1e5ae92aeb978b57d2d7009fe";
 const BMULTIBYTE_SHA: &str = "b89360b3f394ce566fe51579db3e5ff44f551dff5314abdbfbf2a1069edcad08";
 
 // Apoio
@@ -163,6 +164,13 @@ fn lines_of(result: &Value) -> Vec<&str> {
         .collect()
 }
 
+/// Blob sem máscara, como o gravado antes da redação: um bloco PEM de várias linhas no `stdout` e uma atribuição no `stderr`.
+fn put_bsecret(fixture: &Fixture) -> String {
+    let stdout = "build ok\n-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\nxyz123\n-----END RSA PRIVATE KEY-----\ndone\n";
+
+    fixture.put_blob(stdout, "API_TOKEN=abcdef123456\n", BSECRET_SHA)
+}
+
 /// stdout `out 1..out 998` e stderr `err 1`, `err 2`: 1.000 linhas.
 fn put_b1000(fixture: &Fixture) -> String {
     let stdout: String = (1..=998).map(|n| format!("out {n}\n")).collect();
@@ -273,6 +281,53 @@ fn it_should_reject_a_tail_of_zero() {
     let error = failure(&output);
     assert_eq!(error["error"]["code"], json!("invalid-arguments"));
     assert_eq!(error["error"]["details"][0]["path"], json!("/tail"));
+}
+
+#[test]
+fn it_should_mask_secrets_of_a_blob_stored_without_redaction() {
+    let fixture = Fixture::new();
+    let blob = put_bsecret(&fixture);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1]);
+
+    let result = success(&output);
+    assert_eq!(
+        lines_of(&result),
+        [
+            "build ok",
+            "[REDACTED:private-key]",
+            "done",
+            "API_TOKEN=[REDACTED]"
+        ]
+    );
+    assert_eq!(result["byproduct"], json!(BSECRET_SHA));
+}
+
+#[test]
+fn it_should_count_the_tail_window_over_the_masked_lines() {
+    let fixture = Fixture::new();
+    let blob = put_bsecret(&fixture);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "3"]);
+
+    assert_eq!(
+        lines_of(&success(&output)),
+        ["[REDACTED:private-key]", "done", "API_TOKEN=[REDACTED]"]
+    );
+}
+
+#[test]
+fn it_should_leave_the_blob_file_unredacted_on_disk() {
+    let fixture = Fixture::new();
+    let blob = put_bsecret(&fixture);
+    fixture.attest('a', W1, "failed", &blob);
+    fixture.omhl(&["byproduct", CHECK, W1]);
+
+    let on_disk = fs::read_to_string(fixture.blob_file(BSECRET_SHA)).expect("the blob is stored");
+
+    assert!(on_disk.contains("MIIEabc"));
 }
 
 #[test]

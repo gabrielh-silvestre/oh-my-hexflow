@@ -6,6 +6,7 @@ use super::error::AppError;
 use super::read::nodes_matching;
 use crate::byproduct::{self, ByproductHash};
 use crate::error::{OmhlError, RuleCode};
+use crate::mechanical::redact::Redactor;
 use crate::pr_gate::pair;
 
 const TAIL_MAX: usize = 500;
@@ -46,7 +47,8 @@ impl Engine<'_> {
             .get(&hash)
             .map_err(|_| AppError::byproduct_corrupt("/work_item"))?
             .ok_or_else(missing)?;
-        let (lines, truncated_lines) = tail_lines(&blob, wanted).ok_or_else(missing)?;
+        let (lines, truncated_lines) =
+            tail_lines(&blob, wanted, &Redactor::new()).ok_or_else(missing)?;
         let mut result = json!({
             "check": check,
             "work_item": work_item,
@@ -79,12 +81,13 @@ impl Engine<'_> {
     }
 }
 
-fn tail_lines(blob: &[u8], wanted: usize) -> Option<(Vec<String>, usize)> {
+/// Redige cada fluxo inteiro antes de cortar linhas: cobre o blob gravado sem redação e o bloco PEM de várias linhas.
+fn tail_lines(blob: &[u8], wanted: usize, redactor: &Redactor) -> Option<(Vec<String>, usize)> {
     let (stdout, stderr) = byproduct::decode(blob)?;
     let lines: Vec<String> = [stdout, stderr]
         .into_iter()
         .flat_map(|stream| {
-            String::from_utf8_lossy(stream)
+            String::from_utf8_lossy(&redactor.redact(stream))
                 .split_terminator('\n')
                 .map(str::to_owned)
                 .collect::<Vec<_>>()
