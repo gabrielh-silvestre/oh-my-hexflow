@@ -266,6 +266,29 @@ impl HookRepo {
             .run()
     }
 
+    /// O `hooks install` com o `umask` dado no processo do `omhl` (o workspace proíbe `unsafe`, então vai por `sh`).
+    fn install_with_umask(&self, umask: &str) -> Output {
+        let script = format!("umask {umask}; exec \"$0\" \"$@\"");
+        let binary = bin();
+        let args = [
+            "-c",
+            &script,
+            path_text(&binary),
+            "--format",
+            "json",
+            "hooks",
+            "install",
+        ];
+
+        omhl(&args)
+            .program(Path::new("/bin/sh"))
+            .cwd(self.d())
+            .xdg(self.x())
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .run()
+    }
+
     fn install_force(&self) -> Output {
         self.omhl_in(&["hooks", "install", "--force", "--format", "json"])
             .run()
@@ -455,6 +478,86 @@ fn install_from_build_copy(rel: &str) -> (HookRepo, PathBuf, Output) {
 }
 
 // Testes
+
+fn mode_of(path: &Path) -> u32 {
+    fs::metadata(path)
+        .unwrap_or_else(|error| panic!("{} exists: {error}", path.display()))
+        .permissions()
+        .mode()
+        & 0o777
+}
+
+/// O modo da pasta de hooks e o de cada script, nesta ordem.
+fn hook_modes(repo: &HookRepo) -> (u32, Vec<u32>) {
+    (
+        mode_of(&repo.h()),
+        SCRIPTS
+            .iter()
+            .map(|name| mode_of(&repo.h().join(name)))
+            .collect(),
+    )
+}
+
+#[test]
+fn it_should_create_the_hooks_folder_0700_and_the_scripts_0755_with_umask_000() {
+    let repo = HookRepo::new();
+    repo.seed();
+
+    let output = repo.install_with_umask("000");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(hook_modes(&repo), (0o700, vec![0o755; SCRIPTS.len()]));
+}
+
+#[test]
+fn it_should_create_the_hooks_folder_0700_and_the_scripts_0755_with_umask_077() {
+    let repo = HookRepo::new();
+    repo.seed();
+
+    let output = repo.install_with_umask("077");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(hook_modes(&repo), (0o700, vec![0o755; SCRIPTS.len()]));
+}
+
+#[test]
+fn it_should_keep_the_mode_of_an_existing_hooks_folder() {
+    let repo = HookRepo::new();
+    repo.seed();
+    fs::create_dir_all(repo.h()).expect("the hooks folder is created");
+    fs::set_permissions(repo.h(), fs::Permissions::from_mode(0o750)).expect("the mode is set");
+
+    let output = repo.install_with_umask("077");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(hook_modes(&repo), (0o750, vec![0o755; SCRIPTS.len()]));
+}
+
+#[test]
+fn it_should_replace_a_symlink_planted_in_place_of_a_script_without_following_it() {
+    let repo = HookRepo::new();
+    repo.seed();
+    repo.installed();
+    let victim = repo.scratch().join("victim");
+    fs::write(&victim, "untouched").expect("the victim is written");
+    let planted = repo.h().join("pre-commit");
+    fs::remove_file(&planted).expect("the script is removed");
+    std::os::unix::fs::symlink(&victim, &planted).expect("the symlink is planted");
+
+    let output = repo.install();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(
+        (
+            fs::read_to_string(&victim).expect("the victim is read"),
+            fs::symlink_metadata(&planted)
+                .expect("the script exists")
+                .is_file()
+        ),
+        ("untouched".to_owned(), true)
+    );
+    assert_scripts(&repo.h(), &bin());
+}
 
 #[test]
 fn it_should_install_executable_hooks_in_the_user_folder_and_set_an_absolute_hooks_path() {

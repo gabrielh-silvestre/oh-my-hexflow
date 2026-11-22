@@ -1,12 +1,13 @@
 use std::ffi::OsStr;
-use std::fs;
-use std::io::{self, ErrorKind};
-use std::os::unix::fs::PermissionsExt;
+use std::fs::{self, DirBuilder, OpenOptions};
+use std::io::{self, ErrorKind, Write};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const SAMPLE_SUFFIX: &str = ".sample";
 const SCRIPT_MODE: u32 = 0o755;
+const HOOKS_DIR_MODE: u32 = 0o700;
 
 pub trait HookInstaller {
     fn resolved_hooks_dir(&self) -> Result<PathBuf, String>;
@@ -17,6 +18,27 @@ pub trait HookInstaller {
     fn write_scripts(&self, dir: &Path, scripts: &[(&str, String)]) -> io::Result<()>;
     fn set_local_hooks_path(&self, dir: &Path) -> Result<(), String>;
     fn canonical(&self, dir: &Path) -> io::Result<PathBuf>;
+}
+
+/// Grava num temporário `create_new` (não segue um link plantado) e troca por `rename`, que também
+/// substitui um link no lugar do script em vez de escrever através dele.
+fn write_script(dir: &Path, name: &str, content: &str) -> io::Result<()> {
+    let temp = dir.join(format!(".{name}.tmp-{}", std::process::id()));
+    match fs::remove_file(&temp) {
+        Err(error) if error.kind() != ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(SCRIPT_MODE)
+        .open(&temp)?;
+    // O modo do `open` passa pelo `umask`; o `fchmod` garante o 0755 mesmo com `umask 077`.
+    file.set_permissions(fs::Permissions::from_mode(SCRIPT_MODE))?;
+    file.write_all(content.as_bytes())?;
+    file.sync_all()?;
+
+    fs::rename(&temp, dir.join(name))
 }
 
 pub struct GitHooks {
@@ -104,11 +126,13 @@ impl HookInstaller for GitHooks {
     }
 
     fn write_scripts(&self, dir: &Path, scripts: &[(&str, String)]) -> io::Result<()> {
-        fs::create_dir_all(dir)?;
+        // Pasta que já existe fica com o modo que tinha.
+        DirBuilder::new()
+            .recursive(true)
+            .mode(HOOKS_DIR_MODE)
+            .create(dir)?;
         for (name, content) in scripts {
-            let path = dir.join(name);
-            fs::write(&path, content)?;
-            fs::set_permissions(&path, fs::Permissions::from_mode(SCRIPT_MODE))?;
+            write_script(dir, name, content)?;
         }
 
         Ok(())
