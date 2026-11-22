@@ -960,8 +960,6 @@ fn it_should_render_the_native_base_in_under_4000_characters_with_the_marks() {
     assert!(rendered.text.chars().count() < 4_000);
 }
 
-// Premissas tardias
-
 fn late_premise(id: &str, status: &str, text: &str) -> NodeView {
     let mut late = kinded_premise(id, "business", status);
     late.data["origin"] = json!("late");

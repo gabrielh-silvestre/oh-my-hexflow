@@ -2178,8 +2178,6 @@ fn appended_record(omhl: &mut Omhl<'_>, author: Author, items: Vec<AppendItem>) 
     outcome.records[0].id.clone()
 }
 
-// Marca `origin` da premissa de negócio tardia
-
 const ORIGIN_POINTER: &str = "/items/0/body/data/origin";
 const ORIGIN_SECOND_ITEM_POINTER: &str = "/items/1/body/data/origin";
 const LATE_ID: &str = "premises.late-1";
@@ -2207,7 +2205,6 @@ fn decision_item() -> AppendItem {
     )
 }
 
-/// Work item que já tem uma `decision`: a janela de premissas tardias está aberta.
 fn open_omhl_after_a_decision(harness: &OmhlHarness) -> Omhl<'_> {
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);

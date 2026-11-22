@@ -832,7 +832,6 @@ fn it_should_order_the_review_steps_by_number() {
     );
 }
 
-/// A frase da CMP-031: depois da primeira `decision`, a resposta do dono a um gap de negócio nasce tardia.
 const GAP_ANSWER_LATE: [&str; 5] = [
     "primeira `decision`",
     "`origin: late`",

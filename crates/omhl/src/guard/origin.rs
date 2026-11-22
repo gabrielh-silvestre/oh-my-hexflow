@@ -7,8 +7,6 @@ use crate::error::{OmhlError, RuleCode};
 const ORIGIN: &str = "body/data/origin";
 
 impl Guard<'_, '_> {
-    /// A marca `origin` nunca muda numa revisão, e a premissa de negócio nova (ou que vira de
-    /// negócio) depois da primeira `decision` do work item nasce tardia.
     pub(super) fn check_origin(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         let current = match node.base {
             Some(_) => self.hexlog.get(self.tenant, node.id)?,

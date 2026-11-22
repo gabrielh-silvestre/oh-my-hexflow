@@ -558,7 +558,6 @@ pub trait SpecFacts {
     fn confirmed(&self, id: &str) -> bool;
     /// `business` ou `technical` (premissa).
     fn kind(&self, id: &str) -> Option<String>;
-    /// Premissa de negócio tardia (`origin: late`).
     fn late(&self, id: &str) -> bool;
     fn work_item(&self, id: &str) -> Option<String>;
     fn gap_state(&self, gap: &str) -> GapState;

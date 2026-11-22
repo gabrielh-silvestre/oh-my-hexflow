@@ -829,8 +829,7 @@ fn it_should_reject_a_premise_origin_outside_late() {
     assert_eq!(found, vec![violation("/origin", "enum")]);
 }
 
-// A mudança só alarga: toda premissa válida na definition anterior segue válida, e o
-// `origin` que a anterior rejeita passa a ser aceito.
+// A mudança só alarga: toda premissa válida antes segue válida.
 #[test]
 fn it_should_widen_the_premise_definition_without_invalidating_the_previous_one() {
     let previous = catalog_from(PREVIOUS_DECISIONS_CATALOG_V4);

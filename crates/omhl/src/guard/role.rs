@@ -140,7 +140,6 @@ pub(super) fn node_allowed(role: &str, type_name: &str, data: &Value) -> bool {
     listed && content_ok
 }
 
-/// O analyst só sugere premissa de negócio depois da entrevista, e ela nasce tardia.
 fn is_assumed_and_late_when_business(data: &Value) -> bool {
     let late = data.get("origin").and_then(Value::as_str) == Some("late");
     let business = data.get("kind").and_then(Value::as_str) == Some("business");

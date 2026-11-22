@@ -283,7 +283,6 @@ fn it_should_keep_the_closing_order_in_review_step_8() {
     );
 }
 
-/// O texto de um agente do plugin, lido como o das skills.
 fn read_agent(name: &str) -> String {
     fs::read_to_string(repo_root().join(format!("plugin/agents/{name}.md")))
         .unwrap_or_else(|error| panic!("{name}.md must exist and be readable: {error}"))

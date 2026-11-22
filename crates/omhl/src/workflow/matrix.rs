@@ -10,7 +10,6 @@ pub enum PremiseKind {
 pub struct PremiseFact {
     pub kind: Option<PremiseKind>,
     pub confirmed: bool,
-    /// Premissa de negócio tardia (`origin: late`): não é principal.
     pub late: bool,
 }
 

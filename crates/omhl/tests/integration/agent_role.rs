@@ -1679,8 +1679,6 @@ fn it_should_refuse_omhl_verifier_closing_a_divergence_whose_resolution_is_not_o
     assert_eq!(codes, vec![REVISION_FORBIDDEN; 2]);
 }
 
-// Marca `origin` da premissa de negócio tardia
-
 const LATE_PREMISE: &str = "premises.late";
 const PLANNER: &str = "omhl:planner";
 
@@ -1694,7 +1692,6 @@ fn business_premise_data(late: bool) -> Value {
     }
 }
 
-/// Premissa técnica do analyst num work item que já tem uma `decision`.
 fn seed_technical_premise_after_a_decision(omhl: &mut Omhl<'_>) -> RecordId {
     seed_pull_request(omhl);
     seed(

@@ -1,9 +1,5 @@
-//! A regra 9: as frases dos AC-1, AC-3, AC-5 e AC-8 da entrevista de `prem1` seguem nas skills e nos agentes.
-//! Cada marcador é uma linha do arquivo que traz todos os fragmentos juntos; as regras 0 a 8 só conferem estrutura.
-
 use super::finding;
 
-/// Uma linha do arquivo (caminho relativo a `plugin/`) que traz todos os `fragments`.
 pub struct Marker {
     pub rule: &'static str,
     pub file: &'static str,
@@ -94,7 +90,6 @@ pub const MARKERS: [Marker; 10] = [
     },
 ];
 
-/// Os marcadores sem linha no texto do seu arquivo; `files` traz `(caminho, texto)`.
 pub fn phrase_markers(markers: &[Marker], files: &[(&str, &str)]) -> Vec<String> {
     let missing = markers.iter().filter_map(|marker| {
         let text = files

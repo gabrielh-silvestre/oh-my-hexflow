@@ -14,7 +14,6 @@ use crate::render::{is_late, sort_by_id};
 const TRUNCATION_MARKER: &str = "<!-- omhl: truncated -->\n";
 const INLINE_STRING_MAX_CHARS: usize = 80;
 const FILE_MAX_BYTES: usize = PROJECTION_FILE_MAX_BYTES as usize;
-/// (tipo do nó, é tardia, título): a tardia (`origin: late`) fica logo depois das principais.
 const SECTIONS: [(&str, bool, &str); 6] = [
     ("premise", false, "Premises"),
     ("premise", true, "Late premises"),
