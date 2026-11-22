@@ -97,7 +97,6 @@ fn check_prefix_namespace(
     Err(AppError::invalid_arguments("/id_prefix", message))
 }
 
-/// O schema do campo, se o tipo o declara no topo de `properties`.
 fn declared_schema<'a>(def: &'a TypeDef, field: &str) -> Option<&'a Value> {
     def.schema.get("properties")?.get(field)
 }

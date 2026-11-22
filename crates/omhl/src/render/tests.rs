@@ -181,7 +181,6 @@ fn headers(text: &str) -> Vec<&str> {
         .collect()
 }
 
-/// The lines of the block headed by `### <id>`, up to the next blank line.
 fn block<'t>(text: &'t str, id: &str) -> Vec<&'t str> {
     let header = format!("### {id}");
 
@@ -557,7 +556,6 @@ fn kinded_guideline(id: &str, kind: &str, text: &str) -> NodeView {
     directive(id, json!({ "text": text, "kind": kind }))
 }
 
-/// O texto de `## <title>` até o próximo `## `; vazio se a seção não existe.
 fn section<'t>(text: &'t str, title: &str) -> &'t str {
     let Some((_, from_title)) = text.split_once(&format!("\n## {title}\n")) else {
         return "";

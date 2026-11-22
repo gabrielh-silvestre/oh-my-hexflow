@@ -20,7 +20,6 @@ pub enum Region {
     Data,
 }
 
-/// Para qual tipo de nó a entrada vale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
     Any,
@@ -42,14 +41,12 @@ pub enum Shape {
     Noise,
 }
 
-/// Qual dos dois desfechos da tabela vale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     Success,
     Failure,
 }
 
-/// Onde estão os nós no `Value`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeContainer {
     /// Array de nós sob a chave (`items` do `list`).
@@ -85,7 +82,6 @@ impl Entry {
         }
     }
 
-    /// Chave de `data` de um tipo de nó.
     pub const fn data(node_type: &'static str, key: &'static str, shape: Shape) -> Entry {
         Entry::new(Region::Data, key, shape).scoped(node_type)
     }
@@ -161,7 +157,6 @@ impl Profile {
         }
     }
 
-    /// A entrada que declara a forma da chave, ou `None` quando a chave está fora da tabela.
     pub fn find(
         &self,
         outcome: Outcome,

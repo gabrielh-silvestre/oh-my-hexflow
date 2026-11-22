@@ -144,7 +144,7 @@ Notas de leitura:
 
 ## 2. Contexto em um parágrafo
 
-O workspace tem dois crates. O `hexlog` é o motor agnóstico: guarda a chain de records por tenant num SQLite, valida contra um catalog dado por quem o abre e não conhece decisão, check, gate nem PRD. O `omhl` é o plugin opinativo: monta o catalog dos graphs, embute o native, guarda as regras de domínio na escrita, avalia gates, renderiza o contexto, carrega extensions e gera a projection, e expõe tudo por dois gateways (CLI e hook) que dividem uma única camada de casos de uso (`app`). A separação não é só convenção: 28 testes de arquitetura no `omhl` e 11 no `hexlog` a travam (seção 4).
+O `hexlog` é o motor agnóstico: guarda a chain de records por tenant num SQLite, valida contra um catalog dado por quem o abre e não conhece decisão, check, gate nem PRD. O `omhl` é o plugin opinativo: monta o catalog dos graphs, embute o native, guarda as regras de domínio na escrita, avalia gates, renderiza o contexto, carrega extensions e gera a projection, e expõe tudo por dois gateways (CLI e hook) que dividem uma única camada de casos de uso (`app`). A separação não é só convenção: 28 testes de arquitetura no `omhl` e 11 no `hexlog` a travam (seção 4).
 
 As decisões estruturais, com o porquê de cada uma:
 
@@ -269,7 +269,7 @@ As contagens são da entrega dos gates mecânicos: a soma das linhas de todos os
 
 **Interface.** `required_checks`, `pr_gate_questions`, `spec_digests`, `GATE_NAME`, `REQUIRED_EVENTS`, e `project_checks_filter`, `closing_request` (`pub(crate)`) em `pr_gate.rs`.
 
-**Profundidade.** Média: política em forma de função. Interface e interior têm tamanho parecido (154 linhas, 4 funções); é aceitável porque é a tabela de política do plugin e muda por motivo próprio.
+**Profundidade.** Média: política em forma de função. Interface e interior têm tamanho parecido; é aceitável porque é a tabela de política do plugin e muda por motivo próprio.
 
 ### 3.9 Aninhada: `omhl::graphs`
 

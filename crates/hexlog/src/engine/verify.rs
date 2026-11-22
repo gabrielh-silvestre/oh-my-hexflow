@@ -64,7 +64,6 @@ impl BreakLog {
         }
     }
 
-    /// Acrescenta `later` depois das quebras já guardadas.
     fn absorb(&mut self, later: BreakLog) {
         let room = BREAKS_SHOWN_MAX - self.shown.len();
         self.shown.extend(later.shown.into_iter().take(room));

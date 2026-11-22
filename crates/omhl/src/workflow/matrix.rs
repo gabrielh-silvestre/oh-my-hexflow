@@ -13,7 +13,6 @@ pub struct PremiseFact {
     pub confirmed: bool,
 }
 
-/// Os átomos de `require` do prefixo que as premissas e a validação da spec não satisfazem, na ordem do `require`; `None` quando o prefixo não está na tabela.
 pub fn missing_atoms(
     prefix: &str,
     config: &WorkflowConfig,

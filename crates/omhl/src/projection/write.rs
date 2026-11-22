@@ -205,7 +205,6 @@ fn require_generated_or_absent(dir: &Path, name: &str) -> Result<(), ProjectionE
     ))
 }
 
-/// `true` when the file was replaced, `false` when the bytes on disk were already equal.
 fn write_if_different(dir: &Path, name: &str, bytes: &[u8]) -> Result<bool, ProjectionError> {
     let rel = || relative(name);
     let target = dir.join(name);

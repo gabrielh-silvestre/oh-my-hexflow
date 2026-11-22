@@ -113,7 +113,6 @@ pub struct GateReport {
 }
 
 impl GateReport {
-    /// `passed` = há ao menos uma pergunta e todas passaram.
     pub fn assemble(
         gate: &str,
         chain_head: ChainHead,
@@ -357,7 +356,6 @@ fn scope_nodes<S: GateSource>(
     Ok(nodes)
 }
 
-/// Um destino tenant fora do `scope` não está confirmado.
 fn target_confirmed(
     relation: &RelationView,
     scope: &HashMap<SemanticId, NodeView>,
@@ -402,7 +400,6 @@ fn current_targets(relations: &[RelationView]) -> HashSet<&SemanticId> {
         .collect()
 }
 
-/// Move os ids dos nodes que satisfazem `keep` para a lista de evidência, na ordem recebida.
 fn ids_where(nodes: Vec<NodeView>, keep: impl Fn(&SemanticId) -> bool) -> Vec<SemanticId> {
     nodes
         .into_iter()

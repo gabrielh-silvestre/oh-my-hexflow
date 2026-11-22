@@ -141,7 +141,6 @@ string_id!(
     "invalid external id"
 );
 
-/// Leitura de nomes de tipo: o texto passa por `parse` e nome inválido falha na leitura.
 macro_rules! deserialize_name {
     ($name:ident) => {
         impl<'de> Deserialize<'de> for $name {

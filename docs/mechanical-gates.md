@@ -317,7 +317,7 @@ Os valores ficam fixos no TOML de cada check. O `omhl` não os calcula nem os re
 | `checks.compile-build` | 153,6 s | 200 |
 | `checks.test-suite` | 6,6 s incremental (ver abaixo) | 120 (piso) |
 
-Sem carga, as mesmas rodadas ficam entre 17 s e 25 s (22 s no `lint`, 23 s no `build`). A pior rodada vem da disputa por disco e CPU, e é ela que dita o prazo.
+A pior rodada vem da disputa por disco e CPU, e é ela que dita o prazo.
 
 O `test-suite` é exceção à regra fria (decisão `perf2-timeout-secs-incremental`): com o build frio proibido na máquina do dono, o prazo é `max(120, 2 x parede)` de uma rodada logo depois de `touch crates/hexlog/src/lib.rs`, que recompila `hexlog` e `omhl`, o pior caso incremental. Em 2026-11-19, com cerca de mil testes no `--lib` (work item `perf3`), a pior de 3 rodadas levou 6,6 s (774 MB, 4,7 núcleos; em 2026-11-17, com 45 testes, foram 7,8 s, 470 MB e 1,9 núcleo); vale o piso de 120 s.
 

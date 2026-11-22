@@ -122,7 +122,6 @@ pub fn plan(input: &PlanInput) -> Result<Plan, Vec<ExtensionIssue>> {
     Ok(plan)
 }
 
-/// Records what happens to the node of `extension`; returns true when it is skipped.
 fn plan_node(extension: &Extension, existing: Option<&ExistingNode>, plan: &mut Plan) -> bool {
     let id = extension.id.clone();
     match existing {

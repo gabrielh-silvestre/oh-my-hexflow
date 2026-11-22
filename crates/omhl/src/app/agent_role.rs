@@ -157,7 +157,6 @@ fn role_matrix_verdict(
     }
 }
 
-/// O motivo de negar quando a matriz do papel não cobre o comando; `None` quando cobre.
 fn matrix_denial(
     role: &str,
     simple: &SimpleCommand,
@@ -221,7 +220,6 @@ fn prefix_position(command: &str) -> usize {
     command.len() - rest.len()
 }
 
-/// O que sobra depois da palavra `word` e dos espaços que a seguem; `None` se o texto não começa por ela.
 fn after_blank_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
     text.strip_prefix(word)
         .filter(|rest| rest.starts_with(BLANKS))

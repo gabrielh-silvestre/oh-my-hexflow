@@ -137,7 +137,6 @@ fn first_missing_field(node: &NodeItem<'_>) -> Option<&'static str> {
         })
 }
 
-/// O id da attestation é derivado do snapshot, do check e do work item.
 fn check_derived_id(
     node: &NodeItem<'_>,
     check: Option<&SemanticId>,
@@ -155,7 +154,6 @@ fn check_derived_id(
     }
 }
 
-/// Por que a resposta da sonda não aceita o snapshot como `HEAD` de uma árvore limpa.
 pub(crate) fn probe_refusal(
     probed: &Result<ProbeOutcome, ProbeError>,
     snapshot: &Snapshot,
@@ -168,7 +166,6 @@ pub(crate) fn probe_refusal(
     }
 }
 
-/// Por que a resposta da sonda de árvore não aceita o snapshot como a árvore do índice.
 pub(crate) fn tree_probe_refusal(
     probed: &Result<ProbeOutcome, ProbeError>,
     snapshot: &Snapshot,

@@ -146,7 +146,6 @@ fn tail_unreadable(error: HexlogError) -> HexlogError {
     )
 }
 
-/// A linhagem do item, emprestada do corpo.
 fn item_lineage(body: &ItemBody) -> LineageRef<'_> {
     match body {
         ItemBody::Node { id, .. } => LineageRef::Node(id),

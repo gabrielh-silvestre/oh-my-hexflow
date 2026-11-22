@@ -15,7 +15,6 @@ pub struct ExtTree {
 }
 
 impl ExtTree {
-    /// Raiz de projeto em um diretório temporário que some junto com a árvore.
     pub fn new() -> ExtTree {
         let dir = TempDir::new().expect("project directory is created");
 
@@ -29,7 +28,6 @@ impl ExtTree {
         &self.root
     }
 
-    /// Arquivo em `rel` (relativo à raiz do projeto), com as pastas de cima criadas.
     pub fn file(&self, rel: &str, bytes: impl AsRef<[u8]>) -> &ExtTree {
         let target = self.root.join(rel);
         self.make_parent(&target);

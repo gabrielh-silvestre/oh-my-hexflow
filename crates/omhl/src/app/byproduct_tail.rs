@@ -81,7 +81,6 @@ impl Engine<'_> {
     }
 }
 
-/// As últimas `wanted` linhas e quantas delas passaram de `LINE_MAX_CHARS` e foram cortadas.
 fn tail_lines(blob: &[u8], wanted: usize) -> Option<(Vec<String>, usize)> {
     let (stdout, stderr) = byproduct::decode(blob)?;
     let lines: Vec<String> = [stdout, stderr]

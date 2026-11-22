@@ -120,7 +120,6 @@ impl GitProbe {
         })
     }
 
-    /// Exige exit 0 e devolve o stdout.
     fn run_ok(&self, command: Command) -> Result<Vec<u8>, ProbeError> {
         let output = self.run(command)?;
         if !output.status.success() {
@@ -361,7 +360,6 @@ fn git_error(output: &GitOutput) -> ProbeError {
     )
 }
 
-/// Stdout de uma linha, sem o `\n` final.
 fn text_line(stdout: Vec<u8>) -> Result<String, ProbeError> {
     let mut text = utf8_output(stdout)?;
     if text.ends_with('\n') {
@@ -390,7 +388,6 @@ fn collect(reader: &Receiver<Vec<u8>>, deadline: Instant) -> Result<Vec<u8>, Pro
         .map_err(|_| error("git timed out"))
 }
 
-/// Espera o filho até o prazo; passado o prazo, mata e recolhe o processo.
 fn wait_until(child: &mut Child, deadline: Instant) -> Result<ExitStatus, ProbeError> {
     loop {
         match child.try_wait() {

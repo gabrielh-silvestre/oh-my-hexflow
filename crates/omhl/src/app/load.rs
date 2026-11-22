@@ -189,7 +189,6 @@ fn report(tenant: &TenantId, dry_run: bool, plan: &Plan, scanned: &[ExtensionIss
     })
 }
 
-/// Ids criados, ids revisados e relações criadas, na ordem do plano.
 fn split_changes(changes: &[PlannedChange]) -> [Vec<Value>; 3] {
     let mut split: [Vec<Value>; 3] = Default::default();
     for change in changes {
@@ -256,7 +255,6 @@ fn append_batch(
     Ok(())
 }
 
-/// O item de `append` e o arquivo de origem dele.
 fn into_item(change: PlannedChange) -> Result<(AppendItem, String), AppError> {
     let (body, base, path) = match change {
         PlannedChange::CreateNode {

@@ -51,7 +51,6 @@ impl GitHooks {
             .map_err(|error| error.to_string())
     }
 
-    /// O stdout sem o `\n` final quando o git sai 0; senão o stderr aparado.
     fn git_line(&self, args: &[&OsStr]) -> Result<String, String> {
         let output = self.git(args)?;
         if !output.status.success() {

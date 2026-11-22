@@ -48,7 +48,7 @@ omhl load --dry-run   # mostra o que mudaria, sem gravar
 omhl load             # grava no tenant do .omhl.toml
 ```
 
-O relatório lista `created`, `revised`, `unchanged`, `skipped` e `orphans`. Carregar duas vezes seguidas não grava nada na segunda.
+Carregar duas vezes seguidas não grava nada na segunda.
 
 **Arquivo apagado não aposenta o node.** O id passa a aparecer em `orphans`, e o node continua vigente e injetado na sessão até ser retirado de propósito (`omhl check retire <check-id>`, só para check cujo arquivo sumiu; é definitivo e vale para todos os clones e branches, então só depois de a remoção do arquivo estar mergeada). Um check órfão com `run` não é executado pelo `check run`, que avisa com `check-orphaned`. Assim, trocar de branch não perde nada.
 

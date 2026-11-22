@@ -57,7 +57,6 @@ impl<'i> NodeItem<'i> {
         OmhlError::rule(code, &format!("/items/{}/{suffix}", self.index))
     }
 
-    /// Campo de primeiro nível de `data`, só quando é texto.
     pub(super) fn field(&self, key: &str) -> Option<&'i str> {
         self.data.get(key).and_then(Value::as_str)
     }

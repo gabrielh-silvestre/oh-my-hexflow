@@ -151,7 +151,6 @@ fn is_spec_family(spec: &SpecPath) -> bool {
     spec.file.starts_with(PART_PREFIX) || spec.file.starts_with(AMENDMENT_PREFIX)
 }
 
-/// Componentes `Normal` do caminho depois de resolver `.` e `..` no texto; `None` se algum não é UTF-8.
 fn normalized_names(path: &Path) -> Option<Vec<&str>> {
     let mut names = Vec::new();
     for component in path.components() {

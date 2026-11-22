@@ -113,7 +113,6 @@ fn edge(relation: &str, from: &str, to: &str) -> Edge {
     }
 }
 
-/// O gap `GAP` entra sempre; `nodes` e `edges` são o resto do grafo.
 fn facts(mut nodes: Vec<Fact>, edges: Vec<Edge>) -> GapFacts {
     nodes.push(gap_fact(GAP));
 

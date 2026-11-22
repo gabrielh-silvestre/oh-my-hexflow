@@ -273,7 +273,6 @@ pub enum Endpoint {
 }
 
 impl Endpoint {
-    /// Caminho do campo dentro do item.
     pub fn field(self) -> &'static str {
         match self {
             Endpoint::From => "body/from",

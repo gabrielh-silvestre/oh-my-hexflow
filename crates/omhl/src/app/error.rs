@@ -112,7 +112,6 @@ impl AppError {
         }
     }
 
-    /// Erro de entrada com um único detalhe de mesmo código e mesma mensagem.
     pub(crate) fn at_pointer(code: &str, pointer: &str, message: &str) -> AppError {
         AppError {
             code: code.to_owned(),
@@ -254,7 +253,6 @@ impl AppError {
         }
     }
 
-    /// Um único detalhe com o caminho, o código e a mensagem do erro de projeção.
     pub(crate) fn projection_failed(error: &ProjectionError) -> AppError {
         AppError {
             code: "projection-failed".to_owned(),

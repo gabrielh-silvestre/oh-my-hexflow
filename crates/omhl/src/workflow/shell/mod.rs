@@ -21,7 +21,6 @@ pub enum ReadError {
     TooLong,
 }
 
-/// O comando da ferramenta Bash como lista de comandos simples.
 #[derive(Debug)]
 pub struct CommandLine {
     pub commands: Vec<SimpleCommand>,

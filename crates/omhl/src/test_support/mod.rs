@@ -75,12 +75,10 @@ pub fn loader_author() -> Author {
     }
 }
 
-/// Commit de 40 caracteres iguais a `fill`.
 pub fn snap(fill: char) -> Snapshot {
     Snapshot::new(SnapshotKind::GitCommit, &fill.to_string().repeat(40)).expect("valid snapshot")
 }
 
-/// Commit de 64 caracteres iguais a `fill`.
 pub fn snap64(fill: char) -> Snapshot {
     Snapshot::new(SnapshotKind::GitCommit, &fill.to_string().repeat(64)).expect("valid snapshot")
 }

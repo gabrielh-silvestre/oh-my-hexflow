@@ -21,7 +21,6 @@ pub struct Recurrence {
     pub premises: Vec<String>,
 }
 
-/// `trim`, minúsculas, espaços colapsados e sem pontuação final.
 pub fn normalize(text: &str) -> String {
     let collapsed = text
         .to_lowercase()
@@ -34,7 +33,6 @@ pub fn normalize(text: &str) -> String {
         .to_owned()
 }
 
-/// Grupos com pelo menos `min` work items distintos, sem os que já viraram diretiva.
 pub fn recurrences(premises: &[Premise], directives: &[String], min: u32) -> Vec<Recurrence> {
     let directives: HashSet<String> = directives.iter().map(|text| normalize(text)).collect();
     let mut index: HashMap<(&str, String), usize> = HashMap::new();

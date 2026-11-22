@@ -129,7 +129,6 @@ impl Runtime {
     }
 }
 
-/// Compara a pasta do banco com a raiz depois de resolver links simbólicos, quando a pasta já existe.
 // shortcut: pasta que ainda não existe é comparada só pelo texto (`..` não é resolvido); canonicalizar o ancestral existente se aparecer.
 fn is_inside(db_path: &Path, root: &Path) -> bool {
     let absolute = std::path::absolute(db_path).unwrap_or_else(|_| db_path.to_path_buf());

@@ -102,7 +102,6 @@ impl HexlogError {
         .at("/tenant")
     }
 
-    /// Antepõe `prefix` ao `path` de cada detalhe (um `path` vazio vira o próprio `prefix`).
     pub fn at(mut self, prefix: &str) -> HexlogError {
         for detail in &mut self.details {
             detail.path.insert_str(0, prefix);
@@ -110,7 +109,6 @@ impl HexlogError {
         self
     }
 
-    /// Como `at`, para o campo `field` do item `index` do lote.
     pub(crate) fn at_item(self, index: usize, field: &str) -> HexlogError {
         self.at(&format!("/items/{index}/{field}"))
     }

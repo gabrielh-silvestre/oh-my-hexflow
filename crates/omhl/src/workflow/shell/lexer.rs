@@ -130,7 +130,6 @@ impl Lexer {
         word.quoted |= quoted;
     }
 
-    /// Fecha a palavra em andamento conforme o que o operador anterior pediu.
     fn end_word(&mut self) {
         let Some(word) = self.word.take() else {
             return;

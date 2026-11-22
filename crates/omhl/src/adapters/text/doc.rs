@@ -6,7 +6,6 @@ use serde_json::Value;
 use super::vocab::NEXT_LABEL;
 use super::vocab::State;
 
-/// Como o item abre a linha.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Marker {
     Dash,
@@ -14,7 +13,6 @@ pub enum Marker {
     None,
 }
 
-/// Separador entre as partes de um cabeçalho ou de um item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Join {
     Dot,
@@ -30,7 +28,6 @@ pub struct Fact {
 }
 
 impl Fact {
-    /// O mesmo texto nos dois layouts.
     pub fn same(label: &'static str, value: String) -> Fact {
         Fact {
             label,
@@ -110,7 +107,6 @@ pub fn one_line(raw: &str) -> String {
         .collect()
 }
 
-/// Texto de uma chave do `Value`; chave ausente ou não textual vira vazio, nunca erro.
 pub fn text(value: &Value, key: &str) -> String {
     one_line(value[key].as_str().unwrap_or_default())
 }
@@ -138,7 +134,6 @@ pub fn field(depth: usize, label: &str, value: String) -> Line {
     }
 }
 
-/// Os textos de uma lista de strings, inteiros e separados por vírgula.
 pub fn joined(value: &Value, key: &str) -> String {
     items(value, key)
         .filter_map(Value::as_str)

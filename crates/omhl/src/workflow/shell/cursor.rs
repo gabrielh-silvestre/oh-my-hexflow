@@ -1,7 +1,5 @@
-/// Posição de leitura sobre o texto do comando, caractere a caractere.
 pub(super) struct Cursor {
     chars: Vec<char>,
-    /// Quantos caracteres já foram consumidos.
     pub(super) at: usize,
 }
 
@@ -17,7 +15,6 @@ impl Cursor {
         self.chars.get(self.at).copied()
     }
 
-    /// O texto cru lido desde o caractere `start`.
     pub(super) fn text_since(&self, start: usize) -> String {
         self.chars[start..self.at].iter().collect()
     }
@@ -50,7 +47,6 @@ impl Cursor {
         next
     }
 
-    /// Consome `expected` se for o próximo caractere.
     pub(super) fn eat(&mut self, expected: char) -> bool {
         let found = self.peek() == Some(expected);
         self.at += usize::from(found);
@@ -65,7 +61,6 @@ impl Cursor {
         }
     }
 
-    /// A próxima linha sem a quebra; `None` quando o texto acabou.
     pub(super) fn read_line(&mut self) -> Option<String> {
         self.peek()?;
         let mut line = String::new();

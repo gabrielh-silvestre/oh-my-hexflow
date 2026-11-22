@@ -6,7 +6,6 @@ use super::engine::{Engine, require_project_root};
 use super::error::AppError;
 use crate::ports::hooks::{GitHooks, HookInstaller};
 
-/// Nome de cada script e o comando que ele entrega ao `omhl`.
 const SCRIPTS: [(&str, &str); 4] = [
     ("pre-commit", "check run --event before-commit"),
     ("pre-merge-commit", "check run --event before-commit"),
@@ -111,7 +110,6 @@ fn unstable_binary_code(binary: &Path, worktrees: &[PathBuf]) -> Option<&'static
         .then_some("binary-in-worktree")
 }
 
-/// Um componente `target` seguido de `debug` ou `release`: o binário de um build do cargo.
 fn in_build_dir(binary: &Path) -> bool {
     let components: Vec<Component<'_>> = binary.components().collect();
 

@@ -38,7 +38,6 @@ pub(super) struct Engine<'d> {
     pub(super) hooks_dir: Option<PathBuf>,
 }
 
-/// Id ou nome do pedido que não passa em `parse`: erro do motor com o ponteiro do campo.
 pub(super) fn parse_at<T>(
     parse: fn(&str) -> Result<T, HexlogError>,
     text: &str,

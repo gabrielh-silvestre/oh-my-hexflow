@@ -78,7 +78,6 @@ pub trait Vocabulary {
         }
     }
 
-    /// Dois espaços por nível de hierarquia.
     fn indent(&self, depth: usize) -> String {
         "  ".repeat(depth)
     }

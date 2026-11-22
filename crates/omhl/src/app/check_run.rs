@@ -607,7 +607,6 @@ impl Scope<'_> {
         context
     }
 
-    /// `context` de um check cujo comando rodou sobre `snapshot`.
     fn ran_context(
         &self,
         kind: &str,
@@ -938,7 +937,6 @@ fn with_run_fields(mut value: Value, report: &RunReport) -> Value {
     value
 }
 
-/// As últimas linhas de cada fluxo, convertidas com perda e cortadas.
 fn output_tail(report: &RunReport) -> Value {
     json!({ "stdout": tail(&report.stdout), "stderr": tail(&report.stderr) })
 }

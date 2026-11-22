@@ -141,7 +141,6 @@ pub(super) fn basename(word: &str) -> &str {
     word.rsplit('/').next().unwrap_or(word)
 }
 
-/// `NOME=valor` ou `NOME+=valor` com nome de variável válido.
 fn is_assignment(word: &str) -> bool {
     word.split_once('=').is_some_and(|(name, _)| {
         let name = name.strip_suffix('+').unwrap_or(name);
@@ -152,7 +151,6 @@ fn is_assignment(word: &str) -> bool {
     })
 }
 
-/// Pula as atribuições `VAR=valor` e os embrulhos (aninhados em sequência) até o programa real.
 pub(super) fn resolve(words: &[String]) -> Resolved {
     let mut at = 0;
     loop {
@@ -185,7 +183,6 @@ pub(super) fn resolve(words: &[String]) -> Resolved {
 }
 
 impl Wrapper {
-    /// Quantas palavras depois do embrulho são dele (opções, posicionais, subcomando).
     fn skip(&self, args: &[String]) -> Skipped {
         let mut at = 0;
         while let Some(word) = args.get(at).filter(|word| word.starts_with('-')) {
@@ -225,7 +222,6 @@ impl Wrapper {
         })
     }
 
-    /// Palavras que a opção ocupa; `None` quando ela não está na tabela do embrulho.
     fn option_width(&self, word: &str) -> Option<usize> {
         if self.flags.contains(&word) {
             return Some(1);

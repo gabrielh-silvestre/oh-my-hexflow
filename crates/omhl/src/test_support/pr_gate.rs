@@ -30,7 +30,6 @@ pub fn default_natives() -> Vec<NativeCheck> {
     ]
 }
 
-/// `NodeView` de um check do projeto, montado por literal.
 pub fn project_check(id: &str, event: &str, blocking: bool, shadowed: bool) -> NodeView {
     NodeView {
         id: sid(id),

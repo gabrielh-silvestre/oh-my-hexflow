@@ -119,7 +119,6 @@ impl GateSource for FakeSource {
 
 // Filtros
 
-/// Filtro que não restringe nada.
 pub fn all_filter() -> ListFilter {
     ListFilter {
         type_name: None,
@@ -137,7 +136,6 @@ pub fn type_filter(type_name: &str) -> ListFilter {
     }
 }
 
-/// Node com o `data` dado.
 pub fn node_view_with(id: &str, data: Value) -> NodeView {
     NodeView {
         data,
@@ -149,7 +147,6 @@ pub fn node_views(ids: &[&str]) -> Vec<NodeView> {
     ids.iter().map(|id| node_view(id)).collect()
 }
 
-/// Relation vigente, com os dois extremos vigentes.
 pub fn relation_view(relation_type: &str, from: &str, to: &str) -> RelationView {
     RelationView {
         record_id: RecordId::parse(RECORD_ID).expect("valid record id"),
@@ -171,7 +168,6 @@ pub fn relation_view(relation_type: &str, from: &str, to: &str) -> RelationView 
 
 // Avaliação e relatórios
 
-/// Avalia uma pergunta só, com o rótulo `LABEL`, e devolve o relatório dela.
 pub fn evaluate_one(source: &mut FakeSource, question: Question) -> QuestionReport {
     let questions = [GateQuestion::new(LABEL, question)];
 
@@ -181,7 +177,6 @@ pub fn evaluate_one(source: &mut FakeSource, question: Question) -> QuestionRepo
         .expect("one report per question")
 }
 
-/// Relatório esperado, com o rótulo `LABEL` e nenhuma evidência omitida.
 pub fn expected_report(
     kind: QuestionKind,
     passed: bool,

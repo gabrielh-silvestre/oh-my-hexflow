@@ -37,7 +37,6 @@ impl IdGenerator for SeqIds {
     }
 }
 
-/// Afirma `code`, o `code` do primeiro detalhe e o `path` dele.
 pub fn assert_refusal(error: &HexlogError, code: ErrorCode, detail_code: &str, path: &str) {
     assert_eq!(error.code, code, "error code of {error:?}");
     assert_eq!(error.details[0].code, detail_code, "detail code");

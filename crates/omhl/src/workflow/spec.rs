@@ -373,7 +373,6 @@ fn correction_target<'a>(item: &Item<'a>, emd: &str) -> Option<&'a str> {
         })
 }
 
-/// Seção fora de ordem ou a mais na linha dela; seção faltando no fim, na linha 1.
 fn section_order_violation(doc: &Doc, expected: &[&str]) -> Option<Found> {
     let mismatch = doc
         .sections
@@ -442,12 +441,10 @@ fn check_shared(doc: &Doc, expected: &[&str], config: &SpecsConfig) -> Vec<Found
     found
 }
 
-/// Primeiro token do item: termina em espaço, `:` ou no fim da linha.
 fn first_token(text: &str) -> &str {
     text.split([' ', ':']).next().unwrap_or("")
 }
 
-/// Primeiro token do item, quando é um id bem formado com o prefixo dado.
 fn item_id<'a>(item: &Item<'a>, prefix: &str) -> Option<&'a str> {
     Some(first_token(item.text)).filter(|token| is_id(token, prefix))
 }
@@ -458,7 +455,6 @@ fn is_id(token: &str, prefix: &str) -> bool {
         .is_some_and(|digits| is_digits(digits, 3))
 }
 
-/// `text` tem exatamente `len` dígitos ASCII.
 pub(crate) fn is_digits(text: &str, len: usize) -> bool {
     text.len() == len && text.bytes().all(|byte| byte.is_ascii_digit())
 }
@@ -482,7 +478,6 @@ pub(crate) fn amendment_number(name: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
-/// `EMD-###` -> número da primeira emenda, na ordem recebida, que o define.
 fn defined_emds<'a>(docs: &[Doc<'a>]) -> HashMap<&'a str, u32> {
     let mut defined = HashMap::new();
     for doc in docs {
@@ -530,7 +525,6 @@ fn semantic_id_len(text: &str) -> usize {
     len
 }
 
-/// `<namespace>.`: o início de todo id citado daquele namespace.
 fn id_prefix(namespace: &str) -> String {
     format!("{namespace}.")
 }
@@ -720,7 +714,6 @@ fn divergence_violation(
     (is_spec_item && !corrects(doc, source)).then_some(Code::AmendmentCorrectionMissing)
 }
 
-/// Algum `EMD` da seção Correções da emenda corrige o item.
 fn corrects(doc: &Doc, item_ref: &str) -> bool {
     doc.items()
         .iter()
@@ -775,7 +768,6 @@ fn cited_ids<'a>(doc: &Doc<'a>) -> Vec<(usize, &'a str)> {
         .collect()
 }
 
-/// `(linha, id)` de cada `<prefixo><nome>` no corpo da seção.
 fn prefixed_ids<'a>(section: &Section<'a>, prefix: &str) -> Vec<(usize, &'a str)> {
     let mut ids = Vec::new();
     for (offset, line) in section.body.iter().copied().enumerate() {

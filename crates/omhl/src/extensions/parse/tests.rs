@@ -800,7 +800,6 @@ fn report_lint_data() -> Value {
     data
 }
 
-/// Check mecânico mínimo; `(chave, Some(v))` troca ou insere a linha, `(chave, None)` apaga.
 fn mech_toml(over: &[(&str, Option<&str>)]) -> String {
     let mut lines: Vec<String> = [
         "blocking = true",

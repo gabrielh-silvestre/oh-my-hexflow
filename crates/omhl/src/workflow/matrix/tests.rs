@@ -302,7 +302,6 @@ const ALL_PREFIXES: [&str; 7] = [
     "feat", "fix", "refactor", "tests", "bugfix", "chore", "docs",
 ];
 
-/// Sem premissa, negócio pendente, negócio confirmada, técnica autônoma, técnica confirmada.
 fn premise_states() -> [Vec<PremiseFact>; 5] {
     [
         vec![],

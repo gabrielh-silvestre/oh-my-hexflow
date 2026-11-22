@@ -60,7 +60,6 @@ fn is_child(line: &Line) -> bool {
     }
 }
 
-/// Itens seguidos e sem filhos formam uma lista só; todo o resto abre bloco, menos os filhos.
 fn breaks_before(prev: &Line, line: &Line, next: Option<&Line>) -> bool {
     if is_child(line) {
         return false;

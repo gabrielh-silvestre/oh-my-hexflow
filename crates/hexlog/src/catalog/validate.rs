@@ -64,7 +64,6 @@ fn type_bit(name: &str) -> Option<u8> {
     }
 }
 
-/// `type` é um nome ou uma lista de nomes únicos; qualquer outra coisa é `None`.
 fn type_mask(value: &Value) -> Option<u8> {
     match value {
         Value::String(name) => type_bit(name),
@@ -254,7 +253,6 @@ impl<'a> Builder<'a> {
         id
     }
 
-    /// Desce em um schema filho sob `key`, deixando o ponteiro como estava.
     fn child(&mut self, key: &str, value: &'a Value, depth: usize, position: Position) -> NodeId {
         let mark = enter_key(&mut self.pointer, key);
         let id = self.schema(value, depth + 1, position);
@@ -732,7 +730,6 @@ impl Run<'_> {
         valid
     }
 
-    /// `required`, `properties` e `additionalProperties`, nesta ordem.
     fn object_rules(
         &mut self,
         node: &SchemaNode,
@@ -811,7 +808,6 @@ impl Run<'_> {
         valid
     }
 
-    /// `allOf`, `anyOf`, `oneOf`, `not` e `$ref`, nesta ordem.
     fn combinator_rules(
         &mut self,
         node: &SchemaNode,

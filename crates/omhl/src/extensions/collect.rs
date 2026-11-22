@@ -80,7 +80,6 @@ fn configured_specs_name(config: &WorkflowConfig) -> Option<String> {
     }
 }
 
-/// O arquivo TOML que declara a extensão `id` ainda está na working tree, válido ou não.
 pub fn extension_file_exists(kind: ExtensionKind, root: &Path, id: &str) -> bool {
     id.strip_prefix(kind.id_prefix()).is_some_and(|slug| {
         let file = Path::new(OMHL_DIR)

@@ -87,7 +87,6 @@ pub const ROLE_REFERENCE_COMMANDS: [(&str, &[&str]); 7] = [
     (VERIFIER, commands!["append", "spec validate"]),
 ];
 
-/// Devolve o papel estático igual ao valor, ou `None` se estiver fora da lista.
 pub(crate) fn known_role(value: &str) -> Option<&'static str> {
     MATRICES
         .iter()
@@ -99,7 +98,6 @@ fn matrix_of(role: &str) -> Option<&'static Matrix> {
     MATRICES.iter().find(|matrix| matrix.role == role)
 }
 
-/// `(papel, nodes, relations, retire)` de um papel.
 type RoleMatrixRow = (
     &'static str,
     &'static [&'static str],
@@ -130,7 +128,6 @@ pub(super) fn matrix_lists(
     matrix_of(role).is_some_and(|matrix| pick(matrix).contains(&name))
 }
 
-/// Tipo de node na matriz do papel e conteúdo dentro das condições finas.
 pub(super) fn node_allowed(role: &str, type_name: &str, data: &Value) -> bool {
     let listed = matrix_lists(role, |matrix| matrix.nodes, type_name);
     let content_ok = match (role, type_name) {
@@ -153,7 +150,6 @@ fn confirmed_by_critic(data: &Value) -> bool {
     is_confirmed_premise(data) && confirmer(data) == Some(CRITIC_CONFIRMATION)
 }
 
-/// Fatos de uma revisão feita por um papel portado.
 pub(super) struct Revision<'a> {
     pub(super) role: &'a str,
     pub(super) type_name: &'a str,

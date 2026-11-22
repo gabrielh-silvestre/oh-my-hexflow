@@ -1,9 +1,7 @@
 use super::cursor::Cursor;
 
-/// O que fazer com a próxima palavra lida, depois de um operador de redirecionamento.
 #[derive(Default)]
 pub(super) enum NextWord {
-    /// Palavra comum do comando.
     #[default]
     Argument,
     /// Alvo do redirecionamento ou palavra do `<<<`: lida e descartada, nunca vira o programa.

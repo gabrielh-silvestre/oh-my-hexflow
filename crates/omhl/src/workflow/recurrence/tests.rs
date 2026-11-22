@@ -20,7 +20,6 @@ fn pure(id: &str, kind: &str, text: &str, work_item: &str) -> Premise {
     }
 }
 
-/// Premissa técnica com o texto `TLS` no work item dado.
 fn tls(id: &str, work_item: &str) -> Premise {
     pure(id, "technical", TLS, work_item)
 }

@@ -14,7 +14,6 @@ use crate::render::sort_by_id;
 const TRUNCATION_MARKER: &str = "<!-- omhl: truncated -->\n";
 const INLINE_STRING_MAX_CHARS: usize = 80;
 const FILE_MAX_BYTES: usize = PROJECTION_FILE_MAX_BYTES as usize;
-/// Node types listed inside a work item file, in section order.
 const SECTIONS: [(&str, &str); 5] = [
     ("premise", "Premises"),
     ("decision", "Decisions"),
@@ -268,7 +267,6 @@ fn escape<'a>(text: &'a str, keep: &[char]) -> Cow<'a, str> {
     Cow::Owned(escaped)
 }
 
-/// Keeps the longest prefix of whole lines that still leaves room for the truncation marker.
 fn truncate_to_limit(mut content: String) -> String {
     if content.len() <= FILE_MAX_BYTES {
         return content;

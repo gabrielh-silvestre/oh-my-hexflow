@@ -158,7 +158,6 @@ fn rule_data(rule: ExpectToml) -> Value {
     Value::Object(data)
 }
 
-/// Um issue por caso: o `variant` só é conferido quando o `concern` é conhecido.
 fn check_concern_pair(
     path: &str,
     concern: Option<&str>,
@@ -199,7 +198,6 @@ fn spec_issue(path: &str, error: &SpecError) -> ExtensionIssue {
     issue(path, error.code, message)
 }
 
-/// `None` quando algum campo de `[when]` foi recusado (o motivo vai para `issues`).
 fn when_data(path: &str, when: WhenToml, issues: &mut Vec<ExtensionIssue>) -> Option<Value> {
     let event = short_field(path, "event", when.event, EVENT_MAX_CHARS).and_then(|event| {
         if RUNNABLE_EVENTS.contains(&event.as_str()) {

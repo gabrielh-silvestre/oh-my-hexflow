@@ -339,7 +339,6 @@ pub fn spec_lock(input: &Value) -> Result<Verdict, AppError> {
     Ok(decide(tool, &spec, &facts))
 }
 
-/// O projeto do arquivo editado; o do `cwd` da sessão só vale quando o arquivo está fora de qualquer projeto.
 fn find_project(file_path: &Path, cwd: &Path) -> Result<Option<Located>, AppError> {
     match find_marker(nearest_existing_dir(file_path))? {
         Some(located) => Ok(Some(located)),

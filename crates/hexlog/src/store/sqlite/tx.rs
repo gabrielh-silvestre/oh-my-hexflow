@@ -191,7 +191,6 @@ pub(super) fn translate(error: &sqlx::Error) -> HexlogError {
     }
 }
 
-/// Linha do banco que os tipos do motor não aceitam.
 fn corrupt() -> HexlogError {
     HexlogError::refused(
         ErrorCode::StoreError,
@@ -452,7 +451,6 @@ impl<'c> Tx<'c> {
         self.fetch_mapped_optional(query, tenant_from)
     }
 
-    /// Cria o tenant se ainda não existe; devolve a linha gravada e se ela nasceu agora.
     pub(super) fn ensure_tenant(
         &mut self,
         tenant: &TenantId,

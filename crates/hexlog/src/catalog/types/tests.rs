@@ -63,7 +63,6 @@ fn refused(result: Result<Catalog, HexlogError>) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Recusa de um schema do tipo `t`, com o ponteiro relativo à raiz do schema.
 fn schema_refusal(schema: Value) -> Vec<(String, String)> {
     let result = Catalog::new(vec![type_def("t", schema)], vec![]);
 
@@ -103,7 +102,6 @@ fn json_text(text: &str) -> Value {
     serde_json::from_str(text).unwrap()
 }
 
-/// `levels` contêineres aninhados: `innermost` e `levels - 1` objetos `{"c": ..}` em volta.
 fn nested_around(levels: usize, innermost: Value) -> Value {
     let mut value = innermost;
     for _ in 1..levels {
@@ -125,7 +123,6 @@ fn string_fields_schema(count: usize) -> Value {
     json!({"type": "object", "properties": properties})
 }
 
-/// Os primeiros `wrong` campos recebem número; os demais, texto.
 fn fields_data(count: usize, wrong: usize) -> Value {
     let fields: Map<String, Value> = (0..count)
         .map(|index| {

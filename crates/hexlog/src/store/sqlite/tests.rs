@@ -248,7 +248,6 @@ impl Ledger {
         .unwrap()
     }
 
-    /// Records encadeados a partir do estado atual, sem avançá-lo.
     fn records(&self, drafts: &[Draft]) -> Vec<NewRecord> {
         let mut prev_hash = self.head.clone();
         let mut records = Vec::new();
@@ -355,7 +354,6 @@ fn start(store: &mut SqliteStore, name: &str) -> Ledger {
     ledger
 }
 
-/// Entrega o plano ao store e devolve o que ele devolveu, sem avançar o `Ledger`.
 fn attempt(
     store: &mut SqliteStore,
     tenant: &TenantId,
@@ -438,7 +436,6 @@ fn stored_seqs(rows: &[StoredRow]) -> Vec<i64> {
     rows.iter().map(|row| row.seq).collect()
 }
 
-/// Cada campo do `StoredRow`, em texto, igual ao do record que o teste mandou gravar.
 fn assert_stored_matches(row: &StoredRow, expected: &NewRecord) {
     let columns = &expected.columns;
     let kind = if is_relation(&columns.lineage_kind) {
