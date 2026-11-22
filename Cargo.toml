@@ -20,3 +20,9 @@ implicit_clone = "deny"
 needless_pass_by_value = "deny"
 needless_pass_by_ref_mut = "deny"
 large_types_passed_by_value = "deny"
+
+[profile.dev.package.regex-automata]
+opt-level = 3
+
+[profile.dev.package.regex]
+opt-level = 3
