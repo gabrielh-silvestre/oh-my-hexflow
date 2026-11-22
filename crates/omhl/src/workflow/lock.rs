@@ -60,6 +60,9 @@ pub enum Cause {
 pub fn unavailable(subject: &str, step: &str, cause: &Cause) -> Verdict {
     let (cause, closing) = match cause {
         Cause::GitTimedOut => (GIT_TIMED_OUT.to_owned(), RETRY_CLOSING),
+        Cause::Git(message) if message.trim().is_empty() => {
+            ("git failed without a message".to_owned(), FIX_CLOSING)
+        }
         Cause::Git(message) => (one_line(message), FIX_CLOSING),
         Cause::Read(reason) => ((*reason).to_owned(), FIX_CLOSING),
     };

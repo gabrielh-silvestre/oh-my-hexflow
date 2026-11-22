@@ -653,7 +653,7 @@ fn it_should_open_nothing_for_a_path_under_the_specs_dir_without_a_work_item_seg
 }
 
 #[test]
-fn it_should_release_with_an_error_line_when_a_spec_path_needs_git_that_fails() {
+fn it_should_deny_with_spec_lock_unavailable_when_a_spec_path_needs_git_that_fails() {
     let project = Project::new("acme");
     let spec = project
         .dir()
@@ -663,7 +663,7 @@ fn it_should_release_with_an_error_line_when_a_spec_path_needs_git_that_fails() 
 
     let (output, git_called) = run_with_nothing_openable(&project, &spec);
 
-    assert_released_with_error(&output);
+    unavailable_reason(&output);
     assert!(git_called, "git was not consulted for a spec path");
 }
 
@@ -1156,10 +1156,10 @@ fn it_should_allow_a_non_edit_tool_event_without_cwd() {
     assert_allowed(&output);
 }
 
-// Erro interno libera
+// Erro interno antes do reconhecimento libera; depois dele, nega
 
 #[test]
-fn it_should_release_with_an_error_line_when_the_repository_is_broken() {
+fn it_should_deny_with_spec_lock_unavailable_when_the_repository_is_broken() {
     let project = Project::new("acme");
     fs::write(project.dir().join(".git"), "gitdir: /nonexistent/gitdir\n")
         .expect("broken .git file is written");
@@ -1171,11 +1171,11 @@ fn it_should_release_with_an_error_line_when_the_repository_is_broken() {
 
     let output = run_spec_lock(project.xdg(), &payload(project.dir(), "Edit", &spec));
 
-    assert_released_with_error(&output);
+    unavailable_reason(&output);
 }
 
 #[test]
-fn it_should_release_with_an_error_line_when_the_project_is_not_a_git_repository() {
+fn it_should_deny_with_spec_lock_unavailable_when_the_project_is_not_a_git_repository() {
     let project = Project::new("acme");
     let spec = project
         .dir()
@@ -1185,7 +1185,7 @@ fn it_should_release_with_an_error_line_when_the_project_is_not_a_git_repository
 
     let output = run_spec_lock(project.xdg(), &payload(project.dir(), "Edit", &spec));
 
-    assert_released_with_error(&output);
+    unavailable_reason(&output);
 }
 
 // Saída
@@ -1446,4 +1446,408 @@ fn it_should_allow_a_family_named_file_in_a_subfolder_of_a_frozen_spec() {
     for output in &outputs {
         assert_allowed(output);
     }
+}
+
+// Falha depois do reconhecimento da spec: nega com `spec-lock-unavailable`
+
+const FIX_CLOSING: &str = "the edit stays denied until this is fixed";
+const RETRY_CLOSING: &str = "the edit stays denied; retry it";
+const SPEC_BODY: &str = "SPEC-BODY-MUST-NOT-LEAK";
+
+/// A razão de uma negação `spec-lock-unavailable`: uma linha só, com o prefixo e o work item.
+fn unavailable_reason(output: &Child) -> String {
+    let reason = denied_reason(output);
+    assert!(
+        reason.starts_with("spec-lock-unavailable: "),
+        "reason: {reason}"
+    );
+    assert!(reason.contains("wi-w1"), "reason: {reason}");
+    assert!(!reason.contains('\n'), "reason: {reason}");
+
+    reason
+}
+
+/// Repositório com a spec do work item e o `.git/config` quebrado direto no disco, depois de criar a branch.
+fn repo_with_broken_git_config(with_branch: bool, config: &str) -> Repo {
+    let repo = Repo::new();
+    if with_branch {
+        repo.branch(BRANCH);
+    }
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    fs::write(repo.main.join(".git/config"), config).expect("git config is broken");
+
+    repo
+}
+
+fn executable_in(dir: &Path, name: &str, script: &str) {
+    let path = dir.join(name);
+    fs::write(&path, script).expect("script is written");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("script is executable");
+}
+
+fn run_with_path(repo: &Repo, path: &std::ffi::OsStr, file_path: &Path) -> Child {
+    let elsewhere = TempDir::new().expect("other directory is created");
+
+    omhl(&["hook", "spec-lock"])
+        .cwd(elsewhere.path())
+        .xdg(repo.project.xdg())
+        .env("PATH", path)
+        .stdin(payload(&repo.main, "Write", file_path))
+        .run()
+}
+
+#[test]
+fn it_should_deny_each_editing_tool_with_spec_lock_unavailable_when_the_git_config_is_broken() {
+    let repo = repo_with_broken_git_config(true, "[core\n");
+
+    for tool in ["Write", "Edit", "MultiEdit"] {
+        let output = repo.hook_in_main(tool, &repo.spec_file("parte-01.md"));
+
+        let reason = unavailable_reason(&output);
+        assert!(reason.contains("bad config line"), "{tool}: {reason}");
+    }
+}
+
+#[test]
+fn it_should_deny_with_spec_lock_unavailable_whether_or_not_the_work_item_has_a_branch() {
+    for with_branch in [true, false] {
+        let repo = repo_with_broken_git_config(with_branch, "[core\n");
+
+        let output = repo.hook_in_main("Write", &repo.spec_file("parte-01.md"));
+
+        let reason = unavailable_reason(&output);
+        assert!(
+            reason.contains("bad config line"),
+            "branch {with_branch}: {reason}"
+        );
+    }
+}
+
+#[test]
+fn it_should_close_a_git_failure_denial_with_until_this_is_fixed() {
+    let repo = repo_with_broken_git_config(true, "[core\n");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("parte-01.md"));
+
+    assert!(unavailable_reason(&output).ends_with(FIX_CLOSING));
+}
+
+#[test]
+fn it_should_deny_with_spec_lock_unavailable_when_git_is_missing_from_the_path() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let empty = TempDir::new().expect("empty path directory is created");
+
+    let output = run_with_path(
+        &repo,
+        empty.path().as_os_str(),
+        &repo.spec_file("parte-01.md"),
+    );
+
+    unavailable_reason(&output);
+}
+
+#[test]
+fn it_should_deny_with_spec_lock_unavailable_when_the_spec_folder_has_too_many_entries() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    for number in 0..10_001 {
+        fs::write(repo.folder(DEFAULT_SPECS).join(format!("f{number}.md")), "")
+            .expect("entry is written");
+    }
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("parte-01.md"));
+
+    let reason = unavailable_reason(&output);
+    assert!(reason.contains("too many entries"), "reason: {reason}");
+    assert!(reason.ends_with(FIX_CLOSING), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_with_spec_lock_unavailable_when_the_spec_folder_is_a_regular_file() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    fs::create_dir_all(repo.main.join(DEFAULT_SPECS)).expect("specs dir is created");
+    fs::write(repo.folder(DEFAULT_SPECS), "not a folder").expect("file replaces the folder");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("parte-01.md"));
+
+    // O caminho físico não se resolve (a pasta é arquivo): o aviso sai ao lado da negação.
+    let value = json_line(&output.stdout);
+    let reason = value["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("the reason is a string");
+    assert!(
+        reason.starts_with("spec-lock-unavailable: "),
+        "reason: {reason}"
+    );
+    assert!(reason.contains("cannot be read"), "reason: {reason}");
+    assert_eq!(
+        json_line(&output.stderr)["error"]["code"],
+        json!("path-unresolvable")
+    );
+}
+
+#[test]
+fn it_should_deny_with_spec_lock_unavailable_and_retry_it_when_git_hangs_past_the_budget() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    let fake_bin = TempDir::new().expect("fake git directory is created");
+    executable_in(fake_bin.path(), "git", "#!/bin/sh\nexec sleep 30\n");
+    let path = format!(
+        "{}:{}",
+        fake_bin.path().display(),
+        std::env::var("PATH").expect("PATH is set")
+    );
+    let started = std::time::Instant::now();
+
+    let output = run_with_path(&repo, path.as_ref(), &repo.spec_file("parte-01.md"));
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(8),
+        "the hook took {:?}",
+        started.elapsed()
+    );
+    let reason = unavailable_reason(&output);
+    assert!(reason.contains("git timed out"), "reason: {reason}");
+    assert!(reason.ends_with(RETRY_CLOSING), "reason: {reason}");
+}
+
+#[test]
+fn it_should_keep_a_git_message_with_a_line_break_on_one_line() {
+    let repo = repo_with_broken_git_config(true, "[core]\n\trepositoryformatversion = \"x\\ny\"\n");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("parte-01.md"));
+
+    let reason = unavailable_reason(&output);
+    assert!(
+        reason.contains("bad numeric config value"),
+        "reason: {reason}"
+    );
+}
+
+#[test]
+fn it_should_not_put_the_text_of_a_spec_file_in_the_unavailable_reason() {
+    let repo = repo_with_broken_git_config(true, "[core\n");
+    fs::write(repo.spec_file("parte-01.md"), SPEC_BODY).expect("spec body is written");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("parte-01.md"));
+
+    assert!(!unavailable_reason(&output).contains(SPEC_BODY));
+}
+
+#[test]
+fn it_should_deny_when_only_the_physical_path_fails_and_print_no_path_unresolvable() {
+    let repo = Repo::new();
+    let other = Project::new("other");
+    let other_specs = other.dir().join(DEFAULT_SPECS);
+    fs::create_dir_all(other_specs.join(FOLDER)).expect("other specs folder is created");
+    fs::write(other_specs.join(FOLDER).join("parte-01.md"), "seed\n").expect("spec is written");
+    assert!(
+        git_in(other.dir(), &["init", "-b", "main"])
+            .status
+            .success()
+    );
+    fs::write(other.dir().join(".git/config"), "[core\n").expect("other git config is broken");
+    fs::create_dir_all(repo.main.join(".omhl")).expect(".omhl is created");
+    link(&other_specs, &repo.main.join(DEFAULT_SPECS));
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("parte-01.md"));
+
+    unavailable_reason(&output);
+}
+
+// Arquivos de marcador na pasta congelada e marcador plantado no caminho de subida
+
+const GARBAGE_MARKER: &str = "tenant = acme\n";
+const VALID_MARKER: &str = "version = 1\ntenant = \"acme\"\n";
+
+/// Spec congelada pela branch, com a marca `.frozen` já gravada: o hook só cura marcas que faltam.
+fn frozen_repo() -> Repo {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    fs::write(repo.spec_file(MARK), "").expect("freeze mark is written");
+
+    repo
+}
+
+fn write_file(path: &Path, content: &str) {
+    fs::create_dir_all(path.parent().expect("the file has a parent")).expect("parent is created");
+    fs::write(path, content).expect("file is written");
+}
+
+/// Caminho e conteúdo de cada arquivo regular fora do `.git`; o que não é arquivo regular fica sem conteúdo.
+fn tree_snapshot(dir: &Path) -> Vec<(PathBuf, Option<Vec<u8>>)> {
+    let mut entries = Vec::new();
+    collect_tree(dir, &mut entries);
+    entries.sort();
+
+    entries
+}
+
+fn collect_tree(dir: &Path, entries: &mut Vec<(PathBuf, Option<Vec<u8>>)>) {
+    for entry in fs::read_dir(dir).expect("directory is listed") {
+        let path = entry.expect("entry is read").path();
+        if path.file_name().is_some_and(|name| name == ".git") {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(&path).expect("metadata is read");
+        if metadata.is_dir() {
+            collect_tree(&path, entries);
+        }
+        let content = metadata
+            .is_file()
+            .then(|| fs::read(&path).expect("file is read"));
+        entries.push((path, content));
+    }
+}
+
+#[test]
+fn it_should_deny_marker_files_written_in_a_frozen_spec_folder_with_their_own_reason() {
+    let repo = frozen_repo();
+
+    for name in [".omhl.toml", ".omhl/workflow.toml", "sub/.omhl.toml"] {
+        let output = repo.hook_in_main("Write", &repo.spec_file(name));
+
+        let reason = denied_reason(&output);
+        assert!(reason.contains(FROZEN), "{name}: {reason}");
+        assert!(reason.contains("project marker files"), "{name}: {reason}");
+    }
+}
+
+#[test]
+fn it_should_deny_the_edit_of_a_valid_marker_that_already_sits_in_a_frozen_spec_folder() {
+    let repo = frozen_repo();
+    write_file(&repo.spec_file(".omhl.toml"), VALID_MARKER);
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file(".omhl.toml"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains("project marker files"), "reason: {reason}");
+}
+
+#[test]
+fn it_should_keep_denying_the_part_after_denying_a_marker_file() {
+    let repo = frozen_repo();
+    denied_reason(&repo.hook_in_main("Write", &repo.spec_file(".omhl.toml")));
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+    assert!(!reason.contains("project marker files"), "reason: {reason}");
+}
+
+#[test]
+fn it_should_allow_a_marker_file_in_the_folder_of_a_work_item_without_branch_or_mark() {
+    let repo = Repo::new();
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file(".omhl.toml"));
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_deny_a_frozen_spec_when_garbage_sits_in_a_marker_planted_in_the_specs_dir() {
+    let repo = frozen_repo();
+    write_file(
+        &repo.main.join(DEFAULT_SPECS).join(".omhl.toml"),
+        GARBAGE_MARKER,
+    );
+    let before = tree_snapshot(&repo.main);
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+    assert_eq!(tree_snapshot(&repo.main), before);
+}
+
+#[test]
+fn it_should_deny_a_frozen_spec_when_garbage_sits_in_a_marker_planted_in_the_work_item_folder() {
+    let repo = frozen_repo();
+    write_file(&repo.spec_file(".omhl.toml"), GARBAGE_MARKER);
+    let before = tree_snapshot(&repo.main);
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+    assert_eq!(tree_snapshot(&repo.main), before);
+}
+
+#[test]
+fn it_should_deny_a_frozen_spec_when_the_planted_marker_is_a_symlink() {
+    let repo = frozen_repo();
+    link(
+        &repo.main.join(".omhl.toml"),
+        &repo.main.join(DEFAULT_SPECS).join(".omhl.toml"),
+    );
+    let before = tree_snapshot(&repo.main);
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+    assert_eq!(tree_snapshot(&repo.main), before);
+}
+
+#[test]
+fn it_should_deny_a_frozen_spec_when_the_planted_marker_is_a_fifo() {
+    let repo = frozen_repo();
+    let fifo = repo.spec_file(".omhl.toml");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("mkfifo runs");
+    assert!(made.success(), "mkfifo failed");
+    let before = tree_snapshot(&repo.main);
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+    assert_eq!(tree_snapshot(&repo.main), before);
+}
+
+#[test]
+fn it_should_judge_a_nested_project_with_a_broken_marker_by_the_project_above() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    write_file(&repo.main.join("sub/.omhl.toml"), GARBAGE_MARKER);
+    let nested_spec = repo
+        .main
+        .join("sub")
+        .join(DEFAULT_SPECS)
+        .join(FOLDER)
+        .join("parte-01.md");
+
+    let output = repo.hook_in_main("Edit", &nested_spec);
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains("spec-folder-unknown"), "reason: {reason}");
+}
+
+#[test]
+fn it_should_release_with_the_marker_error_when_no_valid_marker_exists_above_the_spec() {
+    let project = Project::new("acme");
+    write_file(&project.dir().join(".omhl.toml"), GARBAGE_MARKER);
+    let spec = project
+        .dir()
+        .join(DEFAULT_SPECS)
+        .join(FOLDER)
+        .join("parte-01.md");
+
+    let output = run_spec_lock(project.xdg(), &payload(project.dir(), "Edit", &spec));
+
+    assert_released_with_error(&output);
+    assert_eq!(
+        json_line(&output.stderr)["error"]["code"],
+        json!("invalid-marker")
+    );
 }

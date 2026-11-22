@@ -719,4 +719,15 @@ mod lock {
 
         assert_eq!(denial(verdict).1.matches('Q').count(), 200);
     }
+
+    #[test]
+    fn it_should_say_so_when_git_fails_without_a_message() {
+        let verdict = unavailable(
+            SUBJECT,
+            "checking the main directory",
+            &Cause::Git(String::new()),
+        );
+
+        assert!(denial(verdict).1.contains("git failed without a message"));
+    }
 }
