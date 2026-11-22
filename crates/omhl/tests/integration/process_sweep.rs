@@ -242,6 +242,31 @@ fn it_should_sweep_the_stray_of_the_project_whose_root_is_given() {
 }
 
 #[test]
+fn it_should_not_sweep_the_stray_of_another_project_root() {
+    let _serial = serialize_sweeps();
+    let project_a = TempDir::new().expect("project A directory is created");
+    let project_b = TempDir::new().expect("project B directory is created");
+    let n = stray_of_a_gone_runner(project_a.path(), "detached");
+
+    let report_of_b = sweep_report(sweep_project_strays(project_b.path()));
+
+    let swept_by_b: Vec<u32> = report_of_b
+        .swept
+        .iter()
+        .map(|process| process.pid)
+        .collect();
+    assert!(
+        !swept_by_b.contains(&n),
+        "the sweep of B took the stray {n} of A: {swept_by_b:?}"
+    );
+    assert!(!is_dead(n), "the stray of A died in the sweep of B");
+    let called = Instant::now();
+    let result_of_a = sweep_project_strays(project_a.path());
+    assert!(result_of_a.is_ok(), "the sweep of A fails");
+    assert_dead_since(&[n], called, DEATH);
+}
+
+#[test]
 fn it_should_not_sweep_the_detached_descendant_of_a_live_runner() {
     let _serial = serialize_sweeps();
     let dir = TempDir::new().expect("work directory is created");
