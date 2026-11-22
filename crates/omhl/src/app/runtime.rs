@@ -51,9 +51,11 @@ impl Runtime {
         }
         prepare_db_file(&db_path)?;
 
+        let byproducts = BlobStore::new(&db_path, &located.marker.tenant);
+
         Ok(Runtime {
             tenant: located.marker.tenant,
-            byproducts: BlobStore::new(db_path.parent().unwrap_or(Path::new(""))),
+            byproducts,
             db_path,
             clock: SystemClock,
             ids: V7Ids,

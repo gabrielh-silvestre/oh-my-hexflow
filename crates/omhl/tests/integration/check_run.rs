@@ -62,7 +62,7 @@ struct Fixture {
 impl Fixture {
     fn new() -> Fixture {
         let raw = RawHarness::new();
-        let blobs = BlobStore::new(raw.dir.path());
+        let blobs = BlobStore::new(&raw.db_path(), &acme());
         let fixture = Fixture {
             raw,
             root: TempDir::new().expect("the project root is created"),

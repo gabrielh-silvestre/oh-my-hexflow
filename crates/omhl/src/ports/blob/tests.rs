@@ -1,5 +1,6 @@
 use crate::byproduct::{ByproductErrorKind, ByproductHash, ByproductStore};
 use crate::ports::blob::BlobStore;
+use hexlog::TenantId;
 use std::fs;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -13,13 +14,22 @@ const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495
 
 fn store() -> (tempfile::TempDir, BlobStore) {
     let dir = tempfile::tempdir().unwrap();
-    let store = BlobStore::new(dir.path());
+    let store = BlobStore::new(&dir.path().join("omhl.db"), &tenant());
 
     (dir, store)
 }
 
+fn tenant() -> TenantId {
+    TenantId::parse("acme").unwrap()
+}
+
+/// Pasta do (banco, tenant) do `store()`.
+fn tenant_root(db: &Path) -> PathBuf {
+    db.join("blobs/by-db/omhl.db/acme")
+}
+
 fn blob_path(db: &Path, hash: &str) -> PathBuf {
-    db.join("blobs").join(&hash[..2]).join(hash)
+    tenant_root(db).join(&hash[..2]).join(hash)
 }
 
 fn entries(dir: &Path) -> Vec<String> {
@@ -73,7 +83,7 @@ fn it_should_be_idempotent_when_the_same_bytes_are_stored_twice() {
     assert_eq!(first.as_str(), ABC_SHA256);
     assert_eq!(second.as_str(), ABC_SHA256);
     assert_eq!(fs::metadata(&path).unwrap().ino(), inode_before);
-    assert_eq!(entries(&dir.path().join("blobs/ba")), [ABC_SHA256]);
+    assert_eq!(entries(&tenant_root(dir.path()).join("ba")), [ABC_SHA256]);
     assert_eq!(fs::read(&path).unwrap(), b"abc");
 }
 
@@ -84,7 +94,9 @@ fn it_should_create_the_store_with_private_permissions() {
     store.put(b"abc").unwrap();
 
     assert_eq!(mode(&dir.path().join("blobs")), 0o700);
-    assert_eq!(mode(&dir.path().join("blobs/ba")), 0o700);
+    assert_eq!(mode(&dir.path().join("blobs/by-db")), 0o700);
+    assert_eq!(mode(&tenant_root(dir.path())), 0o700);
+    assert_eq!(mode(&tenant_root(dir.path()).join("ba")), 0o700);
     assert_eq!(mode(&blob_path(dir.path(), ABC_SHA256)), 0o600);
 }
 
@@ -108,8 +120,9 @@ fn it_should_not_leave_a_temporary_file_after_a_successful_put() {
 
     store.put(b"abc").unwrap();
 
-    assert_eq!(entries(&dir.path().join("blobs")), ["ba"]);
-    assert_eq!(entries(&dir.path().join("blobs/ba")), [ABC_SHA256]);
+    assert_eq!(entries(&dir.path().join("blobs")), ["by-db"]);
+    assert_eq!(entries(&tenant_root(dir.path())), ["ba"]);
+    assert_eq!(entries(&tenant_root(dir.path()).join("ba")), [ABC_SHA256]);
 }
 
 #[test]
@@ -124,7 +137,7 @@ fn it_should_store_two_different_blobs_under_different_paths() {
         fs::read(blob_path(dir.path(), TWO_BLOCK_SHA256)).unwrap(),
         TWO_BLOCK
     );
-    assert_eq!(entries(&dir.path().join("blobs")), ["24", "ba"]);
+    assert_eq!(entries(&tenant_root(dir.path())), ["24", "ba"]);
 }
 
 #[test]
@@ -156,7 +169,7 @@ fn it_should_rewrite_an_existing_blob_whose_bytes_do_not_match_its_hash() {
 #[test]
 fn it_should_store_a_blob_when_a_stale_temporary_file_of_an_earlier_run_exists() {
     let (dir, store) = store();
-    let prefix_dir = dir.path().join("blobs/ba");
+    let prefix_dir = tenant_root(dir.path()).join("ba");
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)

@@ -57,7 +57,7 @@ struct Fixture {
 impl Fixture {
     fn new() -> Fixture {
         let raw = RawHarness::new();
-        let blobs = BlobStore::new(raw.dir.path());
+        let blobs = BlobStore::new(&raw.db_path(), &acme());
         let fixture = Fixture { raw, blobs };
         fixture.seed(
             author(),
@@ -457,7 +457,7 @@ fn it_should_rewrite_a_truncated_blob_when_the_check_runs_again() {
         .raw
         .dir
         .path()
-        .join("blobs")
+        .join("blobs/by-db/hexlog.db/acme")
         .join(&B1_HASH[..2])
         .join(B1_HASH);
     std::fs::write(&path, b"").expect("the blob is truncated");
@@ -509,7 +509,7 @@ fn it_should_store_the_byproduct_before_appending_the_attestation() {
     let store = CountingStore {
         config: fx.raw.config(),
         counts,
-        inner: BlobStore::new(fx.raw.dir.path()),
+        inner: BlobStore::new(&fx.raw.db_path(), &acme()),
     };
     let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(b"ok\n", b""))]);
     let probe = probe();

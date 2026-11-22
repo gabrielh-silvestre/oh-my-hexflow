@@ -93,7 +93,7 @@ impl Fixture {
         .into_bytes();
         bytes.extend_from_slice(stdout.as_bytes());
         bytes.extend_from_slice(stderr.as_bytes());
-        let store = BlobStore::new(&self.project.xdg().join("omhl"));
+        let store = BlobStore::new(&self.project.db_path(), &acme());
 
         let hash = store.put(&bytes).expect("the blob is stored");
 
@@ -104,9 +104,25 @@ impl Fixture {
     fn blob_file(&self, sha: &str) -> PathBuf {
         self.project
             .xdg()
+            .join("omhl/blobs/by-db/omhl.db/acme")
+            .join(&sha[..2])
+            .join(sha)
+    }
+
+    fn legacy_blob_file(&self, sha: &str) -> PathBuf {
+        self.project
+            .xdg()
             .join("omhl/blobs")
             .join(&sha[..2])
             .join(sha)
+    }
+
+    /// Deixa o blob só no layout antigo `blobs/<xx>/<hash>`.
+    fn move_to_legacy(&self, sha: &str) {
+        let legacy = self.legacy_blob_file(sha);
+        fs::create_dir_all(legacy.parent().expect("the blob has a folder"))
+            .expect("the legacy folder is created");
+        fs::rename(self.blob_file(sha), legacy).expect("the blob is moved");
     }
 
     /// Grava a attestation de `checks.lint` em `snap(fill)` e devolve o id dela.
@@ -326,6 +342,57 @@ fn it_should_leave_the_blob_file_unredacted_on_disk() {
     fixture.omhl(&["byproduct", CHECK, W1]);
 
     let on_disk = fs::read_to_string(fixture.blob_file(BSECRET_SHA)).expect("the blob is stored");
+
+    assert!(on_disk.contains("MIIEabc"));
+}
+
+#[test]
+fn it_should_mask_secrets_of_a_legacy_layout_blob() {
+    let fixture = Fixture::new();
+    let blob = put_bsecret(&fixture);
+    fixture.move_to_legacy(&blob);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1]);
+
+    let result = success(&output);
+    assert_eq!(
+        lines_of(&result),
+        [
+            "build ok",
+            "[REDACTED:private-key]",
+            "done",
+            "API_TOKEN=[REDACTED]"
+        ]
+    );
+    assert_eq!(result["byproduct"], json!(BSECRET_SHA));
+}
+
+#[test]
+fn it_should_count_the_tail_window_over_the_masked_lines_of_a_legacy_layout_blob() {
+    let fixture = Fixture::new();
+    let blob = put_bsecret(&fixture);
+    fixture.move_to_legacy(&blob);
+    fixture.attest('a', W1, "failed", &blob);
+
+    let output = fixture.omhl(&["byproduct", CHECK, W1, "--tail", "3"]);
+
+    assert_eq!(
+        lines_of(&success(&output)),
+        ["[REDACTED:private-key]", "done", "API_TOKEN=[REDACTED]"]
+    );
+}
+
+#[test]
+fn it_should_leave_a_legacy_layout_blob_unredacted_on_disk() {
+    let fixture = Fixture::new();
+    let blob = put_bsecret(&fixture);
+    fixture.move_to_legacy(&blob);
+    fixture.attest('a', W1, "failed", &blob);
+    fixture.omhl(&["byproduct", CHECK, W1]);
+
+    let on_disk =
+        fs::read_to_string(fixture.legacy_blob_file(BSECRET_SHA)).expect("the blob is stored");
 
     assert!(on_disk.contains("MIIEabc"));
 }

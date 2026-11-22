@@ -4,6 +4,7 @@ use std::io::{self, Read, Write as _};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
+use hexlog::TenantId;
 use sha2::{Digest, Sha256};
 
 use crate::byproduct::{ByproductError, ByproductErrorKind, ByproductHash, ByproductStore};
@@ -12,26 +13,34 @@ use crate::ports::files::{OpenError, open_without_following_or_blocking};
 const TEMP_ATTEMPTS: u32 = 16;
 
 pub struct BlobStore {
+    /// `blobs/by-db/<arquivo do banco>/<tenant>`: onde `put` grava e onde a poda varre.
     root: PathBuf,
+    /// `blobs/`: o layout antigo, só lido (`get`) e nunca podado.
+    legacy_root: PathBuf,
 }
 
 impl BlobStore {
-    pub fn new(db_dir: &Path) -> BlobStore {
-        BlobStore {
-            root: db_dir.join("blobs"),
-        }
-    }
+    /// O nome do arquivo do banco separa dois bancos na mesma pasta; `prepare_db_file` já recusa o caminho sem nome de arquivo.
+    pub fn new(db_path: &Path, tenant: &TenantId) -> BlobStore {
+        let legacy_root = db_path.parent().unwrap_or(Path::new("")).join("blobs");
+        let root = legacy_root
+            .join("by-db")
+            .join(db_path.file_name().unwrap_or_default())
+            .join(tenant.as_str());
 
-    fn blob_dir(&self, hash: &ByproductHash) -> PathBuf {
-        self.root.join(&hash.as_str()[..2])
+        BlobStore { root, legacy_root }
     }
+}
+
+fn blob_dir(root: &Path, hash: &ByproductHash) -> PathBuf {
+    root.join(&hash.as_str()[..2])
 }
 
 impl ByproductStore for BlobStore {
     fn put(&self, bytes: &[u8]) -> Result<ByproductHash, ByproductError> {
         let hash = sha256_hash(bytes)?;
-        let dir = self.blob_dir(&hash);
-        // Modo 0700 em `blobs/` e `blobs/<xx>`: a saída pode ter segredos (R8).
+        let dir = blob_dir(&self.root, &hash);
+        // Modo 0700 em `blobs/`, `blobs/by-db/<banco>/<tenant>` e `<xx>`: a saída pode ter segredos (R8).
         DirBuilder::new()
             .recursive(true)
             .mode(0o700)
@@ -72,7 +81,14 @@ impl ByproductStore for BlobStore {
     }
 
     fn get(&self, hash: &ByproductHash) -> Result<Option<Vec<u8>>, ByproductError> {
-        let bytes = match read_stored(&self.blob_dir(hash).join(hash.as_str())) {
+        let stored = match read_stored(&blob_dir(&self.root, hash).join(hash.as_str())) {
+            // Ausente na pasta nova cai no layout antigo; presente e corrompido não cai.
+            Ok(Stored::Missing) => {
+                read_stored(&blob_dir(&self.legacy_root, hash).join(hash.as_str()))
+            }
+            other => other,
+        };
+        let bytes = match stored {
             Ok(Stored::Bytes(bytes)) => bytes,
             Ok(Stored::Missing) => return Ok(None),
             Ok(Stored::NotRegular) => {
