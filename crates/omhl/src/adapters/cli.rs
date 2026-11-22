@@ -216,11 +216,11 @@ pub enum ReportCommand {
 }
 
 #[derive(Debug, Subcommand)]
-// O grupo tem dois contratos. Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o evento no stdin, nunca saem com 2 e, em erro interno, liberam (exceção: o `spec-lock` que falha ao listar `specs.dir` ou ao ler a marca congela). O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai 1 em pasta de spec que é link simbólico.
+// O grupo tem dois contratos. Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o evento no stdin e nunca saem com 2; em erro interno `session-start` e `agent-role` liberam, e o `spec-lock` libera só antes de reconhecer a spec (depois dela, falha de git ou de leitura nega com `spec-lock-unavailable`, e o `|| exit 2` do `hooks.json` bloqueia com o `omhl` ausente ou falho). O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai 1 em pasta de spec que é link simbólico.
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,
-    /// Deny edits to the spec of a work item that already has a branch; reads the PreToolUse event on stdin.
+    /// Deny edits to the spec of a work item that already has a branch, and deny them when git or the spec folder cannot be read; reads the PreToolUse event on stdin.
     SpecLock,
     /// Impose the role matrix on the Bash and Monitor tools of plugin agents and deny a plugin agent call that carries `name`; reads the PreToolUse event on stdin.
     AgentRole,

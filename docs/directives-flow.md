@@ -129,7 +129,8 @@ A correção entra como emenda (seção 9).
 
 | Código | O que fazer |
 |---|---|
-| `spec-frozen` | Registre uma `divergence` e crie a emenda (seção 9) |
+| `spec-frozen` | Registre uma `divergence` e crie a emenda (seção 9). Em `.omhl.toml` ou `.omhl/` dentro da pasta congelada, o arquivo de marcador não se cria nem se edita ali |
+| `spec-lock-unavailable` | O hook não conseguiu ler o git ou a pasta de spec depois de reconhecer a spec: corrija a causa que a mensagem diz; com `git timed out`, tente de novo |
 | `spec-in-linked-worktree` | Escreva no caminho do diretório principal que a mensagem informa |
 | `spec-folder-unknown` | Escreva a emenda na pasta de spec que o work item já tem |
 
@@ -245,6 +246,9 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - A spec vive no diretório principal, fora do git. Ela não vai com um clone e some com o diretório.
 - Uma branch `wi-` criada fora do `wt` (`git branch`, `git switch -c`, `wt switch --no-hooks`) não dispara o `post-start`. Se for apagada sem nenhum evento de spec no meio, também não deixa marca: é o residual do congelamento.
 - O hook decide no instante da checagem. Se o alvo de um link simbólico mudar depois dela e antes da escrita (TOCTOU), o hook não detecta a troca.
+- Depois de reconhecer a spec (marcador válido achado e `specs.dir` casando), uma falha de git ou de leitura (binário `git` ausente, `.git/config` com erro, pasta de spec ilegível ou com mais de 10 000 entradas) nega com `spec-lock-unavailable` em vez de liberar. As chamadas de git de uma execução dividem um orçamento de 6 segundos, menor que o `timeout` de 10 segundos do `hooks.json`; estourado, a razão diz `git timed out` e pede para tentar de novo. Antes do reconhecimento nada muda: sem marcador, sem pasta `wi-<id>__<slug>`, outra ferramenta ou stdin que não é JSON seguem liberando.
+- O marcador inválido (conteúdo inválido, link, FIFO ou arquivo ilegível) é pulado, e a subida continua até o primeiro marcador válido; um marcador válido sob `.omhl/` também é pulado, porque não é raiz de projeto. Só libera, com a linha de erro do primeiro marcador pulado no stderr, quando nenhum marcador válido existe acima, inclusive o quebrado pelo dono fora do Claude Code (terminal, editor, `git checkout`). Um subprojeto aninhado com o marcador quebrado é julgado pelo projeto de cima. O hook não apaga nem corrige marcador; a limpeza dos já plantados é uma faxina manual única.
+- O comando do `spec-lock` no `hooks.json` termina em `|| exit 2`: o `omhl` ausente do `PATH`, o pânico e a saída `1` bloqueiam a edição de spec (a negação normal segue saindo por JSON com saída `0`). O que resta é o hook encerrado pelo prazo do Claude Code, que ainda libera (só a saída `2` bloqueia), e o `agent-role`, que segue com `|| exit 1`.
 - O `spec-lock` acha o checkout pela raiz do `.omhl.toml`, não pela pasta do arquivo. Numa worktree ligada aninhada dentro do diretório principal e sem `.omhl.toml` próprio (branch anterior ao marcador), o marcador achado é o do principal, `linked_worktree` sai falso e o `spec-in-linked-worktree` não dispara. O fluxo do `wt` cria worktrees irmãs, então isso não acontece nele.
 
 ## 11. Diretivas: `kind`, âncora e retirada

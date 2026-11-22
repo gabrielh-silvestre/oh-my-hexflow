@@ -41,7 +41,7 @@ pub fn session_start(
     }
 }
 
-/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr (exceção: a falha ao listar `specs.dir` ou ao ler a marca congela).
+/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON, e um erro interno antes de reconhecer a spec libera a escrita, com a linha de erro no stderr; depois do reconhecimento, a falha de git ou de leitura nega com `spec-lock-unavailable` (e o `|| exit 2` do `hooks.json` bloqueia com o `omhl` ausente ou falho).
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
     let mut notices = Vec::new();
     let code = pre_tool_use(stdin, out, err, |input| {
