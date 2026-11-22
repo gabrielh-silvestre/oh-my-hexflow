@@ -78,13 +78,50 @@ fn tool_call(command: &str, agent_type: Option<&str>) -> Value {
     event
 }
 
-fn verdict_of(command: &str, agent_type: Option<&str>) -> RoleVerdict {
+fn verdict_of_event(event: &Value) -> RoleVerdict {
     let env = AgentRoleEnv {
         plugin_root: Some(plugin_root()),
         groups: &GROUPS,
     };
 
-    agent_role(&tool_call(command, agent_type), &env)
+    agent_role(event, &env)
+}
+
+fn verdict_of(command: &str, agent_type: Option<&str>) -> RoleVerdict {
+    verdict_of_event(&tool_call(command, agent_type))
+}
+
+fn tool_event(tool_name: &str, tool_input: Value, agent_type: Option<&str>) -> Value {
+    let mut event = json!({ "tool_name": tool_name });
+    event["tool_input"] = tool_input;
+    if let Some(agent_type) = agent_type {
+        event["agent_type"] = json!(agent_type);
+    }
+
+    event
+}
+
+fn agent_verdict_of(tool_input: Value) -> RoleVerdict {
+    verdict_of_event(&tool_event("Agent", tool_input, None))
+}
+
+fn named_plugin_agent_input() -> Value {
+    json!({ "subagent_type": "oh-my-hexflow:analyst", "name": "x" })
+}
+
+fn assert_agent_named_denial(verdict: RoleVerdict, context: &str) {
+    let RoleVerdict::Deny { code, reason } = verdict else {
+        panic!("{context}: expected a deny with code agent-named");
+    };
+    assert_eq!(code, "agent-named", "{context}");
+    assert!(
+        reason.starts_with("agent-named: "),
+        "{context}: the reason starts with `agent-named: `: {reason}"
+    );
+    assert!(
+        reason.contains("`name`"),
+        "{context}: the reason names the field: {reason}"
+    );
 }
 
 fn ported_verdict_of(command: &str) -> RoleVerdict {
@@ -454,4 +491,171 @@ fn it_should_deny_every_command_of_the_differential_corpus_except_the_approved()
         "wrong verdicts:\n{}",
         wrongly_decided.join("\n")
     );
+}
+
+// Chamada à tool Agent: com `name` o Claude Code não pré-carrega o `skills:` do agente do plugin
+
+#[test]
+fn it_should_deny_an_agent_call_with_name_to_a_plugin_agent() {
+    let verdict = agent_verdict_of(named_plugin_agent_input());
+
+    assert_agent_named_denial(verdict, "agent call");
+}
+
+#[test]
+fn it_should_deny_a_task_call_with_name_to_a_plugin_agent() {
+    let event = tool_event("Task", named_plugin_agent_input(), None);
+
+    assert_agent_named_denial(verdict_of_event(&event), "task call");
+}
+
+#[test]
+fn it_should_deny_an_agent_call_whose_name_is_a_blank() {
+    let verdict =
+        agent_verdict_of(json!({ "subagent_type": "oh-my-hexflow:analyst", "name": " " }));
+
+    assert_agent_named_denial(verdict, "blank name");
+}
+
+#[test]
+fn it_should_not_read_the_command_of_an_agent_call_with_name() {
+    let verdict = agent_verdict_of(json!({
+        "subagent_type": "oh-my-hexflow:analyst",
+        "name": "x",
+        "command": "OMHL_ROLE=x omhl list",
+    }));
+
+    assert_agent_named_denial(verdict, "call with command");
+}
+
+#[test]
+fn it_should_deny_an_agent_call_with_name_from_any_origin() {
+    for agent_type in [None, Some("oh-my-hexflow:planner"), Some("Explore")] {
+        let event = tool_event("Agent", named_plugin_agent_input(), agent_type);
+
+        assert_agent_named_denial(
+            verdict_of_event(&event),
+            &format!("agent_type {agent_type:?}"),
+        );
+    }
+}
+
+#[test]
+fn it_should_pass_an_agent_call_to_a_plugin_agent_without_a_usable_name() {
+    let names = [
+        None,
+        Some(json!(null)),
+        Some(json!("")),
+        Some(json!(42)),
+        Some(json!(true)),
+    ];
+
+    for name in names {
+        let mut tool_input = json!({ "subagent_type": "oh-my-hexflow:analyst" });
+        if let Some(name) = &name {
+            tool_input["name"] = name.clone();
+        }
+
+        assert_eq!(agent_verdict_of(tool_input), RoleVerdict::Pass, "{name:?}");
+    }
+}
+
+#[test]
+fn it_should_pass_a_named_agent_call_to_anything_but_a_plugin_agent() {
+    let subagent_types = [
+        None,
+        Some("Explore"),
+        Some("oh-my-claudecode:executor"),
+        Some("Oh-My-Hexflow:analyst"),
+    ];
+
+    for subagent_type in subagent_types {
+        let mut tool_input = json!({ "name": "x" });
+        if let Some(subagent_type) = subagent_type {
+            tool_input["subagent_type"] = json!(subagent_type);
+        }
+
+        assert_eq!(
+            agent_verdict_of(tool_input),
+            RoleVerdict::Pass,
+            "{subagent_type:?}"
+        );
+    }
+}
+
+#[test]
+fn it_should_pass_an_agent_call_with_a_command_and_no_name() {
+    let verdict = agent_verdict_of(json!({
+        "subagent_type": "oh-my-hexflow:analyst",
+        "command": "OMHL_ROLE=x omhl list",
+    }));
+
+    assert_eq!(verdict, RoleVerdict::Pass);
+}
+
+#[test]
+fn it_should_never_allow_a_call_of_the_agent_tool() {
+    let tool_inputs = [
+        named_plugin_agent_input(),
+        json!({ "subagent_type": "oh-my-hexflow:analyst" }),
+        json!({ "name": "x" }),
+        json!({ "subagent_type": "oh-my-hexflow:verifier", "command": "omhl list" }),
+    ];
+
+    for tool_input in tool_inputs {
+        for tool_name in ["Agent", "Task"] {
+            let event = tool_event(tool_name, tool_input.clone(), Some(PORTED_AGENT));
+
+            let verdict = verdict_of_event(&event);
+
+            assert!(
+                !matches!(verdict, RoleVerdict::Allow { .. }),
+                "{tool_name} {tool_input}: {verdict:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn it_should_apply_the_bash_rule_to_a_monitor_event() {
+    let event = tool_event(
+        "Monitor",
+        json!({ "command": "OMHL_ROLE=x omhl list" }),
+        None,
+    );
+
+    assert_verdict_denies_with_code(verdict_of_event(&event), "role-assignment");
+}
+
+#[test]
+fn it_should_allow_a_monitor_command_inside_the_matrix_of_a_ported_agent() {
+    let event = tool_event(
+        "Monitor",
+        json!({ "command": "omhl list" }),
+        Some(PORTED_AGENT),
+    );
+
+    let verdict = verdict_of_event(&event);
+
+    assert_eq!(
+        verdict,
+        RoleVerdict::Allow {
+            reason: "the command is inside the omhl:verifier matrix".to_owned(),
+            updated_input: json!({ "command": "OMHL_ROLE=omhl:verifier omhl list" }),
+        }
+    );
+}
+
+#[test]
+fn it_should_apply_the_bash_rule_to_an_event_without_tool_name() {
+    let event = json!({ "tool_input": { "command": "OMHL_ROLE=x omhl list" } });
+
+    assert_verdict_denies_with_code(verdict_of_event(&event), "role-assignment");
+}
+
+#[test]
+fn it_should_not_deny_a_bash_event_that_carries_a_named_plugin_agent_input() {
+    let event = tool_event("Bash", named_plugin_agent_input(), None);
+
+    assert_eq!(verdict_of_event(&event), RoleVerdict::Pass);
 }

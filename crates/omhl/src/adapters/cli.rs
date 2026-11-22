@@ -222,7 +222,7 @@ pub enum HookEvent {
     SessionStart,
     /// Deny edits to the spec of a work item that already has a branch; reads the PreToolUse event on stdin.
     SpecLock,
-    /// Impose the role matrix on the Bash tool of plugin agents; reads the PreToolUse event on stdin.
+    /// Impose the role matrix on the Bash and Monitor tools of plugin agents and deny a plugin agent call that carries `name`; reads the PreToolUse event on stdin.
     AgentRole,
     /// Write the freeze mark in every spec folder of the work item of a new branch (the `post-start` hook of `wt`); does not read stdin, prints JSON, and stays silent without a project marker.
     WtPostStart {

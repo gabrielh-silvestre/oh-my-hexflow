@@ -39,8 +39,11 @@ pub struct AgentRoleEnv<'e> {
     pub groups: &'e [&'e str],
 }
 
-/// O hook `agent-role` para o evento `PreToolUse` do Bash; não abre o banco, só lê o arquivo do agente.
+/// O hook `agent-role` para o evento `PreToolUse` do Bash, do Monitor e da tool Agent; não abre o banco, só lê o arquivo do agente.
 pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
+    if matches!(input["tool_name"].as_str(), Some("Agent" | "Task")) {
+        return agent_call_verdict(&input["tool_input"]);
+    }
     let Some(command) = input["tool_input"]["command"].as_str() else {
         return RoleVerdict::Pass;
     };
@@ -69,6 +72,24 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
         ),
         Err(_) => RoleVerdict::Pass,
     }
+}
+
+/// Com `name` o Claude Code não pré-carrega o `skills:` do agente do plugin; a chamada é negada, nunca reescrita (outro plugin pode reescrever o mesmo `tool_input`).
+fn agent_call_verdict(tool_input: &Value) -> RoleVerdict {
+    let plugin_agent = tool_input["subagent_type"]
+        .as_str()
+        .is_some_and(|subagent_type| subagent_type.starts_with(PLUGIN_PREFIX));
+    let named = tool_input["name"]
+        .as_str()
+        .is_some_and(|name| !name.is_empty());
+    if !(plugin_agent && named) {
+        return RoleVerdict::Pass;
+    }
+
+    deny(
+        "agent-named",
+        "a plugin agent called with `name` does not preload its skills; repeat the call without `name`",
+    )
 }
 
 /// O que um comando faz com `OMHL_ROLE`: dá um valor a ele ou o tira do ambiente.

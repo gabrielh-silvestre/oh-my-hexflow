@@ -46,9 +46,9 @@ O plugin foi testado só no Linux e no WSL. Não há binário por plataforma.
    ```
 
 O plugin liga os hooks `SessionStart` e `PreToolUse` (`hook spec-lock` para
-`Edit`, `Write` e `MultiEdit`, e `hook agent-role` para o `Bash`, em
-`plugin/hooks/hooks.json`). O agente grava e consulta pela CLI, guiado por seis
-skills em `plugin/skills/`:
+`Edit`, `Write` e `MultiEdit`, e `hook agent-role` para `Bash`, `Monitor` e a
+tool `Agent`, em `plugin/hooks/hooks.json`). O agente grava e consulta pela
+CLI, guiado por seis skills em `plugin/skills/`:
 
 | Skill | O que cobre |
 |---|---|
@@ -149,7 +149,7 @@ decisão está no
 | `project` | Gera a projeção em Markdown em `.omhl/projection/` |
 | `hook session-start` | Roda o hook `SessionStart` do Claude Code |
 | `hook spec-lock` | Roda o hook `PreToolUse` do Claude Code: lê o evento no stdin e nega a edição de uma spec congelada |
-| `hook agent-role` | Roda o hook `PreToolUse` do Claude Code para o `Bash` e o `Monitor`: aplica a matriz do papel ao agente portado |
+| `hook agent-role` | Roda o hook `PreToolUse` do Claude Code para o `Bash`, o `Monitor` e a tool `Agent`: aplica a matriz do papel ao agente portado e nega a chamada com `name` a um agente do plugin |
 | `hook wt-post-start --branch <nome>` | Roda o hook `post-start` do `wt`: grava a marca `.frozen` em cada pasta de spec do work item da branch nova. Não lê stdin e fica mudo sem `.omhl.toml` |
 | `spec init <work-item> <slug>` | Cria a pasta da spec de um work item aberto, com a primeira parte, no diretório principal |
 | `spec validate <work-item>` | Valida a estrutura e o grafo da pasta de spec do work item |
