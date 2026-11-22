@@ -9,7 +9,7 @@ use crate::project::layout::{
     GENERATED_HEADER, OMHL_DIR, PROJECTION_DIR, PROJECTION_FILE_MAX_BYTES, PROJECTION_FILES_MAX,
 };
 use crate::project::text::{is_invisible_format, normalize_line_breaks};
-use crate::render::sort_by_id;
+use crate::render::{is_late, sort_by_id};
 
 const TRUNCATION_MARKER: &str = "<!-- omhl: truncated -->\n";
 const INLINE_STRING_MAX_CHARS: usize = 80;
@@ -150,10 +150,6 @@ fn render_file(item: &NodeView, children: &[&NodeView], relations: &[&RelationVi
     }
     push_relation_blocks(&mut blocks, relations);
     truncate_to_limit(blocks.join("\n\n") + "\n")
-}
-
-fn is_late(node: &NodeView) -> bool {
-    node.data["origin"] == "late"
 }
 
 fn push_relation_blocks(blocks: &mut Vec<String>, relations: &[&RelationView]) {

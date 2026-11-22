@@ -43,7 +43,7 @@ pub fn render(input: &RenderInput<'_>, budget: usize) -> Rendered {
     );
     let (mut late, main): (Vec<&NodeView>, Vec<&NodeView>) = visible_sorted(input.premises)
         .into_iter()
-        .partition(|node| node.data["origin"] == "late");
+        .partition(|node| is_late(node));
     let (pending, binding): (Vec<&NodeView>, Vec<&NodeView>) = main
         .into_iter()
         .partition(|node| premise_mark(node) == PremiseMark::Pending);
@@ -68,6 +68,10 @@ fn visible_sorted(nodes: &[NodeView]) -> Vec<&NodeView> {
     let mut visible: Vec<&NodeView> = nodes.iter().filter(|node| !node.shadowed).collect();
     sort_by_id(&mut visible);
     visible
+}
+
+pub(crate) fn is_late(node: &NodeView) -> bool {
+    node.data["origin"] == "late"
 }
 
 pub(crate) fn sort_by_id(nodes: &mut [&NodeView]) {

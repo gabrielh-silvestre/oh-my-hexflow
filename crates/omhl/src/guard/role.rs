@@ -165,7 +165,7 @@ pub(super) struct Revision<'a> {
 }
 
 pub(super) fn revision_allowed(revision: &Revision<'_>) -> bool {
-    if changes_kind(revision)
+    if changes_kind_or_origin(revision)
         || leaves_open_outside_verifier_close(revision)
         || is_settled(revision)
     {
@@ -177,7 +177,7 @@ pub(super) fn revision_allowed(revision: &Revision<'_>) -> bool {
         || critic_confirms_premise(revision)
 }
 
-fn changes_kind(revision: &Revision<'_>) -> bool {
+fn changes_kind_or_origin(revision: &Revision<'_>) -> bool {
     let kind_changed = revision.current.get("kind") != revision.revised.get("kind");
     let origin_changed = revision.type_name == "premise"
         && revision.current.get("origin") != revision.revised.get("origin");
