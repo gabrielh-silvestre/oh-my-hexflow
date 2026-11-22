@@ -29,6 +29,9 @@ pub enum ProbeOutcome {
     Dirty,
 }
 
+/// A mensagem do estouro de prazo do git: quem decide por ela compara com esta constante.
+pub const GIT_TIMED_OUT: &str = "git timed out";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeError {
     pub message: String,

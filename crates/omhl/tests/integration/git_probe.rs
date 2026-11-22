@@ -468,6 +468,41 @@ fn it_should_fail_when_the_program_exceeds_the_timeout() {
 }
 
 #[test]
+fn it_should_fail_with_git_timed_out_when_the_shared_deadline_expires_first() {
+    let tools = TempDir::new().expect("temp dir");
+    let program = fake_program(tools.path(), "exec sleep 30");
+    let probe = GitProbe::new(tools.path())
+        .with_program(program)
+        .with_deadline(Instant::now() + Duration::from_millis(300));
+    let started = Instant::now();
+
+    let result = probe.probe();
+
+    assert_eq!(error_message(result), "git timed out");
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+#[test]
+fn it_should_not_start_a_process_when_the_shared_deadline_has_already_expired() {
+    let tools = TempDir::new().expect("temp dir");
+    let log = tools.path().join("runs.log");
+    let program = fake_program(
+        tools.path(),
+        &format!("echo run >> '{}'\nexec sleep 30", log.display()),
+    );
+    let probe = GitProbe::new(tools.path())
+        .with_program(program)
+        .with_deadline(Instant::now() + Duration::from_millis(300));
+    let _ = probe.probe();
+
+    let second = probe.probe();
+
+    assert_eq!(error_message(second), "git timed out");
+    let runs = fs::read_to_string(&log).expect("the fake git ran once");
+    assert_eq!(runs.lines().count(), 1);
+}
+
+#[test]
 fn it_should_time_out_even_when_a_grandchild_holds_the_pipe() {
     let tools = TempDir::new().expect("temp dir");
     let program = fake_program(tools.path(), "sleep 5 &\nexit 0");
