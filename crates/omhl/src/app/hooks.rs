@@ -80,7 +80,7 @@ fn script(binary: &str, command: &str) -> String {
     let p = double_quoted(binary);
 
     format!(
-        "#!/bin/sh\n[ -x \"{p}\" ] || {{ echo \"omhl: binary not found at {p}; run omhl hooks install again\" >&2; exit 1; }}; exec \"{p}\" {command}\n"
+        "#!/bin/sh\n[ -x \"{p}\" ] || {{ printf '%s\n' \"omhl: binary not found at {p}; run omhl hooks install again\" >&2; exit 1; }}; exec \"{p}\" {command}\n"
     )
 }
 
@@ -117,3 +117,6 @@ fn in_build_dir(binary: &Path) -> bool {
             && (pair[1].as_os_str() == "debug" || pair[1].as_os_str() == "release")
     })
 }
+
+#[cfg(test)]
+mod tests;

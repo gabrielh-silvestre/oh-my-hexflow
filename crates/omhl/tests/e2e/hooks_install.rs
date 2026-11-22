@@ -27,7 +27,7 @@ const UNWRITABLE_HINT: &str =
 
 fn script(p: &str, command: &str) -> String {
     format!(
-        "#!/bin/sh\n[ -x \"{p}\" ] || {{ echo \"omhl: binary not found at {p}; run omhl hooks install again\" >&2; exit 1; }}; exec \"{p}\" {command}\n"
+        "#!/bin/sh\n[ -x \"{p}\" ] || {{ printf '%s\n' \"omhl: binary not found at {p}; run omhl hooks install again\" >&2; exit 1; }}; exec \"{p}\" {command}\n"
     )
 }
 
@@ -949,6 +949,63 @@ fn it_should_quote_an_omhl_path_that_contains_spaces() {
         repo.attestations()
             .iter()
             .any(|item| item["data"]["work_item"] == json!(WI_W1))
+    );
+}
+
+/// Instala o hook de uma cópia do binário em `rel` e devolve o caminho do script `pre-commit` e o da cópia.
+fn hook_script_for_binary_at(repo: &HookRepo, rel: &str) -> (PathBuf, PathBuf) {
+    let copy = repo.copy_bin(rel);
+    repo.installed_from(&copy);
+
+    (repo.h().join("pre-commit"), copy)
+}
+
+fn run_script(repo: &HookRepo, script: &Path) -> GitOutput {
+    Command::new("sh")
+        .arg(script)
+        .current_dir(repo.d())
+        .stdin(Stdio::null())
+        .output()
+        .expect("sh runs the hook script")
+}
+
+#[test]
+fn it_should_run_an_omhl_binary_whose_path_has_quotes_dollar_backtick_and_backslash() {
+    let repo = HookRepo::new();
+    let (script, copy) = hook_script_for_binary_at(&repo, "a$b\"c`d\\e/omhl");
+    let recorded = repo.scratch().join("args.txt");
+    write_executable(
+        &copy,
+        &format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"{}\"\n",
+            recorded.display()
+        ),
+    );
+
+    let output = run_script(&repo, &script);
+
+    assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+    assert_eq!(
+        fs::read_to_string(recorded).expect("the fake binary ran"),
+        "check\nrun\n--event\nbefore-commit\n"
+    );
+}
+
+#[test]
+fn it_should_print_the_missing_binary_path_as_it_is_when_it_has_backslash_n_and_backslash_c() {
+    let repo = HookRepo::new();
+    let (script, copy) = hook_script_for_binary_at(&repo, "a\\nb\\c/omhl");
+    fs::remove_file(&copy).expect("the copy is removed");
+
+    let output = run_script(&repo, &script);
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "omhl: binary not found at {}; run omhl hooks install again\n",
+            copy.display()
+        )
     );
 }
 
