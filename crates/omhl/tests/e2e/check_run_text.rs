@@ -849,3 +849,88 @@ fn it_should_open_the_failure_text_of_both_layouts_with_the_error_symbol_of_the_
     assert!(agent.stderr.starts_with(&format!("{symbol} BLOCKED")));
     assert!(human.stderr.starts_with(&format!("{symbol} BLOCKED")));
 }
+
+const READ_COMMAND: &str = "omhl byproduct checks.warn work-items.w1 --tail 40";
+
+#[test]
+fn it_should_point_to_the_stored_output_of_a_recorded_passed_with_warning_check_in_the_json() {
+    let p = cli_repo(&[("warn", WARNING)]);
+
+    let output = run_pr(&p, "json");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    let result: Value = serde_json::from_str(output.stdout.trim_end()).expect("stdout is JSON");
+    assert_eq!(
+        result["warnings"],
+        json!([{
+            "code": "output-stored",
+            "check": "checks.warn",
+            "work_item": "work-items.w1",
+            "hint": READ_COMMAND,
+        }])
+    );
+}
+
+#[test]
+fn it_should_print_the_stored_output_warning_with_the_read_command_in_the_text() {
+    let p = cli_repo(&[("warn", WARNING)]);
+
+    let output = run_pr(&p, "agent");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    let warning = output
+        .stdout
+        .lines()
+        .find(|line| line.contains("output-stored"))
+        .expect("the warning is printed");
+    assert!(warning.contains("checks.warn"), "{warning}");
+    assert!(warning.contains(READ_COMMAND), "{warning}");
+}
+
+#[test]
+fn it_should_leave_the_stored_output_warning_out_when_every_check_passed_plainly() {
+    let p = cli_repo(&[("green", GREEN)]);
+
+    let output = run_pr(&p, "json");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(
+        !output.stdout.contains("output-stored"),
+        "{}",
+        output.stdout
+    );
+}
+
+#[test]
+fn it_should_leave_the_stored_output_warning_out_of_a_failed_run() {
+    let p = cli_repo(&[("suite", SUITE_RED), ("warn", WARNING)]);
+
+    let output = run_pr(&p, "json");
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert!(
+        !output.stderr.contains("output-stored"),
+        "{}",
+        output.stderr
+    );
+    assert!(
+        !output.stdout.contains("output-stored"),
+        "{}",
+        output.stdout
+    );
+}
+
+#[test]
+fn it_should_leave_the_stored_output_warning_out_on_develop_where_nothing_is_recorded() {
+    let p = cli_repo(&[("warn", WARNING)]);
+    git(&p, &["switch", "-q", "-c", "develop"]);
+
+    let output = run_pr(&p, "json");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(
+        !output.stdout.contains("output-stored"),
+        "{}",
+        output.stdout
+    );
+}

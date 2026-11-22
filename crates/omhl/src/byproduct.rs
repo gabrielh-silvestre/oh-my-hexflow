@@ -3,6 +3,11 @@ use std::time::Duration;
 const HEADER_PREFIX: &str = "omhl-byproduct v1 stdout=";
 const HEADER_STDERR: &str = " stderr=";
 
+/// O comando que lê a saída guardada de um par check e work item; o `check run` o aponta na falha e no aviso.
+pub fn read_command(check: &str, work_item: &str) -> String {
+    format!("omhl byproduct {check} {work_item} --tail 40")
+}
+
 pub fn encode(stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
     let mut blob = format!(
         "{HEADER_PREFIX}{}{HEADER_STDERR}{}\n",

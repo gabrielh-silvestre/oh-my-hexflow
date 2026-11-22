@@ -446,11 +446,7 @@ impl Engine<'_> {
         let recording = self.record(check, work_item, snapshot, &data)?;
         let miss = match recording {
             Recording::Recorded => {
-                let message = format!(
-                    "omhl byproduct {} {} --tail 40",
-                    check.id.as_str(),
-                    work_item.as_str()
-                );
+                let message = byproduct::read_command(check.id.as_str(), work_item.as_str());
                 return Ok(verdict(failed(
                     message,
                     Some(failure_fields(check, spec, &report)),
@@ -827,6 +823,16 @@ fn finish(
         output["checks_planned"] = json!(0);
         warnings.push(json!({ "code": "no-checks-for-event" }));
     }
+    if let Some(work_item) = scope.work_item {
+        // O passed_with_warning não bloqueia e não mostra a saída: o aviso aponta onde ela ficou guardada.
+        warnings.extend(
+            tally
+                .results
+                .iter()
+                .filter(|result| result.outcome == Outcome::PassedWithWarning)
+                .map(|result| output_stored_warning(result.id.as_str(), work_item.as_str())),
+        );
+    }
     warnings.extend(orphans.iter().map(
         |check| json!({ "code": "check-orphaned", "check": check.id, "hint": ORPHANED_HINT }),
     ));
@@ -835,6 +841,15 @@ fn finish(
     }
 
     Ok(output)
+}
+
+fn output_stored_warning(check: &str, work_item: &str) -> Value {
+    json!({
+        "code": "output-stored",
+        "check": check,
+        "work_item": work_item,
+        "hint": byproduct::read_command(check, work_item),
+    })
 }
 
 fn failure_context(scope: &Scope<'_>, results: &[CheckResult], checks_planned: usize) -> Value {

@@ -70,6 +70,9 @@ pub static PROFILE: Profile = Profile {
         Entry::new(Region::Data, "check", Shape::Literal)
             .under("warnings")
             .optional(),
+        Entry::new(Region::Data, "work_item", Shape::Literal)
+            .under("warnings")
+            .optional(),
         Entry::new(Region::Data, "hint", Shape::Closed)
             .under("warnings")
             .optional(),
@@ -412,6 +415,11 @@ fn warning_line(warning: &Value, event: &str) -> Line {
         ),
         "check-orphaned" => format!(
             "{code}: {} did not run. {}",
+            text(warning, "check"),
+            text(warning, "hint")
+        ),
+        "output-stored" => format!(
+            "{code}: the output of {} is stored. {NEXT_LABEL} {}",
             text(warning, "check"),
             text(warning, "hint")
         ),
