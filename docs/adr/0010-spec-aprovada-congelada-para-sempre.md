@@ -30,7 +30,7 @@ O gate de worktree (`omhl gate-worktree`) continua só leitura. As cinco specs q
 
 **Teto de 99 emendas (D7).** O padrão `emenda-NN.md` tem dois dígitos. Com `emenda-99.md` na pasta, o hook sugere e libera `emenda-100.md`, e o `spec validate` a recusa com `amendment-name-invalid`. O teto de 99 emendas por spec é um limite aceito: só registro, sem código novo.
 
-**Dois contratos no grupo `hook`.** Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o stdin e nunca saem com `2`; em erro interno `session-start` e `agent-role` liberam, e o `spec-lock` libera só antes de reconhecer a spec (sem marcador válido, sem pasta `wi-<id>__<slug>`, outra ferramenta, stdin que não é JSON). Depois do reconhecimento, uma falha de git ou de leitura nega com `spec-lock-unavailable`, dentro de um orçamento de 6 segundos de git menor que o `timeout` do hook, e o `hooks.json` envolve o `spec-lock` em `|| exit 2` (o `omhl` ausente, o pânico e a saída `1` bloqueiam a edição), ao contrário do `agent-role`, que segue com `|| exit 1`. O marcador inválido no caminho de subida é pulado, e na pasta congelada `.omhl.toml` e `.omhl/` são negados com `spec-frozen`, para um marcador plantado não soltar a trava. O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai `1` com `spec-store-unusable` em pasta de spec que é link simbólico. O comando é lido por máquina, então entra nos "seis adiados" de formato de saída do [ADR 0009](0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
+**Dois contratos no grupo `hook`.** Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o stdin e nunca saem com `2`; em erro interno `session-start` e `agent-role` liberam, e o `spec-lock` libera só antes de reconhecer a spec (sem marcador válido, sem pasta `wi-<id>__<slug>`, outra ferramenta, stdin que não é JSON). Depois do reconhecimento, uma falha de git ou de leitura nega com `spec-lock-unavailable`, dentro de um orçamento de 6 segundos de git menor que o `timeout` do hook, e o `hooks.json` envolve o `spec-lock` em `|| exit 2` (o `omhl` ausente, o pânico e a saída `1` bloqueiam a edição), ao contrário do `agent-role`, que segue com `|| exit 1`. O marcador inválido no caminho de subida é pulado, e na pasta congelada `.omhl.toml` e `.omhl/` são negados com `spec-frozen`, para um marcador plantado não soltar a trava. O hook avalia também o `.omhl/workflow.toml` principal: `Write`, `Edit` e `MultiEdit` que mudariam o `specs.dir` efetivo enquanto algum work item tem spec congelada são negados com `spec-dir-frozen`, para mover a pasta de specs não soltar a trava. O `specs.dir` antigo e o novo passam pela mesma definição da política, e as trocas de `Edit` e `MultiEdit` são testadas em três versões do texto, por causa do CRLF. O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai `1` com `spec-store-unusable` em pasta de spec que é link simbólico. O comando é lido por máquina, então entra nos "seis adiados" de formato de saída do [ADR 0009](0009-formato-de-saida-agent-human-json-e-registro-de-renderizadores.md).
 
 ## Alternativas descartadas
 
@@ -40,6 +40,7 @@ O gate de worktree (`omhl gate-worktree`) continua só leitura. As cinco specs q
 - **Flag `--record` no gate.** Mistura decisão com efeito.
 - **Folha de ação `omhl spec freeze`.** Exigiria página de skill e duas listas fixas de cobertura, e convidaria o agente a congelar um rascunho sem existir comando para descongelar.
 - **Marca só pela cura do `spec-lock`.** O dono pediu o `post-start` para marcar no nascimento; a cura ficou como rede.
+- **Reusar `spec-frozen` para o `workflow.toml`.** O remédio dele (registrar divergência e criar emenda) é o errado para mover a pasta de specs; o código próprio `spec-dir-frozen` deixa o agente distinguir "editar esta spec" de "mover a pasta de specs".
 
 ## Consequências
 
@@ -47,6 +48,7 @@ O gate de worktree (`omhl gate-worktree`) continua só leitura. As cinco specs q
 - O `post-start` roda uma vez, em segundo plano, e falha em silêncio. Se falhar (`omhl` velho, marca não gravável), a cura do `spec-lock` grava a marca no primeiro evento de spec.
 - O dono precisa reinstalar o `omhl` no `PATH` e rodar `wt config approvals add` antes de qualquer `wt switch`. Sem a aprovação e sem terminal interativo, o `wt` aborta todo `wt switch`.
 - Descongelar é só o dono, apagando o `.frozen` à mão. Não existe comando.
+- Depois do primeiro work item, o `specs.dir` fica fixo pelo Claude Code: a branch, ou a marca com a branch apagada, congela a pasta de specs antiga, e só o dono a muda, fora do Claude Code. O `workflow.toml` de uma worktree ligada não é avaliado; a mudança feita nela vale quando o PR é mergeado na `main`, sob o review do diff.
 - `docs/directives-flow.md`, seções 5, 7 e 10, descrevem o comportamento; esta decisão não o repete.
 
 ## Limites
@@ -55,6 +57,7 @@ O gate de worktree (`omhl gate-worktree`) continua só leitura. As cinco specs q
 - Há uma janela entre a checagem do hook e a escrita (TOCTOU): se o alvo de um link mudar nesse intervalo, o hook não detecta.
 - Um `specs.dir` que é link simbólico continua congelando, porque a decisão vale também pelo caminho lexical.
 - Qualquer branch local com o id do work item o congela, mesmo criada por outra pessoa; a marca só sai à mão.
+- A regra do `spec-dir-frozen` não alcança um projeto cujo marcador fica numa subpasta do repositório: o `workflow.toml` dele não é o de `<pasta principal do git>/.omhl/`.
 
 ## Follow-ups
 
