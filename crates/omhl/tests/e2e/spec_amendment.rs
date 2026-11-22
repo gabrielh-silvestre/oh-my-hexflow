@@ -358,6 +358,34 @@ fn it_should_accept_the_spec_stale_revision_that_cites_a_valid_amendment() {
 }
 
 #[test]
+fn it_should_approve_a_batch_with_two_divergences_of_the_same_work_item() {
+    let fixture = Fixture::with_spec();
+    fixture.append(vec![node(
+        OTHER_DIVERGENCE,
+        "divergence",
+        divergence_data("open"),
+    )]);
+    let second_amendment: Vec<String> = amendment_for(OTHER_DIVERGENCE, "CMP-001")
+        .into_iter()
+        .map(|line| line.replace("EMD-001", "EMD-002"))
+        .collect();
+    fixture.write("emenda-02.md", &second_amendment);
+    let before = fixture.chain();
+
+    let output = fixture.try_append(vec![
+        fixture.approval_of(DIVERGENCE, "emenda-01"),
+        fixture.approval_of(OTHER_DIVERGENCE, "emenda-02"),
+    ]);
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    let after = fixture.chain();
+    assert_eq!(
+        after["total_records"],
+        json!(before["total_records"].as_u64().expect("a count") + 2)
+    );
+}
+
+#[test]
 fn it_should_accept_the_approval_while_the_work_item_branch_already_freezes_the_spec() {
     let fixture = Fixture::with_spec();
     let branch = git_in(fixture.project.dir(), &["branch", "feat/wi-w1__login"]);

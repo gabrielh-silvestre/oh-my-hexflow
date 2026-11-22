@@ -106,7 +106,7 @@ struct RawSpecs {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawPromotion {
-    min_work_items: Option<u32>,
+    min_work_items: Option<Spanned<u32>>,
 }
 
 #[derive(Deserialize)]
@@ -204,7 +204,15 @@ pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, Proje
         }
     }
     if let Some(min_work_items) = raw.promotion.and_then(|promotion| promotion.min_work_items) {
-        config.promotion.min_work_items = min_work_items;
+        if *min_work_items.as_ref() == 0 {
+            return Err(invalid_at(
+                path,
+                text,
+                min_work_items.span(),
+                "promotion.min_work_items must be at least 1",
+            ));
+        }
+        config.promotion.min_work_items = min_work_items.into_inner();
     }
     for (prefix, table) in raw.prefix.unwrap_or_default() {
         config.prefixes.insert(prefix, table.require);

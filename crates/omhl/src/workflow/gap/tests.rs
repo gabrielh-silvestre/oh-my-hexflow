@@ -447,3 +447,48 @@ fn it_should_name_no_premise_when_only_a_decision_answers_the_gap() {
 
     assert_eq!(premise, None);
 }
+
+// Nome de pessoa: só conta como humano com 3 caracteres visíveis
+
+/// Premissa técnica `confirmed` cujo `confirmed_by.by` é `by`, sem passar pela guarda.
+fn premise_confirmed_by(by: &str) -> Fact {
+    let data = json!({
+        "text": "t", "status": "confirmed", "kind": "business", "work_item": W1,
+        "confirmed_by": { "by": by, "question": "q", "answer": "a" },
+    });
+
+    fact(ANSWER, "premise", false, data)
+}
+
+fn answerer_for_confirmer(by: &str) -> GapState {
+    let edges = vec![edge("answers", ANSWER, GAP)];
+
+    state_of(vec![premise_confirmed_by(by)], edges)
+}
+
+#[test]
+fn it_should_not_count_a_two_character_person_as_human() {
+    let state = answerer_for_confirmer("person:ab");
+
+    assert_eq!(state, answered(Answerer::Autonomous, false));
+}
+
+#[test]
+fn it_should_count_a_three_character_person_as_human() {
+    let state = answerer_for_confirmer("person:abc");
+
+    assert_eq!(state, answered(Answerer::Human, false));
+}
+
+#[test]
+fn it_should_not_count_zero_width_or_bidi_characters_as_visible() {
+    let hidden = ["\u{200B}", "\u{202E}", "\u{2060}", "\u{FEFF}", "\u{E0041}"];
+
+    for invisible in hidden {
+        let by = format!("person:ab{invisible}");
+
+        let state = answerer_for_confirmer(&by);
+
+        assert_eq!(state, answered(Answerer::Autonomous, false), "{by:?}");
+    }
+}

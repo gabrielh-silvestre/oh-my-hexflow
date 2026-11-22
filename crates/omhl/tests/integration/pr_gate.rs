@@ -15,7 +15,8 @@ use support::legacy::seed_unconfirmed_guideline;
 use support::omhl::{
     OmhlHarness, PR_7, RUN_TESTS, acme, append_as, append_ok, append_ok_as, attestation_id_for,
     attestation_item, check_data, decision_data, node_item, premise_data, pull_request_data,
-    refusal, retirement_item, revision_item, seed_pull_request, with_snapshot, work_item_data,
+    refusal, request, retirement_item, revision_item, seed_pull_request, with_snapshot,
+    work_item_data,
 };
 use support::pr_gate::{
     ANCHOR, ANCHORS_CONFIRMED, CI_GREEN, CRITIC_DECISION, DECISION, DECISIONS_ANCHORED, FEATURE_1,
@@ -683,15 +684,14 @@ fn seed_decision(omhl: &mut Omhl<'_>) {
     );
 }
 
-/// Premissa `confirmed` sem `confirmed_by` (o formato legado, que só o `loader` grava) e a decisão apoiada nela.
-fn seed_decision_on_a_legacy_premise(omhl: &mut Omhl<'_>) {
+/// Premissa `confirmed` sem `confirmed_by` (o formato legado, que a guarda não grava mais) e a decisão apoiada nela.
+/// Grava pelo `forge`, que reparte os ids com o `Omhl` aberto; `legacy.rs` abre outro `Hexlog` e repete o id.
+fn seed_decision_on_a_legacy_premise(harness: &OmhlHarness, omhl: &mut Omhl<'_>) {
     seed_decision(omhl);
-    let legacy = json!({ "text": "Users pay monthly", "status": "confirmed" });
-    append_ok_as(
-        omhl,
-        loader_author(),
-        vec![node_item(ANCHOR, "premise", legacy)],
-    );
+    let legacy = json!({
+        "text": "Users pay monthly", "status": "confirmed", "kind": "business", "work_item": PR_7,
+    });
+    harness.forge(&request(vec![node_item(ANCHOR, "premise", legacy)]));
     append_ok(omhl, vec![relation_item("rests-on", DECISION, ANCHOR)]);
 }
 
@@ -751,7 +751,7 @@ fn it_should_treat_a_legacy_confirmed_premise_without_confirmed_by_as_unconfirme
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
-    seed_decision_on_a_legacy_premise(&mut omhl);
+    seed_decision_on_a_legacy_premise(&harness, &mut omhl);
 
     let report = gate_of(&mut omhl, &at_head());
 
@@ -922,7 +922,7 @@ fn it_should_fail_an_unconfirmed_anchor_with_cause_and_next_step() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
-    seed_decision_on_a_legacy_premise(&mut omhl);
+    seed_decision_on_a_legacy_premise(&harness, &mut omhl);
 
     let report = gate_of(&mut omhl, &at_head());
 

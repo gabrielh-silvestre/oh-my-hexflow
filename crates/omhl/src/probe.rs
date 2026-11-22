@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use hexlog::Snapshot;
 
 pub use crate::mechanical::branch::HeadFacts;
@@ -18,18 +16,6 @@ pub trait SnapshotProbe: Send + Sync {
     /// Working tree contra o índice, rastreados e não rastreados; ignorados não contam.
     fn tree_dirty(&self) -> Result<bool, ProbeError>;
     fn head_facts(&self) -> Result<HeadFacts, ProbeError>;
-}
-
-/// Topologia de branches e worktrees do repositório. Nenhuma operação escreve.
-pub trait GitTopology: Send + Sync {
-    /// Diretório de trabalho principal, o mesmo de qualquer worktree ligada.
-    fn main_dir(&self) -> Result<PathBuf, ProbeError>;
-    /// Nome inválido ou inexistente é `Ok(false)`.
-    fn branch_exists(&self, name: &str) -> Result<bool, ProbeError>;
-    /// Branches com worktree (a principal inclusive), em ordem crescente.
-    fn worktree_branches(&self) -> Result<Vec<String>, ProbeError>;
-    /// Branches locais, em ordem crescente.
-    fn local_branches(&self) -> Result<Vec<String>, ProbeError>;
 }
 
 /// Porta própria da marca de `develop`: a sonda de leitura não escreve.

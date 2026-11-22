@@ -1,4 +1,4 @@
-use super::config::{RequireAtom, WorkflowConfig};
+use super::config::RequireAtom;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PremiseKind {
@@ -13,22 +13,17 @@ pub struct PremiseFact {
     pub confirmed: bool,
 }
 
-/// Os átomos de `require` do prefixo que as premissas e a validação da spec não satisfazem, na ordem do `require`; `None` quando o prefixo não está na tabela.
-pub fn missing_atoms(
-    prefix: &str,
-    config: &WorkflowConfig,
+/// Os átomos de `required` que as premissas e a validação da spec não satisfazem, na ordem de `required`.
+pub fn unsatisfied_atoms(
+    required: &[RequireAtom],
     premises: &[PremiseFact],
     spec_valid: bool,
-) -> Option<Vec<RequireAtom>> {
-    let required = config.prefixes.get(prefix)?;
-
-    Some(
-        required
-            .iter()
-            .copied()
-            .filter(|atom| !is_satisfied(*atom, premises, spec_valid))
-            .collect(),
-    )
+) -> Vec<RequireAtom> {
+    required
+        .iter()
+        .copied()
+        .filter(|atom| !is_satisfied(*atom, premises, spec_valid))
+        .collect()
 }
 
 fn is_satisfied(atom: RequireAtom, premises: &[PremiseFact], spec_valid: bool) -> bool {

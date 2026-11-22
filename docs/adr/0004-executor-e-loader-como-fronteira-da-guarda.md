@@ -16,6 +16,8 @@ A guarda (`crates/omhl/src/guard/append.rs`) separa três autores:
 - `executor` (`Caller::executor()`, usado só por `omhl check run`) é o único que grava a attestation de um check com `run`. O `omhl attest` pela CLI é recusado para esses checks (`check-run-author`). A attestation precisa ainda de `byproduct`, `command`, `spec_digest` e, para `passed` e `passed_with_warning`, de `exit_code` (`attestation-incomplete`).
 - `guideline-retire` (`Caller::guideline_retirer`, usado só por `omhl guideline retire`) é o único `client` que retira uma diretiva; a retirada por outro `client` é recusada (`guideline-retire-by-command`). Ao contrário dos outros dois, que têm `agent` sintético, este mantém o `agent` real (`user` ou `claude`) e põe no `client` o caminho de escrita. Fora da retirada de diretiva, ele segue as regras de qualquer cliente.
 
+O `loader` tem uma segunda isenção, só na confirmação humana: a diretiva de extension que ele grava vale sem `confirmed_by`. A premissa, a divergência e o resto do que ele grava seguem a guarda inteira, `confirmed_by` e work item aberto inclusos.
+
 O autor da attestation do `check run` é sempre `executor`, também quando a ação chega pela CLI ou pelo hook.
 
 ## Consequências

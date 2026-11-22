@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
-use support::git::git_in;
+use support::git::{git_in, write_executable};
 use support::legacy::seed_legacy_confirmed_premise;
 use support::omhl::{project_dir_refusal, work_item_data};
 use support::project::Project;
@@ -467,6 +467,54 @@ fn it_should_not_echo_the_rejected_branch_name_in_the_error() {
 
     assert_refused(&output, "prefix-not-allowed");
     assert!(!output.stderr.contains("Canary"));
+}
+
+#[test]
+fn it_should_refuse_a_branch_name_with_shell_metacharacters() {
+    let fixture = Fixture::seeded();
+    let canary = fixture.scratch.path().join("pwned-metacharacters");
+    let shown = canary.display();
+    let names = [
+        format!("feat/wi-`touch {shown}`__x"),
+        format!("feat/wi-w1|touch {shown}__x"),
+        format!("feat/wi-w1&&touch {shown}__x"),
+        format!("feat/wi-w1>{shown}__x"),
+    ];
+
+    for name in names {
+        let output = fixture.gate(&name);
+
+        assert_refused(&output, "prefix-not-allowed");
+    }
+    assert!(!canary.exists(), "nothing was executed");
+}
+
+#[test]
+fn it_should_answer_main_dir_unknown_when_git_cannot_find_the_main_directory() {
+    let fixture = Fixture::seeded();
+    let fakebin = fixture.scratch.path().join("fakebin");
+    fs::create_dir_all(&fakebin).expect("fakebin is created");
+    let inherited = std::env::var_os("PATH").expect("the test process has a PATH");
+    let real_git = std::env::split_paths(&inherited)
+        .map(|dir| dir.join("git"))
+        .find(|candidate| candidate.is_file())
+        .expect("git is on the PATH");
+    let script = format!(
+        "#!/bin/sh\nfor arg in \"$@\"; do [ \"$arg\" = --git-common-dir ] && exit 1; done\nexec {} \"$@\"\n",
+        real_git.display()
+    );
+    write_executable(&fakebin.join("git"), &script);
+    let path =
+        std::env::join_paths(std::iter::once(fakebin).chain(std::env::split_paths(&inherited)))
+            .expect("PATH is joined");
+
+    let output = omhl(&["gate-worktree", "--branch", "feat/wi-w1__new"])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .env("PATH", path)
+        .run();
+
+    assert_refused(&output, "main-dir-unknown");
 }
 
 // Matriz sobre o banco

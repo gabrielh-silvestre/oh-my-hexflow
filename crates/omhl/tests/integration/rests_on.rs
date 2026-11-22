@@ -52,7 +52,7 @@ fn rests_on(from: &str, to: &str) -> AppendItem {
     relation_item("rests-on", from, to)
 }
 
-/// O `loader` dispensa a confirmação humana e o work item aberto, que não são o assunto aqui.
+/// O `loader` dispensa a confirmação humana da diretiva, que não é o assunto aqui.
 fn appended(omhl: &mut Omhl<'_>, items: Vec<AppendItem>) -> Result<usize, OmhlError> {
     let request = AppendRequest {
         author: loader_author(),

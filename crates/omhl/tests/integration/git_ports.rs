@@ -4,7 +4,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ::omhl::ports::git::GitProbe;
-use ::omhl::probe::GitTopology;
 use support::git::GitRepo;
 use tempfile::TempDir;
 
@@ -98,63 +97,6 @@ fn it_should_fail_to_resolve_the_main_dir_outside_a_git_repository() {
     assert!(main_dir.is_err(), "expected an error, got {main_dir:?}");
 }
 
-// branch_exists
-
-#[test]
-fn it_should_say_an_existing_local_branch_exists() {
-    let fixture = fixture();
-
-    let exists = GitProbe::new(fixture.repo.path()).branch_exists(WITHOUT_WORKTREE);
-
-    assert_eq!(exists, Ok(true));
-}
-
-#[test]
-fn it_should_say_a_missing_branch_does_not_exist() {
-    let fixture = fixture();
-
-    let exists = GitProbe::new(fixture.repo.path()).branch_exists("feat/never-created");
-
-    assert_eq!(exists, Ok(false));
-}
-
-#[test]
-fn it_should_say_a_name_git_cannot_use_as_a_branch_does_not_exist() {
-    let fixture = fixture();
-
-    let exists = GitProbe::new(fixture.repo.path()).branch_exists("feat/../x");
-
-    assert_eq!(exists, Ok(false));
-}
-
-#[test]
-fn it_should_not_take_a_tag_for_a_local_branch() {
-    let fixture = fixture();
-    fixture.repo.git(&["tag", "only-a-tag"]);
-
-    let exists = GitProbe::new(fixture.repo.path()).branch_exists("only-a-tag");
-
-    assert_eq!(exists, Ok(false));
-}
-
-#[test]
-fn it_should_say_the_branch_of_a_linked_worktree_exists() {
-    let fixture = fixture();
-
-    let exists = GitProbe::new(fixture.repo.path()).branch_exists(WITH_WORKTREE);
-
-    assert_eq!(exists, Ok(true));
-}
-
-#[test]
-fn it_should_answer_branch_exists_the_same_from_inside_a_linked_worktree() {
-    let fixture = fixture();
-
-    let exists = GitProbe::new(&fixture.linked).branch_exists(WITHOUT_WORKTREE);
-
-    assert_eq!(exists, Ok(true));
-}
-
 // worktree_branches
 
 #[test]
@@ -230,6 +172,18 @@ fn it_should_not_list_tags_or_remote_branches_as_local_branches() {
         .git(&["update-ref", "refs/remotes/origin/remote-only", "HEAD"]);
 
     let branches = GitProbe::new(fixture.repo.path()).local_branches();
+
+    assert_eq!(
+        branches,
+        Ok(names(&[WITHOUT_WORKTREE, WITH_WORKTREE, "main"]))
+    );
+}
+
+#[test]
+fn it_should_list_the_local_branches_the_same_from_inside_a_linked_worktree() {
+    let fixture = fixture();
+
+    let branches = GitProbe::new(&fixture.linked).local_branches();
 
     assert_eq!(
         branches,
