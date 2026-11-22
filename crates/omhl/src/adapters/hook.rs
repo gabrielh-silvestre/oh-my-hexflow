@@ -76,7 +76,7 @@ fn spec_lock_event(input: &Value) -> Result<SpecLockEvent, AppError> {
     })
 }
 
-/// Mesmo contrato do `spec_lock`; só o Bash. O que passa segue o fluxo normal de permissão; só o comando dentro da matriz recebe `allow`.
+/// Mesmo contrato do `spec_lock`; o Bash, o Monitor e a tool Agent. O que passa segue o fluxo normal de permissão; só o comando dentro da matriz recebe `allow`.
 pub fn agent_role(
     stdin: &mut impl Read,
     out: &mut impl Write,

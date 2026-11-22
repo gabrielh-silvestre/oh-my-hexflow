@@ -311,6 +311,45 @@ fn it_should_exit_zero_with_a_stderr_line_on_invalid_stdin_for_agent_role() {
     assert_released_with_code(&output, "input-invalid-json");
 }
 
+// Chamada à tool Agent
+
+fn run_agent_tool_call(tool_input: &Value) -> Child {
+    let event = json!({
+        "session_id": "s1",
+        "hook_event_name": "PreToolUse",
+        "cwd": "/tmp",
+        "tool_name": "Agent",
+        "tool_input": tool_input,
+    });
+
+    run_agent_role_in(&fixtures_root(), &event.to_string())
+}
+
+#[test]
+fn it_should_deny_an_agent_call_with_name_to_a_plugin_agent_on_stdout() {
+    let tool_input = json!({ "subagent_type": "oh-my-hexflow:analyst", "name": "x" });
+
+    let output = run_agent_tool_call(&tool_input);
+
+    let decision = decision_of(&output);
+    assert_eq!(decision["permissionDecision"], json!("deny"));
+    assert!(
+        decision["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|reason| reason.starts_with("agent-named: ")),
+        "the reason starts with the code: {decision}"
+    );
+}
+
+#[test]
+fn it_should_pass_an_agent_call_without_name_to_a_plugin_agent() {
+    let tool_input = json!({ "subagent_type": "oh-my-hexflow:analyst" });
+
+    let output = run_agent_tool_call(&tool_input);
+
+    assert_passed(&output);
+}
+
 // agent-role: matriz do agente e reescrita do comando
 //
 // Os agentes de `tests/fixtures/agents/` são FIXTURES, não os agentes do plugin.

@@ -427,11 +427,11 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 
 #### O hook `agent-role`
 
-O hook impõe a matriz do papel ao `Bash` do agente portado ([ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md); o comportamento, em [directives-flow.md](directives-flow.md), seção 12). Segue as camadas do `spec-lock`: o leitor puro mora em `workflow`, o veredito em `app` e a IO em `adapters` e `ports`.
+O hook impõe a matriz do papel ao `Bash` e ao `Monitor` do agente portado e nega a chamada à tool `Agent` (`Task`) com `name` a um agente do plugin ([ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md); o comportamento, em [directives-flow.md](directives-flow.md), seção 12). Segue as camadas do `spec-lock`: o leitor puro mora em `workflow`, o veredito em `app` e a IO em `adapters` e `ports`.
 
 - `workflow/shell/` (`lexer`, `cursor`, `heredoc`, `redirect`, `wrapper`): o leitor de comando de shell. Puro, sem IO e sem biblioteca de shell. Devolve uma `CommandLine` (comandos simples, se há separador, se o início é limpo, se um heredoc sem aspas executa algo) e um `ReadError` para aspa ou heredoc sem fechar, aninhamento acima de 64 níveis e comando acima de 256 KiB.
 - `workflow/omhl_leaf` e `workflow/role_allow`: a folha da CLI que o comando chama (com os grupos de subcomandos que o clap informa) e o `omhl-allow` do frontmatter do agente, lido com a `serde-saphyr`.
-- `app/agent_role.rs`: `agent_role(&Value, &AgentRoleEnv) -> RoleVerdict` (`Pass`, `Deny`, `Allow`). Não abre o banco. Lê o arquivo do agente por `ports/files` (`read_regular_utf8`, com teto de 64 KiB).
+- `app/agent_role.rs`: `agent_role(&Value, &AgentRoleEnv) -> RoleVerdict` (`Pass`, `Deny`, `Allow`); decide primeiro pelo `tool_name`, e `Agent` ou `Task` vai para a negação `agent-named`, que nunca devolve `Allow`. Não abre o banco. Lê o arquivo do agente por `ports/files` (`read_regular_utf8`, com teto de 64 KiB).
 - `adapters/hook.rs`: traduz o veredito para o JSON do `PreToolUse`.
 - `guard/role.rs`: a matriz compilada dos sete papéis, que a CLI aplica no `append`. O hook não guarda cópia do dado: lê o `omhl-allow` do agente (`commands`). `ROLE_REFERENCE_COMMANDS` (os `commands`, só de teste) e `ROLE_REFERENCE_MATRIX` (as três colunas do `append`, lida da matriz) servem à paridade com o `omhl-allow` (`tests/integration/agents.rs`) e com a tabela de `directives-flow.md` (`tests/integration/repo_checks.rs`).
 
@@ -505,7 +505,7 @@ Os sete agentes de `plugin/agents/` e o hook `agent-role` (seção 3.24) têm ci
 | Arquivo | O que reprova |
 |---|---|
 | `agent_role.rs` | A matriz compilada por papel e as condições finas do `append` (`role-record-forbidden`, `role-revision-forbidden`, `role-answer-forbidden`, `role-retirement-forbidden`, `role-unknown`), na guarda e pela CLI. |
-| `agent_role_hook.rs` | O veredito do hook por entrada: passa sem `agent_type` e para agente de outro plugin; nega atribuição de `OMHL_ROLE`, comando composto, expansão na posição do programa, heredoc sem aspas com substituição, embrulho ilegível, comando fora da matriz e leitura que falha; responde `allow` com o prefixo `OMHL_ROLE=omhl:<papel>` na posição certa; roda o comando reescrito no `bash` e confere que o `OMHL_ROLE` chega ao `omhl`. |
+| `agent_role_hook.rs` | O veredito do hook por entrada: passa sem `agent_type` e para agente de outro plugin; nega a chamada à tool `Agent` com `name` a um agente do plugin (`agent-named`) e passa a sem `name`; nega atribuição de `OMHL_ROLE`, comando composto, expansão na posição do programa, heredoc sem aspas com substituição, embrulho ilegível, comando fora da matriz e leitura que falha; responde `allow` com o prefixo `OMHL_ROLE=omhl:<papel>` na posição certa; roda o comando reescrito no `bash` e confere que o `OMHL_ROLE` chega ao `omhl`. |
 | `agents.rs` | Os sete arquivos: frontmatter (`omhl-allow`, `disallowedTools`, `omitClaudeMd`), paridade do `omhl-allow` com a matriz compilada, tags de topo do original do oh-my-claudecode 5.7.19, aviso de terceiros (`THIRD_PARTY_NOTICES.md`) e a seção "Créditos" do `README.md`. |
 | `agent_examples.rs` | Cada exemplo `omhl append <<'EOF'` dos prompts dos agentes roda pelo hook e pela CLI real, como o papel, sobre um banco que tem só o que o texto manda existir. |
 | `repo_checks.rs` | A tabela de "A matriz por papel" em `docs/directives-flow.md` igual à matriz compilada. |
