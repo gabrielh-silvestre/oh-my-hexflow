@@ -8,7 +8,7 @@ mod lock {
     use std::path::Path;
 
     use crate::workflow::lock::{
-        Facts, SpecPath, Tool, Verdict, decide, next_amendment, parse_spec_path,
+        Cause, Facts, SpecPath, Tool, Verdict, decide, next_amendment, parse_spec_path, unavailable,
     };
 
     use super::{CUSTOM_SPECS, DEFAULT_SPECS, FOLDER, FROZEN, IN_WORKTREE};
@@ -543,5 +543,180 @@ mod lock {
         );
 
         assert_eq!(verdict, Verdict::Allow);
+    }
+
+    // Marcador do projeto dentro da pasta congelada (b5)
+
+    #[test]
+    fn it_should_deny_a_marker_file_written_in_a_frozen_folder_with_its_own_reason() {
+        let verdict = verdict(Tool::Write, ".omhl.toml", &["parte-01.md"], true, false);
+
+        let (code, reason) = denial(verdict);
+
+        assert_eq!(code, FROZEN);
+        assert!(reason.contains("project marker files"), "reason: {reason}");
+    }
+
+    #[test]
+    fn it_should_deny_a_marker_file_at_any_depth_of_a_frozen_folder() {
+        let verdict = verdict(Tool::Write, "sub/.omhl.toml", &["parte-01.md"], true, false);
+
+        assert_eq!(denial(verdict).0, FROZEN);
+    }
+
+    #[test]
+    fn it_should_deny_a_file_under_an_omhl_folder_of_a_frozen_folder() {
+        let verdict = verdict(
+            Tool::Write,
+            ".omhl/workflow.toml",
+            &["parte-01.md"],
+            true,
+            false,
+        );
+
+        assert_eq!(denial(verdict).0, FROZEN);
+    }
+
+    #[test]
+    fn it_should_deny_an_edit_of_an_existing_marker_file_in_a_frozen_folder() {
+        let verdict = verdict(
+            Tool::Edit,
+            ".omhl.toml",
+            &["parte-01.md", ".omhl.toml"],
+            true,
+            false,
+        );
+
+        assert_eq!(denial(verdict).0, FROZEN);
+    }
+
+    #[test]
+    fn it_should_allow_a_new_plain_file_in_a_frozen_folder() {
+        let verdict = verdict(Tool::Write, "notas.md", &["parte-01.md"], true, false);
+
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    #[test]
+    fn it_should_not_treat_a_name_that_only_resembles_the_marker_as_a_marker() {
+        let verdict = verdict(
+            Tool::Write,
+            "notas.omhl.toml",
+            &["parte-01.md"],
+            true,
+            false,
+        );
+
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    #[test]
+    fn it_should_allow_a_marker_file_in_a_folder_of_a_work_item_without_branch_or_mark() {
+        let verdict = verdict(Tool::Write, ".omhl.toml", &["parte-01.md"], false, false);
+
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    // Negação por falha interna depois do reconhecimento
+
+    const SUBJECT: &str = "wi-w1";
+    const FIX_CLOSING: &str = "the edit stays denied until this is fixed";
+
+    #[test]
+    fn it_should_build_the_unavailable_denial_on_one_line_with_the_prefix_the_work_item_and_the_step()
+     {
+        let verdict = unavailable(
+            SUBJECT,
+            "checking the main directory",
+            &Cause::Git("fatal: bad config line 1 in file .git/config".to_owned()),
+        );
+
+        let (code, reason) = denial(verdict);
+
+        assert_eq!(code, "spec-lock-unavailable");
+        assert!(
+            reason.starts_with("spec-lock-unavailable: "),
+            "reason: {reason}"
+        );
+        assert!(reason.contains("wi-w1"), "reason: {reason}");
+        assert!(
+            reason.contains("checking the main directory"),
+            "reason: {reason}"
+        );
+        assert!(reason.contains("bad config line"), "reason: {reason}");
+        assert!(!reason.contains('\n'), "reason: {reason}");
+    }
+
+    #[test]
+    fn it_should_close_a_git_cause_with_until_this_is_fixed() {
+        let verdict = unavailable(
+            SUBJECT,
+            "listing the local branches",
+            &Cause::Git("x".to_owned()),
+        );
+
+        assert!(denial(verdict).1.ends_with(FIX_CLOSING));
+    }
+
+    #[test]
+    fn it_should_close_a_read_cause_with_until_this_is_fixed_and_say_the_fixed_reason() {
+        let verdict = unavailable(
+            SUBJECT,
+            "listing the files of the spec folder",
+            &Cause::Read("the specs folder has too many entries"),
+        );
+
+        let (_, reason) = denial(verdict);
+
+        assert!(reason.contains("the specs folder has too many entries"));
+        assert!(reason.ends_with(FIX_CLOSING), "reason: {reason}");
+    }
+
+    #[test]
+    fn it_should_close_a_timeout_with_retry_it_and_name_it() {
+        let verdict = unavailable(SUBJECT, "checking the checkout", &Cause::GitTimedOut);
+
+        let (_, reason) = denial(verdict);
+
+        assert!(reason.contains("git timed out"), "reason: {reason}");
+        assert!(
+            reason.ends_with("the edit stays denied; retry it"),
+            "reason: {reason}"
+        );
+    }
+
+    #[test]
+    fn it_should_turn_control_characters_of_the_git_message_into_spaces() {
+        let verdict = unavailable(
+            SUBJECT,
+            "checking the main directory",
+            &Cause::Git("fatal: bad value\n\"x\"\r\tnext".to_owned()),
+        );
+
+        let (_, reason) = denial(verdict);
+
+        assert!(!reason.contains(['\n', '\r', '\t']), "reason: {reason:?}");
+        assert!(
+            reason.contains("bad value \"x\"  next"),
+            "reason: {reason:?}"
+        );
+    }
+
+    #[test]
+    fn it_should_cut_the_git_message_at_200_characters() {
+        let message = "Z".repeat(500);
+
+        let verdict = unavailable(SUBJECT, "checking the main directory", &Cause::Git(message));
+
+        assert_eq!(denial(verdict).1.matches('Z').count(), 200);
+    }
+
+    #[test]
+    fn it_should_cut_a_long_subject_at_200_characters() {
+        let subject = "Q".repeat(500);
+
+        let verdict = unavailable(&subject, "reading the new content", &Cause::Read("fixed"));
+
+        assert_eq!(denial(verdict).1.matches('Q').count(), 200);
     }
 }

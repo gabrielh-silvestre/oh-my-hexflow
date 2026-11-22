@@ -2,8 +2,15 @@ use std::path::{Component, Path, PathBuf};
 
 use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, FREEZE_MARK, PART_PREFIX, work_item_of_folder};
 use super::spec::amendment_number;
+use crate::probe::GIT_TIMED_OUT;
+use crate::project::layout::OMHL_DIR;
+use crate::project::marker::MARKER_FILE;
 
 const FROZEN: &str = "spec-frozen";
+const UNAVAILABLE: &str = "spec-lock-unavailable";
+const TEXT_MAX_CHARS: usize = 200;
+const FIX_CLOSING: &str = "the edit stays denied until this is fixed";
+const RETRY_CLOSING: &str = "the edit stays denied; retry it";
 const IN_LINKED_WORKTREE: &str = "spec-in-linked-worktree";
 const FOLDER_UNKNOWN: &str = "spec-folder-unknown";
 
@@ -37,6 +44,46 @@ impl Tool {
 pub enum Verdict {
     Allow,
     Deny { code: &'static str, reason: String },
+}
+
+/// Por que a decisão não pôde ser tomada depois de reconhecer a spec; montada no `app`, que mapeia o erro do git.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cause {
+    GitTimedOut,
+    Git(String),
+    /// Motivo fixo, sem nome de arquivo nem conteúdo.
+    Read(&'static str),
+}
+
+/// Negação por falha interna depois do reconhecimento da spec: a edição fica negada em vez de liberada.
+/// `subject` é o work item (`wi-<id>`) ou o caminho de quem não tem work item; tudo sai numa linha só.
+pub fn unavailable(subject: &str, step: &str, cause: &Cause) -> Verdict {
+    let (cause, closing) = match cause {
+        Cause::GitTimedOut => (GIT_TIMED_OUT.to_owned(), RETRY_CLOSING),
+        Cause::Git(message) => (one_line(message), FIX_CLOSING),
+        Cause::Read(reason) => ((*reason).to_owned(), FIX_CLOSING),
+    };
+
+    Verdict::Deny {
+        code: UNAVAILABLE,
+        reason: format!(
+            "{UNAVAILABLE}: the spec lock could not decide the edit for {}: {step} failed ({cause}); {closing}",
+            one_line(subject)
+        ),
+    }
+}
+
+fn one_line(text: &str) -> String {
+    text.chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .take(TEXT_MAX_CHARS)
+        .collect()
 }
 
 pub struct Facts<'a> {
@@ -96,7 +143,7 @@ pub fn next_amendment(folder_files: &[String]) -> String {
     format!("{AMENDMENT_PREFIX}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
-/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
+/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe e qualquer arquivo de marcador do projeto; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {
@@ -119,6 +166,15 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
             ),
         };
     }
+    if names_project_marker(spec) {
+        return Verdict::Deny {
+            code: FROZEN,
+            reason: format!(
+                "{FROZEN}: the spec in {} is frozen, and the project marker files ({MARKER_FILE} and {OMHL_DIR}/) are neither created nor edited in the spec folder of a frozen work item",
+                facts.main_folder.display()
+            ),
+        };
+    }
     if creates_allowed_file(tool, spec, facts) {
         return Verdict::Allow;
     }
@@ -132,6 +188,13 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
             amendment.display()
         ),
     }
+}
+
+/// Um `.omhl.toml` plantado na pasta congelada soltaria a trava das specs do projeto.
+fn names_project_marker(spec: &SpecPath) -> bool {
+    spec.file
+        .split('/')
+        .any(|name| name == MARKER_FILE || name == OMHL_DIR)
 }
 
 fn creates_allowed_file(tool: Tool, spec: &SpecPath, facts: &Facts) -> bool {
