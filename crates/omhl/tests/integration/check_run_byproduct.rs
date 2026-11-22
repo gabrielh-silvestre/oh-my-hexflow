@@ -1,7 +1,7 @@
 use crate::support;
 
 use std::sync::mpsc::{self, Receiver};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use hexlog::{
     AppendItem, AppendOutcome, AppendRequest, Author, Config, Deps, Hexlog, Lineage, ListFilter,
@@ -13,6 +13,7 @@ use omhl::app::error::AppError;
 use omhl::app::retry::RetryPolicy;
 use omhl::byproduct::{ByproductError, ByproductErrorKind, ByproductHash, ByproductStore};
 use omhl::facade::{Omhl, OmhlDeps};
+use omhl::mechanical::redact::Redactor;
 use omhl::ports::blob::BlobStore;
 use omhl::runner::{CommandRunner, RunError, RunReport, RunSpec};
 use serde_json::{Value, json};
@@ -37,6 +38,11 @@ const B2_HASH: &str = "d3d0db0265dcfa8f15341ae83fc19fb2d4886a5292527ba9b176e99a1
 const B2_BLOB: &[u8] = b"omhl-byproduct v1 stdout=4 stderr=4\nout\nerr\n";
 const B3_HASH: &str = "e41e7f67536cb997cc36915fd5a48862b31d266fe4ec10649207789f971ac4ae";
 const B3_BLOB: &[u8] = b"omhl-byproduct v1 stdout=7 stderr=0\npartial";
+const REDACTED_HASH: &str = "01a5155783691836d9e324f0699393db05921d63d0739e3f492b605a282b1e1a";
+const REDACTED_BLOB: &[u8] = b"omhl-byproduct v1 stdout=21 stderr=0\nAPI_TOKEN=[REDACTED]\n";
+const SECRET_LINE: &[u8] = b"API_TOKEN=abcdef123456\n";
+const STREAM_BYTES: usize = 4 * 1024 * 1024;
+const REDACTION_CEILING: Duration = Duration::from_secs(3);
 const BLOB_FAILED_HINT: &str =
     "the output store is not writable; fix its permissions or free disk space";
 
@@ -604,4 +610,150 @@ fn it_should_not_blame_the_cut_when_the_failure_comes_from_the_exit_code() {
         .expect("the message is text")
         .to_owned();
     assert!(!message.contains("output was cut"), "message: {message}");
+}
+
+#[test]
+fn it_should_store_the_masked_output_and_record_the_hash_of_the_masked_blob() {
+    let fx = fixture_with_fmt();
+    let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(SECRET_LINE, b""))]);
+    let probe = probe();
+    let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
+
+    run_before_pr(&mut app).expect("the run succeeds");
+
+    assert_eq!(
+        get(&mut app, FMT_ATTESTATION)["data"]["byproduct"],
+        json!(REDACTED_HASH)
+    );
+    assert_eq!(fx.stored_blob(REDACTED_HASH), Some(REDACTED_BLOB.to_vec()));
+}
+
+#[test]
+fn it_should_serve_the_masked_output_through_byproduct() {
+    let fx = fixture_with_fmt();
+    let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(SECRET_LINE, b""))]);
+    let probe = probe();
+    let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
+    run_before_pr(&mut app).expect("the run succeeds");
+    let action = Action::Byproduct {
+        check: "checks.fmt".to_owned(),
+        work_item: W1.to_owned(),
+        tail: 10,
+    };
+
+    let response = app
+        .dispatch(&Caller::cli(), &action)
+        .unwrap_or_else(|error| panic!("byproduct is accepted: {error}"));
+
+    assert_eq!(response["lines"], json!(["API_TOKEN=[REDACTED]"]));
+}
+
+#[test]
+fn it_should_evaluate_the_check_on_the_raw_output_not_on_the_masked_one() {
+    let fx = Fixture::new();
+    let mut data = mechanical_check("before-pr", &["true"]);
+    data["expect"] = json!([{ "exit": 0, "stdout": "abcdef123456", "outcome": "passed" }]);
+    fx.seed_check_data("checks.fmt", data);
+    let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(SECRET_LINE, b""))]);
+    let probe = probe();
+    let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
+
+    run_before_pr(&mut app).expect("the pattern matches the raw output");
+
+    assert_eq!(
+        get(&mut app, FMT_ATTESTATION)["data"]["outcome"],
+        json!("passed")
+    );
+}
+
+#[test]
+fn it_should_keep_the_output_tail_unmasked_when_the_blob_cannot_be_stored() {
+    let fx = fixture_with_fmt();
+    let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(SECRET_LINE, b""))]);
+    let probe = probe();
+    let mut app = fx.app(&probe, &runner, &FullDiskStore, &RetryPolicy::default());
+
+    let error = run_before_pr(&mut app).expect_err("the blob store failure stops the run");
+
+    assert_eq!(
+        details(&error)[0]["context"]["output_tail"]["stdout"],
+        json!(["API_TOKEN=abcdef123456"])
+    );
+}
+
+/// Linha de 100 bytes (com o `\n`) para o fluxo do teste de desempenho.
+fn padded_line(text: &str) -> Vec<u8> {
+    let mut line = format!("{text:<99}").into_bytes();
+    line.truncate(99);
+    line.push(b'\n');
+
+    line
+}
+
+/// Linhas que disparam o pré-filtro (`token`, `secret` ou `://`); duas em cada três levam um segredo de verdade.
+fn trigger_stream() -> Vec<u8> {
+    let mut stream = Vec::with_capacity(STREAM_BYTES);
+    for number in 0.. {
+        let line = match number % 3 {
+            0 => padded_line(&format!("db_token=fakesecret{number:09}")),
+            1 => padded_line(&format!("postgres://app:fakepass{number:09}@db:5432/x")),
+            _ => padded_line(&format!("checking secret store entry {number}")),
+        };
+        if stream.len() + line.len() > STREAM_BYTES {
+            break;
+        }
+        stream.extend_from_slice(&line);
+    }
+
+    stream
+}
+
+/// Uma linha só, sem `\n`, com uma palavra-chave e um segredo no meio.
+fn single_line_stream() -> Vec<u8> {
+    let filler = b"lorem ipsum dolor sit amet ".repeat(STREAM_BYTES / 54);
+    let mut stream = filler.clone();
+    stream.extend_from_slice(b" token=abcdef123456 ");
+    stream.extend_from_slice(&filler);
+
+    stream
+}
+
+/// Tempo de `Redactor::new()` mais a redação dos dois fluxos (`stdout` e `stderr`) com a mesma entrada.
+fn timed_redaction(stream: &[u8]) -> (Duration, Vec<u8>) {
+    let started = Instant::now();
+    let redactor = Redactor::new();
+    let stdout = redactor.redact(stream);
+    let _stderr = redactor.redact(stream);
+
+    (started.elapsed(), stdout)
+}
+
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}
+
+// Maior de 5 execuções em debug (regex com `perf` e `opt-level = 3`): 0,43 s com linhas curtas e 0,17 s com linha única.
+#[test]
+fn it_should_redact_4_mib_of_short_trigger_lines_per_stream_within_the_ceiling() {
+    let stream = trigger_stream();
+
+    let (elapsed, redacted) = timed_redaction(&stream);
+
+    assert!(elapsed < REDACTION_CEILING, "took {elapsed:?}");
+    assert!(contains(&redacted, b"db_token=[REDACTED]"));
+    assert!(!contains(&redacted, b"fakesecret"));
+    assert!(!contains(&redacted, b"fakepass"));
+}
+
+#[test]
+fn it_should_redact_a_single_4_mib_line_per_stream_within_the_ceiling() {
+    let stream = single_line_stream();
+
+    let (elapsed, redacted) = timed_redaction(&stream);
+
+    assert!(elapsed < REDACTION_CEILING, "took {elapsed:?}");
+    assert!(contains(&redacted, b"token=[REDACTED] "));
+    assert!(!contains(&redacted, b"abcdef123456"));
 }

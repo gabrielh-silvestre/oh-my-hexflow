@@ -2,6 +2,7 @@ pub mod branch;
 pub mod evaluate;
 pub mod order;
 pub mod plan;
+pub mod redact;
 pub mod spec;
 pub mod sweep;
 

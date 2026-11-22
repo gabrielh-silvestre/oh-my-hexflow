@@ -21,6 +21,7 @@ use crate::extensions::model::ExtensionKind;
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
 use crate::mechanical::evaluate::{Observation, evaluate_with_reason};
 use crate::mechanical::plan::{CheckResult, PlannedCheck, plan_run, summarize};
+use crate::mechanical::redact::Redactor;
 use crate::mechanical::spec::{CheckSpec, Outcome, spec_digest};
 use crate::probe::{ProbeError, ProbeOutcome, TreeSource};
 use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
@@ -73,6 +74,7 @@ struct Scope<'a> {
     cwd: &'a Path,
     project_root: &'a Path,
     tree_digests: HashMap<String, String>,
+    redactor: Redactor,
 }
 
 struct Miss {
@@ -143,6 +145,7 @@ impl Engine<'_> {
             cwd: &root,
             project_root: &root,
             tree_digests: tree_digests(&root),
+            redactor: Redactor::new(),
         };
         let tally = self.run_planned(runner, &scope, &planned)?;
 
@@ -416,7 +419,7 @@ impl Engine<'_> {
         let mut context = scope.ran_context("guard-refused", &check.id, &spec.run, snapshot);
         context["expected"] = json!(outcome_name(outcome));
         // O blob vai para o store antes do `append`: a attestation nunca aponta para um blob ausente.
-        let byproduct = match store.put(&byproduct_blob(&report)) {
+        let byproduct = match store.put(&byproduct_blob(&report, &scope.redactor)) {
             Ok(hash) => hash,
             Err(error) => {
                 context["kind"] = json!("blob-failed");
@@ -872,8 +875,12 @@ fn failure_fields(check: &PlannedCheck, spec: &CheckSpec, report: &RunReport) ->
     with_run_fields(fields, report)
 }
 
-fn byproduct_blob(report: &RunReport) -> Vec<u8> {
-    byproduct::encode(&report.stdout, &report.stderr)
+/// Redige antes de montar o cabeçalho: os tamanhos e o hash são os do texto mascarado.
+fn byproduct_blob(report: &RunReport, redactor: &Redactor) -> Vec<u8> {
+    byproduct::encode(
+        &redactor.redact(&report.stdout),
+        &redactor.redact(&report.stderr),
+    )
 }
 
 /// O `command` gravado leva o arquivo que rodou no lugar de `argv[0]`: o mesmo nome em `PATH` diferente muda o veredito.
