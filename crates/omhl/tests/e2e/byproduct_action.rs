@@ -1,7 +1,9 @@
 use crate::support;
 
 use std::fs;
-use std::path::PathBuf;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use ::omhl::byproduct::ByproductStore;
 use ::omhl::facade::{Omhl, OmhlDeps};
@@ -578,4 +580,107 @@ fn it_should_reject_a_work_item_above_256_characters() {
         failure(&output)["error"]["details"][0]["code"],
         json!("where-eq-value-too-long")
     );
+}
+
+// byproduct prune
+
+const EIGHT_DAYS: Duration = Duration::from_secs(8 * 24 * 60 * 60);
+const THIRTY_DAYS: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+/// Dá ao arquivo a data de `age` atrás, como se ele tivesse sido gravado naquele dia.
+fn age_file(path: &Path, age: Duration) {
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("the file opens");
+    file.set_modified(SystemTime::now() - age)
+        .expect("the date is set");
+}
+
+#[test]
+fn it_should_prune_a_stale_output_and_keep_the_live_one_with_the_counts() {
+    let fixture = Fixture::new();
+    let live = put_bsmall(&fixture);
+    fixture.attest('a', W1, "failed", &live);
+    put_b1000(&fixture);
+    age_file(&fixture.blob_file(BSMALL_SHA), THIRTY_DAYS);
+    age_file(&fixture.blob_file(B1000_SHA), EIGHT_DAYS);
+    let stale_bytes = fs::metadata(fixture.blob_file(B1000_SHA))
+        .expect("the stale blob exists")
+        .len();
+
+    let output = fixture.omhl(&["byproduct", "prune"]);
+
+    assert_eq!(
+        success(&output),
+        json!({ "removed": 1, "kept_live": 1, "freed_bytes": stale_bytes })
+    );
+    assert!(!fixture.blob_file(B1000_SHA).exists());
+    assert!(fixture.blob_file(BSMALL_SHA).exists());
+}
+
+#[test]
+fn it_should_report_zeros_and_exit_zero_when_nothing_is_stored() {
+    let fixture = Fixture::new();
+
+    let output = fixture.omhl(&["byproduct", "prune"]);
+
+    assert_eq!(
+        success(&output),
+        json!({ "removed": 0, "kept_live": 0, "freed_bytes": 0 })
+    );
+}
+
+#[test]
+fn it_should_prune_again_even_with_a_fresh_daily_stamp() {
+    let fixture = Fixture::new();
+    fixture.omhl(&["byproduct", "prune"]);
+    put_b1000(&fixture);
+    age_file(&fixture.blob_file(B1000_SHA), EIGHT_DAYS);
+
+    let output = fixture.omhl(&["byproduct", "prune"]);
+
+    assert_eq!(success(&output)["removed"], json!(1));
+}
+
+#[test]
+fn it_should_answer_byproduct_prune_failed_when_the_folder_cannot_be_read() {
+    let fixture = Fixture::new();
+    put_b1000(&fixture);
+    let shard = fixture
+        .blob_file(B1000_SHA)
+        .parent()
+        .expect("the blob has a shard")
+        .to_path_buf();
+    age_file(&fixture.blob_file(B1000_SHA), EIGHT_DAYS);
+    fs::set_permissions(&shard, fs::Permissions::from_mode(0o500)).expect("the shard is locked");
+
+    let output = fixture.omhl(&["byproduct", "prune"]);
+
+    fs::set_permissions(&shard, fs::Permissions::from_mode(0o700)).expect("the shard is unlocked");
+    assert_eq!(
+        failure(&output)["error"]["code"],
+        json!("byproduct-prune-failed")
+    );
+}
+
+#[test]
+fn it_should_refuse_byproduct_without_arguments_as_a_usage_error() {
+    let fixture = Fixture::new();
+
+    let output = fixture.omhl(&["byproduct"]);
+
+    assert_eq!(output.code, Some(2), "stderr: {}", output.stderr);
+}
+
+#[test]
+fn it_should_not_prune_when_an_option_comes_before_the_prune_word() {
+    let fixture = Fixture::new();
+    put_b1000(&fixture);
+    age_file(&fixture.blob_file(B1000_SHA), EIGHT_DAYS);
+
+    let output = fixture.omhl(&["byproduct", "--tail", "3", "prune"]);
+
+    assert_eq!(output.code, Some(2), "stderr: {}", output.stderr);
+    assert!(fixture.blob_file(B1000_SHA).exists());
 }

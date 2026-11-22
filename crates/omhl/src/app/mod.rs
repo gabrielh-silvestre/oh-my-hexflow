@@ -29,6 +29,7 @@ pub use crate::extensions::model::ExtensionKind;
 pub use crate::mechanical::RUNNABLE_EVENTS;
 pub use crate::workflow::config::INVALID_WORKFLOW_CONFIG;
 pub use crate::workflow::lock::{EditInput, Replacement, Tool, Verdict};
+pub use crate::workflow::omhl_leaf::Group;
 
 pub use self::agent_role::{AgentRoleEnv, RoleVerdict, agent_role};
 pub use self::spec::{SpecLockEvent, SpecLockOutcome, spec_lock, wt_post_start};

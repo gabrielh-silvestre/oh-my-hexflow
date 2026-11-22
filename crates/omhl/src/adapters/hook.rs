@@ -13,7 +13,7 @@ use crate::app::{
     AgentRoleEnv, EditInput, Replacement, RoleVerdict, SpecLockEvent, Tool, Verdict,
     agent_role as check_agent_role, spec_lock as check_spec_lock,
 };
-use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
+use crate::app::{ExtensionKind, Group, INVALID_WORKFLOW_CONFIG};
 use crate::project::Env;
 
 pub fn session_start(
@@ -113,7 +113,7 @@ pub fn agent_role(
     out: &mut impl Write,
     err: &mut impl Write,
     env: &Env<'_>,
-    groups: &[&str],
+    groups: &[Group],
 ) -> ExitCode {
     let role_env = AgentRoleEnv {
         plugin_root: env.plugin_root.map(Path::new),

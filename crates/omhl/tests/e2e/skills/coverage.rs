@@ -102,7 +102,8 @@ fn collect_leaves(command: &clap::Command, prefix: &str, leaves: &mut Vec<(Strin
         .get_subcommands()
         .filter(|child| child.get_name() != "help")
         .collect();
-    if children.is_empty() {
+    // Um grupo híbrido (`byproduct`) também é folha: tem argumentos próprios além do subcomando.
+    if children.is_empty() || command.get_positionals().next().is_some() {
         let mut options = long_options(command.get_arguments().filter(|arg| !arg.is_global_set()));
         options.sort();
         leaves.push((path.clone(), options));
@@ -708,6 +709,7 @@ fn it_should_enumerate_the_action_leaves_of_the_cli() {
         "append",
         "attest",
         "byproduct",
+        "byproduct prune",
         "check retire",
         "check run",
         "check sweep",

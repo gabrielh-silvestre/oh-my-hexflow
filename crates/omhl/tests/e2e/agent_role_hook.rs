@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::CommandFactory;
-use omhl::adapters::cli::Cli;
+use omhl::adapters::cli::{Cli, command_leaves};
 use omhl::guard::ROLE_REFERENCE_COMMANDS;
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
@@ -364,6 +364,7 @@ const LEAF_SAMPLES: &[(&str, &str)] = &[
     ("render", "omhl render"),
     ("verify", "omhl verify"),
     ("byproduct", "omhl byproduct checks.run-tests work-items.w1"),
+    ("byproduct prune", "omhl byproduct prune"),
     (
         "report answers",
         "omhl report answers --work-item work-items.w1",
@@ -627,21 +628,9 @@ fn it_should_deny_a_leaf_the_cli_does_not_have_to_every_role() {
 
 // Listas à mão contra o clap
 
-/// As folhas reais da CLI: `<grupo> <folha>` dentro de um grupo, o nome sozinho fora dele.
-/// O `help` implícito do clap fica de fora: a matriz o trata como folha só de leitura.
+/// As folhas reais da CLI (`omhl::adapters::cli::command_leaves`): o `help` implícito do clap fica de fora, e a matriz o trata como folha só de leitura.
 fn cli_leaves() -> BTreeSet<String> {
-    let cli = Cli::command();
-    let mut leaves = BTreeSet::new();
-    for command in cli.get_subcommands().filter(|c| c.get_name() != "help") {
-        if !command.has_subcommands() {
-            leaves.insert(command.get_name().to_owned());
-        }
-        for leaf in command.get_subcommands().filter(|c| c.get_name() != "help") {
-            leaves.insert(format!("{} {}", command.get_name(), leaf.get_name()));
-        }
-    }
-
-    leaves
+    command_leaves(&Cli::command()).into_iter().collect()
 }
 
 #[test]
@@ -1832,5 +1821,31 @@ fn it_should_keep_the_role_in_bash_and_zsh_after_a_released_bare_role_name() {
 
             assert_eq!(role, "role=omhl:verifier", "{shell}: {command}");
         }
+    }
+}
+
+// byproduct é folha híbrida: a leitura (`byproduct <check> <wi>`) é dos papéis só de leitura; `byproduct prune` não é de papel nenhum
+
+#[test]
+fn it_should_allow_the_byproduct_read_to_the_analyst_with_and_without_tail() {
+    for command in [
+        "omhl byproduct checks.x work-items.y",
+        "omhl byproduct --tail 40 checks.x work-items.y",
+    ] {
+        assert_allowed_with_prefix(&run_as("analyst", command), "analyst", command);
+    }
+}
+
+#[test]
+fn it_should_deny_byproduct_prune_outside_the_matrix_in_every_spelling() {
+    for command in [
+        "omhl byproduct prune",
+        "omhl --format json byproduct prune",
+        "omhl byproduct prune --format json",
+        "omhl byproduct --tail 3 prune",
+    ] {
+        let output = run_as("analyst", command);
+
+        assert_reason_starts_with_code(&output, "command-outside-matrix", command);
     }
 }

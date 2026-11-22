@@ -890,6 +890,13 @@ fn byproduct_facts(value: &Value) -> Vec<String> {
     facts
 }
 
+fn byproduct_prune_facts(value: &Value) -> Vec<String> {
+    vec![format!(
+        "✔ byproduct prune · {} removed · {} kept live · {} bytes freed",
+        value["removed"], value["kept_live"], value["freed_bytes"]
+    )]
+}
+
 fn byproduct_whole_absent(_value: &Value) -> Vec<String> {
     vec!["cut short".to_owned()]
 }
@@ -1465,7 +1472,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 81] = [
+const CASES: [Case; 82] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -2021,6 +2028,16 @@ const CASES: [Case; 81] = [
         fixture: byproduct_state,
         derived: byproduct_facts,
         absent: byproduct_whole_absent,
+    },
+    Case {
+        name: "byproduct prune with nothing stored",
+        key: CommandKey::ByproductPrune,
+        args: &["byproduct", "prune"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: without_stored_extensions,
+        derived: byproduct_prune_facts,
+        absent: no_facts,
     },
     Case {
         name: "byproduct check-not-found",

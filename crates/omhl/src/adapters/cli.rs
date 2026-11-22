@@ -10,11 +10,11 @@ use serde_json::{Value, json};
 
 use super::hook;
 use super::text::{CommandKey, Layout, render_failure, render_success, renderer_for};
-use crate::app::RUNNABLE_EVENTS;
 use crate::app::action::{Action, Caller, CheckTarget};
 use crate::app::error::AppError;
 use crate::app::input::{INPUT_MAX_BYTES, read_json_input};
 use crate::app::runtime::run_action;
+use crate::app::{Group, RUNNABLE_EVENTS};
 use crate::project::Env;
 
 #[derive(Debug, Parser)]
@@ -104,10 +104,16 @@ pub enum ActionCommand {
         #[command(subcommand)]
         command: GuidelineCommand,
     },
-    /// Print the last lines of the stored output of a check for a work item.
+    /// Print the last lines of the stored output of a check for a work item, or prune the stored outputs with `prune`.
+    #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
     Byproduct {
-        check: String,
-        work_item: String,
+        #[command(subcommand)]
+        command: Option<ByproductCommand>,
+        // `Option` com `required`: com `String` o clap falha ao montar o subcomando; o `None` só existe fora do clap e o adaptador o recusa.
+        #[arg(required = true)]
+        check: Option<String>,
+        #[arg(required = true)]
+        work_item: Option<String>,
         #[arg(long, default_value_t = 50)]
         tail: u32,
     },
@@ -136,6 +142,12 @@ pub enum CheckCommand {
     Sweep,
     /// Retire the stored check whose file was deleted from the working tree.
     Retire { check: String },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ByproductCommand {
+    /// Delete the stored outputs older than 7 days that no live attestation points to, now and without looking at the daily stamp; prints `removed`, `kept_live` and `freed_bytes`. The `check run` already prunes by itself, at most once a day per database and project.
+    Prune,
 }
 
 #[derive(Debug, Subcommand)]
@@ -247,7 +259,10 @@ pub fn run(
         Err(usage) => return report_usage(&usage, out, err),
     };
     let key = command_key(&cli.command);
-    if let Some(usage) = pre_push_misuse(&cli).or_else(|| format_misuse(&cli, key)) {
+    if let Some(usage) = pre_push_misuse(&cli)
+        .or_else(|| byproduct_misuse(&cli))
+        .or_else(|| format_misuse(&cli, key))
+    {
         return report_usage(&usage, out, err);
     }
     let Cli {
@@ -268,14 +283,8 @@ pub fn run(
         Command::Hook {
             event: HookEvent::AgentRole,
         } => {
-            let cli = Cli::command();
-            // Os comandos com subcomando vêm do clap: o hook não mantém uma segunda lista de folhas.
-            let groups: Vec<&str> = cli
-                .get_subcommands()
-                .filter(|command| command.has_subcommands())
-                .map(clap::Command::get_name)
-                .collect();
-            hook::agent_role(stdin, out, err, env, &groups)
+            // Os grupos vêm do clap: o hook não mantém uma segunda lista de folhas.
+            hook::agent_role(stdin, out, err, env, &command_groups(&Cli::command()))
         }
         Command::Hook {
             event: HookEvent::WtPostStart { branch },
@@ -344,6 +353,69 @@ fn pre_push_misuse(cli: &Cli) -> Option<clap::Error> {
             "--pre-push is only valid with --event before-pr",
         )
     })
+}
+
+/// `check` e `work_item` são `Option` por causa do subcomando `prune`; o clap já os exige sem ele, e o `None` que sobra sai pelo erro de uso (código `2`).
+fn byproduct_misuse(cli: &Cli) -> Option<clap::Error> {
+    let Command::Action(ActionCommand::Byproduct {
+        command: None,
+        check,
+        work_item,
+        ..
+    }) = &cli.command
+    else {
+        return None;
+    };
+
+    (check.is_none() || work_item.is_none()).then(|| {
+        Cli::command().error(
+            ErrorKind::MissingRequiredArgument,
+            "byproduct needs <CHECK> and <WORK_ITEM>, or the `prune` subcommand",
+        )
+    })
+}
+
+/// Os comandos de primeiro nível com subcomando (o `help` implícito do clap não conta).
+pub fn command_groups(root: &clap::Command) -> Vec<Group> {
+    root.get_subcommands()
+        .filter(|command| real_subcommands(command).next().is_some())
+        .map(|command| Group {
+            name: command.get_name().to_owned(),
+            subcommands: real_subcommands(command)
+                .map(|sub| sub.get_name().to_owned())
+                .collect(),
+            takes_positionals: command.get_positionals().next().is_some(),
+        })
+        .collect()
+}
+
+/// Cada folha como caminho (`check run`): um comando sem subcomando, ou um grupo híbrido (com argumentos próprios), que também desce nos filhos.
+pub fn command_leaves(root: &clap::Command) -> Vec<String> {
+    let mut leaves = Vec::new();
+    for command in real_subcommands(root) {
+        collect_leaf_paths(command, "", &mut leaves);
+    }
+
+    leaves
+}
+
+fn collect_leaf_paths(command: &clap::Command, parent: &str, leaves: &mut Vec<String>) {
+    let path = match parent {
+        "" => command.get_name().to_owned(),
+        _ => format!("{parent} {}", command.get_name()),
+    };
+    if real_subcommands(command).next().is_none() || command.get_positionals().next().is_some() {
+        leaves.push(path.clone());
+    }
+    for child in real_subcommands(command) {
+        collect_leaf_paths(child, &path, leaves);
+    }
+}
+
+fn real_subcommands(command: &clap::Command) -> impl Iterator<Item = &clap::Command> {
+    command
+        .get_subcommands()
+        .filter(|sub| sub.get_name() != "help")
 }
 
 /// `agent` e `human` só existem onde o comando tem renderizador; a recusa sai pelo mesmo caminho do erro de uso.
@@ -430,6 +502,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::CheckRetire => "check retire",
         CommandKey::GuidelineRetire => "guideline retire",
         CommandKey::Byproduct => "byproduct",
+        CommandKey::ByproductPrune => "byproduct prune",
         CommandKey::HooksInstall => "hooks install",
         CommandKey::HooksPostCommit => "hooks post-commit",
         CommandKey::SpecInit => "spec init",
@@ -482,7 +555,11 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Action(ActionCommand::Guideline {
             command: GuidelineCommand::Retire { .. },
         }) => CommandKey::GuidelineRetire,
-        Command::Action(ActionCommand::Byproduct { .. }) => CommandKey::Byproduct,
+        Command::Action(ActionCommand::Byproduct {
+            command: Some(ByproductCommand::Prune),
+            ..
+        }) => CommandKey::ByproductPrune,
+        Command::Action(ActionCommand::Byproduct { command: None, .. }) => CommandKey::Byproduct,
         Command::Action(ActionCommand::Hooks {
             command: HooksCommand::Install { .. },
         }) => CommandKey::HooksInstall,
@@ -643,14 +720,22 @@ fn to_action(
             command: GuidelineCommand::Retire { id, by },
         } => Action::GuidelineRetire { id, by },
         ActionCommand::Byproduct {
-            check,
-            work_item,
+            command: Some(ByproductCommand::Prune),
+            ..
+        } => Action::ByproductPrune,
+        ActionCommand::Byproduct {
+            command: None,
+            check: Some(check),
+            work_item: Some(work_item),
             tail,
         } => Action::Byproduct {
             check,
             work_item,
             tail,
         },
+        ActionCommand::Byproduct { command: None, .. } => {
+            unreachable!("byproduct_misuse refuses a missing check or work item")
+        }
         ActionCommand::Hooks {
             command: HooksCommand::Install { force },
         } => Action::HooksInstall { force },

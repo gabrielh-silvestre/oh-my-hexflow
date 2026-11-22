@@ -5,6 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use regex::Regex;
 
+use crate::workflow::omhl_leaf::Group;
+
 use super::{
     CITATION_PATTERN, SESSION_ROLE, cli_groups, collect_findings, command_leaf, finding,
     parse_view, skill_body, view_commands,
@@ -39,7 +41,7 @@ pub enum WhoUsesClass {
 
 /// Escrita à mão a partir da tabela de condensação do plano: perder um prefixo `omhl <folha>` numa skill de
 /// workflow muda a classe da página e reprova, até a âncora ser editada no mesmo diff.
-pub const WHO_USES_ANCHOR: [(&str, WhoUsesClass); 18] = [
+pub const WHO_USES_ANCHOR: [(&str, WhoUsesClass); 19] = [
     ("render", WhoUsesClass::NoRole),
     ("verify", WhoUsesClass::NoRole),
     ("hooks post-commit", WhoUsesClass::NoRole),
@@ -51,6 +53,7 @@ pub const WHO_USES_ANCHOR: [(&str, WhoUsesClass); 18] = [
     ("load", WhoUsesClass::Session),
     ("attest", WhoUsesClass::Session),
     ("byproduct", WhoUsesClass::Session),
+    ("byproduct prune", WhoUsesClass::Session),
     ("check retire", WhoUsesClass::Session),
     ("hooks install", WhoUsesClass::Session),
     ("check run", WhoUsesClass::Session),
@@ -78,7 +81,7 @@ fn joined(items: impl Iterator<Item = String>) -> String {
 fn role_rows(
     leaf: &str,
     views: &[(&str, &str)],
-    groups: &[String],
+    groups: &[Group],
 ) -> Result<BTreeSet<Row>, String> {
     let mut stages: BTreeMap<(String, String), BTreeSet<u32>> = BTreeMap::new();
     for (role, text) in views {
@@ -127,7 +130,7 @@ fn cited_commands<'a>(line: &'a str, citation: &Regex) -> Vec<&'a str> {
 
 /// As citações da folha no corpo das skills de workflow (na ordem dada), fora das cercas e da tabela
 /// "Comando para referência". Toda linha herda o passo numerado anterior até o próximo título.
-fn session_rows(leaf: &str, workflow: &[(&str, &str)], groups: &[String]) -> BTreeSet<Row> {
+fn session_rows(leaf: &str, workflow: &[(&str, &str)], groups: &[Group]) -> BTreeSet<Row> {
     let step_line = Regex::new(r"^(\d+)\. ").expect("regex");
     let citation = Regex::new(CITATION_PATTERN).expect("regex");
     let mut stages: BTreeMap<String, BTreeSet<Stage>> = BTreeMap::new();
