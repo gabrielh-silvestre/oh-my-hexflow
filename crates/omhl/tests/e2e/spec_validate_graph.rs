@@ -206,6 +206,13 @@ fn premise(id: &str, kind: &str, work_item: &str, confirmed: bool) -> Value {
     node(id, "premise", data)
 }
 
+fn late_premise(id: &str, work_item: &str) -> Value {
+    let mut item = premise(id, "business", work_item, true);
+    item["body"]["data"]["origin"] = json!("late");
+
+    item
+}
+
 fn confirmed_guideline(id: &str) -> Value {
     node(
         id,
@@ -376,6 +383,43 @@ fn it_should_refuse_a_spec_that_cites_only_a_business_premise_of_another_work_it
             "parte-01.md:{PART_DIRECTIVES_HEADING_LINE} business-premise-missing"
         )],
     );
+}
+
+#[test]
+fn it_should_refuse_a_spec_that_cites_only_a_late_business_premise() {
+    let fixture = Fixture::new();
+    fixture.append(vec![late_premise("premises.late", W1)]);
+    fixture.write("parte-01.md", &cites_only("- premises.late"));
+
+    let output = fixture.validate();
+
+    assert_refused_with(
+        &output,
+        &[&format!(
+            "parte-01.md:{PART_DIRECTIVES_HEADING_LINE} main-business-premise-missing"
+        )],
+    );
+}
+
+#[test]
+fn it_should_accept_a_spec_that_cites_a_late_business_premise_next_to_a_main_one() {
+    let fixture = Fixture::new();
+    fixture.append(vec![
+        premise("premises.main", "business", W1, true),
+        late_premise("premises.late", W1),
+    ]);
+    fixture.write(
+        "parte-01.md",
+        &with_line(
+            cites_only("- premises.main"),
+            PART_SECOND_CITATION_LINE,
+            "- premises.late",
+        ),
+    );
+
+    let output = fixture.validate();
+
+    assert_valid(&output);
 }
 
 #[test]

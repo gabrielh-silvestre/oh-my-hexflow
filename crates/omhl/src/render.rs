@@ -41,9 +41,14 @@ pub fn render(input: &RenderInput<'_>, budget: usize) -> Rendered {
         &visible_sorted(input.decisions),
         push_decision,
     );
-    let (pending, binding): (Vec<&NodeView>, Vec<&NodeView>) = visible_sorted(input.premises)
+    let (mut late, main): (Vec<&NodeView>, Vec<&NodeView>) = visible_sorted(input.premises)
+        .into_iter()
+        .partition(|node| node.data["origin"] == "late");
+    let (pending, binding): (Vec<&NodeView>, Vec<&NodeView>) = main
         .into_iter()
         .partition(|node| premise_mark(node) == PremiseMark::Pending);
+    // Estável: as confirmadas antes das pendentes, para o corte do orçamento (do fim) derrubar estas primeiro.
+    late.sort_by_key(|node| premise_mark(node) == PremiseMark::Pending);
     push_tail_section(&mut text, &mut cuts, "Premises", &binding, push_premise);
     push_tail_section(
         &mut text,
@@ -52,6 +57,7 @@ pub fn render(input: &RenderInput<'_>, budget: usize) -> Rendered {
         &pending,
         push_premise,
     );
+    push_tail_section(&mut text, &mut cuts, "Late premises", &late, push_premise);
 
     let omitted = fit_to_budget(&mut text, &cuts, budget);
 

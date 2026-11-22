@@ -62,6 +62,7 @@ enum Code {
     CitedIdUnknown,
     CitedIdUnconfirmed,
     BusinessPremiseMissing,
+    MainBusinessPremiseMissing,
     PendingGapUnresolved,
     AmendmentDivergenceUnknown,
     AmendmentDivergenceForeign,
@@ -89,6 +90,7 @@ impl Code {
             Code::CitedIdUnknown => "cited-id-unknown",
             Code::CitedIdUnconfirmed => "cited-id-unconfirmed",
             Code::BusinessPremiseMissing => "business-premise-missing",
+            Code::MainBusinessPremiseMissing => "main-business-premise-missing",
             Code::PendingGapUnresolved => "pending-gap-unresolved",
             Code::AmendmentDivergenceUnknown => "amendment-divergence-unknown",
             Code::AmendmentDivergenceForeign => "amendment-divergence-foreign",
@@ -556,6 +558,8 @@ pub trait SpecFacts {
     fn confirmed(&self, id: &str) -> bool;
     /// `business` ou `technical` (premissa).
     fn kind(&self, id: &str) -> Option<String>;
+    /// Premissa de negócio tardia (`origin: late`).
+    fn late(&self, id: &str) -> bool;
     fn work_item(&self, id: &str) -> Option<String>;
     fn gap_state(&self, gap: &str) -> GapState;
     fn divergence(&self, id: &str) -> Option<DivergenceFact>;
@@ -603,16 +607,24 @@ pub fn validate_graph(
         .iter()
         .map(|doc| check_part_graph(doc, facts))
         .collect();
-    let cites_business = part_docs
+    let cited_business: Vec<&str> = part_docs
         .iter()
-        .any(|doc| cites_business_premise(doc, work_item, facts));
+        .flat_map(|doc| cited_business_premises(doc, work_item, facts))
+        .collect();
+    let premise_missing = if cited_business.is_empty() {
+        Some(Code::BusinessPremiseMissing)
+    } else if cited_business.iter().all(|id| facts.late(id)) {
+        Some(Code::MainBusinessPremiseMissing)
+    } else {
+        None
+    };
     if config.cite_business_premise
-        && !cites_business
+        && let Some(code) = premise_missing
         && let (Some(doc), Some(found)) = (part_docs.first(), part_found.first_mut())
     {
         found.push(Found {
             line: doc.section(DIRECTIVES).map_or(1, |section| section.line),
-            code: Code::BusinessPremiseMissing,
+            code,
         });
     }
 
@@ -765,12 +777,20 @@ fn prefixed_ids<'a>(section: &Section<'a>, prefix: &str) -> Vec<(usize, &'a str)
     ids
 }
 
-fn cites_business_premise(doc: &Doc, work_item: &str, facts: &impl SpecFacts) -> bool {
-    cited_ids(doc).into_iter().any(|(_, id)| {
-        facts.confirmed(id)
-            && facts.kind(id).as_deref() == Some(BUSINESS_KIND)
-            && facts.work_item(id).as_deref() == Some(work_item)
-    })
+fn cited_business_premises<'a>(
+    doc: &Doc<'a>,
+    work_item: &str,
+    facts: &impl SpecFacts,
+) -> Vec<&'a str> {
+    cited_ids(doc)
+        .into_iter()
+        .map(|(_, id)| id)
+        .filter(|id| {
+            facts.confirmed(id)
+                && facts.kind(id).as_deref() == Some(BUSINESS_KIND)
+                && facts.work_item(id).as_deref() == Some(work_item)
+        })
+        .collect()
 }
 
 #[cfg(test)]

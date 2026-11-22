@@ -26,11 +26,15 @@ O plugin foi testado só no Linux e no WSL.
 
    Depois de puxar mudanças, recompile e copie de novo.
 
-3. Abra o Claude Code com o plugin:
+3. Instale o plugin pelo marketplace do GitHub, numa sessão do Claude Code:
 
-   ```bash
-   claude --plugin-dir plugin/
+   ```text
+   /plugin marketplace add gabrielh-silvestre/oh-my-hexflow
+   /plugin install oh-my-hexflow@oh-my-hexflow
    ```
+
+   O marketplace instala só o plugin, não o `omhl`: o plugin lê o `omhl` do `PATH` (passo 2).
+   Para desenvolver o plugin, abra o Claude Code com `claude --plugin-dir plugin/`.
 
 Skills de orquestração dos agentes, em `plugin/skills/`:
 

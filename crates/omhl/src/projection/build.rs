@@ -14,12 +14,14 @@ use crate::render::sort_by_id;
 const TRUNCATION_MARKER: &str = "<!-- omhl: truncated -->\n";
 const INLINE_STRING_MAX_CHARS: usize = 80;
 const FILE_MAX_BYTES: usize = PROJECTION_FILE_MAX_BYTES as usize;
-const SECTIONS: [(&str, &str); 5] = [
-    ("premise", "Premises"),
-    ("decision", "Decisions"),
-    ("attestation", "Attestations"),
-    ("gap", "Gaps"),
-    ("divergence", "Divergences"),
+/// (tipo do nó, é tardia, título): a tardia (`origin: late`) fica logo depois das principais.
+const SECTIONS: [(&str, bool, &str); 6] = [
+    ("premise", false, "Premises"),
+    ("premise", true, "Late premises"),
+    ("decision", false, "Decisions"),
+    ("attestation", false, "Attestations"),
+    ("gap", false, "Gaps"),
+    ("divergence", false, "Divergences"),
 ];
 
 /// The bytes depend only on the
@@ -67,7 +69,7 @@ fn children_by_owner(nodes: &[NodeView]) -> BTreeMap<&str, Vec<&NodeView>> {
         !node.shadowed
             && SECTIONS
                 .iter()
-                .any(|(kind, _)| *kind == node.type_name.as_str())
+                .any(|(kind, _, _)| *kind == node.type_name.as_str())
     }) {
         if let Some(owner) = node.data.get("work_item").and_then(Value::as_str) {
             grouped.entry(owner).or_default().push(node);
@@ -133,10 +135,10 @@ fn render_file(item: &NodeView, children: &[&NodeView], relations: &[&RelationVi
         format!("{GENERATED_HEADER}\n# {}", escape(title, &[])),
         header_markers(item),
     ];
-    for (kind, section) in SECTIONS {
+    for (kind, late, section) in SECTIONS {
         let mut owned = children
             .iter()
-            .filter(|node| node.type_name.as_str() == kind)
+            .filter(|node| node.type_name.as_str() == kind && is_late(node) == late)
             .peekable();
         if owned.peek().is_none() {
             continue;
@@ -148,6 +150,10 @@ fn render_file(item: &NodeView, children: &[&NodeView], relations: &[&RelationVi
     }
     push_relation_blocks(&mut blocks, relations);
     truncate_to_limit(blocks.join("\n\n") + "\n")
+}
+
+fn is_late(node: &NodeView) -> bool {
+    node.data["origin"] == "late"
 }
 
 fn push_relation_blocks(blocks: &mut Vec<String>, relations: &[&RelationView]) {

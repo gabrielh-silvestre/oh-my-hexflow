@@ -26,6 +26,9 @@ fn check_premise(node: &NodeItem<'_>, author: &str) -> Result<(), OmhlError> {
     if node.has_field("kind") && !node.has_field("work_item") {
         return Err(node.error(RuleCode::WorkItemNotFound, "body/data/work_item"));
     }
+    if node.has_field("origin") && node.field("kind") != Some("business") {
+        return Err(node.error(RuleCode::OriginInvalid, "body/data/origin"));
+    }
     if node.field("status") == Some("confirmed") {
         let critic_may_confirm = author == CRITIC && node.field("kind") == Some("technical");
         require_confirmation(node, critic_may_confirm)

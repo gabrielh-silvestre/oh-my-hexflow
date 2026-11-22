@@ -1,5 +1,5 @@
 //! A vista de cada papel (`plugin/skills/role-<papel>/SKILL.md`) e o ciclo (`cycle.md`) como dado, conferidos
-//! contra o `omhl-allow` do agente, a CLI e a prosa das skills de workflow (regras 0 a 8).
+//! contra o `omhl-allow` do agente, a CLI e a prosa das skills de workflow (regras 0 a 9).
 
 use std::collections::BTreeSet;
 
@@ -639,6 +639,7 @@ pub fn session_checks(skill_text: &str) -> Vec<String> {
         .collect()
 }
 
+mod phrase_markers;
 mod who_uses;
 
 #[cfg(test)]

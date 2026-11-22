@@ -130,7 +130,7 @@ pub(super) fn matrix_lists(
 pub(super) fn node_allowed(role: &str, type_name: &str, data: &Value) -> bool {
     let listed = matrix_lists(role, |matrix| matrix.nodes, type_name);
     let content_ok = match (role, type_name) {
-        (ANALYST, "premise") => data.get("status").and_then(Value::as_str) == Some("assumed"),
+        (ANALYST, "premise") => is_assumed_and_late_when_business(data),
         (ANALYST, "gap") => data.get("kind").is_some(),
         // O `kind: technical` fica com a guarda da confirmação, que responde `confirmation-invalid`.
         (CRITIC, "premise") => confirmed_by_critic(data),
@@ -138,6 +138,14 @@ pub(super) fn node_allowed(role: &str, type_name: &str, data: &Value) -> bool {
     };
 
     listed && content_ok
+}
+
+/// O analyst só sugere premissa de negócio depois da entrevista, e ela nasce tardia.
+fn is_assumed_and_late_when_business(data: &Value) -> bool {
+    let late = data.get("origin").and_then(Value::as_str) == Some("late");
+    let business = data.get("kind").and_then(Value::as_str) == Some("business");
+
+    data.get("status").and_then(Value::as_str) == Some("assumed") && (late || !business)
 }
 
 pub(super) fn creation_allowed(type_name: &str, data: &Value) -> bool {
@@ -170,8 +178,11 @@ pub(super) fn revision_allowed(revision: &Revision<'_>) -> bool {
 }
 
 fn changes_kind(revision: &Revision<'_>) -> bool {
-    matches!(revision.type_name, "premise" | "gap")
-        && revision.current.get("kind") != revision.revised.get("kind")
+    let kind_changed = revision.current.get("kind") != revision.revised.get("kind");
+    let origin_changed = revision.type_name == "premise"
+        && revision.current.get("origin") != revision.revised.get("origin");
+
+    matches!(revision.type_name, "premise" | "gap") && (kind_changed || origin_changed)
 }
 
 fn is_settled(revision: &Revision<'_>) -> bool {

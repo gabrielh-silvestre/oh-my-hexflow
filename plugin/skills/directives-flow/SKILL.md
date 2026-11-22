@@ -34,6 +34,8 @@ Pare. Peça ao dono que rode `wt config approvals add`. **Nunca** tente `--no-ho
 
 - Uma dúvida técnica vira um `gap` (`question` e `context`). Cite-o na spec como `[PENDENTE: gaps.<nome>]`. Responda gravando uma premissa e a relation `answers` da premissa para o gap.
 - Se a sua resposta contraria uma diretiva confirmada, não a imponha: o gap fica em `needs-human` até o humano decidir.
+- Depois da primeira `decision` do work item, a resposta do dono a um gap de negócio é gravada como premissa tardia (`origin: late`), com a relation `answers`, e reabre o plano até o congelamento da spec, com a volta contada nas 3 do [cycle.md](references/cycle.md); depois do congelamento, ela entra só por `divergence` e emenda. Sem a marca, a guarda recusa com `origin-required`.
+- Premissa tardia que o dono confirma até o congelamento da spec (o nascimento da branch do work item) reabre o plano: o architect e o critic julgam de novo com ela, a volta conta nas 3 e o impasse vai ao dono; depois do congelamento, ela entra só por `divergence` e, se a spec estava errada, por `emenda-NN`.
 
 ## Corrigir a spec depois da aprovação
 

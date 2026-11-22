@@ -831,3 +831,36 @@ fn it_should_order_the_review_steps_by_number() {
         "the code-reviewer comes before the security-reviewer"
     );
 }
+
+/// A frase da CMP-031: depois da primeira `decision`, a resposta do dono a um gap de negócio nasce tardia.
+const GAP_ANSWER_LATE: [&str; 5] = [
+    "primeira `decision`",
+    "`origin: late`",
+    "reabre o plano",
+    "congelamento",
+    "`origin-required`",
+];
+
+#[test]
+fn it_should_record_a_business_gap_answer_after_the_first_decision_as_late_in_plan_consensus() {
+    let text = read("plan-consensus/SKILL.md");
+
+    let line = line_with(&text, &GAP_ANSWER_LATE).expect("the gap-answer sentence");
+
+    assert!(
+        text.lines()
+            .nth(line)
+            .is_some_and(|line| !line.starts_with(|c: char| c.is_ascii_digit())),
+        "the sentence is a paragraph, not a numbered step"
+    );
+}
+
+#[test]
+fn it_should_record_a_business_gap_answer_after_the_first_decision_as_late_in_directives_flow() {
+    let text = read("directives-flow/SKILL.md");
+
+    assert!(
+        line_with(&text, &GAP_ANSWER_LATE).is_some(),
+        "directives-flow carries the gap-answer sentence"
+    );
+}

@@ -34,7 +34,7 @@ Campo extra é recusado. Os textos têm de 1 a 2000 caracteres (o `title`, de 1 
 | Tipo | Obrigatórios | Opcionais |
 |---|---|---|
 | `work-item` | `title`, `status` (`open`; `closed` só pelo `omhl close`) | |
-| `premise` | `text`, `status` (`assumed` ou `confirmed`) | `kind` (`technical`, `business`), `work_item`, `confirmed_by` |
+| `premise` | `text`, `status` (`assumed` ou `confirmed`) | `kind` (`technical`, `business`), `origin` (`late`, só em `business`), `work_item`, `confirmed_by` |
 | `guideline` | `text` | `kind` (`business`, `architecture`), `confirmed_by` |
 | `gap` | `question`, `context` | `kind` (`technical`, `business`), `work_item` |
 | `divergence` | `source_ref`, `kind` (`missing`, `partial`, `contradicts`, `unrequested`), `text`, `evidence`, `resolution` (`open`, `spec-stale`, `code-fixed`, `accepted`), `work_item` | `confirmed_by`, `amendment` |
@@ -59,6 +59,9 @@ Cada erro traz o código (`error.code` no JSON) e, nos detalhes, o `path` do cam
 - `confirmation-invalid` (saída 1): o `by` não começa com `person:` ou o nome tem menos de 3 caracteres visíveis (salvo `"by": "critic"` gravado pelo `omhl:critic` numa premissa `technical`), ou o `confirmed_by` veio num registro que não o admite (por exemplo, `confirmed_by` ou `amendment` numa divergência que não está em `spec-stale`). Corrija o campo.
 - `kind-missing` (saída 1): diretiva nova ou revisada sem `kind`. Acrescente `business` ou `architecture`.
 - `kind-invalid` (saída 1): `kind` de diretiva com outro valor. Use `business` ou `architecture`.
+- `origin-invalid` (saída 1): `origin` numa premissa que não é de negócio (técnica ou sem `kind`). Tire o `origin`, ou marque a premissa como `business`.
+- `origin-immutable` (saída 1): a revisão acrescenta, muda ou tira o `origin` da premissa. Mantenha o que ela já tem, ou grave uma premissa nova.
+- `origin-required` (saída 1): o work item já tem `decision` e a premissa de negócio nova não leva `origin: late`. Na criação, acrescente `origin: late` e grave de novo; na revisão que torna a premissa de negócio, grave uma premissa nova com `origin: late`, porque acrescentar `origin` numa revisão dá `origin-immutable`.
 - `work-item-not-found` (saída 1): o `work_item` da premissa, do gap ou da divergência não existe. Grave o work item antes.
 - `work-item-closed` (saída 1): o work item já foi fechado. Grave num work item aberto.
 - `use-close-work-item` (saída 1): o `status` do work item foi trocado para `closed` por aqui. Feche com `omhl close`.

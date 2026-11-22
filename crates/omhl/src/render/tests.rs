@@ -959,3 +959,141 @@ fn it_should_render_the_native_base_in_under_4000_characters_with_the_marks() {
 
     assert!(rendered.text.chars().count() < 4_000);
 }
+
+// Premissas tardias
+
+fn late_premise(id: &str, status: &str, text: &str) -> NodeView {
+    let mut late = kinded_premise(id, "business", status);
+    late.data["origin"] = json!("late");
+    late.data["text"] = json!(text);
+
+    late
+}
+
+fn premise_headers(text: &str) -> Vec<&str> {
+    headers(text)
+        .into_iter()
+        .filter(|id| id.starts_with("premises."))
+        .collect()
+}
+
+fn section_titles(text: &str) -> Vec<&str> {
+    text.lines()
+        .filter_map(|line| line.strip_prefix("## "))
+        .collect()
+}
+
+#[test]
+fn it_should_list_a_late_premise_under_late_premises_whatever_its_status() {
+    let rendered = rendered_premises(vec![
+        late_premise("premises.l-pending", "assumed", "the rule"),
+        late_premise("premises.l-confirmed", "confirmed", "the rule"),
+    ]);
+
+    let late = section(&rendered.text, "Late premises");
+    assert!(late.contains("### premises.l-pending\n"));
+    assert!(late.contains("### premises.l-confirmed\n"));
+    assert!(!section(&rendered.text, "Premises").contains("premises.l-"));
+    assert!(!section(&rendered.text, "Pending premises").contains("premises.l-"));
+}
+
+#[test]
+fn it_should_keep_the_mark_line_of_a_late_premise_saying_confirmed_or_pending() {
+    let rendered = rendered_premises(vec![
+        late_premise("premises.l-pending", "assumed", "the rule"),
+        late_premise("premises.l-confirmed", "confirmed", "the rule"),
+    ]);
+
+    assert!(block(&rendered.text, "premises.l-pending").contains(&"- mark: pending"));
+    assert!(block(&rendered.text, "premises.l-confirmed").contains(&"- mark: confirmed"));
+}
+
+#[test]
+fn it_should_order_the_sections_decisions_premises_pending_premises_late_premises() {
+    let fixture = Fixture {
+        decisions: vec![decision("decisions.d1", "why")],
+        premises: vec![
+            late_premise("premises.l", "confirmed", "the rule"),
+            kinded_premise("premises.b-pending", "business", "assumed"),
+            kinded_premise("premises.b-main", "business", "confirmed"),
+        ],
+        ..Fixture::default()
+    };
+
+    let rendered = fixture.rendered(BUDGET);
+
+    let titles = section_titles(&rendered.text);
+    let tail = &titles[titles.len() - 4..];
+    assert_eq!(
+        tail,
+        ["Decisions", "Premises", "Pending premises", "Late premises"]
+    );
+}
+
+#[test]
+fn it_should_list_the_confirmed_late_premises_before_the_pending_ones() {
+    let rendered = rendered_premises(vec![
+        late_premise("premises.a-pending", "assumed", "the rule"),
+        late_premise("premises.b-confirmed", "confirmed", "the rule"),
+    ]);
+
+    assert_eq!(
+        headers(section(&rendered.text, "Late premises")),
+        ["premises.b-confirmed", "premises.a-pending"]
+    );
+}
+
+#[test]
+fn it_should_drop_the_pending_late_premises_before_the_confirmed_ones_over_the_budget() {
+    let long_text = "l".repeat(3_000);
+    let fixture = Fixture {
+        premises: vec![
+            late_premise("premises.l-confirmed", "confirmed", &long_text),
+            late_premise("premises.l-pending", "assumed", &long_text),
+        ],
+        ..Fixture::default()
+    };
+    let full = fixture.rendered(usize::MAX);
+    let budget = full.text.chars().count() - 1;
+
+    let rendered = fixture.rendered(budget);
+
+    assert_eq!(premise_headers(&rendered.text), ["premises.l-confirmed"]);
+    assert_eq!(rendered.omitted, 1);
+}
+
+#[test]
+fn it_should_drop_every_late_premise_before_any_main_one_over_the_budget() {
+    let long_text = "m".repeat(3_000);
+    let mut main = kinded_premise("premises.main", "business", "confirmed");
+    main.data["text"] = json!(long_text);
+    let mut pending = kinded_premise("premises.z-pending", "business", "assumed");
+    pending.data["text"] = json!(long_text);
+    let fixture = Fixture {
+        premises: vec![
+            main.clone(),
+            pending.clone(),
+            late_premise("premises.a-late", "confirmed", &long_text),
+        ],
+        ..Fixture::default()
+    };
+    let without_late = Fixture {
+        premises: vec![main, pending],
+        ..Fixture::default()
+    };
+    let budget = without_late.rendered(usize::MAX).text.chars().count() + 100;
+
+    let rendered = fixture.rendered(budget);
+
+    assert_eq!(
+        premise_headers(&rendered.text),
+        ["premises.main", "premises.z-pending"]
+    );
+}
+
+#[test]
+fn it_should_not_create_the_late_section_without_a_late_premise() {
+    let rendered = rendered_premises(vec![kinded_premise("premises.b", "business", "confirmed")]);
+
+    assert!(!rendered.text.contains("## Late premises"));
+}

@@ -9,6 +9,8 @@ use serde_json::{Value, json};
 const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 const PREVIOUS_DECISIONS_CATALOG_V3: &str =
     include_str!("../../tests/fixtures/decisions_catalog_v3.json");
+const PREVIOUS_DECISIONS_CATALOG_V4: &str =
+    include_str!("../../tests/fixtures/decisions_catalog_v4.json");
 
 const NODE_TYPES: [&str; 9] = [
     "premise",
@@ -804,6 +806,45 @@ fn it_should_reject_a_premise_kind_outside_technical_and_business() {
     let found = violations_of("premise", &premise);
 
     assert_eq!(found, vec![violation("/kind", "enum")]);
+}
+
+#[test]
+fn it_should_accept_a_premise_origin_of_late_or_none() {
+    let late = with(plain("premise"), "origin", json!("late"));
+
+    let accepted = (
+        is_accepted("premise", &late),
+        is_accepted("premise", &plain("premise")),
+    );
+
+    assert_eq!(accepted, (true, true));
+}
+
+#[test]
+fn it_should_reject_a_premise_origin_outside_late() {
+    let premise = with(plain("premise"), "origin", json!("interview"));
+
+    let found = violations_of("premise", &premise);
+
+    assert_eq!(found, vec![violation("/origin", "enum")]);
+}
+
+// A mudança só alarga: toda premissa válida na definition anterior segue válida, e o
+// `origin` que a anterior rejeita passa a ser aceito.
+#[test]
+fn it_should_widen_the_premise_definition_without_invalidating_the_previous_one() {
+    let previous = catalog_from(PREVIOUS_DECISIONS_CATALOG_V4);
+    let business = with(plain("premise"), "kind", json!("business"));
+    let late = with(business.clone(), "origin", json!("late"));
+
+    let compatible_change = (
+        previous.type_hash(&tname("premise")) != catalog().type_hash(&tname("premise")),
+        previous.validate_data(&tname("premise"), &business).is_ok()
+            && is_accepted("premise", &business),
+        previous.validate_data(&tname("premise"), &late).is_err() && is_accepted("premise", &late),
+    );
+
+    assert_eq!(compatible_change, (true, true, true));
 }
 
 #[test]

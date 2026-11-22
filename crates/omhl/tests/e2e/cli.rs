@@ -748,6 +748,37 @@ fn it_should_list_the_divergences_of_a_resolution_with_where() {
 }
 
 #[test]
+fn it_should_list_only_the_late_premises_with_where_origin() {
+    let project = Project::new("acme");
+    open_work_item(&project);
+    let main = json!({ "text": "main", "status": "assumed", "work_item": W1, "kind": "business" });
+    let late = json!({
+        "text": "late", "status": "assumed", "work_item": W1, "kind": "business", "origin": "late"
+    });
+    for (id, data) in [("premises.main", main), ("premises.late", late)] {
+        let appended = append_in(&project, id, "premise", &data);
+        assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+    }
+
+    let listed = in_project(
+        &project,
+        &["list", "--type", "premise", "--where", "origin=late"],
+    )
+    .run();
+
+    assert_eq!(listed.code, Some(0), "stderr: {}", listed.stderr);
+    assert_eq!(
+        json_line(&listed.stdout)["items"]
+            .as_array()
+            .expect("items is an array")
+            .iter()
+            .map(|item| item["id"].clone())
+            .collect::<Vec<_>>(),
+        [json!("premises.late")]
+    );
+}
+
+#[test]
 fn it_should_combine_repeated_where_flags_into_one_match() {
     let project = Project::new("acme");
     seed_divergences(&project);
