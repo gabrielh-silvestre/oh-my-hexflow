@@ -159,7 +159,12 @@ impl GitProbe {
         {
             return Err(error("the git index file does not exist"));
         }
-        let diff = self.run(self.tree_git(&["diff", "--quiet", "--no-ext-diff"]))?;
+        let diff = self.run(self.tree_git(&[
+            "diff",
+            "--quiet",
+            "--no-ext-diff",
+            "--ignore-submodules=none",
+        ]))?;
         match diff.status.code() {
             Some(0) => {}
             Some(1) => return Ok(true),

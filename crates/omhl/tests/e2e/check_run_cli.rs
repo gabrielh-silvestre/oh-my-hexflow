@@ -641,6 +641,63 @@ fn it_should_refuse_a_before_commit_run_when_the_file_differs_from_the_stored_de
 }
 
 #[test]
+fn it_should_refuse_a_before_commit_run_when_a_submodule_has_an_untracked_file() {
+    let gate = GATE_V1.replace("before-pr", "before-commit");
+    let p = cli_repo(&[("gate", &gate)]);
+    let upstream = TempDir::new().expect("the upstream dir is created");
+    git_in(upstream.path(), &["init", "-q", "-b", "main"]);
+    fs::write(upstream.path().join("lib.txt"), "lib\n").expect("the upstream file is written");
+    git_in(upstream.path(), &["add", "-A"]);
+    git_in(
+        upstream.path(),
+        &[
+            "-c",
+            "user.name=Test Author",
+            "-c",
+            "user.email=author@example.com",
+            "commit",
+            "-q",
+            "-m",
+            "lib",
+        ],
+    );
+    let upstream_path = upstream.path().to_str().expect("the path is UTF-8");
+    git(
+        &p,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            upstream_path,
+            "vendor",
+        ],
+    );
+    git(&p, &["commit", "-q", "-m", "add submodule"]);
+    fs::write(p.dir().join("vendor/untracked.txt"), "new\n").expect("the file is written");
+
+    let output = omhl_in(
+        &p,
+        &[
+            "check",
+            "run",
+            "--format",
+            "json",
+            "--event",
+            "before-commit",
+        ],
+    )
+    .run();
+
+    assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+    assert_eq!(
+        error_of(&output.stderr)["code"],
+        json!("worktree-differs-from-index")
+    );
+    assert_eq!(attestations(&p), Vec::<Value>::new());
+}
+
+#[test]
 fn it_should_run_the_new_command_after_load() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     ExtTree::at(p.dir()).check("gate", GATE_V2);
