@@ -949,8 +949,6 @@ impl SpecFacts for FakeFacts {
     }
 }
 
-/// O que `valid_part` e `valid_amendment` pedem: a premissa de negócio confirmada do `W1`, uma
-/// diretiva confirmada e a divergência aberta do `W1` cujo `source_ref` é `CMP-001`.
 fn base_facts() -> FakeFacts {
     FakeFacts::default()
         .premise(BUSINESS_PREMISE, "business", W1, true)

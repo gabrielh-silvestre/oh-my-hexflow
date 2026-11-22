@@ -4,7 +4,6 @@ use hexlog::chain::{canonical, sha256hex};
 use regex::{Regex, RegexBuilder};
 use serde_json::{Map, Value, json};
 
-/// Só `Failed` não é `ok`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     Passed,
@@ -12,7 +11,6 @@ pub enum Outcome {
     Failed,
 }
 
-/// No máximo um padrão por regra: os dois fluxos no TOML são erro no load.
 #[derive(Debug, Clone)]
 pub enum StreamPattern {
     Stdout(Regex),
@@ -26,7 +24,6 @@ pub struct Rule {
     pub outcome: Outcome,
 }
 
-/// Sem campo de snapshot: ele sai de `snapshot_for`.
 #[derive(Debug, Clone)]
 pub struct CheckSpec {
     pub run: Vec<String>,
@@ -41,12 +38,10 @@ pub struct SpecError {
     pub code: &'static str,
 }
 
-/// Só mede check com `run`.
 pub const CHECK_DATA_MAX_UNITS: usize = 15_000;
 pub const RUN_MAX_UNITS: usize = 6_000;
 pub const RUNNABLE_EVENTS: [&str; 3] = ["before-commit", "before-pr", "before-merge"];
 
-/// Teto de 1 MiB, menor que os 10 MiB padrão do crate.
 const REGEX_SIZE_LIMIT: usize = 1 << 20;
 const RUN_MAX_ITEMS: usize = 64;
 const RUN_ITEM_MAX_CHARS: usize = 1_000;
@@ -54,7 +49,6 @@ const TIMEOUT_SECS_RANGE: RangeInclusive<u32> = 1..=7_200;
 const EXPECT_MAX_RULES: usize = 16;
 
 impl CheckSpec {
-    /// `None` é check só de texto. Devolve o primeiro erro, na ordem dos campos do check.
     pub fn from_data(data: &Value) -> Result<Option<CheckSpec>, SpecError> {
         if !is_mechanical(data) {
             return Ok(None);
@@ -88,7 +82,7 @@ fn check_event(data: &Value) -> Result<(), SpecError> {
     }
 }
 
-/// Mede em unidades UTF-16 do JSON canônico, a mesma régua do hexlog.
+/// A mesma régua do hexlog.
 fn check_size(
     value: &Value,
     path: &str,
@@ -245,13 +239,12 @@ fn compile(pattern: &str, rule_path: &str, stream: &str) -> Result<Regex, SpecEr
         })
 }
 
-/// Único critério de "check mecânico": a chave `run` presente, qualquer que seja o valor.
 /// Guarda, gate e `from_data` o usam para que a abertura de um deles não divirja dos outros.
 pub fn is_mechanical(data: &Value) -> bool {
     data.get("run").is_some()
 }
 
-/// Único decodificador do tipo de snapshot de um check. Não passa pelo
+/// Não passa pelo
 /// `from_data`: um spec inválido também tem kind (AF-MINOR 22).
 pub fn snapshot_for(data: &Value) -> hexlog::SnapshotKind {
     let before_commit =
@@ -263,8 +256,6 @@ pub fn snapshot_for(data: &Value) -> hexlog::SnapshotKind {
     }
 }
 
-/// Impressão estável da definição mecânica de um check: só `run`, `timeout_secs` e `expect`.
-/// Fonte única do `check run` (grava e compara) e do gate (confere).
 pub fn spec_digest(data: &Value) -> String {
     let definition = json!({
         "run": data.get("run"),

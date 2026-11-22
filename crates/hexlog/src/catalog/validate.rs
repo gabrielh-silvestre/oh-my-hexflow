@@ -14,10 +14,8 @@ use crate::ids::Hash;
 type NodeId = usize;
 
 const ROOT: NodeId = 0;
-/// Corte de achados: o catálogo e `validate_data` guardam 50 e o 51º só mostra que passou.
 pub(super) const REPORT_MAX: usize = 50;
 const PROBLEM_MAX: usize = REPORT_MAX + 1;
-/// Quadros de avaliação: com 2 MiB de pilha em build de teste sobra margem de 1,8x (D-7).
 const EVAL_DEPTH_MAX: usize = 1_024;
 const SCHEMA_URI: &str = "https://json-schema.org/draft/2020-12/schema";
 const ATTACHMENT: &str = "attachment";
@@ -30,7 +28,7 @@ const TYPE_NUMBER: u8 = 16;
 const TYPE_STRING: u8 = 32;
 const TYPE_INTEGER: u8 = 64;
 
-/// `message` repete o código sem hífens: a mensagem nunca carrega valor do schema.
+/// A mensagem nunca carrega valor do schema.
 pub(super) fn detail(path: String, code: &str) -> Detail {
     Detail::new(path, code, &code.replace('-', " "))
 }
@@ -42,7 +40,6 @@ pub(super) fn violation(pointer: String, code: &str) -> DataViolation {
     }
 }
 
-/// Mais de 50 achados viram os 50 primeiros e um `too-many-errors` em `""`.
 fn capped(mut found: Vec<DataViolation>) -> Vec<DataViolation> {
     if found.len() > REPORT_MAX {
         found.truncate(REPORT_MAX);
@@ -64,7 +61,6 @@ fn type_bit(name: &str) -> Option<u8> {
     }
 }
 
-/// `type` é um nome ou uma lista de nomes únicos; qualquer outra coisa é `None`.
 fn type_mask(value: &Value) -> Option<u8> {
     match value {
         Value::String(name) => type_bit(name),
@@ -96,7 +92,6 @@ fn has_string_type(map: &Map<String, Value>) -> bool {
     }
 }
 
-/// Decodifica `%XX` do fragmento de URI; bytes que não formam UTF-8 válido dão `None`.
 fn percent_decode(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -117,7 +112,6 @@ fn percent_decode(text: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-/// Desce o ponteiro por `/<key>` e devolve a marca para o `truncate` de volta.
 fn enter_key(pointer: &mut String, key: &str) -> usize {
     let mark = pointer.len();
     pointer.push('/');
@@ -125,14 +119,13 @@ fn enter_key(pointer: &mut String, key: &str) -> usize {
     mark
 }
 
-/// Desce o ponteiro por `/<index>` e devolve a marca para o `truncate` de volta.
 fn enter_index(pointer: &mut String, index: usize) -> usize {
     let mark = pointer.len();
     let _ = write!(pointer, "/{index}");
     mark
 }
 
-/// `names` sem repetição vira `Some`; o `required` do metaesquema 2020-12 exige nomes únicos.
+/// O `required` do metaesquema 2020-12 exige nomes únicos.
 fn required_names(value: &Value) -> Option<Vec<String>> {
     let names: Vec<&str> = value
         .as_array()?
@@ -147,7 +140,6 @@ fn required_names(value: &Value) -> Option<Vec<String>> {
 
 #[derive(Default)]
 struct SchemaNode {
-    /// Falso para o schema booleano `false`.
     deny: bool,
     types: Option<u8>,
     enum_values: Option<Vec<Value>>,
@@ -175,13 +167,10 @@ pub(super) struct CompiledSchema {
     nodes: Vec<SchemaNode>,
 }
 
-/// Onde o schema está, para a regra de posição de `format`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Position {
     Root,
-    /// `properties/<campo>` da raiz.
     Field,
-    /// `items` de um campo da raiz.
     FieldItems,
     Other,
 }
@@ -197,7 +186,6 @@ struct Builder<'a> {
     by_pointer: HashMap<String, NodeId>,
     pointer: String,
     references: Vec<Reference<'a>>,
-    /// Arestas de "mesma posição da instância": `allOf`, `anyOf`, `oneOf`, `not` e `$ref`.
     edges: Vec<(NodeId, NodeId)>,
     problems: Vec<Detail>,
 }
@@ -254,7 +242,6 @@ impl<'a> Builder<'a> {
         id
     }
 
-    /// Desce em um schema filho sob `key`, deixando o ponteiro como estava.
     fn child(&mut self, key: &str, value: &'a Value, depth: usize, position: Position) -> NodeId {
         let mark = enter_key(&mut self.pointer, key);
         let id = self.schema(value, depth + 1, position);
@@ -262,7 +249,7 @@ impl<'a> Builder<'a> {
         id
     }
 
-    /// Mapa de nome para schema (`properties`, `$defs`): as chaves são nomes, nunca palavras-chave.
+    /// As chaves são nomes, nunca palavras-chave.
     fn named_schemas(
         &mut self,
         key: &str,
@@ -288,7 +275,6 @@ impl<'a> Builder<'a> {
         found
     }
 
-    /// `allOf`, `anyOf` e `oneOf`: lista não vazia de schemas aplicados à mesma posição.
     fn branches(
         &mut self,
         owner: NodeId,
@@ -321,7 +307,6 @@ impl<'a> Builder<'a> {
         found
     }
 
-    /// Valor de tipo errado dá `keyword-type` na palavra.
     fn require_type(&mut self, key: &str, ok: bool) -> bool {
         if !ok {
             self.keyword_problem(key, "keyword-type");
@@ -448,7 +433,6 @@ impl<'a> Builder<'a> {
         });
     }
 
-    /// `attachment` só em `properties/<campo>` e `items` dele, e só em schema com `type` string (D-11).
     fn format(
         &mut self,
         id: NodeId,
@@ -531,7 +515,6 @@ enum Segment<'s> {
     Index(usize),
 }
 
-/// Estado de uma chamada de `validate`: nada é compartilhado entre chamadas.
 struct Run<'a> {
     schema: &'a CompiledSchema,
     /// Resultado booleano por (nó, endereço do `&Value`): mantém o custo polinomial num DAG de `$ref`.
@@ -592,7 +575,6 @@ fn scalar_failures(node: &SchemaNode, value: &Value) -> Vec<&'static str> {
 }
 
 impl CompiledSchema {
-    /// Guarda de inteiro seguro e de profundidade, depois todas as violações (até 50 e o marcador).
     pub(super) fn validate(&self, data: &Value) -> Result<(), Vec<DataViolation>> {
         let issues = json_issues(data, REPORT_MAX + 1);
         if !issues.is_empty() {
@@ -643,7 +625,6 @@ impl Run<'_> {
         self.pointer.truncate(mark);
     }
 
-    /// `collect` falso só diz se `value` vale para o nó (com memo); verdadeiro também descreve as violações.
     fn eval(&mut self, id: NodeId, value: &Value, depth: usize, collect: bool) -> bool {
         if self.overflow {
             return false;
@@ -667,7 +648,6 @@ impl Run<'_> {
         valid
     }
 
-    /// Aplica o schema `id` a `value`. Em `collect`, desce só no que falha, sob `segment` quando há.
     fn apply(
         &mut self,
         id: NodeId,
@@ -732,7 +712,6 @@ impl Run<'_> {
         valid
     }
 
-    /// `required`, `properties` e `additionalProperties`, nesta ordem.
     fn object_rules(
         &mut self,
         node: &SchemaNode,
@@ -811,7 +790,6 @@ impl Run<'_> {
         valid
     }
 
-    /// `allOf`, `anyOf`, `oneOf`, `not` e `$ref`, nesta ordem.
     fn combinator_rules(
         &mut self,
         node: &SchemaNode,

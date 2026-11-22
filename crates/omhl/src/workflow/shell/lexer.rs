@@ -11,14 +11,12 @@ pub(super) struct Lexed {
     pub(super) separated: bool,
     /// Em que caractere começa a primeira palavra do primeiro comando.
     pub(super) first_start: Option<usize>,
-    /// Algum heredoc sem aspas no terminador tem `$(` ou crase no corpo.
     pub(super) executes_heredoc: bool,
 }
 
-/// Aninhamentos (`$(`, `(`, crase, `${`, `$((`) abertos ao mesmo tempo; acima disso o leitor desiste.
 pub(super) const MAX_DEPTH: usize = 64;
 
-/// Caracteres que as varreduras de `$((` podem ler no total: cada `$((` olha o resto do texto, então sem
+/// Cada `$((` olha o resto do texto, então sem
 /// o limite um comando de `MAX_COMMAND_BYTES` com muitos `$((` custaria tempo quadrático.
 pub(super) const MAX_SCAN: usize = 4 * MAX_COMMAND_BYTES;
 
@@ -57,12 +55,10 @@ struct WordBuilder {
 }
 
 impl WordBuilder {
-    /// O número que antecede um redirecionamento (`2>&1`) é o descritor, não um argumento.
     fn is_descriptor(&self) -> bool {
         !self.quoted && !self.text.is_empty() && self.text.chars().all(|c| c.is_ascii_digit())
     }
 
-    /// `{` e `}` soltos, sem aspas, em posição de comando são separadores de grupo.
     fn is_group_brace(&self) -> bool {
         !self.quoted && matches!(self.text.as_str(), "{" | "}")
     }
@@ -130,7 +126,6 @@ impl Lexer {
         word.quoted |= quoted;
     }
 
-    /// Fecha a palavra em andamento conforme o que o operador anterior pediu.
     fn end_word(&mut self) {
         let Some(word) = self.word.take() else {
             return;
@@ -203,8 +198,6 @@ impl Lexer {
         Ok(())
     }
 
-    /// Lê uma substituição (`$(...)`, crase, `<(...)`) como comandos próprios; o comando e a palavra
-    /// que a contêm ficam guardados e voltam depois.
     fn nested(&mut self, close: char) -> Result<(), ReadError> {
         let outer_word = self.word.take();
         let outer_start = self.word_start;
@@ -228,8 +221,7 @@ impl Lexer {
     }
 
     /// `$(...)` e crase: além de ler por dentro, a palavra que os contém ganha um `$`. O leitor não sabe o que o
-    /// shell vai expandir, então a palavra existe e diz que é expansão. O que vem colado depois (`$(true)#`)
-    /// segue na mesma palavra, então o `#` ali não abre comentário.
+    /// shell vai expandir, então a palavra existe e diz que é expansão.
     fn substituted(&mut self, close: char) -> Result<(), ReadError> {
         self.nested(close)?;
         self.push('$', false);
@@ -264,8 +256,8 @@ impl Lexer {
         Ok(())
     }
 
-    /// `${...}` e `$((...))` ficam na palavra como texto cru, desde o `$` em `start`: o leitor não os expande,
-    /// então a palavra tem de continuar existindo e dizer o que o bash vai ler. O que `scan` empurra por dentro é descartado.
+    /// O leitor não os expande, então a palavra tem de continuar existindo
+    /// e dizer o que o bash vai ler. O que `scan` empurra por dentro é descartado.
     fn expansion(
         &mut self,
         start: usize,
@@ -287,7 +279,6 @@ impl Lexer {
         Ok(())
     }
 
-    /// `${...}` é parte da palavra, não separador: por dentro só importam `$(`, crase e aspas, e `#` não abre comentário.
     fn parameter(&mut self) -> Result<(), ReadError> {
         while let Some(c) = self.cursor.bump() {
             match c {
@@ -324,7 +315,6 @@ impl Lexer {
         Ok(())
     }
 
-    /// `$` e crase abrem o que o shell executa; devolve se `c` era um deles.
     fn substitution(&mut self, c: char) -> Result<bool, ReadError> {
         match c {
             '$' => self.dollar()?,
@@ -353,7 +343,6 @@ impl Lexer {
         }
     }
 
-    /// Literal, menos `$(`, `${` e crase, que executam.
     fn double_quoted(&mut self) -> Result<(), ReadError> {
         self.word.get_or_insert_default().quoted = true;
         loop {

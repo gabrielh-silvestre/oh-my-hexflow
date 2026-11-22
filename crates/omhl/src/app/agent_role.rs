@@ -11,7 +11,6 @@ use crate::workflow::shell::{
     CommandLine, SimpleCommand, is_omhl_word, mentions_omhl, read_command,
 };
 
-/// O `agent_type` real dos subagentes do plugin é `oh-my-hexflow:<papel>`.
 const PLUGIN_PREFIX: &str = "oh-my-hexflow:";
 const ASSIGNING_PROGRAMS: [&str; 5] = ["export", "declare", "typeset", "readonly", "local"];
 /// Com `-p` e nomes, só estes imprimem o que o nome é; `export -p` e `readonly -p` atribuem (bash 5.2).
@@ -19,7 +18,6 @@ const PRINTING_PROGRAMS: [&str; 2] = ["declare", "typeset"];
 const AGENT_FILE_MAX_BYTES: u64 = 64 * 1024;
 const BLANKS: [char; 2] = [' ', '\t'];
 
-/// O que o hook decide: `Pass` deixa o fluxo normal de permissão; `Allow` troca o `tool_input` pelo reescrito.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoleVerdict {
     Pass,
@@ -33,7 +31,6 @@ pub enum RoleVerdict {
     },
 }
 
-/// O que o hook lê fora do evento: a raiz do plugin e os comandos do `omhl` que só existem com subcomando.
 pub struct AgentRoleEnv<'e> {
     pub plugin_root: Option<&'e Path>,
     pub groups: &'e [&'e str],
@@ -198,7 +195,6 @@ fn assigns_role_variable(word: &str) -> bool {
         .is_some_and(|rest| rest.starts_with('=') || rest.starts_with("+="))
 }
 
-/// Papel fora da lista, comando sem `omhl`, comando composto e embrulho que o leitor não pula.
 fn ported_agent_verdict(
     role: &str,
     line: &CommandLine,
@@ -235,7 +231,6 @@ fn ported_agent_verdict(
     }
 }
 
-/// A matriz `omhl-allow` do papel decide o único comando `omhl`; o `allow` só sai quando o prefixo chega ao `omhl`.
 fn role_matrix_verdict(
     role: &str,
     line: &CommandLine,
@@ -259,7 +254,6 @@ fn role_matrix_verdict(
     }
 }
 
-/// O motivo de negar quando a matriz do papel não cobre o comando; `None` quando cobre.
 fn matrix_denial(
     role: &str,
     simple: &SimpleCommand,
@@ -288,7 +282,7 @@ fn matrix_denial(
     })
 }
 
-/// Lê `${CLAUDE_PLUGIN_ROOT}/agents/<papel>.md`; o papel já passou pela lista fechada, então não vira caminho solto.
+/// O papel já passou pela lista fechada, então não vira caminho solto.
 fn read_role_allow(role: &str, plugin_root: Option<&Path>) -> Result<RoleAllow, String> {
     let root = plugin_root.ok_or("CLAUDE_PLUGIN_ROOT is not set")?;
     let path = root.join("agents").join(format!("{role}.md"));
@@ -311,7 +305,6 @@ fn with_role_prefix(input: &Value, role: &str) -> Value {
     tool_input
 }
 
-/// Onde o prefixo entra: na frente, salvo depois da palavra reservada `time` (e do `-p` e do `--`), que só vale no começo do comando.
 /// Com o prefixo antes dela o bash chamaria o `/usr/bin/time`, que pode nem existir.
 fn prefix_position(command: &str) -> usize {
     let Some(rest) = after_blank_word(command.trim_start_matches(BLANKS), "time") else {
@@ -324,7 +317,6 @@ fn prefix_position(command: &str) -> usize {
     command.len() - rest.len()
 }
 
-/// O que sobra depois da palavra `word` e dos espaços que a seguem; `None` se o texto não começa por ela.
 fn after_blank_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
     text.strip_prefix(word)
         .filter(|rest| rest.starts_with(BLANKS))

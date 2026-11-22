@@ -9,7 +9,6 @@ use crate::native::NativeBase;
 use crate::probe::{ProbeError, ProbeOutcome};
 use hexlog::{Snapshot, SnapshotKind};
 
-/// Único client que grava attestation de check com `run`.
 const ATTESTER: &str = "executor";
 
 struct FoundCheck {
@@ -18,7 +17,6 @@ struct FoundCheck {
 }
 
 impl Guard<'_, '_> {
-    /// Regras 6 a 10 da attestation (work item, check, id derivado, sonda e desfecho).
     pub(super) fn check_attestation(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         let work_item = self.find_open_work_item(node)?;
         let check = self.find_check(node)?;
@@ -51,7 +49,6 @@ impl Guard<'_, '_> {
         Ok(Some(view.id))
     }
 
-    /// O check é nativo ou um node vigente, e nos dois casos do tipo `check`.
     fn find_check(&mut self, node: &NodeItem<'_>) -> Result<Option<FoundCheck>, OmhlError> {
         let Some(raw) = node.field("check") else {
             return Ok(None);
@@ -73,7 +70,6 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// Attestation de check mecânico: só o `executor`, com o rastro da execução completo.
     fn check_mechanical_authorship(&self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         if self.author.client != ATTESTER {
             return Err(node.error(RuleCode::CheckRunAuthor, "body/data/check"));
@@ -88,7 +84,6 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// Attestation criada: o snapshot é o `HEAD` de uma árvore limpa (`git-commit`) ou a árvore do índice (`git-tree`).
     fn check_head(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         let Some(snapshot) = node.snapshot else {
             return Ok(());
@@ -106,7 +101,6 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// Attestation revisada: o desfecho não muda.
     fn check_outcome_unchanged(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         let Some(outcome) = node.field("outcome") else {
             return Ok(());
@@ -137,7 +131,6 @@ fn first_missing_field(node: &NodeItem<'_>) -> Option<&'static str> {
         })
 }
 
-/// O id da attestation é derivado do snapshot, do check e do work item.
 fn check_derived_id(
     node: &NodeItem<'_>,
     check: Option<&SemanticId>,
@@ -155,7 +148,6 @@ fn check_derived_id(
     }
 }
 
-/// Por que a resposta da sonda não aceita o snapshot como `HEAD` de uma árvore limpa.
 pub(crate) fn probe_refusal(
     probed: &Result<ProbeOutcome, ProbeError>,
     snapshot: &Snapshot,
@@ -168,7 +160,6 @@ pub(crate) fn probe_refusal(
     }
 }
 
-/// Por que a resposta da sonda de árvore não aceita o snapshot como a árvore do índice.
 pub(crate) fn tree_probe_refusal(
     probed: &Result<ProbeOutcome, ProbeError>,
     snapshot: &Snapshot,

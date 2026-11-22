@@ -64,7 +64,6 @@ fn visible_sorted(nodes: &[NodeView]) -> Vec<&NodeView> {
     visible
 }
 
-/// Ordem estável por id, a mesma no contexto e na projeção.
 pub(crate) fn sort_by_id(nodes: &mut [&NodeView]) {
     nodes.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
 }
@@ -112,7 +111,7 @@ fn push_guidelines(text: &mut String, cuts: &mut Vec<usize>, input: &RenderInput
     push_tenant_nodes(text, cuts, cut_at, &nodes, push_guideline);
 }
 
-/// Negócio antes de arquitetura, as sem `kind` (legadas) por último: o corte do orçamento vem do fim.
+/// As sem `kind` (legadas) por último: o corte do orçamento vem do fim.
 fn kind_rank(data: &Value) -> u8 {
     match data["kind"].as_str() {
         Some("business") => 0,
@@ -121,7 +120,6 @@ fn kind_rank(data: &Value) -> u8 {
     }
 }
 
-/// A section with no native nodes: it only exists while it has a tenant node.
 fn push_tail_section(
     text: &mut String,
     cuts: &mut Vec<usize>,
@@ -154,7 +152,6 @@ fn push_tenant_nodes(
     }
 }
 
-/// Units (header, section title, block, footer) are separated by one blank line.
 fn begin_unit(text: &mut String) {
     if !text.is_empty() {
         text.push('\n');
@@ -262,7 +259,6 @@ fn push_after(text: &mut String, id: &str, after: &[(SemanticId, SemanticId)]) {
     text.push('\n');
 }
 
-/// Diretiva confirmada: escrita pelo `loader` (extension) ou com `confirmed_by`; a nativa já é confirmada.
 fn push_guideline(text: &mut String, node: &NodeView) {
     let confirmed = is_confirmed_guideline(false, node.author.client == "loader", &node.data);
     begin_block(text, node.id.as_str());
@@ -336,7 +332,7 @@ fn str_of(value: &Value) -> &str {
     value.as_str().unwrap_or_default()
 }
 
-/// Drops tenant nodes from the end until the text and its footer fit; native nodes never go.
+/// Native nodes never go.
 fn fit_to_budget(text: &mut String, cuts: &[usize], budget: usize) -> usize {
     let mut end = text.len();
     let mut chars = text.chars().count();
@@ -362,7 +358,6 @@ fn fit_to_budget(text: &mut String, cuts: &[usize], budget: usize) -> usize {
     omitted
 }
 
-/// Characters the footer adds: separating LF, `[`, the digits, the tail and the closing LF.
 fn footer_chars(omitted: usize) -> usize {
     let digits = omitted.ilog10() as usize + 1;
     1 + 1 + digits + FOOTER_TAIL.chars().count() + 1

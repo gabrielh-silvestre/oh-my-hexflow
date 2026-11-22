@@ -16,15 +16,12 @@ pub use self::role::{ROLE_PREFIX, ROLE_REFERENCE_COMMANDS, ROLE_REFERENCE_MATRIX
 use crate::error::{OmhlError, RuleCode};
 
 pub const WHERE_EQ_PAIRS_MAX: usize = 8;
-/// Caracteres Unicode de um `Scalar::Str`.
 pub const WHERE_EQ_TEXT_MAX: usize = 256;
 
-/// Teto de um `SemanticId` no `hexlog`.
 const ATTESTATION_ID_MAX: usize = 200;
 /// O SHA entra em pedaços de 32 porque cada segmento do id aceita no máximo 63 caracteres.
 const SNAPSHOT_SEGMENT: usize = 32;
 
-/// `attestations.<id[..32]>.<id[32..]>.<check>.<work_item>`.
 pub fn attestation_id(
     snapshot: &Snapshot,
     check: &SemanticId,

@@ -8,7 +8,6 @@ use sha2::{Digest, Sha256};
 
 use crate::byproduct::{ByproductError, ByproductErrorKind, ByproductHash, ByproductStore};
 
-/// Nomes de temporário tentados por `put` (`-0` a `-15`).
 const TEMP_ATTEMPTS: u32 = 16;
 
 pub struct BlobStore {

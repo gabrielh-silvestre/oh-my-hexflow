@@ -22,7 +22,6 @@ const AFTER: &str = "after";
 const KEY_PREFIX: &str = "omhl-load-";
 
 impl Engine<'_> {
-    /// Reconcilia `.omhl/` com o tenant; `dry_run` devolve o mesmo relatório sem gravar.
     pub(super) fn load(&mut self, dry_run: bool) -> Result<Value, AppError> {
         let Engine {
             omhl,
@@ -70,7 +69,6 @@ fn reconcile(
     plan(&input).map_err(|issues| AppError::extensions_invalid(&issues, 0))
 }
 
-/// Os vigentes do banco mais as lineages aposentadas que as extensions declaram ou citam em `after`.
 fn existing_nodes(
     omhl: &mut Omhl<'_>,
     tenant: &TenantId,
@@ -189,7 +187,6 @@ fn report(tenant: &TenantId, dry_run: bool, plan: &Plan, scanned: &[ExtensionIss
     })
 }
 
-/// Ids criados, ids revisados e relações criadas, na ordem do plano.
 fn split_changes(changes: &[PlannedChange]) -> [Vec<Value>; 3] {
     let mut split: [Vec<Value>; 3] = Default::default();
     for change in changes {
@@ -205,7 +202,6 @@ fn split_changes(changes: &[PlannedChange]) -> [Vec<Value>; 3] {
     split
 }
 
-/// Lotes de até `BATCH_SIZE` na ordem do plano; falha depois do 1º lote vira `load-partial`.
 fn write_changes(
     omhl: &mut Omhl<'_>,
     tenant: &TenantId,
@@ -256,7 +252,6 @@ fn append_batch(
     Ok(())
 }
 
-/// O item de `append` e o arquivo de origem dele.
 fn into_item(change: PlannedChange) -> Result<(AppendItem, String), AppError> {
     let (body, base, path) = match change {
         PlannedChange::CreateNode {

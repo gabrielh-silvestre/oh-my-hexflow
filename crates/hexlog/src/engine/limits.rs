@@ -33,7 +33,6 @@ impl Default for Limits {
     }
 }
 
-/// `true` quando `value` tem mais de `max` níveis de contêiner (escalar não conta). Iterativa.
 pub(crate) fn json_nesting_exceeds(value: &Value, max: usize) -> bool {
     let mut pending = vec![(value, 0usize)];
     while let Some((node, depth)) = pending.pop() {
@@ -67,7 +66,7 @@ fn is_safe_integer(number: &Number) -> bool {
         .is_some_and(|magnitude| magnitude <= SAFE_INTEGER_MAX)
 }
 
-/// Achados `(ponteiro RFC 6901, código)` em ordem de documento, até `limit`. Iterativa, com um só `String` de ponteiro.
+/// Iterativa, com um só `String` de ponteiro.
 pub(crate) fn json_issues(value: &Value, limit: usize) -> Vec<(String, &'static str)> {
     let mut issues = Vec::new();
     let mut pointer = String::new();

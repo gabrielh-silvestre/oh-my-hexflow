@@ -1,7 +1,6 @@
 pub mod build;
 pub mod write;
 
-/// Arquivo de projeção; `name` é `<id>.md`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProjectedFile {
     pub name: String,
@@ -15,7 +14,6 @@ pub struct ProjectionError {
     pub message: String,
 }
 
-/// Nomes de arquivo, ordenados.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WriteReport {
     pub written: Vec<String>,

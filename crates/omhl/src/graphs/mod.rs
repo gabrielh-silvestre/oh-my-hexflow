@@ -1,7 +1,6 @@
 use hexlog::{Catalog, Detail, ErrorCode, HexlogError, RelationTypeDef, TypeDef};
 use serde_json::Value;
 
-/// Tipos que contam como work item: o base e os filhos que o especializam.
 pub const WORK_ITEM_TYPES: [&str; 2] = ["work-item", "pull-request"];
 
 pub const PREMISE_NAMESPACE: &str = "premises";
@@ -30,7 +29,6 @@ const SOURCES: [&str; 3] = [
     include_str!("work_items/catalog.json"),
 ];
 
-/// Os tipos e as relações dos três grafos, na ordem das fontes.
 fn definitions() -> Result<(Vec<TypeDef>, Vec<RelationTypeDef>), HexlogError> {
     let mut types = Vec::new();
     let mut relations = Vec::new();
@@ -47,7 +45,6 @@ fn definitions() -> Result<(Vec<TypeDef>, Vec<RelationTypeDef>), HexlogError> {
     Ok((types, relations))
 }
 
-/// Junta os catálogos dos três grafos; o `Catalog` é montado a cada chamada.
 pub fn catalog() -> Result<Catalog, HexlogError> {
     let (types, relations) = definitions()?;
 

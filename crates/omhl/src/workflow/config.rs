@@ -23,7 +23,6 @@ pub struct WorkflowConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecsConfig {
-    /// Relativo ao diretório principal.
     pub dir: String,
     pub max_lines: u32,
     pub placeholders: Vec<String>,
@@ -136,8 +135,6 @@ const RESERVED_OMHL_SUBTREES: [&str; 4] =
     [CHECKS_DIR, GUIDELINES_DIR, PROJECTION_DIR, WORKFLOW_FILE];
 
 /// `specs.dir` é relativo ao diretório principal: absoluto ou com `..` escaparia dele.
-/// Precisa ter pasta própria (`""`, `.` e `./` são a raiz) e ficar fora do `.git`, da raiz do `.omhl`
-/// e das subárvores reservadas dele.
 fn is_usable_specs_dir(dir: &str) -> bool {
     let dir = Path::new(dir);
     if dir.has_root() || dir.components().any(|c| c == Component::ParentDir) {

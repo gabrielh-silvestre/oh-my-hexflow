@@ -17,7 +17,6 @@ pub struct ExistingNode {
     pub author_client: String,
 }
 
-/// Só a relação `after`: `from` depende de `to`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExistingRelation {
     pub from: String,
@@ -86,7 +85,6 @@ struct Context<'a> {
     retired: HashSet<(&'a str, &'a str)>,
 }
 
-/// Reconciles the declared extensions with the store without writing anything.
 pub fn plan(input: &PlanInput) -> Result<Plan, Vec<ExtensionIssue>> {
     let mut extensions: Vec<&Extension> = input.extensions.iter().collect();
     extensions.sort_by(|a, b| a.id.cmp(&b.id));
@@ -122,7 +120,6 @@ pub fn plan(input: &PlanInput) -> Result<Plan, Vec<ExtensionIssue>> {
     Ok(plan)
 }
 
-/// Records what happens to the node of `extension`; returns true when it is skipped.
 fn plan_node(extension: &Extension, existing: Option<&ExistingNode>, plan: &mut Plan) -> bool {
     let id = extension.id.clone();
     match existing {

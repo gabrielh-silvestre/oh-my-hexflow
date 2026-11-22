@@ -12,7 +12,6 @@ use crate::ids::{Hash, TenantId};
 const PAGE_SIZE: u32 = 500;
 const BREAKS_SHOWN_MAX: usize = 100;
 
-/// As colunas e os campos do corpo que `verify_chain` compara com o record gravado.
 pub const CHECKED_FIELDS: &[&str] = &[
     "seq",
     "prev_hash",
@@ -49,7 +48,6 @@ pub const CHECKED_FIELDS: &[&str] = &[
     "batches_row_extra",
 ];
 
-/// As primeiras quebras, até o teto, e a contagem de todas.
 #[derive(Default)]
 struct BreakLog {
     shown: Vec<ChainBreak>,
@@ -64,7 +62,6 @@ impl BreakLog {
         }
     }
 
-    /// Acrescenta `later` depois das quebras já guardadas.
     fn absorb(&mut self, later: BreakLog) {
         let room = BREAKS_SHOWN_MAX - self.shown.len();
         self.shown.extend(later.shown.into_iter().take(room));
@@ -72,14 +69,12 @@ impl BreakLog {
     }
 }
 
-/// O que o corpo de um record com chave diz sobre a linha de `batches`.
 struct ExpectedBatch {
     fingerprint: String,
     first_seq: i64,
     count: i64,
 }
 
-/// O record anterior: o `seq` e o `hash` armazenados, ou a âncora recalculada antes do primeiro.
 struct Previous {
     seq: i64,
     hash: String,
@@ -93,7 +88,7 @@ struct Scan {
     expected_found: bool,
 }
 
-/// Quebra é resultado, não erro: só tenant desconhecido e falha do banco saem como `Err`.
+/// Quebra é resultado, não erro.
 pub(crate) fn verify_chain(
     reads: &mut dyn VerifyReads,
     tenant: &TenantId,
@@ -124,7 +119,6 @@ pub(crate) fn verify_chain(
     })
 }
 
-/// Lê os records em páginas; só a página corrente fica na memória, e o corpo empresta da linha.
 fn scan_records(
     reads: &mut dyn VerifyReads,
     tenant: &TenantId,
@@ -201,7 +195,6 @@ impl Scan {
     }
 }
 
-/// Primeiro problema do record, na ordem: `seq`, cadeia de hashes, corpo, colunas.
 fn first_break(
     tenant: &TenantId,
     previous: &Previous,
@@ -283,7 +276,6 @@ fn relation_key_matches(key: &str, relation_type: &str, from: &str, to: &str) ->
         .is_some_and(|rest| rest == to)
 }
 
-/// Uma quebra por linha sem lote esperado, por lote esperado sem linha e por lote que diverge.
 fn compare_batches(
     stored: Vec<StoredBatch>,
     mut expected: HashMap<String, ExpectedBatch>,

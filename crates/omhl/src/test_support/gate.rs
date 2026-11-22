@@ -8,7 +8,6 @@ use serde_json::{Value, json};
 
 use super::{DEFAULT_INSTANT, author, rty, sid, tenant, tname};
 
-/// Rótulo de toda pergunta montada por `evaluate_one`.
 pub const LABEL: &str = "q";
 
 const RECORD_ID: &str = "acme:0192a000-0000-7000-8000-000000000001";
@@ -28,9 +27,6 @@ pub fn node_view(id: &str) -> NodeView {
     }
 }
 
-/// Fonte falsa de porta própria: sem lógica de filtro. Devolve a lista configurada para um filtro
-/// `==` ao pedido (e vazia para qualquer outro), as relations configuradas por tipo e os chain
-/// heads programados, um por chamada de `chain_head`.
 pub struct FakeSource {
     nodes: Vec<(ListFilter, Vec<NodeView>)>,
     relations: Vec<(RelationTypeName, Vec<RelationView>)>,
@@ -119,7 +115,6 @@ impl GateSource for FakeSource {
 
 // Filtros
 
-/// Filtro que não restringe nada.
 pub fn all_filter() -> ListFilter {
     ListFilter {
         type_name: None,
@@ -129,7 +124,6 @@ pub fn all_filter() -> ListFilter {
     }
 }
 
-/// Filtro só por tipo; filtros de tipos diferentes são diferentes para o `FakeSource`.
 pub fn type_filter(type_name: &str) -> ListFilter {
     ListFilter {
         type_name: Some(tname(type_name)),
@@ -137,7 +131,6 @@ pub fn type_filter(type_name: &str) -> ListFilter {
     }
 }
 
-/// Node com o `data` dado.
 pub fn node_view_with(id: &str, data: Value) -> NodeView {
     NodeView {
         data,
@@ -149,7 +142,6 @@ pub fn node_views(ids: &[&str]) -> Vec<NodeView> {
     ids.iter().map(|id| node_view(id)).collect()
 }
 
-/// Relation vigente, com os dois extremos vigentes.
 pub fn relation_view(relation_type: &str, from: &str, to: &str) -> RelationView {
     RelationView {
         record_id: RecordId::parse(RECORD_ID).expect("valid record id"),
@@ -171,7 +163,6 @@ pub fn relation_view(relation_type: &str, from: &str, to: &str) -> RelationView 
 
 // Avaliação e relatórios
 
-/// Avalia uma pergunta só, com o rótulo `LABEL`, e devolve o relatório dela.
 pub fn evaluate_one(source: &mut FakeSource, question: Question) -> QuestionReport {
     let questions = [GateQuestion::new(LABEL, question)];
 
@@ -181,7 +172,6 @@ pub fn evaluate_one(source: &mut FakeSource, question: Question) -> QuestionRepo
         .expect("one report per question")
 }
 
-/// Relatório esperado, com o rótulo `LABEL` e nenhuma evidência omitida.
 pub fn expected_report(
     kind: QuestionKind,
     passed: bool,

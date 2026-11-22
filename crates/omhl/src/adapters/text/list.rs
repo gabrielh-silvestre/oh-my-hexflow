@@ -1,5 +1,3 @@
-//! Texto do `omhl list`: uma linha por nó com os campos do tipo e a paginação em `Next:`.
-
 use serde_json::Value;
 
 use super::base::{Entry, NodeContainer, Profile, Region, Shape, Specialization, WILDCARD};
@@ -7,8 +5,6 @@ use super::doc::{Closing, Fact, Line, items, opt_text, text};
 use super::error;
 use super::vocab::{BLOCKING, NON_BLOCKING, plural, seq_label};
 
-/// O `list` é um resumo por tipo: o que o tipo mostra é `Literal` ou `Closed` e o resto de `data` cai no curinga
-/// `Noise` do tipo (o `get` mostra o nó inteiro). Fora de `data`, `record_id`, `at`, o autor e o snapshot são ruído.
 pub static PROFILE: Profile = Profile {
     label: "",
     nodes: Some(NodeContainer::Array("items")),
@@ -163,7 +159,6 @@ fn check_facts(data: &Value) -> Vec<Fact> {
     facts
 }
 
-/// Rótulo e chave de `data` que cada tipo mostra, na ordem da linha; `of` é o work item.
 fn shown_keys(node_type: &str) -> &'static [(&'static str, &'static str)] {
     match node_type {
         "attestation" => &[

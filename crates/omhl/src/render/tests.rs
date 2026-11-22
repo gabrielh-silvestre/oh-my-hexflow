@@ -181,7 +181,6 @@ fn headers(text: &str) -> Vec<&str> {
         .collect()
 }
 
-/// The lines of the block headed by `### <id>`, up to the next blank line.
 fn block<'t>(text: &'t str, id: &str) -> Vec<&'t str> {
     let header = format!("### {id}");
 
@@ -610,7 +609,6 @@ fn confirmation() -> Value {
     json!({ "by": "person:ana", "question": "Is it right?", "answer": "Yes." })
 }
 
-/// Premissa com `kind` e `status`; a confirmada leva `confirmed_by`, como a guarda exige.
 fn kinded_premise(id: &str, kind: &str, status: &str) -> NodeView {
     let mut data = json!({
         "text": "the rule", "kind": kind, "status": status, "work_item": "work-items.w1",
@@ -630,7 +628,6 @@ fn kinded_guideline(id: &str, kind: &str, text: &str) -> NodeView {
     directive(id, json!({ "text": text, "kind": kind }))
 }
 
-/// O texto de `## <title>` até o próximo `## `; vazio se a seção não existe.
 fn section<'t>(text: &'t str, title: &str) -> &'t str {
     let Some((_, from_title)) = text.split_once(&format!("\n## {title}\n")) else {
         return "";
@@ -692,7 +689,7 @@ fn it_should_mark_a_confirmed_technical_premise_as_confirmed() {
     assert!(block(&rendered.text, "premises.t").contains(&"- mark: confirmed"));
 }
 
-/// Premissa de antes do PR: `status: confirmed` sem `confirmed_by`.
+/// Premissa de antes do PR.
 fn legacy_confirmed_premise(id: &str, kind: &str) -> NodeView {
     node(
         id,

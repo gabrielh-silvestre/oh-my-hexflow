@@ -38,7 +38,6 @@ const INSERT_RECORD: &str = "INSERT INTO records (tenant, seq, id, prev_hash, ha
 
 // ---------------------------------------------------------------- cadeia de teste
 
-/// Um record por montar: o que o `decide` entregaria ao store, escrito à mão.
 struct Draft {
     key: String,
     type_name: String,
@@ -215,7 +214,6 @@ fn body_of(tenant: &TenantId, seq: u64, id: &RecordId, draft: &Draft) -> String 
     chain::canonical(&body).unwrap()
 }
 
-/// O estado da cadeia de um tenant na visão do teste: próximo `seq`, último hash e próximo id.
 struct Ledger {
     tenant: TenantId,
     anchor_doc: String,
@@ -248,7 +246,6 @@ impl Ledger {
         .unwrap()
     }
 
-    /// Records encadeados a partir do estado atual, sem avançá-lo.
     fn records(&self, drafts: &[Draft]) -> Vec<NewRecord> {
         let mut prev_hash = self.head.clone();
         let mut records = Vec::new();
@@ -355,7 +352,6 @@ fn start(store: &mut SqliteStore, name: &str) -> Ledger {
     ledger
 }
 
-/// Entrega o plano ao store e devolve o que ele devolveu, sem avançar o `Ledger`.
 fn attempt(
     store: &mut SqliteStore,
     tenant: &TenantId,
@@ -438,7 +434,6 @@ fn stored_seqs(rows: &[StoredRow]) -> Vec<i64> {
     rows.iter().map(|row| row.seq).collect()
 }
 
-/// Cada campo do `StoredRow`, em texto, igual ao do record que o teste mandou gravar.
 fn assert_stored_matches(row: &StoredRow, expected: &NewRecord) {
     let columns = &expected.columns;
     let kind = if is_relation(&columns.lineage_kind) {
@@ -530,7 +525,6 @@ fn assert_row_matches(row: &RecordRow, expected: &NewRecord) {
 
 // ---------------------------------------------------------------- conexão crua (sem desligar nada)
 
-/// Conexão `sqlx` ao mesmo arquivo, com os triggers e as chaves estrangeiras ligados.
 struct Raw {
     conn: SqliteConnection,
 }

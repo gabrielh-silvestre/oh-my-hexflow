@@ -47,7 +47,6 @@ fn human_premise(id: &str) -> Fact {
     fact(id, "premise", false, data)
 }
 
-/// Premissa técnica que o critic confirma: `confirmed_by.by` é `critic`, não uma pessoa.
 fn critic_premise(id: &str) -> Fact {
     let data = json!({
         "text": "t", "status": "confirmed", "kind": "technical", "work_item": W1,
@@ -89,7 +88,6 @@ fn native_directive(id: &str) -> Fact {
     fact(id, "guideline", true, Value::Null)
 }
 
-/// Diretiva de extension: o `loader` a grava sem `confirmed_by`.
 fn loader_directive(id: &str) -> Fact {
     Fact {
         loader: true,
@@ -113,7 +111,6 @@ fn edge(relation: &str, from: &str, to: &str) -> Edge {
     }
 }
 
-/// O gap `GAP` entra sempre; `nodes` e `edges` são o resto do grafo.
 fn facts(mut nodes: Vec<Fact>, edges: Vec<Edge>) -> GapFacts {
     nodes.push(gap_fact(GAP));
 

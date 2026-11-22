@@ -23,7 +23,6 @@ const ENDPOINT_GUIDANCE: Guidance = Guidance {
     cause: "a relation endpoint is not a current node",
     next_step: "append the missing node before the relation, in the same batch or an earlier one, or fix the id",
 };
-/// Tipos de relação cujas recusas do motor ganham causa e próximo passo.
 const GUIDED_RELATION_TYPES: [&str; 2] = ["rests-on", "supersedes"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,7 +73,7 @@ pub struct AppError {
     code: String,
     message: String,
     details: Vec<Detail>,
-    /// Fatos que valem para o erro todo e que repetir em cada detalhe só duplicaria; só o `checks-failed` os traz.
+    /// Fatos que valem para o erro todo e que repetir em cada detalhe só duplicaria.
     context: Option<Value>,
 }
 
@@ -102,7 +101,7 @@ impl AppError {
         json!({ "error": error })
     }
 
-    /// Erro sem detalhes. Privado: todo código estável tem construtor nomeado; só o código dinâmico de `ProjectError` passa por aqui direto.
+    /// Todo código estável tem construtor nomeado; só o código dinâmico de `ProjectError` passa por aqui direto.
     fn plain(code: &str, message: &str) -> AppError {
         AppError {
             code: code.to_owned(),
@@ -112,7 +111,6 @@ impl AppError {
         }
     }
 
-    /// Erro de entrada com um único detalhe de mesmo código e mesma mensagem.
     pub(crate) fn at_pointer(code: &str, pointer: &str, message: &str) -> AppError {
         AppError {
             code: code.to_owned(),
@@ -244,7 +242,6 @@ impl AppError {
         )
     }
 
-    /// Mostra até `ISSUES_MAX` problemas; `omitted` conta os que a coleta já descartou.
     pub(crate) fn extensions_invalid(issues: &[ExtensionIssue], omitted: usize) -> AppError {
         let omitted = omitted + issues.len().saturating_sub(ISSUES_MAX);
         let details: Vec<Detail> = issues
@@ -270,7 +267,6 @@ impl AppError {
         }
     }
 
-    /// Um único detalhe com o caminho, o código e a mensagem do erro de projeção.
     pub(crate) fn projection_failed(error: &ProjectionError) -> AppError {
         AppError {
             code: "projection-failed".to_owned(),
@@ -280,7 +276,6 @@ impl AppError {
         }
     }
 
-    /// Recusa do motor (`cycle` ou `endpoint-not-found`) num `rests-on` ou `supersedes`: ganha causa e próximo passo; as demais ficam como vieram.
     pub(crate) fn guide_relation_refusal(mut self, items: &[AppendItem]) -> AppError {
         let Some(detail) = self.details.first_mut() else {
             return self;
@@ -325,7 +320,6 @@ impl AppError {
         self
     }
 
-    /// A mensagem leva o motivo da sonda; o código e o ponteiro são os da regra.
     pub(crate) fn probe_failed(reason: &str) -> AppError {
         let code = RuleCode::ProbeFailed.as_str();
 
@@ -449,7 +443,6 @@ impl AppError {
         )
     }
 
-    /// Troca a recusa `cycle` do motor pela do comando; as demais ficam como vieram.
     pub(crate) fn into_supersedes_cycle(self, pointer: &str) -> AppError {
         match self.details.first() {
             Some(detail) if detail.code == "cycle" => AppError::refusal(
@@ -464,7 +457,6 @@ impl AppError {
         }
     }
 
-    /// Recusa da camada `app` com causa e próximo passo; o ponteiro é o único dado de entrada que aparece.
     pub(crate) fn refusal(code: &str, pointer: &str, guidance: Guidance) -> AppError {
         AppError {
             code: code.to_owned(),
@@ -645,7 +637,6 @@ impl AppError {
         )
     }
 
-    /// `context` leva a branch, o prefixo, o work item, os átomos que faltam e o diretório principal.
     pub(crate) fn worktree_gate_refused(path: &str, context: Value) -> AppError {
         AppError::at_pointer(
             "worktree-gate-refused",
@@ -655,7 +646,6 @@ impl AppError {
         .with_context(context)
     }
 
-    /// Mostra até `ISSUES_MAX` violações; o conteúdo da spec nunca entra.
     pub(crate) fn spec_invalid(violations: &[Violation]) -> AppError {
         AppError::violations_of("spec-invalid", "spec", violations)
     }
@@ -703,7 +693,6 @@ impl AppError {
         }
     }
 
-    /// Mostra até `ISSUES_MAX` violações; o conteúdo da emenda nunca entra.
     pub(crate) fn amendment_invalid(violations: &[Violation]) -> AppError {
         AppError::violations_of("amendment-invalid", "amendment", violations)
     }
@@ -718,7 +707,6 @@ impl AppError {
     }
 }
 
-/// Um detalhe por check; o `path` do detalhe é o id do check.
 pub(crate) struct CheckDetail {
     pub check: String,
     pub code: &'static str,

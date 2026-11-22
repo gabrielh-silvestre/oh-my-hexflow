@@ -9,7 +9,6 @@ use crate::mechanical::branch::{BranchKind, HeadFacts, classify, current_branch}
 use crate::probe::{DevelopMark, ProbeError};
 
 const WORK_ITEM_TYPE: &str = "work-item";
-/// Só o `pre-commit` da `develop` exige a marca.
 const MARK_EVENT: &str = "before-commit";
 const BRANCH_NAME_HINT: &str = "rename the branch to type/wi-<id>__<slug> with git branch -m";
 const HEAD_AMBIGUOUS_HINT: &str = "HEAD is detached and zero or several local branches contain it; switch to your branch with git switch";
@@ -19,14 +18,12 @@ const MAIN_CHANGE_HINT: &str =
     "main receives no direct changes; create a branch type/wi-<id>__<slug>";
 const DEVELOP_MARK_HINT: &str = "create the mark with the /oh-my-hexflow:omhl-develop-mark command";
 
-/// `DryRun` é a branch `develop`: nada é gravado.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkItemRoute {
     Recorded(SemanticId),
     DryRun,
 }
 
-/// A branch do HEAD; o HEAD solto contido em zero ou várias branches é recusado.
 pub(super) fn head_branch(facts: &HeadFacts, event: &str) -> Result<String, AppError> {
     current_branch(facts).map_err(|_| {
         AppError::head_ambiguous("").with_context(json!({
@@ -37,7 +34,6 @@ pub(super) fn head_branch(facts: &HeadFacts, event: &str) -> Result<String, AppE
     })
 }
 
-/// `event` e `branch` entram no `context` e decidem a marca; o erro sai antes de qualquer comando.
 pub(super) fn resolve_work_item(
     engine: &mut Engine<'_>,
     event: &str,
@@ -78,7 +74,6 @@ pub(super) fn resolve_work_item(
     }
 }
 
-/// Só a `develop` consome a marca; sem marca, a branch nem é lida.
 pub(super) fn consume_develop_mark(engine: &Engine<'_>) -> Result<Value, AppError> {
     let mark = develop_mark(engine)?;
     if !mark.present().map_err(|error| probe_failed(&error))? {
@@ -117,7 +112,6 @@ fn open_work_item(
     )
 }
 
-/// `None` quando o id é de um work item aberto.
 pub(super) fn work_item_refusal(
     engine: &mut Engine<'_>,
     id: &SemanticId,

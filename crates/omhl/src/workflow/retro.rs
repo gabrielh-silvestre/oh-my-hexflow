@@ -1,4 +1,4 @@
-//! Retro do fechamento de um work item. Pura: recebe os fatos já lidos e devolve o relatório.
+//! Retro do fechamento de um work item. Pura.
 
 use std::collections::BTreeMap;
 
@@ -8,10 +8,8 @@ use super::spec::SPEC_STALE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetroFacts {
-    /// Revisões vigentes das divergências do work item, em ordem de criação.
     pub divergences: Vec<DivergenceFact>,
     pub gaps: Vec<GapFact>,
-    /// `emenda-NN.md` da pasta da spec; vazio sem pasta.
     pub amendment_files: Vec<String>,
 }
 
@@ -20,7 +18,6 @@ pub struct DivergenceFact {
     pub id: String,
     pub kind: String,
     pub resolution: String,
-    /// Sem `.md`: `emenda-01`.
     pub amendment: Option<String>,
 }
 
@@ -49,7 +46,6 @@ pub struct DivergenceGroup {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApprovedAmendment {
-    /// `emenda-01.md`.
     pub name: String,
     pub divergence: String,
 }
@@ -66,9 +62,6 @@ pub struct OpenGap {
     pub state: GapState,
 }
 
-/// `None` sem divergência e sem resposta sem critério: gap aberto ou arquivo de emenda sozinhos não
-/// geram retro. A emenda aprovada vem do grafo (divergência `spec-stale` que a cita), não do disco;
-/// pendente é o arquivo que nenhuma delas cita, válido ou não.
 pub fn retro(facts: &RetroFacts) -> Option<Retro> {
     let no_criterion = facts
         .gaps

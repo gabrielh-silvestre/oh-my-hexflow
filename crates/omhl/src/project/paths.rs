@@ -13,7 +13,6 @@ pub fn default_db_path(env: &Env<'_>) -> Result<PathBuf, ProjectError> {
     Ok(base.join("omhl").join("omhl.db"))
 }
 
-/// `XDG_DATA_HOME` absoluto, senão `<HOME>/.local/share`; `None` sem nenhum dos dois.
 pub fn data_root(env: &Env<'_>) -> Option<PathBuf> {
     let xdg_base = env
         .xdg_data_home
@@ -35,7 +34,6 @@ fn file_error(path: &Path, error: &std::io::Error) -> ProjectError {
     }
 }
 
-/// Cria o diretório (`0700`) e o arquivo vazio (`0600`) só quando faltam; o `hexlog` instala o esquema.
 /// Fora do unix o modo não é aplicado: o arquivo nasce com o padrão do sistema.
 pub fn prepare_db_file(path: &Path) -> Result<(), ProjectError> {
     if let Some(parent) = path.parent() {

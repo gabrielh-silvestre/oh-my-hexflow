@@ -31,8 +31,6 @@ pub enum Question {
     NoOpenContradiction {
         of: Option<ListFilter>,
     },
-    /// Sem `target`: cada node de `select` precisa de uma relation `by` vigente como origem.
-    /// Com `target`: nenhuma relation `by` vigente do node pode apontar para um destino que o predicado recuse.
     Anchored {
         select: ListFilter,
         by: RelationTypeName,
@@ -42,12 +40,10 @@ pub enum Question {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetCheck {
-    /// Onde buscar os destinos tenant; um destino nativo dispensa a busca.
     pub scope: Vec<ListFilter>,
     pub confirmed: Predicate,
 }
 
-/// O destino de uma relation como o predicado o vê; o gate não sabe o tipo de um destino nativo.
 #[derive(Debug, Clone, Copy)]
 pub struct TargetFact<'a> {
     pub type_name: Option<&'a str>,
@@ -70,7 +66,6 @@ impl PartialEq for Predicate {
 pub struct GateQuestion {
     pub label: String,
     pub question: Question,
-    /// Só aparece no relatório quando a pergunta reprova.
     pub next_step: Option<&'static str>,
 }
 
@@ -113,7 +108,6 @@ pub struct GateReport {
 }
 
 impl GateReport {
-    /// `passed` = há ao menos uma pergunta e todas passaram.
     pub fn assemble(
         gate: &str,
         chain_head: ChainHead,
@@ -130,10 +124,8 @@ impl GateReport {
 
 pub trait GateSource {
     fn chain_head(&mut self, tenant: &TenantId) -> Result<ChainHead, OmhlError>;
-    /// Todos os nodes vigentes que casam o filtro, todas as páginas, em ordem de `seq`.
     fn nodes(&mut self, tenant: &TenantId, filter: &ListFilter)
     -> Result<Vec<NodeView>, OmhlError>;
-    /// Relations do tipo cujo lineage não está retirado, em ordem de `seq`.
     fn relations(
         &mut self,
         tenant: &TenantId,
@@ -152,7 +144,6 @@ pub fn evaluate<S: GateSource>(
         .collect()
 }
 
-/// Lê o chain head, roda `body`, lê o chain head de novo. Cabeças diferentes: `GateInconsistent`.
 pub fn read_consistent<S: GateSource, T>(
     source: &mut S,
     tenant: &TenantId,
@@ -357,7 +348,6 @@ fn scope_nodes<S: GateSource>(
     Ok(nodes)
 }
 
-/// Um destino tenant fora do `scope` não está confirmado.
 fn target_confirmed(
     relation: &RelationView,
     scope: &HashMap<SemanticId, NodeView>,
@@ -393,7 +383,6 @@ fn named_relations<S: GateSource>(
     source.relations(tenant, &relation_type)
 }
 
-/// Alvos (`to`) que têm ao menos uma origem vigente: retirada e `MissingNative` não contam.
 fn current_targets(relations: &[RelationView]) -> HashSet<&SemanticId> {
     relations
         .iter()
@@ -402,7 +391,6 @@ fn current_targets(relations: &[RelationView]) -> HashSet<&SemanticId> {
         .collect()
 }
 
-/// Move os ids dos nodes que satisfazem `keep` para a lista de evidência, na ordem recebida.
 fn ids_where(nodes: Vec<NodeView>, keep: impl Fn(&SemanticId) -> bool) -> Vec<SemanticId> {
     nodes
         .into_iter()

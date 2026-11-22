@@ -13,7 +13,6 @@ pub struct Observation<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluation {
     pub outcome: Outcome,
-    /// O veredito é `Failed` porque uma regra de padrão não pôde ser conferida com a saída cortada.
     pub pattern_unchecked: bool,
 }
 
@@ -21,7 +20,6 @@ pub fn evaluate(spec: &CheckSpec, observed: &Observation<'_>) -> Outcome {
     evaluate_with_reason(spec, observed).outcome
 }
 
-/// A primeira regra que casa decide; nenhuma casa é `Failed`.
 /// Com a saída cortada, uma regra de padrão que chegaria a decidir não pode ser conferida: falha fechada.
 pub fn evaluate_with_reason(spec: &CheckSpec, observed: &Observation<'_>) -> Evaluation {
     let decided = |outcome| Evaluation {
@@ -50,7 +48,6 @@ pub fn evaluate_with_reason(spec: &CheckSpec, observed: &Observation<'_>) -> Eva
     decided(Outcome::Failed)
 }
 
-/// O regex olha o fluxo inteiro, não linha a linha.
 fn pattern_matches(pattern: Option<&StreamPattern>, observed: &Observation<'_>) -> bool {
     match pattern {
         None => true,

@@ -15,13 +15,11 @@ use crate::workflow::matrix::unsatisfied_atoms;
 
 const BRANCH_POINTER: &str = "/branch";
 
-/// O que a primeira fase decidiu sem abrir o banco.
 pub(super) enum Decision {
     Final(Value),
     NeedsDatabase(PendingLookup),
 }
 
-/// O que a segunda fase precisa para consultar o work item, as premissas e a spec.
 pub(super) struct PendingLookup {
     branch: String,
     prefix: String,
@@ -31,8 +29,6 @@ pub(super) struct PendingLookup {
     main_dir: PathBuf,
 }
 
-/// Ordem da decisão (d): marcador, `develop` e `main`, branch com worktree, formato e prefixo, matriz.
-/// O banco só é aberto (pela segunda fase) quando o `require` tem algum átomo de premissa ou `spec`.
 pub(super) fn decide(start: &Path, branch: &str) -> Result<Decision, AppError> {
     let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
     if matches!(branch, "develop" | "main") {
@@ -70,7 +66,6 @@ pub(super) fn decide(start: &Path, branch: &str) -> Result<Decision, AppError> {
     }))
 }
 
-/// Work item aberto e existente, depois a matriz sobre as premissas e a spec lidas do banco.
 pub(super) fn finish(app: &mut App<'_>, pending: PendingLookup) -> Result<Value, AppError> {
     let PendingLookup {
         branch,

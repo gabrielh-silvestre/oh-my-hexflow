@@ -1,5 +1,3 @@
-//! Texto do `omhl verify`, o primeiro comando de base: a cadeia fecha ou quebra, uma linha por quebra.
-
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};

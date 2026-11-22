@@ -15,7 +15,6 @@ use crate::workflow::spec::{DivergenceFact, SPEC_STALE, SpecFacts};
 
 const PREMISE: &str = "premise";
 
-/// Os fatos do grafo que o `validate_graph` consulta, lidos uma vez por validação.
 pub(super) struct GraphFacts {
     gap: GapFacts,
     divergences: Vec<NodeView>,
@@ -57,7 +56,6 @@ fn premise_fact(data: &Value) -> PremiseFact {
     }
 }
 
-/// Diretiva nativa não é node do tenant: vale por existir no catálogo nativo.
 fn is_native(id: &str) -> bool {
     NativeBase
         .guidelines()

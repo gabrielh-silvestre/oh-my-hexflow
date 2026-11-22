@@ -5,11 +5,10 @@ use super::cursor::Cursor;
 pub(super) struct Delimiter {
     pub(super) tag: String,
     pub(super) strip_tabs: bool,
-    /// Terminador com aspas ou barra: o bash não expande o corpo.
     pub(super) quoted: bool,
 }
 
-/// O corpo é dado, não comando: consome as linhas de cada heredoc pendente, na ordem, até a linha do terminador.
+/// O corpo é dado, não comando.
 /// Devolve se algum corpo sem aspas tem `$(` ou crase, que o bash executa.
 pub(super) fn skip_bodies(
     cursor: &mut Cursor,

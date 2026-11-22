@@ -1,4 +1,4 @@
-//! Texto do `omhl check run`: lê só o `Value` que o JSON já mostra, nunca o domínio.
+//! Lê só o `Value` que o JSON já mostra, nunca o domínio.
 
 use serde_json::Value;
 
@@ -16,8 +16,7 @@ use super::{BaseRenderer, Renderer, layout};
 
 const NON_BLOCKING_PREFIX: &str = "non-blocking: ";
 
-/// Sem rótulo: o cabeçalho do `check run` abre pelo evento. Sem curinga e tudo `optional` exceto `event` (sucesso)
-/// e `code`/`message` da raiz (erro). O `nothing-to-attest` só tem `event`, `push` e `results: []`; `exit_code` do
+/// O `nothing-to-attest` só tem `event`, `push` e `results: []`; `exit_code` do
 /// sucesso é `Derived` porque o texto só o mostra quando o resultado não passou; a falha lista só o que o texto mostra,
 /// e `Noise` é o que ele nunca mostra (`expected`, `byproduct` e `stored` vêm do `guard-refused`).
 pub static PROFILE: Profile = Profile {
@@ -202,7 +201,6 @@ impl Specialization for CheckRun {
         &PROFILE
     }
 
-    /// `value` é o sucesso do comando.
     fn summary(&self, value: &Value) -> Vec<String> {
         let event = text(value, "event");
         if nothing_to_attest(value) {
@@ -247,7 +245,6 @@ impl Specialization for CheckRun {
         detail_lines(detail)
     }
 
-    /// O contexto do erro não é impresso (só o cabeçalho `BLOCKED` o usa); sobra o aviso de segredos.
     fn failure_extras(&self, error: &Value, facts: &ErrorFacts) -> Vec<Line> {
         let shows_output = facts.code == "checks-failed"
             || items(error, "details").any(|detail| !detail["context"]["output_tail"].is_null());
@@ -290,7 +287,6 @@ fn success_summary(value: &Value, event: String) -> Vec<String> {
     vec![event, work_item, format!("{recorded}{snapshot}")]
 }
 
-/// `context` é o do erro `checks-failed`: evento, work item (ausente na `develop`) e resumo.
 fn blocked_header(context: &Value) -> Line {
     let summary = &context["summary"];
     let count = |key: &str| summary[key].as_u64().unwrap_or_default();
@@ -318,7 +314,6 @@ fn blocked_header(context: &Value) -> Line {
     }
 }
 
-/// Os fatos curtos do check reprovado, depois do id: `test/suite · blocking · exit 101 · 2.6s`.
 fn failed_check_line(path: &str, context: &Value) -> Line {
     let mut parts = vec![path.to_owned()];
     if let Some(concern) = opt_text(context, "concern") {

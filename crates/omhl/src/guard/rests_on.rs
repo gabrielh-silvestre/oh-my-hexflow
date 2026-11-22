@@ -3,8 +3,6 @@ use crate::error::RuleCode;
 const GUIDELINE: &str = "guideline";
 const ARCHITECTURE_KIND: &str = "architecture";
 
-/// Lista branca: só uma diretriz tem limite, e ela só se apoia em diretriz de negócio.
-/// Destino `None` (nativo ou inexistente) fica para o motor decidir.
 pub(super) fn rests_on_allowed(
     source_type: &str,
     target: Option<(&str, Option<&str>)>,

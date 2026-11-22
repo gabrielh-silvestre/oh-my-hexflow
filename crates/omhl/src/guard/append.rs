@@ -15,13 +15,10 @@ use crate::mechanical::is_mechanical;
 use crate::native::NativeBase;
 use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
-/// Único client que grava node `check` com `run`; também fica isento da guarda da confirmação.
 const LOADER_CLIENT: &str = "loader";
 
-/// Único client que retira um node `guideline`; só o `omhl guideline retire` o usa, depois das conferências do comando.
 pub(crate) const GUIDELINE_RETIRE_CLIENT: &str = "guideline-retire";
 
-/// Um item `Node` do lote, com o índice para montar o ponteiro dos erros.
 pub(super) struct NodeItem<'i> {
     index: usize,
     pub(super) id: &'i SemanticId,
@@ -52,12 +49,10 @@ impl<'i> NodeItem<'i> {
         })
     }
 
-    /// Erro de regra com o ponteiro `/items/<i>/<suffix>`.
     pub(super) fn error(&self, code: RuleCode, suffix: &str) -> OmhlError {
         OmhlError::rule(code, &format!("/items/{}/{suffix}", self.index))
     }
 
-    /// Campo de primeiro nível de `data`, só quando é texto.
     pub(super) fn field(&self, key: &str) -> Option<&'i str> {
         self.data.get(key).and_then(Value::as_str)
     }
@@ -67,7 +62,6 @@ impl<'i> NodeItem<'i> {
     }
 }
 
-/// Tipo e `kind` de um node, lidos do lote ou do banco.
 #[derive(Clone)]
 pub(super) struct Endpoint {
     pub(super) type_name: String,
@@ -81,11 +75,9 @@ pub(super) struct Guard<'a, 'd> {
     probe: &'a dyn SnapshotProbe,
     probed: Option<Result<ProbeOutcome, ProbeError>>,
     probed_index_tree: Option<Result<ProbeOutcome, ProbeError>>,
-    /// Nodes já vistos no lote, na ordem dos itens; prevalecem sobre o banco.
     pub(super) batch: HashMap<SemanticId, Endpoint>,
 }
 
-/// Valida o lote inteiro, lendo só o banco; o primeiro achado encerra com erro.
 pub(crate) fn check_append(
     hexlog: &mut Hexlog<'_>,
     probe: &dyn SnapshotProbe,
@@ -142,7 +134,6 @@ fn check_namespace(node: &NodeItem<'_>) -> Result<(), OmhlError> {
     }
 }
 
-/// Diretriz nativa vale como diretriz sem `kind`; check nativo segue para o motor.
 fn native_guideline_endpoint(id: &SemanticId) -> Option<Endpoint> {
     let native = NativeBase.lookup(id)?;
 
@@ -197,7 +188,6 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// Premissa, gap e divergência novos exigem work item aberto; a revisão de um node existente não.
     fn check_work_item(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         let needs_open =
             node.base.is_none() && matches!(node.type_name, "premise" | "gap" | "divergence");
@@ -219,7 +209,6 @@ impl Guard<'_, '_> {
         check_confirmation(node, &self.author.agent)
     }
 
-    /// Fechar só por `close_work_item`, e work item fechado é definitivo.
     fn check_work_item_status(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         if node.field("status") == Some("closed") {
             return Err(node.error(RuleCode::UseCloseWorkItem, "body/data/status"));
@@ -236,7 +225,6 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// `None` quando `data.work_item` não é texto; erro quando não aponta para um work item vigente.
     pub(super) fn find_work_item(
         &mut self,
         node: &NodeItem<'_>,
@@ -255,7 +243,6 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// Só o `loader` escreve, tira ou retira o `run` de um check.
     fn check_run_author(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         if self.author.client == LOADER_CLIENT {
             return Ok(());
@@ -270,7 +257,6 @@ impl Guard<'_, '_> {
         Ok(())
     }
 
-    /// Extremo ausente do lote e do banco fica para o motor: nativo é aceito, inexistente é `endpoint-not-found`.
     fn check_rests_on(
         &mut self,
         index: usize,
@@ -352,14 +338,12 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// A sonda roda no máximo uma vez por `append`.
     pub(super) fn probe_once(&mut self) -> &Result<ProbeOutcome, ProbeError> {
         let probe = self.probe;
 
         self.probed.get_or_insert_with(|| probe.probe())
     }
 
-    /// A sonda de árvore do índice roda no máximo uma vez por `append`.
     pub(super) fn probe_index_tree_once(&mut self) -> &Result<ProbeOutcome, ProbeError> {
         let probe = self.probe;
 

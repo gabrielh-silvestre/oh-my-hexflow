@@ -39,7 +39,6 @@ fn guideline(slug: &str, text: &str) -> Extension {
     }
 }
 
-/// The live store node that matches `extension` exactly, authored by the loader.
 fn stored(extension: &Extension, record_id: &str) -> ExistingNode {
     ExistingNode {
         id: extension.id.clone(),

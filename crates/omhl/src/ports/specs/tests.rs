@@ -1,5 +1,3 @@
-//! `SpecStore`: as pastas `wi-<id>__<slug>` de um diretório de specs.
-
 use crate::ports::specs::{FreezeMarkWrite, SpecStore, SpecStoreError};
 use std::fs;
 use std::os::unix::fs::symlink;

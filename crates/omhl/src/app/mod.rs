@@ -48,14 +48,12 @@ use crate::probe::DevelopMark;
 use crate::runner::CommandRunner;
 use crate::workflow::matrix::PremiseFact;
 
-/// Ações do `omhl` sobre um tenant, com as novas tentativas de `Busy`.
 pub struct App<'d> {
     engine: Engine<'d>,
     retry: RetryPolicy,
 }
 
 impl<'d> App<'d> {
-    /// Não escreve nada enquanto o tenant existe; só cria o tenant quando falta.
     pub fn open(
         db_path: &Path,
         tenant: &TenantId,
@@ -86,7 +84,6 @@ impl<'d> App<'d> {
         })
     }
 
-    /// Sem raiz, `load` e `project` respondem `no-project-root`.
     pub fn with_project_root(mut self, root: impl Into<PathBuf>) -> App<'d> {
         self.engine.project_root = Some(root.into());
         self
@@ -119,19 +116,16 @@ impl<'d> App<'d> {
         self
     }
 
-    /// `None` quando o id é de um work item aberto.
     pub fn work_item_refusal(&mut self, id: &SemanticId) -> Result<Option<RuleCode>, AppError> {
         work_item::work_item_refusal(&mut self.engine, id)
     }
 
-    /// As premissas vigentes do work item, como a matriz do gate de worktree as consulta.
     pub fn premise_facts(&mut self, work_item: &SemanticId) -> Result<Vec<PremiseFact>, AppError> {
         let App { engine, retry } = self;
 
         with_retry(retry, || engine.premise_facts(work_item))
     }
 
-    /// Mesma validação do `spec validate`: pasta de spec ausente e spec reprovada valem `false`.
     pub fn spec_is_valid(&mut self, work_item: &SemanticId) -> Result<bool, AppError> {
         let App { engine, retry } = self;
 

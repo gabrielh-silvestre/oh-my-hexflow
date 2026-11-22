@@ -29,7 +29,7 @@ const GUIDELINE_IDS: [&str; 2] = [
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 
-/// Os cinco ids nativos na ordem do contrato, com o tipo de cada um.
+/// Os ids nativos na ordem do contrato, com o tipo de cada um.
 fn native_ids_with_types() -> Vec<(&'static str, &'static str)> {
     let checks = CHECK_IDS.iter().map(|id| (*id, "check"));
     let guidelines = GUIDELINE_IDS.iter().map(|id| (*id, "guideline"));

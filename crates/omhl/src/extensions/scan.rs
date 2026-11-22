@@ -22,7 +22,6 @@ pub fn scan(root: &Path) -> ScanOutput {
     scan_with(root, &[])
 }
 
-/// `extra_ignored` são nomes diretos de `.omhl/` ignorados além dos fixos, como o `specs.dir` configurado.
 pub fn scan_with(root: &Path, extra_ignored: &[&str]) -> ScanOutput {
     let mut output = ScanOutput::default();
     let omhl = root.join(OMHL_DIR);

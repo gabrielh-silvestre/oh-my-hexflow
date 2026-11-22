@@ -141,7 +141,6 @@ fn relation_ends(
     ))
 }
 
-/// Um objeto JSON lido com o ponteiro de onde ele está no pedido.
 struct Fields<'a> {
     map: &'a Map<String, Value>,
     pointer: String,
@@ -163,7 +162,6 @@ impl<'a> Fields<'a> {
         AppError::append_invalid(&self.child(key), "wrong type")
     }
 
-    /// Recusa a primeira chave fora de `allowed`.
     fn only(self, allowed: &[&str]) -> Result<Fields<'a>, AppError> {
         match self.map.keys().find(|key| !allowed.contains(&key.as_str())) {
             Some(key) => Err(AppError::append_invalid(&self.child(key), "unknown key")),
@@ -200,7 +198,6 @@ impl<'a> Fields<'a> {
             .ok_or_else(|| self.wrong_type(key))
     }
 
-    /// O `kind` do objeto, que tem de ser um dos `kinds`.
     fn kind(&self, kinds: &[&str]) -> Result<&'a str, AppError> {
         let kind = self.text("kind")?;
         match kinds.contains(&kind) {
@@ -212,7 +209,6 @@ impl<'a> Fields<'a> {
         }
     }
 
-    /// Valor de `key` passado ao `parse` do motor; a recusa leva o ponteiro da chave.
     fn parsed<T>(
         &self,
         key: &str,
@@ -222,7 +218,6 @@ impl<'a> Fields<'a> {
         parse(text).map_err(|error| AppError::from(error.at(&self.child(key))))
     }
 
-    /// Como `parsed`, para uma chave que pode faltar.
     fn optional_parsed<T>(
         &self,
         key: &str,
@@ -233,7 +228,6 @@ impl<'a> Fields<'a> {
             .transpose()
     }
 
-    /// Recusa do motor sobre o objeto inteiro, no ponteiro dele.
     fn refused(&self, error: HexlogError) -> AppError {
         AppError::from(error.at(&self.pointer))
     }

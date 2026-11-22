@@ -30,7 +30,6 @@ use crate::workflow::spec::{
 const SLUG_MAX: usize = 64;
 const FIRST_PART: &str = "## Objetivo\n\n## Diretivas e premissas aplicáveis\n\n## Comportamentos\n\n## Critérios de aceitação\n\n## Fora de escopo\n";
 
-/// O resultado da validação da spec de um work item; `Valid` carrega o relatório do `spec validate`.
 enum SpecCheck {
     Missing,
     Invalid(Vec<Violation>),
@@ -67,8 +66,6 @@ impl Engine<'_> {
         }))
     }
 
-    /// Estrutura e grafo: as violações das partes e das emendas aprovadas reprovam; as de emenda
-    /// pendente só são listadas.
     pub(super) fn spec_validate(&mut self, work_item: &str) -> Result<Value, AppError> {
         let id = parse_at(SemanticId::parse, work_item, "/work_item")?;
 
@@ -79,7 +76,6 @@ impl Engine<'_> {
         }
     }
 
-    /// Pasta de spec ausente e spec reprovada valem `false`; a violação nunca sai daqui.
     pub(super) fn spec_is_valid(&mut self, id: &SemanticId) -> Result<bool, AppError> {
         Ok(matches!(self.check_spec(id)?, SpecCheck::Valid(_)))
     }
@@ -129,9 +125,6 @@ struct AmendmentBatch {
 }
 
 impl Engine<'_> {
-    /// Antes da guarda e de qualquer escrita: cada divergência que o lote leva a `spec-stale` com
-    /// `amendment` na forma `emenda-NN` precisa estar `open` e citar uma emenda existente e válida.
-    /// Fora dessa forma nada é lido do disco; a guarda recusa.
     pub(super) fn check_amendment_approvals(&mut self, request: &Value) -> Result<(), AppError> {
         let items = request["items"].as_array().map_or(&[][..], Vec::as_slice);
         let mut batch = AmendmentBatch::default();
@@ -229,7 +222,6 @@ impl Engine<'_> {
 }
 
 impl Engine<'_> {
-    /// Os `emenda-NN.md` da pasta da spec do work item; vazio sem raiz de projeto ou sem pasta.
     pub(super) fn amendment_files(&self, work_item: &str) -> Result<Vec<String>, AppError> {
         let Some(root) = self.project_root.as_deref() else {
             return Ok(Vec::new());
@@ -243,7 +235,6 @@ impl Engine<'_> {
     }
 }
 
-/// A pasta do work item no `specs.dir`; `None` quando o id não é de work item ou a pasta não existe.
 fn read_spec_folder(
     root: &Path,
     work_item: &str,
@@ -257,7 +248,6 @@ fn read_spec_folder(
     Ok((config, folder))
 }
 
-/// Estrutura e grafo da pasta inteira, na ordem de arquivo e linha.
 fn folder_violations(
     work_item: &str,
     folder: &SpecFolder,

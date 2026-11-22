@@ -19,7 +19,6 @@ fn refusal(code: RuleCode, index: usize, suffix: &str) -> OmhlError {
 }
 
 impl Guard<'_, '_> {
-    /// Matriz do papel e regras de autoria, para os quatro corpos do `append`; roda antes das guardas por tipo.
     pub(super) fn check_role(&mut self, index: usize, item: &AppendItem) -> Result<(), OmhlError> {
         match &item.body {
             ItemBody::Node {
@@ -69,7 +68,6 @@ impl Guard<'_, '_> {
         self.check_role_revision(index, id, type_name, data, role)
     }
 
-    /// Revisão de node existente: regras do papel portado e, para qualquer autor, o `work_item` de node em contradição.
     fn check_role_revision(
         &mut self,
         index: usize,
@@ -101,7 +99,6 @@ impl Guard<'_, '_> {
         Ok(())
     }
 
-    /// Papel portado só aponta relação da matriz, a partir de node que ele mesmo gravou.
     fn check_role_relation(
         &mut self,
         index: usize,
@@ -133,7 +130,6 @@ impl Guard<'_, '_> {
         Ok(())
     }
 
-    /// O critic só responde gap técnico; destino ausente fica para o motor (`endpoint-not-found`).
     fn check_critic_answer(&mut self, index: usize, to: &SemanticId) -> Result<(), OmhlError> {
         let Some(target) = self.endpoint_of(to)? else {
             return Ok(());
@@ -146,7 +142,6 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// Nenhum papel portado retira node; `claude` não retira ponta de contradição contra uma `decision`.
     fn check_role_node_retirement(
         &mut self,
         index: usize,
@@ -187,7 +182,6 @@ impl Guard<'_, '_> {
         }
     }
 
-    /// `agent` que gravou a revisão vigente da relação; `None` se ela não existe (o motor decide).
     fn relation_author(
         &mut self,
         relation_type: &str,
@@ -205,7 +199,6 @@ impl Guard<'_, '_> {
         Ok(found.into_iter().next().map(|view| view.author.agent))
     }
 
-    /// `contradicts` vigentes (não retiradas, com os dois extremos vigentes) que tocam o node.
     fn current_contradictions_of(
         &mut self,
         id: &SemanticId,
@@ -226,7 +219,7 @@ impl Guard<'_, '_> {
             .collect())
     }
 
-    /// Retirar a ponta fecharia o `no-open-contradiction` sem tocar na relação (N1); só conta quando o destino é `decision`.
+    /// Retirar a ponta fecharia o `no-open-contradiction` sem tocar na relação (N1).
     fn contradicts_a_decision(&mut self, id: &SemanticId) -> Result<bool, OmhlError> {
         for relation in self.current_contradictions_of(id)? {
             let target = self.hexlog.get(self.tenant, &relation.to)?;

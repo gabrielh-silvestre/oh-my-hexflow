@@ -16,7 +16,6 @@ use crate::app::{
 use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
 use crate::project::Env;
 
-/// Without a marker the hook stays silent; any failure leaves stdout empty so no partial context is injected.
 pub fn session_start(
     stdin: &mut impl Read,
     out: &mut impl Write,
@@ -107,7 +106,6 @@ pub fn agent_role(
     })
 }
 
-/// `decide` devolve os campos da decisão (sem o nome do evento); `None` deixa o stdout vazio.
 fn pre_tool_use(
     stdin: &mut impl Read,
     out: &mut impl Write,

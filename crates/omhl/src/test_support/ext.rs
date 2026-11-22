@@ -1,6 +1,3 @@
-//! Árvore `.omhl/` em disco para os testes de extension: uma raiz de projeto temporária e métodos que montam
-//! arquivos, pastas e symlinks sob ela.
-
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
@@ -15,7 +12,6 @@ pub struct ExtTree {
 }
 
 impl ExtTree {
-    /// Raiz de projeto em um diretório temporário que some junto com a árvore.
     pub fn new() -> ExtTree {
         let dir = TempDir::new().expect("project directory is created");
 
@@ -29,7 +25,6 @@ impl ExtTree {
         &self.root
     }
 
-    /// Arquivo em `rel` (relativo à raiz do projeto), com as pastas de cima criadas.
     pub fn file(&self, rel: &str, bytes: impl AsRef<[u8]>) -> &ExtTree {
         let target = self.root.join(rel);
         self.make_parent(&target);
@@ -46,7 +41,6 @@ impl ExtTree {
         self.file(&format!("{OMHL_DIR}/guidelines/{slug}.toml"), toml)
     }
 
-    /// Texto longo `.omhl/<kind_dir>/<slug>.md`.
     pub fn markdown(&self, kind_dir: &str, slug: &str, text: &str) -> &ExtTree {
         self.file(&format!("{OMHL_DIR}/{kind_dir}/{slug}.md"), text)
     }

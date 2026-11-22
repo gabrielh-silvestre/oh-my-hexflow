@@ -1,5 +1,3 @@
-//! O `omhl-allow` do frontmatter de um agente: as folhas do `omhl` que o papel pode rodar.
-
 use serde::Deserialize;
 
 use super::omhl_leaf::Leaf;
@@ -60,7 +58,6 @@ pub fn parse_role_allow(agent_file: &str) -> Result<RoleAllow, String> {
     Ok(allow)
 }
 
-/// O texto entre a primeira linha `---` e a seguinte.
 fn frontmatter(agent_file: &str) -> Option<&str> {
     let after_fence = agent_file.strip_prefix(FRONTMATTER_FENCE)?;
     let body = after_fence

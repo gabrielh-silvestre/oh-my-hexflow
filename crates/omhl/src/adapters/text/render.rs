@@ -1,5 +1,3 @@
-//! Texto do `omhl render`: o produto é o `text` do contexto sem controles, igual nos dois layouts.
-
 use serde_json::Value;
 
 use super::Renderer;
@@ -20,7 +18,6 @@ pub static PROFILE: Profile = Profile {
 
 pub struct Render;
 
-/// Só o erro genérico usa a `Specialization`; o sucesso não tem cabeçalho nem resumo.
 impl Specialization for Render {
     fn profile(&self) -> &'static Profile {
         &PROFILE

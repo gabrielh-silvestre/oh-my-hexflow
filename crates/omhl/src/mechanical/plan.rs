@@ -11,7 +11,6 @@ pub struct CheckNode {
     pub shadowed: bool,
 }
 
-/// Spec gravado que o `from_data` recusa segue no plano como `Err`.
 #[derive(Debug)]
 pub struct PlannedCheck {
     pub id: SemanticId,

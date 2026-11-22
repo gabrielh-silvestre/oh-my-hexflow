@@ -31,7 +31,6 @@ pub(crate) fn is_invisible_format(c: char) -> bool {
     )
 }
 
-/// `\r\n` e `\r` viram `\n`; sem `\r` o texto volta emprestado, sem alocar.
 pub(crate) fn normalize_line_breaks(text: &str) -> Cow<'_, str> {
     if text.contains('\r') {
         Cow::Owned(replace_line_breaks(text))
@@ -40,7 +39,6 @@ pub(crate) fn normalize_line_breaks(text: &str) -> Cow<'_, str> {
     }
 }
 
-/// Como `normalize_line_breaks`, mas sem `\r` o próprio buffer volta, sem copiar.
 pub(crate) fn normalize_line_breaks_owned(text: String) -> String {
     if text.contains('\r') {
         replace_line_breaks(&text)
@@ -49,7 +47,6 @@ pub(crate) fn normalize_line_breaks_owned(text: String) -> String {
     }
 }
 
-/// Um passo só: cada `\r` vira `\n` e o `\n` que o segue some.
 fn replace_line_breaks(text: &str) -> String {
     let mut segments = text.split('\r');
     let mut normalized = String::with_capacity(text.len());

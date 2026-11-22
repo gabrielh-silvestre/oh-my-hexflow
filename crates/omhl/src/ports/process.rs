@@ -7,12 +7,10 @@ pub struct ProcessRunner {
 }
 
 impl ProcessRunner {
-    /// Sem amarração ao processo pai; para os testes.
     pub fn new() -> ProcessRunner {
         ProcessRunner { parent_pid: None }
     }
 
-    /// `parent_pid` é o `parent_id()` que o `main` leu na primeira linha.
     pub fn bound_to_parent(parent_pid: u32) -> ProcessRunner {
         ProcessRunner {
             parent_pid: Some(parent_pid),
@@ -50,12 +48,10 @@ pub struct SweepReport {
     pub scan_timed_out: bool,
 }
 
-/// Varre os processos de qualquer projeto (`omhl check sweep`).
 pub fn sweep_strays() -> Result<SweepReport, RunError> {
     sweep_strays_in(Path::new("/proc"), None)
 }
 
-/// Varre só os processos cuja marca leva a raiz de `project_root` (início do `check run`).
 pub fn sweep_project_strays(project_root: &Path) -> Result<SweepReport, RunError> {
     sweep_strays_in(Path::new("/proc"), Some(project_root))
 }
@@ -94,10 +90,9 @@ mod platform {
     const TERM_GRACE: Duration = Duration::from_secs(2);
     const SWEEP_SCAN_BUDGET: Duration = Duration::from_secs(1);
     const POLL: Duration = Duration::from_millis(10);
-    /// Pids que a varredura pode sinalizar: o 0 e o 1 nunca, e acima de `i32::MAX` o `kill` leria um número negativo (-1 = todos).
+    /// Pids que a varredura pode sinalizar: acima de `i32::MAX` o `kill` leria um número negativo (-1 = todos).
     const SWEEPABLE_PIDS: std::ops::RangeInclusive<u32> = 2..=0x7fff_ffff;
 
-    /// Lê o stdin até o EOF (o runner morreu ou terminou) e limpa o próprio grupo, onde roda o comando.
     const GUARDIAN_SCRIPT: &str = "trap \"\" INT TERM HUP QUIT TTIN TTOU; read -r _; kill -s TERM -- -$$; kill -s CONT -- -$$; sleep 2; kill -s KILL -- -$$";
 
     enum Event {
@@ -119,12 +114,10 @@ mod platform {
         Pid::from_raw(child.id() as i32)
     }
 
-    /// Barra final e link simbólico dão o mesmo hash que o caminho real; sem caminho real (raiz sumida), vale o caminho dado.
     fn project_root_hash(root: &Path) -> String {
         root_hash(&fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf()))
     }
 
-    /// A marca deste processo para um comando do projeto em `root`; `None` se o `/proc` não se leu.
     fn own_marker(root: &Path) -> Option<String> {
         let stat = fs::read_to_string("/proc/self/stat").ok()?;
         let marker = RunMarker {
@@ -136,7 +129,6 @@ mod platform {
         Some(marker.encode())
     }
 
-    /// Inode do namespace de pid, do link `pid:[<inode>]`.
     fn own_pidns() -> Option<u64> {
         let link = fs::read_link("/proc/self/ns/pid").ok()?;
         link.to_str()?
@@ -146,7 +138,6 @@ mod platform {
             .ok()
     }
 
-    /// O arquivo que o `run` executaria para `argv[0]`, com o `PATH` que o comando vê (o `env_set` vence o herdado).
     pub fn resolve_program(spec: &RunSpec) -> Option<PathBuf> {
         let program = spec.argv.first()?;
         if program.contains('/') {
@@ -397,7 +388,6 @@ mod platform {
         })
     }
 
-    /// Os processos com a marca no ambiente e quantos ambientes não se leram.
     fn scan(root: &Path) -> io::Result<(Vec<Candidate>, usize)> {
         let mut candidates = Vec::new();
         let mut unreadable = 0;
@@ -459,12 +449,10 @@ mod platform {
         })
     }
 
-    /// O `stat` de um processo vivo; zumbi conta como morto.
     fn live_stat(root: &Path, pid: u32) -> Option<ProcStat> {
         read_stat(root, pid).filter(|stat| stat.state != 'Z')
     }
 
-    /// O alvo ainda vivo e com o início lido na varredura (o pid não foi reusado).
     fn same_target(root: &Path, stray: &Candidate) -> Option<ProcStat> {
         live_stat(root, stray.pid).filter(|stat| stat.start == stray.start)
     }
@@ -473,7 +461,6 @@ mod platform {
         same_target(root, stray).is_some() && kill(Pid::from_raw(stray.pid as i32), signal).is_ok()
     }
 
-    /// `TERM` e `CONT` a todos, uma só carência e `KILL` a quem sobrou: no máximo um `TERM_GRACE`.
     fn signal_batch(root: &Path, strays: &[Candidate]) -> Vec<SweptProcess> {
         let mut swept = Vec::new();
         let mut batch = Vec::new();

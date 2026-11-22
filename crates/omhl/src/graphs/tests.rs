@@ -41,7 +41,6 @@ fn violation(pointer: &str, code: &str) -> DataViolation {
     }
 }
 
-/// Violações que o catalog aponta para o dado; falha o teste se o dado for aceito.
 fn violations_of(type_name: &str, data: &Value) -> Vec<DataViolation> {
     catalog()
         .validate_data(&tname(type_name), data)
@@ -729,7 +728,6 @@ fn text_of(length: usize) -> String {
     "x".repeat(length)
 }
 
-/// `premise` ou `guideline` mínimo e válido, sem os campos novos.
 fn plain(type_name: &str) -> Value {
     match type_name {
         "premise" => json!({ "text": "users have a git repo", "status": "assumed" }),
@@ -763,7 +761,6 @@ fn evidence_of(count: usize) -> Value {
     ])
 }
 
-/// Aceitação do dado montado por `build` para cada tamanho de texto em `lengths`.
 fn accepted_by_length(
     type_name: &str,
     lengths: &[usize],
@@ -775,7 +772,6 @@ fn accepted_by_length(
         .collect()
 }
 
-/// Aceitação do dado montado por `build` para cada quantidade de itens em `counts`.
 fn accepted_by_count(
     type_name: &str,
     counts: &[usize],

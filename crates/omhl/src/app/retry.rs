@@ -10,9 +10,7 @@ const PAUSES: [Duration; 2] = [Duration::from_millis(250), Duration::from_millis
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetryPolicy {
-    /// Espera máxima do motor por uma trava, a cada tentativa.
     pub busy_timeout: Duration,
-    /// Uma tentativa a mais por pausa.
     pub pauses: Vec<Duration>,
 }
 
@@ -27,7 +25,7 @@ impl Default for RetryPolicy {
 
 impl RetryPolicy {
     /// Política da gravação depois do `check run`: o `busy_timeout` aqui não tem efeito, porque a
-    /// conexão já abriu; o orçamento real são as pausas, cerca de 74 s.
+    /// conexão já abriu.
     pub fn after_run() -> RetryPolicy {
         RetryPolicy {
             busy_timeout: BUSY_TIMEOUT,
@@ -36,7 +34,7 @@ impl RetryPolicy {
     }
 }
 
-/// Repete só o `BUSY`: nesse caso nada foi gravado. Esgotadas as pausas, devolve o último erro.
+/// Repete só o `BUSY`: nesse caso nada foi gravado.
 pub(crate) fn with_retry<T>(
     policy: &RetryPolicy,
     mut attempt: impl FnMut() -> Result<T, AppError>,

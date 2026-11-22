@@ -1,5 +1,3 @@
-//! Texto dos relatórios `report answers`, `report recurrences` e `report retro`: uma linha por item.
-
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
@@ -155,7 +153,6 @@ fn gap_facts(gap: &Value) -> Vec<Fact> {
     facts
 }
 
-/// Fato presente só quando `key` é texto; o agente vê `agent(valor)`, o humano o valor.
 fn optional_fact(
     node: &Value,
     key: &str,

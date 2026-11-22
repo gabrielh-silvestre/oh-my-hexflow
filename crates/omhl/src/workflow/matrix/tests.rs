@@ -19,7 +19,7 @@ fn confirmed_business() -> PremiseFact {
     fact(Some(PremiseKind::Business), true)
 }
 
-/// Premissa técnica sem confirmação humana: a "autônoma" do agente.
+/// A "autônoma" do agente.
 fn autonomous_technical() -> PremiseFact {
     fact(Some(PremiseKind::Technical), false)
 }
@@ -315,7 +315,6 @@ const ALL_PREFIXES: [&str; 7] = [
     "feat", "fix", "refactor", "tests", "bugfix", "chore", "docs",
 ];
 
-/// Sem premissa, negócio pendente, negócio confirmada, técnica autônoma, técnica confirmada.
 fn premise_states() -> [Vec<PremiseFact>; 5] {
     [
         vec![],

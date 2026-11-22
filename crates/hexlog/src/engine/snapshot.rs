@@ -40,7 +40,7 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// O motor confere só o formato (40 ou 64 hexadecimais minúsculos), nunca a existência.
+    /// O motor confere só o formato , nunca a existência.
     pub fn new(kind: SnapshotKind, id: &str) -> Result<Snapshot, HexlogError> {
         if matches!(id.len(), 40 | 64) && is_lower_hex(id) {
             return Ok(Snapshot {

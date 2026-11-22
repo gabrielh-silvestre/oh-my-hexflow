@@ -12,7 +12,7 @@ use crate::ids::{Hash, TenantId};
 const EXACT_INTEGER_MAX: u64 = 1 << 53;
 /// Último `n` do `Number::toString` do ECMA-262 que ainda sai em notação posicional.
 const POSITIONAL_MAX: usize = 21;
-/// Teto de pilha da recursão do `canonical`, e não regra de produto (essa é `JSON_NESTING_MAX`).
+/// Teto de pilha da recursão do `canonical`, e não regra de produto.
 const CANONICAL_DEPTH_MAX: usize = 256;
 
 /// JCS (RFC 8785) de `value`. Inteiro além de ±2^53 é erro: converter para double arredondaria em silêncio.
@@ -26,12 +26,10 @@ pub fn sha256hex(text: &str) -> Hash {
     hex_digest(&[text])
 }
 
-/// `sha256hex(prev_hash + body)`, sem montar a concatenação.
 pub fn hash_record(prev_hash: &str, body: &str) -> Hash {
     hex_digest(&[prev_hash, body])
 }
 
-/// JCS de `{"created_at":..,"format":"hexlog-chain/1","tenant":..}`, escrito na ordem das chaves.
 pub fn anchor_doc(tenant: &TenantId, created_at: &str) -> String {
     let mut out = String::from("{\"created_at\":");
     write_quoted(created_at, &mut out);
@@ -45,7 +43,6 @@ pub fn anchor(anchor_doc: &str) -> Hash {
     sha256hex(anchor_doc)
 }
 
-/// Impressão do lote: `sha256hex(JCS(itens))`. `Err` quando algum número é inteiro fora de ±2^53.
 pub fn fingerprint(items: &[AppendItem]) -> Result<Hash, HexlogError> {
     for (index, item) in items.iter().enumerate() {
         if let ItemBody::Node { data, .. } = &item.body
@@ -77,7 +74,6 @@ fn hex_digest(parts: &[&str]) -> Hash {
     Hash::from_lower_hex(hex)
 }
 
-/// `depth` é o número de contêineres abertos acima de `value`.
 fn write_value(value: &Value, depth: usize, out: &mut String) -> Result<(), HexlogError> {
     if matches!(value, Value::Array(_) | Value::Object(_)) && depth >= CANONICAL_DEPTH_MAX {
         return Err(HexlogError::refused(
@@ -164,7 +160,6 @@ fn write_number(number: &Number, out: &mut String) -> Result<(), HexlogError> {
     write_float(float, out)
 }
 
-/// Dígitos mais curtos que voltam ao mesmo double, com empate ao par (Note 2 do RFC 8785).
 /// O `{:e}` puro arredonda o empate para cima; o modo exato com `k` dígitos desempata ao par.
 fn shortest_even(x: f64) -> String {
     let shortest = format!("{x:e}");
@@ -182,7 +177,6 @@ fn shortest_even(x: f64) -> String {
     }
 }
 
-/// `Number::toString` do ECMA-262 para `x` finito (`-0.0` sai `0`).
 fn write_float(x: f64, out: &mut String) -> Result<(), HexlogError> {
     if x == 0.0 {
         out.push('0');

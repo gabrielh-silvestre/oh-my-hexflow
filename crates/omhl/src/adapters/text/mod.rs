@@ -1,5 +1,3 @@
-//! Texto dos comandos: a chave de cada comando, o renderizador que a chave escolhe e os dois layouts.
-
 mod base;
 mod check_run;
 mod doc;
@@ -29,14 +27,12 @@ pub use vocab::{
     SYMBOL_OK, SYMBOL_WARNING, State, Vocabulary,
 };
 
-/// Os dois layouts de texto; o JSON não passa por aqui.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Layout {
     Agent,
     Human,
 }
 
-/// Uma chave por comando da CLI, folhas dos grupos `check`, `guideline`, `hooks`, `spec`, `report` e `hook` incluídas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKey {
     List,
@@ -100,7 +96,6 @@ impl CommandKey {
     ];
 }
 
-/// Cada comando ativo produz um `Doc` do `Value` do JSON; o layout só serializa.
 pub trait Renderer {
     fn success(&self, value: &Value) -> Doc;
 
@@ -108,7 +103,6 @@ pub trait Renderer {
     fn failure(&self, value: &Value) -> Doc;
 }
 
-/// O único fato guardado por comando: ter renderizador. Os adiados (lidos por máquina) nunca ganham.
 pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     match key {
         CommandKey::CheckRun => Some(&BaseRenderer(check_run::CheckRun)),
@@ -141,7 +135,6 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
     }
 }
 
-/// A tabela de formas do comando; os comandos sem tabela devolvem a vazia, em que toda chave está fora dela.
 pub fn profile_for(key: CommandKey) -> &'static Profile {
     match key {
         CommandKey::Verify => &verify::PROFILE,
@@ -174,7 +167,6 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
     }
 }
 
-/// Texto do sucesso do comando; sem renderizador (o `report` nunca chega aqui) devolve o próprio JSON.
 pub fn render_success(key: CommandKey, value: &Value, layout: Layout) -> String {
     match renderer_for(key) {
         Some(renderer) => {
@@ -188,7 +180,6 @@ pub fn render_success(key: CommandKey, value: &Value, layout: Layout) -> String 
     }
 }
 
-/// Texto do erro (`{"error": {...}}`); sem renderizador devolve o próprio JSON.
 pub fn render_failure(key: CommandKey, value: &Value, layout: Layout) -> String {
     match renderer_for(key) {
         Some(renderer) => {
@@ -202,7 +193,7 @@ pub fn render_failure(key: CommandKey, value: &Value, layout: Layout) -> String 
     }
 }
 
-/// Os comandos lidos por máquina: nunca ganham texto e recusam `--format agent|human`. Lista independente de `renderer_for`:
+/// Os comandos lidos por máquina. A lista é independente de `renderer_for`:
 /// o teste de fechamento confronta as duas.
 pub fn deferred(key: CommandKey) -> bool {
     match key {

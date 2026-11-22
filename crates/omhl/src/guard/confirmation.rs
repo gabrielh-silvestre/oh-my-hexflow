@@ -11,7 +11,7 @@ const CONFIRMED_BY: &str = "body/data/confirmed_by";
 const CONFIRMED_BY_AUTHOR: &str = "body/data/confirmed_by/by";
 const AMENDMENT: &str = "body/data/amendment";
 
-/// Prova humana de `premise`, `guideline` e `divergence`: o `pattern` é proibido no catálogo, então a forma é imposta aqui.
+/// O `pattern` é proibido no catálogo, então a forma é imposta aqui.
 /// Só o `omhl:critic`, numa premissa técnica, confirma por `critic` em vez de por pessoa.
 pub(super) fn check_confirmation(node: &NodeItem<'_>, author: &str) -> Result<(), OmhlError> {
     match node.type_name {
@@ -66,7 +66,6 @@ fn require_confirmation(node: &NodeItem<'_>, critic_may_confirm: bool) -> Result
     }
 }
 
-/// Pergunta e resposta literais, as palavras que ficam como prova da confirmação.
 fn has_literal_exchange(confirmation: &Value) -> bool {
     ["question", "answer"].iter().all(|key| {
         confirmation
