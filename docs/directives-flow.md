@@ -127,7 +127,7 @@ A confirmação é autodeclarada: o `Author` do record continua sendo quem o dig
 
 ## 4. O arquivo `.omhl/workflow.toml`
 
-Um arquivo opcional e versionado configura o fluxo. Sem ele valem os padrões abaixo. O `omhl load` ignora o arquivo e a pasta de specs; eles não geram `unknown-entry`.
+Um arquivo opcional e versionado configura o fluxo. Sem ele valem os padrões abaixo. O `omhl load` ignora o arquivo, a pasta de specs e a pasta de notas (`.omhl/notes/`); eles não geram `unknown-entry`.
 
 A política vale sempre da cópia do diretório principal: o gate, o hook de congelamento, o `spec init`, o `spec validate`, o `report` e o scan leem o mesmo arquivo, qualquer que seja a worktree da sessão. Só quando o git não responde (sem repositório) vale a cópia da raiz do projeto. Mudar o `workflow.toml` numa branch ou worktree ligada só vale depois do merge no diretório principal; a cópia da branch não muda a validação dela.
 

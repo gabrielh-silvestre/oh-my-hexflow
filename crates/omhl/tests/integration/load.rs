@@ -552,6 +552,16 @@ fn it_should_include_the_tenant_and_warnings_in_the_report() {
 }
 
 #[test]
+fn it_should_not_warn_about_the_notes_directory() {
+    let fx = AppFixture::new();
+    fx.ext().file(".omhl/notes/x.md", "note\n");
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["warnings"], json!([]));
+}
+
+#[test]
 fn it_should_report_a_malformed_after_target_without_aborting_the_load() {
     let fx = AppFixture::new();
     fx.ext()

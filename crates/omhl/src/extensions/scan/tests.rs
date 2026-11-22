@@ -139,6 +139,63 @@ fn it_should_not_apply_the_entry_cap_to_the_specs_directory() {
 }
 
 #[test]
+fn it_should_ignore_the_notes_directory_and_not_read_its_content() {
+    let tree = ExtTree::new();
+    for n in 0..98 {
+        tree.file(&format!(".omhl/notes/n{n:03}.md"), "note\n");
+    }
+    tree.file(".omhl/notes/bad name.toml", "blocking = true\n")
+        .file(".omhl/notes/.hidden", "")
+        .dir(".omhl/notes/sub");
+
+    let output = scan(tree.root());
+
+    assert_scanned_nothing(&output);
+}
+
+#[test]
+fn it_should_keep_warning_about_names_that_only_look_like_notes() {
+    let tree = ExtTree::new();
+    tree.file(".omhl/notes.txt", "x\n")
+        .dir(".omhl/my-notes")
+        .dir(".omhl/Notes")
+        .check("notes", "blocking = true\n");
+
+    let output = scan(tree.root());
+
+    assert_eq!(
+        summary(&output.warnings),
+        vec![
+            at(".omhl/Notes", "unknown-entry"),
+            at(".omhl/my-notes", "unknown-entry"),
+            at(".omhl/notes.txt", "unknown-entry"),
+        ]
+    );
+    assert_eq!(listing(&output), vec![(ExtensionKind::Check, "notes")]);
+}
+
+#[test]
+fn it_should_ignore_a_regular_file_named_notes() {
+    let tree = ExtTree::new();
+    tree.file(".omhl/notes", "note\n");
+
+    let output = scan(tree.root());
+
+    assert_scanned_nothing(&output);
+}
+
+#[test]
+fn it_should_ignore_a_symlink_named_notes_without_following_it() {
+    let tree = ExtTree::new();
+    tree.file("outside/bad name.toml", "blocking = true\n")
+        .symlink(".omhl/notes", "../outside");
+
+    let output = scan(tree.root());
+
+    assert_scanned_nothing(&output);
+}
+
+#[test]
 fn it_should_ignore_the_workflow_toml_file() {
     let tree = ExtTree::new();
     tree.file(".omhl/workflow.toml", "version = 1\n");
