@@ -34,6 +34,16 @@ A boa prática trata de juntar comandos, não de usar `sh -c`.
 
 As chaves `blocking`, `how`, `after` e `when` estão em [extensions-and-projection.md](extensions-and-projection.md).
 
+### O programa gravado na attestation
+
+O `command[0]` da attestation é o programa montado a partir do `run`: o caminho em que o `omhl` achou o executável (no `PATH` ou relativo à pasta do check), sem seguir links. O destino do link e o sha256 do binário não são gravados. Nada lê esse campo, e acrescentar um campo à attestation muda o schema e o catálogo.
+
+Isto importa quando o nome engana: neste repositório `cargo` é um link para `rustup`, e o `rustup` decide o que roda pelo nome com que foi chamado. A attestation grava `cargo`, não `rustup`, e não prova qual binário rodou. Gravar o destino do link e o sha256 juntos, como campo novo da attestation, é um follow-up.
+
+### Submódulo sujo no `before-commit`
+
+O `before-commit` recusa o commit com `worktree-differs-from-index` quando um submódulo tem arquivo modificado ou não rastreado, igual ao `before-pr` e ao `pre-push`. A recusa vale mesmo com `submodule.<nome>.ignore=all` na configuração. Um check que suja o submódulo ao rodar passa a parar com `command-changed-worktree`. Para sair, limpe o submódulo ou ponha o arquivo gerado no `.gitignore` do próprio submódulo.
+
 ## 3. Branch, marca da `develop` e `main`
 
 **Criação da branch.** A matriz, o hook e os bypasses estão em [directives-flow.md](directives-flow.md).
