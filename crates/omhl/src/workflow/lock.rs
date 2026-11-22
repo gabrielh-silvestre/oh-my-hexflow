@@ -10,6 +10,7 @@ use crate::project::marker::MARKER_FILE;
 const FROZEN: &str = "spec-frozen";
 const SPEC_DIR_FROZEN: &str = "spec-dir-frozen";
 const GIT_DIR_PROTECTED: &str = "git-dir-protected";
+const MARKER_PROTECTED: &str = "marker-protected";
 const UNAVAILABLE: &str = "spec-lock-unavailable";
 const TEXT_MAX_CHARS: usize = 200;
 const FIX_CLOSING: &str = "the edit stays denied until this is fixed";
@@ -189,12 +190,30 @@ pub fn has_git_component(file_path: &Path, root: &Path) -> bool {
     below_root.contains(&DOT_GIT_DIR)
 }
 
+/// O último nome normalizado é `.omhl.toml` e nenhum anterior é `.omhl`: um marcador sob `.omhl/` não é raiz de projeto.
+pub fn is_marker_candidate(file_path: &Path) -> bool {
+    matches!(
+        normalized_names(file_path).as_deref(),
+        Some([init @ .., MARKER_FILE]) if !init.contains(&OMHL_DIR)
+    )
+}
+
 /// A razão não sugere o `Bash`: quem a lê tem `Bash`, e o dono muda o `.git` fora do Claude Code.
 pub fn git_dir_protected(file_path: &Path) -> Verdict {
     Verdict::Deny {
         code: GIT_DIR_PROTECTED,
         reason: format!(
             "{GIT_DIR_PROTECTED}: {} is under a .git folder of an omhl project, which the spec lock relies on; only the owner changes it, outside Claude Code: ask the owner and do not change it through any tool",
+            one_line(&file_path.display().to_string())
+        ),
+    }
+}
+
+pub fn marker_protected(file_path: &Path) -> Verdict {
+    Verdict::Deny {
+        code: MARKER_PROTECTED,
+        reason: format!(
+            "{MARKER_PROTECTED}: this edit would leave {} without a valid project marker, which the spec lock relies on; keep it a valid marker or ask the owner, and do not change it through any tool",
             one_line(&file_path.display().to_string())
         ),
     }

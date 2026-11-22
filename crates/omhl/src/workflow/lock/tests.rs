@@ -1108,3 +1108,66 @@ mod git_dir {
         assert!(!reason.contains('\n'), "reason: {reason:?}");
     }
 }
+
+mod marker_protection {
+    use std::path::Path;
+
+    use crate::workflow::lock::{Verdict, is_marker_candidate, marker_protected};
+
+    fn reason(verdict: Verdict) -> String {
+        match verdict {
+            Verdict::Deny { code, reason } => {
+                assert_eq!(code, "marker-protected");
+                reason
+            }
+            Verdict::Allow => panic!("expected a denial"),
+        }
+    }
+
+    #[test]
+    fn it_should_take_a_marker_file_at_any_depth_and_through_a_parent_dir_as_a_candidate() {
+        for path in ["/p/.omhl.toml", "/p/sub/.omhl.toml", "/p/a/x/../.omhl.toml"] {
+            assert!(is_marker_candidate(Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
+    fn it_should_not_take_a_marker_file_under_the_omhl_folder_as_a_candidate() {
+        assert!(!is_marker_candidate(Path::new("/p/.omhl/.omhl.toml")));
+    }
+
+    #[test]
+    fn it_should_not_take_a_name_that_only_resembles_the_marker_as_a_candidate() {
+        for path in ["/p/notas.omhl.toml", "/p/omhl.toml", "/p/.omhl.toml/x"] {
+            assert!(!is_marker_candidate(Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
+    fn it_should_build_the_marker_protected_denial_on_one_line_asking_the_owner() {
+        let reason = reason(marker_protected(Path::new("/p/.omhl.toml")));
+
+        assert!(
+            reason.starts_with("marker-protected: this edit would leave /p/.omhl.toml without"),
+            "reason: {reason}"
+        );
+        assert!(!reason.contains('\n'), "reason: {reason}");
+        assert!(reason.contains("or ask the owner"), "reason: {reason}");
+        assert!(
+            reason.ends_with("do not change it through any tool"),
+            "reason: {reason}"
+        );
+        assert!(!reason.contains("Bash"), "reason: {reason}");
+        assert!(!reason.contains("terminal"), "reason: {reason}");
+    }
+
+    #[test]
+    fn it_should_cut_a_long_path_of_the_marker_protected_denial_at_200_characters() {
+        let long = format!("/p/\n{}/.omhl.toml", "Q".repeat(500));
+
+        let reason = reason(marker_protected(Path::new(&long)));
+
+        assert_eq!(reason.matches('Q').count(), 196);
+        assert!(!reason.contains('\n'), "reason: {reason:?}");
+    }
+}

@@ -2568,3 +2568,251 @@ fn it_should_allow_a_path_with_dot_git_with_the_marker_error_when_the_only_marke
 
     assert_released_with_error(&output);
 }
+
+// Marcador protegido (b10): negado com `marker-protected` quando o resultado deixa de ser marcador válido
+
+const BROKEN_MARKER: &str = "[core";
+const MARKER_STEP: &str = "reading the new content of .omhl.toml";
+
+fn main_marker(repo: &Repo) -> PathBuf {
+    repo.main.join(".omhl.toml")
+}
+
+/// A negação `marker-protected`: uma linha, com o caminho, pedindo ao dono e sem sugerir o `Bash`.
+fn marker_reason(output: &Child, path: &Path) -> String {
+    let reason = denied_reason(output);
+    assert!(reason.starts_with("marker-protected: "), "reason: {reason}");
+    assert!(reason.contains(&path.display().to_string()), "{reason}");
+    assert!(reason.contains("ask the owner"), "reason: {reason}");
+    assert!(!reason.contains("Bash"), "reason: {reason}");
+    assert!(!reason.contains("terminal"), "reason: {reason}");
+    assert!(!reason.contains('\n'), "reason: {reason}");
+
+    reason
+}
+
+fn write_garbage(repo: &Repo, path: &Path) -> Child {
+    hook_input(repo, &repo.main, "Write", write_input(path, BROKEN_MARKER))
+}
+
+fn multi_edit_input(path: &Path, edits: &[(&str, &str)]) -> Value {
+    let edits: Vec<Value> = edits
+        .iter()
+        .map(|(old, new)| json!({ "old_string": old, "new_string": new }))
+        .collect();
+
+    json!({ "file_path": path, "edits": edits })
+}
+
+#[test]
+fn it_should_deny_garbage_written_over_the_valid_marker_and_leave_the_tree_untouched() {
+    let repo = Repo::new();
+    let before = tree_snapshot(&repo.main);
+
+    let output = write_garbage(&repo, &main_marker(&repo));
+
+    marker_reason(&output, &main_marker(&repo));
+    assert_eq!(tree_snapshot(&repo.main), before);
+}
+
+#[test]
+fn it_should_allow_an_edit_that_keeps_the_marker_valid_and_deny_one_that_breaks_it() {
+    let repo = Repo::new();
+    let path = main_marker(&repo);
+
+    let keeps = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(&path, "acme", "other", None),
+    );
+    let breaks = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(&path, "version = 1", "version = 2", None),
+    );
+
+    assert_allowed(&keeps);
+    marker_reason(&breaks, &path);
+}
+
+#[test]
+fn it_should_judge_a_multi_edit_by_its_result() {
+    let repo = Repo::new();
+    let path = main_marker(&repo);
+
+    let keeps = hook_input(
+        &repo,
+        &repo.main,
+        "MultiEdit",
+        multi_edit_input(&path, &[("acme", "beta"), ("beta", "gamma")]),
+    );
+    let breaks = hook_input(
+        &repo,
+        &repo.main,
+        "MultiEdit",
+        multi_edit_input(&path, &[("acme", "beta"), ("version = 1", "version = 3")]),
+    );
+
+    assert_allowed(&keeps);
+    marker_reason(&breaks, &path);
+}
+
+#[test]
+fn it_should_allow_a_write_of_a_new_valid_marker_over_the_valid_one() {
+    let repo = Repo::new();
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&main_marker(&repo), "version = 1\ntenant = \"other\"\n"),
+    );
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_deny_garbage_written_over_the_marker_of_a_subproject() {
+    let repo = Repo::new();
+    let path = repo.main.join("sub/.omhl.toml");
+    write_file(&path, VALID_MARKER);
+
+    let output = write_garbage(&repo, &path);
+
+    marker_reason(&output, &path);
+}
+
+#[test]
+fn it_should_allow_editing_an_invalid_marker_and_writing_a_new_marker_outside_a_frozen_folder() {
+    let repo = Repo::new();
+    let broken = repo.main.join("sub/.omhl.toml");
+    write_file(&broken, BROKEN_MARKER);
+
+    let edited = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(&broken, "[core", "[other", None),
+    );
+    let planted = write_garbage(&repo, &repo.main.join("fresh/.omhl.toml"));
+
+    assert_allowed(&edited);
+    assert_allowed(&planted);
+}
+
+#[test]
+fn it_should_allow_a_symlink_named_as_the_marker_that_points_to_a_file_of_another_name() {
+    let repo = Repo::new();
+    write_file(&repo.main.join("alvo.txt"), VALID_MARKER);
+    fs::create_dir_all(repo.main.join("l")).expect("folder is created");
+    symlink(repo.main.join("alvo.txt"), repo.main.join("l/.omhl.toml")).expect("link is created");
+
+    let output = write_garbage(&repo, &repo.main.join("l/.omhl.toml"));
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_deny_by_the_physical_path_a_symlink_that_points_to_the_valid_marker() {
+    let repo = Repo::new();
+    fs::create_dir_all(repo.main.join("sub")).expect("folder is created");
+    symlink(main_marker(&repo), repo.main.join("sub/.omhl.toml")).expect("link is created");
+
+    let output = write_garbage(&repo, &repo.main.join("sub/.omhl.toml"));
+
+    marker_reason(&output, &main_marker(&repo));
+}
+
+#[test]
+fn it_should_allow_a_folder_named_as_the_marker() {
+    let repo = Repo::new();
+    fs::create_dir_all(repo.main.join("d/.omhl.toml")).expect("folder is created");
+
+    let output = write_garbage(&repo, &repo.main.join("d/.omhl.toml"));
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_deny_with_spec_lock_unavailable_when_the_new_content_of_the_marker_cannot_be_computed()
+{
+    let repo = Repo::new();
+    let path = main_marker(&repo);
+
+    let missing_text = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(&path, "absent text", "x", None),
+    );
+    let no_content = hook_input(&repo, &repo.main, "Write", json!({ "file_path": &path }));
+
+    path_unavailable_reason(&missing_text, &path, MARKER_STEP);
+    path_unavailable_reason(&no_content, &path, MARKER_STEP);
+}
+
+#[test]
+fn it_should_deny_the_marker_without_calling_git_when_git_is_broken_and_hangs() {
+    let repo = Repo::new();
+    break_git_config(&repo);
+    let fake_bin = TempDir::new().expect("fake git directory is created");
+    executable_in(fake_bin.path(), "git", "#!/bin/sh\nexec sleep 30\n");
+    let path = format!(
+        "{}:{}",
+        fake_bin.path().display(),
+        std::env::var("PATH").expect("PATH is set")
+    );
+    let started = std::time::Instant::now();
+
+    let output = run_with_path(&repo, path.as_ref(), &main_marker(&repo));
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the hook took {:?}",
+        started.elapsed()
+    );
+    marker_reason(&output, &main_marker(&repo));
+}
+
+#[test]
+fn it_should_not_take_a_marker_planted_under_omhl_as_one_to_protect() {
+    let repo = Repo::new();
+    let planted = repo.main.join(".omhl/.omhl.toml");
+    write_file(&planted, VALID_MARKER);
+
+    let on_planted = write_garbage(&repo, &planted);
+    let on_real = write_garbage(&repo, &main_marker(&repo));
+
+    assert_allowed(&on_planted);
+    marker_reason(&on_real, &main_marker(&repo));
+}
+
+#[test]
+fn it_should_keep_the_frozen_spec_denial_for_a_marker_in_a_frozen_folder_of_a_custom_specs_dir() {
+    let repo = frozen_workflow_repo(Some(MOVED_WORKFLOW));
+    let planted = repo.main.join("docs/specs/wi-w1__a/.omhl.toml");
+    write_file(&planted, VALID_MARKER);
+
+    let output = write_garbage(&repo, &planted);
+
+    let reason = denied_reason(&output);
+    assert!(reason.starts_with("spec-frozen: "), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_an_edit_whose_old_text_only_fits_the_marker_after_the_crlf_is_normalized() {
+    let repo = Repo::new();
+    let path = main_marker(&repo);
+    fs::write(&path, "version = 1\r\ntenant = \"acme\"\r\n").expect("marker is rewritten");
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(&path, "version = 1\ntenant", "version = 9\ntenant", None),
+    );
+
+    marker_reason(&output, &path);
+}

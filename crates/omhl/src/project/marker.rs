@@ -81,6 +81,11 @@ pub fn parse_marker(path: &Path, bytes: &[u8]) -> Result<Marker, ProjectError> {
     })
 }
 
+/// A definição de "marcador válido" que `find_marker`, `find_valid_marker` e o hook `spec-lock` compartilham.
+pub fn is_valid_marker(path: &Path, bytes: &[u8]) -> bool {
+    parse_marker(path, bytes).is_ok()
+}
+
 /// Para que um marcador gigante não vá inteiro à memória.
 fn read_capped(path: &Path) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new();

@@ -1,5 +1,7 @@
 use crate::project::ProjectError;
-use crate::project::marker::{Located, Marker, find_marker, find_valid_marker, parse_marker};
+use crate::project::marker::{
+    Located, Marker, find_marker, find_valid_marker, is_valid_marker, parse_marker,
+};
 use crate::test_support::tenant;
 use std::fs;
 use std::path::Path;
@@ -362,4 +364,63 @@ fn it_should_keep_refusing_the_invalid_marker_in_find_marker_beside_the_skipping
         lenient.map(|located| located.map(|l| l.root)),
         Ok(Some(dir.path().to_path_buf()))
     );
+}
+
+// A definição única de "marcador válido"
+
+#[test]
+fn it_should_accept_a_valid_marker_as_valid() {
+    assert!(is_valid_marker(
+        marker_path(),
+        marker_text("acme").as_bytes()
+    ));
+}
+
+#[test]
+fn it_should_refuse_as_invalid_what_parse_marker_refuses() {
+    let too_big = format!("{}# {}\n", marker_text("acme"), "x".repeat(4096));
+    let cases: [(&str, Vec<u8>); 4] = [
+        (
+            "wrong version",
+            b"version = 2\ntenant = \"acme\"\n".to_vec(),
+        ),
+        (
+            "bad tenant",
+            b"version = 1\ntenant = \"Not Valid\"\n".to_vec(),
+        ),
+        ("not utf-8", vec![0xff, 0xfe, 0x00]),
+        ("above 4096 bytes", too_big.into_bytes()),
+    ];
+
+    for (label, bytes) in cases {
+        assert!(!is_valid_marker(marker_path(), &bytes), "{label}");
+    }
+}
+
+#[test]
+fn it_should_accept_a_marker_of_exactly_4096_bytes() {
+    let filler = "x".repeat(4096 - marker_text("acme").len() - 3);
+    let bytes = format!("{}# {filler}\n", marker_text("acme"));
+    assert_eq!(bytes.len(), 4096);
+
+    assert!(is_valid_marker(marker_path(), bytes.as_bytes()));
+}
+
+#[test]
+fn it_should_agree_with_find_marker_and_find_valid_marker_on_what_is_valid() {
+    let dir = TempDir::new().expect("directory is created");
+    let valid = dir.path().join("valid");
+    let invalid = dir.path().join("invalid");
+    write_marker(&valid, &marker_text("acme"));
+    write_marker(&invalid, "version = 2\ntenant = \"acme\"\n");
+
+    for (case, text) in [
+        (&valid, marker_text("acme")),
+        (&invalid, "version = 2\ntenant = \"acme\"\n".to_owned()),
+    ] {
+        let accepted = is_valid_marker(&case.join(MARKER_FILE), text.as_bytes());
+
+        assert_eq!(find_marker(case).is_ok(), accepted);
+        assert_eq!(matches!(find_valid_marker(case), Ok(Some(_))), accepted);
+    }
 }

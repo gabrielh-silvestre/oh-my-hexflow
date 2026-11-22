@@ -18,12 +18,12 @@ use crate::ports::specs::{FreezeMarkWrite, SpecDocument, SpecFolder, SpecStore, 
 use crate::ports::workflow::{read_policy, read_workflow};
 use crate::probe::{GIT_TIMED_OUT, ProbeError};
 use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
-use crate::project::marker::{find_marker, find_valid_marker};
+use crate::project::marker::{find_marker, find_valid_marker, is_valid_marker};
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{
     Cause, EditInput, Facts, SpecPath, Tool, Verdict, decide, git_dir_protected, has_git_component,
-    has_spec_folder_component, is_same_path, is_workflow_candidate, parse_spec_path,
-    resulting_texts, spec_dir_frozen, specs_dir_of, unavailable,
+    has_spec_folder_component, is_marker_candidate, is_same_path, is_workflow_candidate,
+    marker_protected, parse_spec_path, resulting_texts, spec_dir_frozen, specs_dir_of, unavailable,
 };
 use crate::workflow::names::{FOLDER_PREFIX, WORK_ITEM_ID_PREFIX};
 use crate::workflow::spec::{
@@ -371,7 +371,9 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
 /// O filtro barato pelo texto: só estes caminhos passam pelas regras. O `.git` conta em qualquer
 /// posição aqui; a posição abaixo da raiz do marcador só se sabe depois de achá-lo.
 fn is_lock_candidate(file_path: &Path) -> bool {
-    needs_git(file_path) || has_git_component(file_path, Path::new("/"))
+    needs_git(file_path)
+        || has_git_component(file_path, Path::new("/"))
+        || is_marker_candidate(file_path)
 }
 
 /// Só estes caminhos gastam o git.
@@ -399,7 +401,11 @@ fn decide_path(
     } else {
         (Verdict::Allow, Vec::new())
     };
-    Ok((verdict, healed))
+    if matches!(verdict, Verdict::Deny { .. }) || !is_marker_candidate(file_path) {
+        return Ok((verdict, healed));
+    }
+
+    Ok((decide_marker(input, file_path), healed))
 }
 
 /// As regras das specs e do `workflow.toml`, as que consultam o git. Antes de `parse_spec_path`
@@ -437,6 +443,41 @@ fn decide_with_git(
     }
 
     (decide_workflow(input, file_path, &probe, &main_dir), healed)
+}
+
+/// Só um `.omhl.toml` que hoje é marcador válido entra, e só nega se o resultado deixar de ser; pura sobre bytes, sem git.
+fn decide_marker(input: &EditInput, file_path: &Path) -> Verdict {
+    decide_marker_change(input, file_path).unwrap_or_else(|failure| {
+        unavailable(
+            &file_path.display().to_string(),
+            failure.step,
+            &failure.cause,
+        )
+    })
+}
+
+fn decide_marker_change(input: &EditInput, file_path: &Path) -> Result<Verdict, Unavailable> {
+    let Ok(current) = read_regular_utf8(file_path, EXT_FILE_MAX_BYTES) else {
+        return Ok(Verdict::Allow);
+    };
+    if !is_valid_marker(file_path, current.as_bytes()) {
+        return Ok(Verdict::Allow);
+    }
+    let texts = resulting_texts(input, Some(&current)).ok_or(Unavailable {
+        step: "reading the new content of .omhl.toml",
+        cause: Cause::Read("the new content cannot be computed"),
+    })?;
+
+    Ok(
+        if texts
+            .iter()
+            .any(|text| !is_valid_marker(file_path, text.as_bytes()))
+        {
+            marker_protected(file_path)
+        } else {
+            Verdict::Allow
+        },
+    )
 }
 
 /// Falha de leitura depois do reconhecimento da spec: o passo que falhou e a causa.
