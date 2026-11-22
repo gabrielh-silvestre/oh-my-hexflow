@@ -62,6 +62,7 @@ pub static PROFILE: Profile = Profile {
         Entry::data("premise", "text", Shape::Literal),
         Entry::data("premise", "status", Shape::Closed),
         Entry::data("premise", "kind", Shape::Closed).optional(),
+        Entry::data("premise", "origin", Shape::Closed).optional(),
         Entry::data("premise", "work_item", Shape::Literal).optional(),
         Entry::data("premise", "by", Shape::Closed)
             .under("confirmed_by")

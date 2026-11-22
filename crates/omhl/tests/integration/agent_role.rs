@@ -603,7 +603,7 @@ fn it_should_refuse_a_revision_that_changes_the_kind_of_a_premise_or_a_gap() {
         revision_item(
             PREMISE,
             "premise",
-            with_field(technical_premise_data(), "kind", json!("business")),
+            business_premise_data(true),
             &premise_base,
         ),
         revision_item(GAP, "gap", gap_data(Some("business")), &gap_base),
@@ -1250,7 +1250,11 @@ fn it_should_refuse_omhl_critic_confirming_a_business_premise() {
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     let business = with_field(technical_premise_data(), "kind", json!("business"));
-    seed(&mut omhl, ANALYST, node_item(PREMISE, "premise", business));
+    append_ok_as(
+        &mut omhl,
+        agent_author(),
+        vec![node_item(PREMISE, "premise", business)],
+    );
     let base = record_id_of(&mut omhl, PREMISE);
     let confirmed = revision_item(
         PREMISE,
@@ -1673,4 +1677,154 @@ fn it_should_refuse_omhl_verifier_closing_a_divergence_whose_resolution_is_not_o
         .collect();
 
     assert_eq!(codes, vec![REVISION_FORBIDDEN; 2]);
+}
+
+const LATE_PREMISE: &str = "premises.late";
+const PLANNER: &str = "omhl:planner";
+
+fn business_premise_data(late: bool) -> Value {
+    let data = with_field(technical_premise_data(), "kind", json!("business"));
+
+    if late {
+        with_field(data, "origin", json!("late"))
+    } else {
+        data
+    }
+}
+
+fn seed_technical_premise_after_a_decision(omhl: &mut Omhl<'_>) -> RecordId {
+    seed_pull_request(omhl);
+    seed(
+        omhl,
+        ARCHITECT,
+        node_item(
+            DECISION_ID,
+            "decision",
+            decision_data("Use a queue", Some(PR_7)),
+        ),
+    );
+    seed(
+        omhl,
+        ANALYST,
+        node_item(LATE_PREMISE, "premise", technical_premise_data()),
+    );
+
+    record_id_of(omhl, LATE_PREMISE)
+}
+
+fn critic_confirmed_business_premise_data() -> Value {
+    let data = with_field(business_premise_data(false), "status", json!("confirmed"));
+
+    with_field(
+        data,
+        "confirmed_by",
+        json!({ "by": "critic", "question": "Is it right?", "answer": "Yes, it is." }),
+    )
+}
+
+#[test]
+fn it_should_refuse_a_business_premise_without_origin_appended_by_omhl_analyst() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let premise = node_item(LATE_PREMISE, "premise", business_premise_data(false));
+
+    let code = refused_code(&mut omhl, role_author(ANALYST), vec![premise]);
+
+    assert_eq!(code, RECORD_FORBIDDEN);
+}
+
+#[test]
+fn it_should_accept_a_late_business_premise_appended_by_omhl_analyst() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let premise = node_item(LATE_PREMISE, "premise", business_premise_data(true));
+
+    let result = appended_count(&mut omhl, role_author(ANALYST), vec![premise]);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_omhl_analyst_dropping_the_origin_of_its_own_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed(
+        &mut omhl,
+        ANALYST,
+        node_item(LATE_PREMISE, "premise", business_premise_data(true)),
+    );
+    let base = record_id_of(&mut omhl, LATE_PREMISE);
+    let revision = revision_item(LATE_PREMISE, "premise", business_premise_data(false), &base);
+
+    let code = refused_code(&mut omhl, role_author(ANALYST), vec![revision]);
+
+    assert_eq!(code, RECORD_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_a_role_adding_the_origin_to_an_older_business_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    append_ok_as(
+        &mut omhl,
+        agent_author(),
+        vec![node_item(
+            LATE_PREMISE,
+            "premise",
+            business_premise_data(false),
+        )],
+    );
+    let base = record_id_of(&mut omhl, LATE_PREMISE);
+    let revision = revision_item(LATE_PREMISE, "premise", business_premise_data(true), &base);
+
+    let code = refused_code(&mut omhl, role_author(ANALYST), vec![revision]);
+
+    assert_eq!(code, REVISION_FORBIDDEN);
+}
+
+#[test]
+fn it_should_refuse_each_role_turning_a_premise_into_a_business_one_after_a_decision() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let base = seed_technical_premise_after_a_decision(&mut omhl);
+    let revision = |data: Value| revision_item(LATE_PREMISE, "premise", data, &base);
+    let attempts = [
+        (ANALYST, business_premise_data(true)),
+        (ANALYST, business_premise_data(false)),
+        (CRITIC, critic_confirmed_business_premise_data()),
+        (PLANNER, business_premise_data(true)),
+        (ARCHITECT, business_premise_data(true)),
+    ];
+
+    let codes: Vec<&str> = attempts
+        .into_iter()
+        .map(|(role, data)| refused_code(&mut omhl, role_author(role), vec![revision(data)]))
+        .collect();
+
+    assert_eq!(
+        codes,
+        vec![
+            REVISION_FORBIDDEN,
+            RECORD_FORBIDDEN,
+            REVISION_FORBIDDEN,
+            RECORD_FORBIDDEN,
+            RECORD_FORBIDDEN
+        ]
+    );
+}
+
+#[test]
+fn it_should_refuse_omhl_analyst_recording_an_unmarked_business_premise_after_a_decision() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_technical_premise_after_a_decision(&mut omhl);
+    let premise = node_item("premises.other", "premise", business_premise_data(false));
+
+    let code = refused_code(&mut omhl, role_author(ANALYST), vec![premise]);
+
+    assert_eq!(code, RECORD_FORBIDDEN);
 }

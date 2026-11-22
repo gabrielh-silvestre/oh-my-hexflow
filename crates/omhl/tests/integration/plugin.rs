@@ -23,6 +23,43 @@ fn it_should_declare_the_plugin_name_and_the_cargo_version() {
     assert_eq!(manifest["version"], json!(env!("CARGO_PKG_VERSION")));
 }
 
+fn marketplace_entry() -> Value {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.claude-plugin/marketplace.json");
+    let text = fs::read_to_string(&path).expect("the marketplace file is readable");
+    let marketplace: Value = serde_json::from_str(&text).expect("the marketplace is valid JSON");
+
+    marketplace["plugins"][0].clone()
+}
+
+#[test]
+fn it_should_name_the_marketplace_entry_after_the_plugin_manifest() {
+    let manifest = plugin_file(".claude-plugin/plugin.json");
+
+    assert_eq!(marketplace_entry()["name"], manifest["name"]);
+}
+
+#[test]
+fn it_should_point_the_marketplace_entry_source_to_the_plugin_directory() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = marketplace_entry()["source"]
+        .as_str()
+        .expect("the source is a path string")
+        .to_owned();
+
+    assert_eq!(
+        root.join(source).canonicalize().unwrap(),
+        root.join("plugin").canonicalize().unwrap()
+    );
+}
+
+#[test]
+fn it_should_omit_the_marketplace_entry_version_or_repeat_the_plugin_manifest_one() {
+    let manifest = plugin_file(".claude-plugin/plugin.json");
+    let entry = marketplace_entry();
+
+    assert!(entry.get("version").is_none() || entry["version"] == manifest["version"]);
+}
+
 #[test]
 fn it_should_wire_the_session_start_hook_in_exec_form_and_the_pre_tool_use_hooks_in_shell_form() {
     let hooks = plugin_file("hooks/hooks.json");

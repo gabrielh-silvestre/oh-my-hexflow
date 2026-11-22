@@ -33,6 +33,7 @@ pub static PROFILE: Profile = Profile {
         Entry::data("attestation", "outcome", Shape::Closed),
         Entry::data("premise", "status", Shape::Closed),
         Entry::data("premise", "kind", Shape::Closed).optional(),
+        Entry::data("premise", "origin", Shape::Closed).optional(),
         Entry::data("premise", "work_item", Shape::Literal).optional(),
         Entry::data("premise", "text", Shape::Literal),
         Entry::data("work-item", "status", Shape::Closed),
@@ -169,6 +170,7 @@ fn shown_keys(node_type: &str) -> &'static [(&'static str, &'static str)] {
         "premise" => &[
             ("status", "status"),
             ("kind", "kind"),
+            ("origin", "origin"),
             ("of", "work_item"),
             ("text", "text"),
         ],

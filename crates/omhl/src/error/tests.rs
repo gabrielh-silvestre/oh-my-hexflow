@@ -30,6 +30,9 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::ConfirmationInvalid, "confirmation-invalid"),
         (RuleCode::KindMissing, "kind-missing"),
         (RuleCode::KindInvalid, "kind-invalid"),
+        (RuleCode::OriginInvalid, "origin-invalid"),
+        (RuleCode::OriginImmutable, "origin-immutable"),
+        (RuleCode::OriginRequired, "origin-required"),
         (RuleCode::RestsOnArchitecture, "rests-on-architecture"),
         (RuleCode::RestsOnTargetType, "rests-on-target-type"),
         (
@@ -85,6 +88,9 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
     let new_codes = [
         RuleCode::KindMissing,
         RuleCode::KindInvalid,
+        RuleCode::OriginInvalid,
+        RuleCode::OriginImmutable,
+        RuleCode::OriginRequired,
         RuleCode::RestsOnArchitecture,
         RuleCode::RestsOnTargetType,
         RuleCode::GuidelineRetireByCommand,
@@ -101,4 +107,19 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
         .collect();
 
     assert_eq!(incomplete, Vec::<&str>::new());
+}
+
+#[test]
+fn it_should_cover_both_paths_in_the_next_step_of_origin_required() {
+    let next_step = RuleCode::OriginRequired
+        .guidance()
+        .expect("origin-required has guidance")
+        .next_step;
+
+    let covered = (
+        next_step.contains("on creation, add origin late to the premise data"),
+        next_step.contains("append a new premise with origin late instead"),
+    );
+
+    assert_eq!(covered, (true, true));
 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use hexlog::{
     AppendItem, AppendRequest, Author, Hexlog, ItemBody, Lineage, NativeNodes, NodeView, RecordId,
@@ -76,6 +76,7 @@ pub(super) struct Guard<'a, 'd> {
     probed: Option<Result<ProbeOutcome, ProbeError>>,
     probed_index_tree: Option<Result<ProbeOutcome, ProbeError>>,
     pub(super) batch: HashMap<SemanticId, Endpoint>,
+    pub(super) batch_decision_work_items: HashSet<String>,
 }
 
 pub(crate) fn check_append(
@@ -91,6 +92,7 @@ pub(crate) fn check_append(
         probed: None,
         probed_index_tree: None,
         batch: HashMap::new(),
+        batch_decision_work_items: HashSet::new(),
     };
     for (index, item) in req.items.iter().enumerate() {
         guard.check_role(index, item)?;
@@ -161,12 +163,23 @@ impl Guard<'_, '_> {
                 kind: node.field("kind").map(str::to_owned),
             },
         );
+        if node.type_name == "decision"
+            && let Some(work_item) = node.field("work_item")
+        {
+            self.batch_decision_work_items.insert(work_item.to_owned());
+        }
         match node.type_name {
             name if WORK_ITEM_TYPES.contains(&name) => {
                 self.check_work_item_status(node)?;
                 self.check_reactivation(node)
             }
-            "premise" | "decision" | "gap" | "divergence" => {
+            "premise" => {
+                self.check_work_item(node)?;
+                self.check_reactivation(node)?;
+                self.check_human_confirmation(node)?;
+                self.check_origin(node)
+            }
+            "decision" | "gap" | "divergence" => {
                 self.check_work_item(node)?;
                 self.check_reactivation(node)?;
                 self.check_human_confirmation(node)

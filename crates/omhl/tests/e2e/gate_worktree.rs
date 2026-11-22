@@ -202,6 +202,13 @@ fn premise_item(id: &str, work_item: &str, kind: &str, confirmed: bool) -> Value
     node_item(id, "premise", &data)
 }
 
+fn late_premise_item(id: &str, work_item: &str) -> Value {
+    let mut item = premise_item(id, work_item, "business", true);
+    item["body"]["data"]["origin"] = json!("late");
+
+    item
+}
+
 fn json_line(text: &str) -> Value {
     serde_json::from_str(text.trim_end()).expect("the line is JSON")
 }
@@ -902,6 +909,33 @@ fn it_should_refuse_feat_when_the_spec_cites_a_premise_that_is_not_in_the_databa
 fn it_should_allow_feat_with_a_confirmed_business_premise_and_a_valid_spec() {
     let fixture = Fixture::seeded();
     fixture.premise("premises.b1", W1, "business", true);
+    fixture.write_valid_spec(W1, "premises.b1");
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_allowed(&output, "matrix-satisfied");
+}
+
+#[test]
+fn it_should_refuse_feat_when_the_only_confirmed_business_premise_is_late() {
+    let fixture = Fixture::seeded();
+    fixture.append(&[late_premise_item("premises.late", W1)]);
+    fixture.write_spec(W1, "premises.late");
+
+    let output = fixture.gate("feat/wi-w1__new");
+
+    assert_refused(&output, "worktree-gate-refused");
+    assert_eq!(
+        error_context(&output)["missing"],
+        json!(["business-premise", "spec"])
+    );
+}
+
+#[test]
+fn it_should_allow_feat_with_a_main_business_premise_next_to_a_late_one() {
+    let fixture = Fixture::seeded();
+    fixture.premise("premises.b1", W1, "business", true);
+    fixture.append(&[late_premise_item("premises.late", W1)]);
     fixture.write_valid_spec(W1, "premises.b1");
 
     let output = fixture.gate("feat/wi-w1__new");

@@ -15,6 +15,7 @@ const OLD_VOCABULARY: &str = "free";
 const OLD_DECISIONS_CATALOG: &str = include_str!("../fixtures/decisions_catalog_v1.json");
 const PREVIOUS_DECISIONS_CATALOG: &str = include_str!("../fixtures/decisions_catalog_v2.json");
 const PREVIOUS_DECISIONS_CATALOG_V3: &str = include_str!("../fixtures/decisions_catalog_v3.json");
+const PREVIOUS_DECISIONS_CATALOG_V4: &str = include_str!("../fixtures/decisions_catalog_v4.json");
 
 fn catalog() -> Catalog {
     graphs::catalog().expect("the embedded catalogs build")
@@ -226,6 +227,42 @@ fn it_should_still_verify_a_decisions_chain_written_with_the_previous_catalog_v3
     );
 }
 
+#[test]
+fn it_should_still_verify_a_decisions_chain_written_with_the_previous_catalog_v4() {
+    let raw = RawHarness::new();
+    let acme = acme();
+    {
+        let mut previous = raw.hexlog(catalog_from(PREVIOUS_DECISIONS_CATALOG_V4), &EmptyNative);
+        previous
+            .ensure_tenant(&acme)
+            .expect("the tenant is created");
+        previous
+            .append(&request(vec![
+                node_item(
+                    "premises.p-1",
+                    "premise",
+                    confirmed("premise", confirmation()),
+                ),
+                node_item(
+                    "premises.p-2",
+                    "premise",
+                    with(plain("premise"), "kind", json!("business")),
+                ),
+            ]))
+            .expect("the previous catalog accepts the records");
+    }
+
+    let mut reopened = raw.hexlog(catalog(), &EmptyNative);
+    let report = reopened
+        .verify_chain(&acme, None)
+        .expect("the chain verifies");
+
+    assert_eq!(
+        (report.ok, report.total_records, report.total_breaks),
+        (true, 2, 0)
+    );
+}
+
 fn old_decisions_premise() -> Value {
     json!({ "text": "users have a git repo", "status": "confirmed", "work_item": "work-items.w1" })
 }
@@ -289,7 +326,7 @@ fn it_should_classify_every_catalog_field_for_where() {
         ),
         (
             "premise",
-            &["text", "status", "work_item", "kind"],
+            &["text", "status", "work_item", "kind", "origin"],
             &["confirmed_by"],
         ),
         ("guideline", &["text", "kind"], &["confirmed_by"]),

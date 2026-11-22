@@ -1,0 +1,14 @@
+{
+  "name": "oh-my-hexflow",
+  "description": "Marketplace of the oh-my-hexflow plugin.",
+  "owner": {
+    "name": "gabrielh-silvestre"
+  },
+  "plugins": [
+    {
+      "name": "oh-my-hexflow",
+      "source": "./plugin",
+      "description": "Injects the project decisions and work items from hexlog into the Claude Code session and guards the work item flow through hooks and the omhl CLI."
+    }
+  ]
+}

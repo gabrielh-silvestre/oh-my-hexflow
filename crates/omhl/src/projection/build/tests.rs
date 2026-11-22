@@ -817,3 +817,59 @@ fn it_should_list_a_premise_without_work_item_in_no_file() {
 
     assert!(!files.iter().any(|file| file.content.contains("p9")));
 }
+
+fn late_premise(id: &str, text: &str, owner: &str) -> NodeView {
+    node_view(
+        id,
+        "premise",
+        json!({
+            "text": text, "status": "assumed", "kind": "business", "origin": "late", "work_item": owner,
+        }),
+    )
+}
+
+#[test]
+fn it_should_put_the_late_premises_section_right_after_the_premises() {
+    let nodes = vec![
+        work_item("a", "First"),
+        decision("d1", "Choose", "a"),
+        late_premise("p2", "Late", "a"),
+        premise("p1", "One", "a"),
+    ];
+
+    let files = built(nodes, Vec::new());
+
+    let projected = content(&files, "a.md");
+    assert_eq!(
+        section_titles(projected),
+        ["Premises", "Late premises", "Decisions"]
+    );
+    assert_eq!(node_headers(projected), ["### p1", "### p2", "### d1"]);
+}
+
+#[test]
+fn it_should_keep_a_late_premise_out_of_the_premises_section() {
+    let nodes = vec![work_item("a", "First"), late_premise("p2", "Late", "a")];
+
+    let files = built(nodes, Vec::new());
+
+    assert_eq!(section_titles(content(&files, "a.md")), ["Late premises"]);
+}
+
+#[test]
+fn it_should_keep_the_main_premise_and_cut_the_late_one_when_truncating() {
+    let text = (0..9_000).map(long_line).collect::<Vec<_>>().join("\n");
+    let nodes = vec![
+        work_item("a", "First"),
+        premise("p1", "One", "a"),
+        late_premise("p2", &text, "a"),
+    ];
+
+    let files = built(nodes, Vec::new());
+
+    let projected = content(&files, "a.md");
+    assert!(projected.ends_with(TRUNCATION_MARKER));
+    assert!(projected.contains("### p1\n"));
+    assert!(projected.contains("## Late premises\n"));
+    assert!(!projected.contains(&long_line(8_999)));
+}

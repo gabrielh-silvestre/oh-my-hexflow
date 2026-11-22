@@ -39,8 +39,9 @@
 | sessao | review 1, review 2, review 3, review 5 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
 | sessao | plan-consensus 1 | `omhl list --type gap --where work_item=work-items.<id>` |
 | sessao | review 6 | `omhl list --type premise --where work_item=work-items.<id> --format json` |
-| sessao | interview 3, plan-consensus 2 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
+| sessao | interview 3, plan-consensus 2, review 4 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
 | verifier | 9 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
+| verifier | 9 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
 
 ## Quando usar
 

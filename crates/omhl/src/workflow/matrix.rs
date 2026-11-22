@@ -10,6 +10,7 @@ pub enum PremiseKind {
 pub struct PremiseFact {
     pub kind: Option<PremiseKind>,
     pub confirmed: bool,
+    pub late: bool,
 }
 
 /// Os átomos de `required` que as premissas e a validação da spec não satisfazem, na ordem de `required`.
@@ -33,7 +34,9 @@ fn is_satisfied(atom: RequireAtom, premises: &[PremiseFact], spec_valid: bool) -
     };
 
     match atom {
-        RequireAtom::BusinessPremise => any(PremiseKind::Business, true),
+        RequireAtom::BusinessPremise => premises.iter().any(|premise| {
+            premise.kind == Some(PremiseKind::Business) && premise.confirmed && !premise.late
+        }),
         RequireAtom::TechnicalPremiseConfirmed => any(PremiseKind::Technical, true),
         RequireAtom::AgentPremise => any(PremiseKind::Technical, false),
         RequireAtom::Spec => spec_valid,

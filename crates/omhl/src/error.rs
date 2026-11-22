@@ -68,6 +68,9 @@ pub enum RuleCode {
     ConfirmationInvalid,
     KindMissing,
     KindInvalid,
+    OriginInvalid,
+    OriginImmutable,
+    OriginRequired,
     RestsOnArchitecture,
     RestsOnTargetType,
     GuidelineRetireByCommand,
@@ -104,6 +107,9 @@ impl RuleCode {
             RuleCode::ConfirmationInvalid => "confirmation-invalid",
             RuleCode::KindMissing => "kind-missing",
             RuleCode::KindInvalid => "kind-invalid",
+            RuleCode::OriginInvalid => "origin-invalid",
+            RuleCode::OriginImmutable => "origin-immutable",
+            RuleCode::OriginRequired => "origin-required",
             RuleCode::RestsOnArchitecture => "rests-on-architecture",
             RuleCode::RestsOnTargetType => "rests-on-target-type",
             RuleCode::GuidelineRetireByCommand => "guideline-retire-by-command",
@@ -124,6 +130,18 @@ impl RuleCode {
             RuleCode::KindInvalid => Some(Guidance {
                 cause: "the guideline kind must be business or architecture",
                 next_step: "set kind to business or architecture in the item data and append again",
+            }),
+            RuleCode::OriginInvalid => Some(Guidance {
+                cause: "only a business premise can carry origin late; a technical premise or one without kind cannot",
+                next_step: "drop origin from the premise, or set kind to business when the premise is a late business one, and append again",
+            }),
+            RuleCode::OriginImmutable => Some(Guidance {
+                cause: "a revision cannot add, change or drop the origin of a premise",
+                next_step: "keep the origin the premise already has, or append a new premise with the origin you need",
+            }),
+            RuleCode::OriginRequired => Some(Guidance {
+                cause: "the work item already has a decision, so a new business premise is late and must carry origin late",
+                next_step: "on creation, add origin late to the premise data and append again; when a revision turns a premise into a business one, append a new premise with origin late instead, because adding origin in a revision gives origin-immutable",
             }),
             RuleCode::RestsOnArchitecture => Some(Guidance {
                 cause: "a guideline cannot rest on an architecture guideline; only a decision or a premise can",

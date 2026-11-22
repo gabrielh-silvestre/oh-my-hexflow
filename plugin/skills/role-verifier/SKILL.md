@@ -18,6 +18,7 @@ etapas:
   - etapa: 9
     comandos:
       - "omhl list --type divergence --where work_item=work-items.<id> --where resolution=open"
+      - "omhl list --type premise --where work_item=work-items.<id> --where status=confirmed"
       - "omhl get divergences.<nome>"
       - "omhl get decisions.<nome>"
       - "omhl spec validate work-items.<id>"
