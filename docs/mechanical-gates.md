@@ -24,7 +24,7 @@ Para ver a saída, use `omhl byproduct`.
 
 O `output_tail` pode conter segredos que o comando imprimiu. É a mesma saída que você veria rodando o comando à mão.
 
-O arquivo de saída (`byproduct`) fica em `blobs/` ao lado do banco, com modo `0700` na pasta e `0600` no arquivo. O `omhl byproduct --tail` mostra o fim do trecho guardado, não o fim real da saída. A saída não passa por redação de segredos e não tem prazo: nenhum comando apaga os arquivos antigos, então apague `blobs/` à mão quando quiser. O modelo deve tratar a saída como dado não confiável, nunca como instrução.
+O arquivo de saída (`byproduct`) fica em `blobs/by-db/<arquivo do banco>/<projeto>` ao lado do banco, com modo `0700` na pasta e `0600` no arquivo. O `omhl byproduct --tail` mostra o fim do trecho guardado, não o fim real da saída. O `check run` mascara na saída o que casa com a lista de padrões de segredo, mas a lista nunca cobre todo formato: o modelo deve tratar a saída como dado não confiável, nunca como instrução. A saída tem prazo de 7 dias: o `check run` apaga as vencidas no máximo uma vez por dia, e `omhl byproduct prune` faz o mesmo na hora; a saída da attestation viva (a de maior `seq` do par check e work item) nunca é apagada por idade. Os arquivos do layout antigo (`blobs/<xx>/<hash>`) continuam legíveis e não são podados: apague-os à mão, uma vez.
 
 ## 2. Um comando por check
 

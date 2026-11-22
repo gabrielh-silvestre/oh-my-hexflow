@@ -67,4 +67,4 @@ Nenhuma superfície de protocolo a manter, a saída da CLI preservada no primeir
 - Cortar o débito 5: o adapter traduz o payload e passa o `Caller` pronto.
 - Reavaliar a igualdade exata dos exemplos se a manutenção pesar.
 - Avisar o work item de performance de que a linha de base dele deve ser tirada depois do merge do PR das skills: o work item troca um binário de teste por outro e soma a execução dos exemplos.
-- Apagar `blobs/` antigos continua manual.
+- Apagar os `blobs/` do layout antigo continua manual; a saída do layout novo tem retenção de 7 dias ([ADR 0005](0005-saida-dos-checks-em-blobs-fora-do-banco.md)).

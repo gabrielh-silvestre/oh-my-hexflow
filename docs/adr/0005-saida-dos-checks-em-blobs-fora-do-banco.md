@@ -12,7 +12,7 @@ Motivo registrado pelo dono para guardar a saída fora do banco: não encontrado
 
 ## Decisão
 
-A saída completa vai para um arquivo em `<pasta do banco>/blobs/<2 primeiros hex>/<sha256>` (`ports/blob`, porta `ByproductStore`), e a attestation grava só o hash no campo `byproduct`. O `check run` grava o arquivo antes do `append` da attestation. O gate depende só do `outcome`, então a attestation segue válida se o arquivo sumir.
+A saída completa vai para um arquivo em `<pasta do banco>/blobs/by-db/<arquivo do banco>/<projeto>/<2 primeiros hex>/<sha256>` (`ports/blob`, porta `ByproductStore`), e a attestation grava só o hash no campo `byproduct`. A pasta por banco e projeto mantém a poda de um projeto longe dos arquivos de outro. O `check run` grava o arquivo antes do `append` da attestation. O gate depende só do `outcome`, então a attestation segue válida se o arquivo sumir.
 
 ## Consequências
 
@@ -20,4 +20,7 @@ A saída completa vai para um arquivo em `<pasta do banco>/blobs/<2 primeiros he
 - Se o `omhl` não consegue gravar o arquivo, o `check run` para tudo (`blob-failed`): sem a saída o veredito não seria recuperável pelo agente.
 - A leitura confere o SHA-256 do conteúdo; um arquivo adulterado ou truncado vira `byproduct-corrupt`, e um arquivo ausente vira `byproduct-missing`.
 - A gravação é atômica (nome temporário e `rename`), com pasta `0700` e arquivo `0600`. Uma interrupção entre a gravação do arquivo e a da attestation só pode deixar um arquivo sem uso.
-- Não há coleta de lixo: nenhum comando apaga os arquivos antigos, e a saída não passa por redação de segredos. O dono apaga `blobs/` à mão.
+- **Retenção de 7 dias.** O `check run` apaga, no começo de cada execução, o arquivo de saída com mais de 7 dias de data de modificação, no máximo **uma poda por dia** por (banco, projeto); um carimbo `.pruned-at` na pasta segura as demais. `omhl byproduct prune` faz a mesma poda na hora, ignora o carimbo e devolve `removed`, `kept_live` e `freed_bytes`; é uma folha só da sessão, fora da matriz dos papéis. Uma falha de leitura ou de remoção sai como `byproduct-prune-failed` no comando; no `check run` a poda é silenciosa.
+- **O que a poda poupa.** A saída "viva" é a da attestation de maior `seq` de cada par (check, work item): ela não some por idade, então ler a falha vigente não vira `byproduct-missing` por causa da retenção. A de uma árvore anterior do mesmo par some depois de 7 dias.
+- **Layout antigo.** Os arquivos de `blobs/<2 primeiros hex>/<sha256>` (antes da pasta por banco e projeto) continuam sendo lidos, mas nunca são podados; a limpeza deles é manual, uma vez. Depois que o `check run` grava o mesmo conteúdo no layout novo, o arquivo pode existir nos dois. Renomear o arquivo do banco muda a pasta: a saída gravada antes do nome novo deixa de ser achada.
+- **Redação de segredos.** O `check run` mascara na saída o que casa com a lista de padrões antes de gravar, e a leitura aplica a mesma máscara ao arquivo inteiro antes de cortar as linhas. A lista **nunca cobre todo formato**: um segredo fora dela fica no arquivo, e a saída continua dado não confiável. Os arquivos gravados antes da redação não são reescritos, só lidos já mascarados; por isso o campo `byproduct` da resposta é o hash do arquivo em disco, que pode ser o da versão sem máscara.
