@@ -23,6 +23,11 @@ use crate::project::marker::find_marker;
 use crate::project::paths::{data_root, default_db_path, prepare_db_file};
 use crate::project::{Env, ProjectError};
 
+const SWEEP_LOG: &str = "sweep.jsonl";
+const SWEEP_LOG_ROTATED: &str = "sweep.jsonl.1";
+/// Acima disto o log gira para `sweep.jsonl.1` antes da próxima linha.
+const SWEEP_LOG_MAX_BYTES: u64 = 1024 * 1024;
+
 pub struct Runtime {
     tenant: TenantId,
     db_path: PathBuf,
@@ -119,11 +124,16 @@ impl Runtime {
             "swept": swept_json(&report.swept),
             "ts": self.clock.now(),
         });
+        let log_path = dir.join(SWEEP_LOG);
         let _ = std::fs::create_dir_all(&dir).and_then(|()| {
+            // Uma só geração antiga: duas rotações simultâneas podem perder uma geração (aceito).
+            if std::fs::metadata(&log_path).is_ok_and(|meta| meta.len() > SWEEP_LOG_MAX_BYTES) {
+                std::fs::rename(&log_path, dir.join(SWEEP_LOG_ROTATED))?;
+            }
             let mut log = OpenOptions::new()
                 .append(true)
                 .create(true)
-                .open(dir.join("sweep.jsonl"))?;
+                .open(&log_path)?;
             writeln!(log, "{line}")
         });
     }
