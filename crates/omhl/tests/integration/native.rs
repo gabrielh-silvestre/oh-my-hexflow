@@ -28,6 +28,9 @@ const GUIDELINE_IDS: [&str; 2] = [
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 const LINT_DOCS: &str = "checks.lint-docs";
+// Exceção documentada (ADR 0003): o evento `before-publishing-review-comments` deste check nativo está fora do
+// enum de eventos do tipo `check`; ele não passa pelo catálogo e não tem schema próprio.
+const REVIEW_CHECK_EVENT_EXCEPTION: &str = "checks.verify-review-comment-anchoring";
 
 /// Os cinco ids nativos na ordem do contrato, com o tipo de cada um.
 fn native_ids_with_types() -> Vec<(&'static str, &'static str)> {
@@ -174,7 +177,7 @@ fn it_should_validate_every_native_check_but_the_review_one_against_the_check_ty
     assert_eq!(
         rejected,
         vec![(
-            "checks.verify-review-comment-anchoring",
+            REVIEW_CHECK_EVENT_EXCEPTION,
             vec![DataViolation {
                 pointer: "/when/event".to_owned(),
                 code: "enum".to_owned()

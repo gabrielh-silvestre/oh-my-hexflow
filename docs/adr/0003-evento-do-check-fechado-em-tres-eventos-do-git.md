@@ -20,4 +20,5 @@ Todo check carregado, com ou sem `run`, tem `when.event` em `before-commit`, `be
 
 - Evento novo só entra mudando o `omhl`: um hook ou uma camada que o absorva, e o evento na lista.
 - O `pr_gate` cobra exatamente esses três eventos (`REQUIRED_EVENTS`), então nenhum check carregado fica sem quem o cobre.
+- A exceção dos checks nativos é única e nomeada: o teste que valida os nativos contra o schema do tipo `check` aceita só `checks.verify-review-comment-anchoring`, recusado em `/when/event`; não há schema próprio para ela.
 - O nativo de revisão não é cobrado por mecanismo nenhum. Vincular esse evento a um hook do Claude Code (`PreToolUse` nas ferramentas do GitHub que publicam review) e criar eventos customizados, definidos de forma semanticamente rica para o agente inferir quando executá-los, ficam como follow-up sem decisão. Eventos customizados dependeriam da boa vontade do agente, não de um mecanismo sistemático.
