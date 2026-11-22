@@ -9,7 +9,7 @@ use super::list_filter::validate_list_filter;
 use super::retry::RetryPolicy;
 use super::wire::append_request;
 use super::{context, output, work_item};
-use crate::byproduct::ByproductStore;
+use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::Omhl;
 use crate::pr_gate::GateSnapshots;
@@ -28,6 +28,7 @@ pub(super) struct Engine<'d> {
     pub(super) project_root: Option<PathBuf>,
     pub(super) runner: Option<&'d dyn CommandRunner>,
     pub(super) byproducts: Option<&'d dyn ByproductStore>,
+    pub(super) retention: Option<&'d dyn ByproductRetention>,
     pub(super) mark: Option<&'d dyn DevelopMark>,
     pub(super) retry: RetryPolicy,
     pub(super) retry_after_run: RetryPolicy,
@@ -94,6 +95,7 @@ impl Engine<'_> {
                 work_item,
                 tail,
             } => self.byproduct(check, work_item, *tail),
+            Action::ByproductPrune => self.byproduct_prune(),
             Action::HooksInstall { force } => self.hooks_install(*force),
             Action::SpecInit { work_item, slug } => self.spec_init(work_item, slug),
             Action::SpecValidate { work_item } => self.spec_validate(work_item),

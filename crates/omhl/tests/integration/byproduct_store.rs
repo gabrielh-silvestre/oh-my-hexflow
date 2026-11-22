@@ -4,9 +4,11 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::sync::mpsc::RecvTimeoutError;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
-use omhl::byproduct::{ByproductError, ByproductErrorKind, ByproductHash, ByproductStore};
+use omhl::byproduct::{
+    ByproductError, ByproductErrorKind, ByproductHash, ByproductRetention, ByproductStore,
+};
 use omhl::ports::blob::BlobStore;
 use tempfile::TempDir;
 
@@ -261,4 +263,158 @@ fn it_should_not_let_two_databases_in_the_same_folder_read_each_others_blobs() {
     assert_eq!(from_second, Ok(None));
     assert!(blob_path(db.path()).is_file());
     assert!(scratch.join(&ABC_SHA256[..2]).join(ABC_SHA256).is_file());
+}
+
+// CA-021: renovação, poda e carimbo
+
+const WEEK: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const DAY: Duration = Duration::from_secs(24 * 60 * 60);
+
+fn store_in(db: &TempDir) -> BlobStore {
+    BlobStore::new(&db.path().join("omhl.db"), &acme())
+}
+
+fn set_modified(path: &Path, at: SystemTime) {
+    fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("the file opens")
+        .set_modified(at)
+        .expect("the date is set");
+}
+
+fn modified(path: &Path) -> SystemTime {
+    fs::metadata(path)
+        .expect("the file exists")
+        .modified()
+        .expect("a date")
+}
+
+#[test]
+fn it_should_renew_the_date_and_keep_the_inode_when_the_same_content_is_stored_again() {
+    use std::os::unix::fs::MetadataExt;
+
+    let db = TempDir::new().expect("temporary directory is created");
+    let store = store_in(&db);
+    store.put(ABC).expect("the blob is stored");
+    let path = blob_path(db.path());
+    let inode = fs::metadata(&path).expect("the blob exists").ino();
+    set_modified(&path, SystemTime::now() - 3 * DAY);
+
+    store.put(ABC).expect("the blob is stored again");
+
+    let age = SystemTime::now()
+        .duration_since(modified(&path))
+        .unwrap_or_default();
+    assert_eq!(
+        (
+            age < Duration::from_secs(60),
+            fs::metadata(&path).map(|m| m.ino()).ok()
+        ),
+        (true, Some(inode))
+    );
+}
+
+#[test]
+fn it_should_not_remove_a_blob_whose_date_was_renewed_between_the_listing_and_the_removal() {
+    let db = TempDir::new().expect("temporary directory is created");
+    let store = store_in(&db);
+    store.put(ABC).expect("the blob is stored");
+    set_modified(&blob_path(db.path()), SystemTime::now() - 8 * DAY);
+    let listed = store.stale(WEEK).expect("the listing works");
+    store.put(ABC).expect("a concurrent put renews the blob");
+
+    let removed = listed.first().map(|blob| store.remove(blob, WEEK));
+
+    assert_eq!((listed.len(), removed), (1, Some(Ok(false))));
+    assert!(blob_path(db.path()).is_file());
+}
+
+#[test]
+fn it_should_list_and_remove_a_blob_older_than_the_retention() {
+    let db = TempDir::new().expect("temporary directory is created");
+    let store = store_in(&db);
+    store.put(ABC).expect("the blob is stored");
+    set_modified(&blob_path(db.path()), SystemTime::now() - 8 * DAY);
+
+    let listed = store.stale(WEEK).expect("the listing works");
+    let removed = listed.first().map(|blob| store.remove(blob, WEEK));
+
+    assert_eq!(
+        (listed.first().map(|blob| blob.bytes), removed),
+        (Some(3), Some(Ok(true)))
+    );
+    assert!(!blob_path(db.path()).exists());
+}
+
+#[test]
+fn it_should_not_list_a_blob_dated_in_the_future() {
+    let db = TempDir::new().expect("temporary directory is created");
+    let store = store_in(&db);
+    store.put(ABC).expect("the blob is stored");
+    set_modified(&blob_path(db.path()), SystemTime::now() + DAY);
+
+    let listed = store.stale(WEEK);
+
+    assert_eq!(listed, Ok(Vec::new()));
+}
+
+#[test]
+fn it_should_count_a_stamp_dated_in_the_future_as_expired() {
+    let db = TempDir::new().expect("temporary directory is created");
+    let store = store_in(&db);
+    store.put(ABC).expect("the blob is stored");
+    let stamp = tenant_root(db.path(), "omhl.db", "acme").join(".pruned-at");
+    fs::write(&stamp, b"").expect("the stamp is written");
+    set_modified(&stamp, SystemTime::now() + DAY);
+
+    let claimed = store.claim_prune_slot(DAY);
+
+    let age = SystemTime::now()
+        .duration_since(modified(&stamp))
+        .unwrap_or_default();
+    assert_eq!((claimed, age < Duration::from_secs(60)), (true, true));
+}
+
+#[test]
+fn it_should_refuse_a_second_claim_inside_the_interval() {
+    let db = TempDir::new().expect("temporary directory is created");
+    let store = store_in(&db);
+    store.put(ABC).expect("the blob is stored");
+
+    let first = store.claim_prune_slot(DAY);
+    let second = store.claim_prune_slot(DAY);
+
+    assert_eq!((first, second), (true, false));
+}
+
+#[test]
+fn it_should_not_sweep_a_shard_that_is_a_symlink_to_a_folder_outside() {
+    let db = TempDir::new().expect("temporary directory is created");
+    let store = store_in(&db);
+    store.put(ABC).expect("the blob is stored");
+    let outside = TempDir::new().expect("temporary directory is created");
+    let foreign = outside.path().join(ABC_SHA256);
+    fs::write(&foreign, b"outside").expect("the foreign file is written");
+    set_modified(&foreign, SystemTime::now() - 30 * DAY);
+    let root = tenant_root(db.path(), "omhl.db", "acme");
+    std::os::unix::fs::symlink(outside.path(), root.join("cd")).expect("the symlink is created");
+
+    let listed = store.stale(WEEK);
+
+    assert_eq!(listed, Ok(Vec::new()));
+    assert!(foreign.is_file());
+}
+
+#[test]
+fn it_should_refuse_the_claim_and_create_nothing_when_the_folder_does_not_exist() {
+    let db = TempDir::new().expect("temporary directory is created");
+    let store = store_in(&db);
+
+    let claimed = store.claim_prune_slot(DAY);
+
+    assert_eq!(
+        (claimed, fs::read_dir(db.path()).map(Iterator::count).ok()),
+        (false, Some(0))
+    );
 }

@@ -119,6 +119,7 @@ impl Engine<'_> {
     ) -> Result<Value, AppError> {
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
         let runner = self.runner.ok_or_else(AppError::runner_unavailable)?;
+        self.prune_quietly();
         let (event, planned) = self.plan_target(target)?;
         let checks_planned = planned.len();
         let (planned, orphans): (Vec<_>, Vec<_>) = planned.into_iter().partition(|check| {

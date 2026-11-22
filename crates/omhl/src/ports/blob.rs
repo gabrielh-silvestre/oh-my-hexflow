@@ -3,14 +3,20 @@ use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::{self, Read, Write as _};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use hexlog::TenantId;
 use sha2::{Digest, Sha256};
 
-use crate::byproduct::{ByproductError, ByproductErrorKind, ByproductHash, ByproductStore};
+use crate::byproduct::{
+    ByproductError, ByproductErrorKind, ByproductHash, ByproductRetention, ByproductStore,
+    StaleBlob,
+};
 use crate::ports::files::{OpenError, open_without_following_or_blocking};
 
 const TEMP_ATTEMPTS: u32 = 16;
+const TEMP_INFIX: &str = ".tmp-";
+const PRUNE_STAMP: &str = ".pruned-at";
 
 pub struct BlobStore {
     /// `blobs/by-db/<arquivo do banco>/<tenant>`: onde `put` grava e onde a poda varre.
@@ -50,12 +56,14 @@ impl ByproductStore for BlobStore {
         // Blob existente com bytes diferentes (truncado, corrompido ou que não é arquivo regular) é regravado: o `rename` o substitui.
         if matches!(read_stored(&target), Ok(Stored::Bytes(existing)) if sha256_hash(&existing).is_ok_and(|actual| actual == hash))
         {
+            // A data renovada segura o blob contra a poda de um `check run` concorrente.
+            renew_modified(&target)?;
             return Ok(hash);
         }
-        // Temporário de outra execução fica como arquivo sem uso: nunca é apagado.
+        // Temporário de outra execução fica como arquivo sem uso: só a poda o apaga, depois da retenção.
         for attempt in 0..TEMP_ATTEMPTS {
             let temp = dir.join(format!(
-                "{}.tmp-{}-{attempt}",
+                "{}{TEMP_INFIX}{}-{attempt}",
                 hash.as_str(),
                 std::process::id()
             ));
@@ -107,6 +115,144 @@ impl ByproductStore for BlobStore {
         }
         Ok(Some(bytes))
     }
+}
+
+impl ByproductRetention for BlobStore {
+    fn stale(&self, max_age: Duration) -> Result<Vec<StaleBlob>, ByproductError> {
+        let mut stale = Vec::new();
+        let shards = match fs::read_dir(&self.root) {
+            Ok(shards) => shards,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(stale),
+            Err(error) => return Err(io_error(&error)),
+        };
+        for shard in shards {
+            let shard = shard.map_err(|error| io_error(&error))?;
+            // `file_type` não segue link: um `<xx>` que aponta para fora nunca é varrido.
+            if !is_shard(&shard).map_err(|error| io_error(&error))? {
+                continue;
+            }
+            for entry in fs::read_dir(shard.path()).map_err(|error| io_error(&error))? {
+                let entry = entry.map_err(|error| io_error(&error))?;
+                let metadata = entry.metadata().map_err(|error| io_error(&error))?;
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let hash = blob_file_hash(&name);
+                if let Some(hash) =
+                    hash.filter(|_| metadata.is_file() && is_stale(&metadata, max_age))
+                {
+                    stale.push(StaleBlob {
+                        hash,
+                        name,
+                        bytes: metadata.len(),
+                    });
+                }
+            }
+        }
+
+        Ok(stale)
+    }
+
+    fn remove(&self, blob: &StaleBlob, max_age: Duration) -> Result<bool, ByproductError> {
+        let path = blob_dir(&self.root, &blob.hash).join(&blob.name);
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(io_error(&error)),
+        };
+        // Confere a data de novo: um `put` concorrente pode ter renovado o blob depois da listagem.
+        if !metadata.is_file() || !is_stale(&metadata, max_age) {
+            return Ok(false);
+        }
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(io_error(&error)),
+        }
+    }
+
+    fn claim_prune_slot(&self, min_interval: Duration) -> bool {
+        let stamp = self.root.join(PRUNE_STAMP);
+        // Sem a pasta do (banco, tenant) ainda não houve `put`: nada a podar e nada a criar.
+        if !self.root.is_dir() {
+            return false;
+        }
+        // Data no futuro (relógio que voltou) não segura a poda: o carimbo conta como vencido.
+        let fresh = match fs::symlink_metadata(&stamp) {
+            // Link ou FIFO plantado no lugar do carimbo: não é seguido nem aberto.
+            Ok(metadata) if !metadata.is_file() => return false,
+            Ok(metadata) => metadata
+                .modified()
+                .ok()
+                .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+                .is_some_and(|age| age < min_interval),
+            Err(_) => false,
+        };
+        if fresh {
+            return false;
+        }
+
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(&stamp)
+            .and_then(|file| file.set_modified(SystemTime::now()))
+            .is_ok()
+    }
+}
+
+/// Dois hexadecimais minúsculos e pasta de verdade.
+fn is_shard(entry: &fs::DirEntry) -> io::Result<bool> {
+    let name = entry.file_name();
+    let is_hex_pair = name
+        .to_str()
+        .is_some_and(|name| name.len() == 2 && name.bytes().all(is_lower_hex));
+
+    Ok(is_hex_pair && entry.file_type()?.is_dir())
+}
+
+fn is_lower_hex(byte: u8) -> bool {
+    matches!(byte, b'0'..=b'9' | b'a'..=b'f')
+}
+
+/// O hash de `<64 hex>` ou `<64 hex>.tmp-<pid>-<n>`; outro nome (inclusive o carimbo) não é blob.
+fn blob_file_hash(name: &str) -> Option<ByproductHash> {
+    let (hash, temp) = match name.split_once(TEMP_INFIX) {
+        Some((hash, temp)) => (hash, Some(temp)),
+        None => (name, None),
+    };
+    let is_numeric =
+        |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    if let Some(temp) = temp
+        && !temp
+            .split_once('-')
+            .is_some_and(|(pid, attempt)| is_numeric(pid) && is_numeric(attempt))
+    {
+        return None;
+    }
+
+    ByproductHash::parse(hash).ok()
+}
+
+/// Data de modificação no futuro não é de blob velho.
+fn is_stale(metadata: &fs::Metadata, max_age: Duration) -> bool {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_some_and(|age| age > max_age)
+}
+
+fn renew_modified(path: &Path) -> Result<(), ByproductError> {
+    let file = open_without_following_or_blocking(path).map_err(|error| match error {
+        OpenError::Io(error) => io_error(&error),
+        OpenError::NotFound | OpenError::Symlink => io_error(&io::Error::other(
+            "the blob changed while its date was renewed",
+        )),
+    })?;
+
+    file.set_modified(SystemTime::now())
+        .map_err(|error| io_error(&error))
 }
 
 enum Stored {

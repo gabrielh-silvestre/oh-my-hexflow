@@ -1,5 +1,6 @@
 mod agent_role;
 mod attest;
+mod byproduct_prune;
 mod byproduct_tail;
 mod check_retire;
 mod check_run;
@@ -41,7 +42,7 @@ use self::action::{Action, Caller};
 use self::engine::Engine;
 use self::error::AppError;
 use self::retry::{RetryPolicy, with_retry};
-use crate::byproduct::ByproductStore;
+use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::{Omhl, OmhlDeps};
 use crate::probe::DevelopMark;
@@ -75,6 +76,7 @@ impl<'d> App<'d> {
                 project_root: None,
                 runner: None,
                 byproducts: None,
+                retention: None,
                 mark: None,
                 retry: retry.clone(),
                 retry_after_run: RetryPolicy::after_run(),
@@ -96,6 +98,12 @@ impl<'d> App<'d> {
     ) -> App<'d> {
         self.engine.runner = Some(runner);
         self.engine.byproducts = Some(byproducts);
+        self
+    }
+
+    /// Só o `Runtime` a liga: sem ela o `check run` não poda e não cria o carimbo.
+    pub fn with_retention(mut self, retention: &'d dyn ByproductRetention) -> App<'d> {
+        self.engine.retention = Some(retention);
         self
     }
 

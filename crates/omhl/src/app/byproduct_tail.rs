@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use hexlog::{NodeView, Scalar, SemanticId};
 use serde_json::{Value, json};
 
@@ -73,12 +75,23 @@ impl Engine<'_> {
             pair("work_item", Scalar::Str(work_item.to_owned())),
         ];
 
-        Ok(
-            nodes_matching(&mut self.omhl, &self.tenant, "attestation", where_eq)?
-                .into_iter()
-                .max_by_key(|node| node.seq),
-        )
+        let nodes = nodes_matching(&mut self.omhl, &self.tenant, "attestation", where_eq)?;
+
+        Ok(latest_per_pair(nodes).into_iter().next())
     }
+}
+
+/// A attestation de maior `seq` de cada par (check, work item); sem work item forma o par (check, sem work item).
+pub(super) fn latest_per_pair(mut nodes: Vec<NodeView>) -> Vec<NodeView> {
+    nodes.sort_by_key(|node| node.seq);
+    let mut latest: BTreeMap<(String, Option<String>), NodeView> = BTreeMap::new();
+    for node in nodes {
+        let check = node.data["check"].as_str().unwrap_or_default().to_owned();
+        let work_item = node.data["work_item"].as_str().map(str::to_owned);
+        latest.insert((check, work_item), node);
+    }
+
+    latest.into_values().collect()
 }
 
 /// Redige cada fluxo inteiro antes de cortar linhas: cobre o blob gravado sem redação e o bloco PEM de várias linhas.
@@ -107,3 +120,6 @@ fn tail_lines(blob: &[u8], wanted: usize, redactor: &Redactor) -> Option<(Vec<St
 
     Some((window, truncated))
 }
+
+#[cfg(test)]
+mod tests;

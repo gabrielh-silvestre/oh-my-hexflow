@@ -83,6 +83,7 @@ impl Runtime {
         Ok(App::open(&self.db_path, &self.tenant, deps, &self.retry)?
             .with_project_root(&self.root)
             .with_exec(&self.runner, &self.byproducts)
+            .with_retention(&self.byproducts)
             .with_develop_mark(&self.probe)
             .with_hooks_dir(hooks_dir))
     }

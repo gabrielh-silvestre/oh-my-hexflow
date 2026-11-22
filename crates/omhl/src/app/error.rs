@@ -221,6 +221,13 @@ impl AppError {
         AppError::plain("byproducts-unavailable", "no byproduct store is configured")
     }
 
+    pub(crate) fn retention_unavailable() -> AppError {
+        AppError::plain(
+            "retention-unavailable",
+            "no byproduct retention is configured",
+        )
+    }
+
     pub(crate) fn develop_mark_unavailable() -> AppError {
         AppError::plain(
             "develop-mark-unavailable",
@@ -559,6 +566,13 @@ impl AppError {
             "byproduct-corrupt",
             path,
             "the stored output could not be read back intact",
+        )
+    }
+
+    pub(crate) fn byproduct_prune_failed() -> AppError {
+        AppError::plain(
+            "byproduct-prune-failed",
+            "the stored outputs could not be pruned",
         )
     }
 

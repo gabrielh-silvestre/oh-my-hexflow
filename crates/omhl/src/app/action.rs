@@ -57,6 +57,7 @@ pub enum Action {
         work_item: String,
         tail: u32,
     },
+    ByproductPrune,
     CheckSweep,
     HooksInstall {
         force: bool,
