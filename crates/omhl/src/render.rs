@@ -111,7 +111,7 @@ fn push_guidelines(text: &mut String, cuts: &mut Vec<usize>, input: &RenderInput
     push_tenant_nodes(text, cuts, cut_at, &nodes, push_guideline);
 }
 
-///  as sem `kind` (legadas) por último: o corte do orçamento vem do fim.
+/// As sem `kind` (legadas) por último: o corte do orçamento vem do fim.
 fn kind_rank(data: &Value) -> u8 {
     match data["kind"].as_str() {
         Some("business") => 0,
@@ -171,13 +171,30 @@ fn push_label(text: &mut String, label: &str) {
     text.push_str(": ");
 }
 
-/// Each LF of a value becomes LF plus two spaces, so a value can never forge a block header.
+/// Each line break of a value (LF, CR, CRLF as one, VT, FF, FS, GS, RS, NEL, LS, PS) becomes LF
+/// plus two spaces, so a value can never forge a block header.
 fn push_value(text: &mut String, value: &str) {
-    for (index, part) in value.split('\n').enumerate() {
-        if index > 0 {
-            text.push_str("\n  ");
+    let mut chars = value.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if !matches!(
+            ch,
+            '\n' | '\r'
+                | '\u{b}'
+                | '\u{c}'
+                | '\u{1c}'
+                | '\u{1d}'
+                | '\u{1e}'
+                | '\u{85}'
+                | '\u{2028}'
+                | '\u{2029}'
+        ) {
+            text.push(ch);
+            continue;
         }
-        text.push_str(part);
+        if ch == '\r' && chars.peek() == Some(&'\n') {
+            chars.next();
+        }
+        text.push_str("\n  ");
     }
 }
 
@@ -315,7 +332,7 @@ fn str_of(value: &Value) -> &str {
     value.as_str().unwrap_or_default()
 }
 
-///  native nodes never go.
+/// Native nodes never go.
 fn fit_to_budget(text: &mut String, cuts: &[usize], budget: usize) -> usize {
     let mut end = text.len();
     let mut chars = text.chars().count();

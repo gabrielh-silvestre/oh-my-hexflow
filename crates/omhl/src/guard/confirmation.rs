@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::error::{OmhlError, RuleCode};
-use crate::workflow::gap::{CRITIC_CONFIRMATION, PERSON_PREFIX, confirmer};
+use crate::workflow::gap::{CRITIC_CONFIRMATION, confirmer, is_person_confirmer};
 use crate::workflow::spec::is_amendment_id;
 
 use super::append::NodeItem;
@@ -11,7 +11,7 @@ const CONFIRMED_BY: &str = "body/data/confirmed_by";
 const CONFIRMED_BY_AUTHOR: &str = "body/data/confirmed_by/by";
 const AMENDMENT: &str = "body/data/amendment";
 
-///  o `pattern` é proibido no catálogo, então a forma é imposta aqui.
+/// O `pattern` é proibido no catálogo, então a forma é imposta aqui.
 /// Só o `omhl:critic`, numa premissa técnica, confirma por `critic` em vez de por pessoa.
 pub(super) fn check_confirmation(node: &NodeItem<'_>, author: &str) -> Result<(), OmhlError> {
     match node.type_name {
@@ -54,9 +54,7 @@ fn require_confirmation(node: &NodeItem<'_>, critic_may_confirm: bool) -> Result
     let Some(confirmation) = node.data.get("confirmed_by") else {
         return Err(node.error(RuleCode::ConfirmationRequired, CONFIRMED_BY));
     };
-    let by_person = confirmer(node.data)
-        .and_then(|by| by.strip_prefix(PERSON_PREFIX))
-        .is_some_and(|name| !name.is_empty());
+    let by_person = confirmer(node.data).is_some_and(is_person_confirmer);
     let by_critic = critic_may_confirm
         && confirmer(node.data) == Some(CRITIC_CONFIRMATION)
         && has_literal_exchange(confirmation);

@@ -9,7 +9,7 @@ use crate::extensions::collect::extension_file_exists;
 use crate::extensions::model::ExtensionKind;
 
 impl Engine<'_> {
-    ///  é o `loader` quem grava, porque a guarda só deixa ele retirar um check com `run`.
+    /// É o `loader` quem grava, porque a guarda só deixa ele retirar um check com `run`.
     pub(super) fn check_retire(&mut self, check: &str) -> Result<Value, AppError> {
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
         let id = parse_at(SemanticId::parse, check, "/check")?;

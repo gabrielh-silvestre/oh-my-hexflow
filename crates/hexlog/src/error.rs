@@ -74,7 +74,7 @@ pub struct HexlogError {
 }
 
 impl HexlogError {
-    ///  `message` descreve a regra, nunca o valor.
+    /// `message` descreve a regra, nunca o valor.
     pub(crate) fn refused(code: ErrorCode, detail_code: &str, message: &str) -> HexlogError {
         HexlogError {
             code,

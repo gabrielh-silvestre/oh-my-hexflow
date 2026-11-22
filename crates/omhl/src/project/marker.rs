@@ -80,7 +80,7 @@ pub fn parse_marker(path: &Path, bytes: &[u8]) -> Result<Marker, ProjectError> {
     })
 }
 
-///  para que um marcador gigante não vá inteiro à memória.
+/// Para que um marcador gigante não vá inteiro à memória.
 fn read_capped(path: &Path) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     File::open(path)?

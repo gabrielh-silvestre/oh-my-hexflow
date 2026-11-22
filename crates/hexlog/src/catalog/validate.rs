@@ -28,7 +28,7 @@ const TYPE_NUMBER: u8 = 16;
 const TYPE_STRING: u8 = 32;
 const TYPE_INTEGER: u8 = 64;
 
-///  a mensagem nunca carrega valor do schema.
+/// A mensagem nunca carrega valor do schema.
 pub(super) fn detail(path: String, code: &str) -> Detail {
     Detail::new(path, code, &code.replace('-', " "))
 }
@@ -125,7 +125,7 @@ fn enter_index(pointer: &mut String, index: usize) -> usize {
     mark
 }
 
-///  o `required` do metaesquema 2020-12 exige nomes únicos.
+/// O `required` do metaesquema 2020-12 exige nomes únicos.
 fn required_names(value: &Value) -> Option<Vec<String>> {
     let names: Vec<&str> = value
         .as_array()?
@@ -249,7 +249,7 @@ impl<'a> Builder<'a> {
         id
     }
 
-    ///  as chaves são nomes, nunca palavras-chave.
+    /// As chaves são nomes, nunca palavras-chave.
     fn named_schemas(
         &mut self,
         key: &str,

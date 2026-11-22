@@ -7,6 +7,7 @@ use super::engine::{Engine, parse_at};
 use super::error::AppError;
 use super::output;
 use super::read::{all_nodes, nodes_matching};
+use crate::native::NativeBase;
 use crate::ports::workflow::read_policy;
 use crate::workflow::config::WorkflowConfig;
 use crate::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_by, gap_state};
@@ -95,9 +96,14 @@ impl Engine<'_> {
             .iter()
             .filter_map(recurrence_premise)
             .collect();
+        let native = NativeBase
+            .guidelines()
+            .iter()
+            .map(|guideline| guideline.text.to_owned());
         let directives: Vec<String> = all_nodes(&mut self.omhl, &self.tenant, "guideline")?
             .iter()
             .filter_map(|view| text_field(view, "text"))
+            .chain(native)
             .collect();
         let groups: Vec<Value> = recurrences(&premises, &directives, min)
             .into_iter()

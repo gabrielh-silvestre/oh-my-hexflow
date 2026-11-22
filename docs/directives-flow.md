@@ -91,6 +91,20 @@ Rode `omhl spec validate` para ver a violação da spec.
 - `wt config approvals list` confere. O comando sem aprovação aparece como `UNAPPROVED`.
 - Se um `wt switch` falhar com `Cannot prompt for approval`, o agente para e pede ao dono o `wt config approvals add`. Ele nunca tenta `--no-hooks`.
 
+### O hook `post-start` do `wt`
+
+O `.config/wt.toml` tem um segundo hook, que grava a marca de congelamento da spec no nascimento da branch:
+
+```toml
+[post-start]
+omhl-freeze = "case {{ branch }} in develop|main) exit 0;; esac; omhl hook wt-post-start --branch {{ branch }}"
+```
+
+- Ele roda **uma vez**, quando a worktree nasce, **em segundo plano**. Uma worktree que já existia, uma branch que já existia e uma branch criada por `git branch` ou `wt switch --no-hooks` não o disparam.
+- Ele grava a marca `.frozen` em cada pasta `wi-<id>__*` do work item da branch nova (seção 7). O `omhl hook wt-post-start` é o do `PATH`, com o mesmo cuidado do `pre-switch`: o `{{ branch }}` vai sem aspas e o `case` libera `develop` e `main`.
+- A falha é silenciosa: o `wt` não mostra a saída de um hook em segundo plano e não aborta por ele. Se o hook falhar (`omhl` velho, marca não gravável), a branch nasce sem marca. A cura do `spec-lock` é a rede: no primeiro evento de spec ela grava a marca de toda branch `wi-` local que existe (seção 7).
+- O comando do hook entra na aprovação do `wt` como o do `pre-switch` (seção 5, "A aprovação do hook"). Um hook `UNAPPROVED` faz o `wt` abortar todo `wt switch` sem terminal interativo. **O agente nunca usa `-y` nem `--no-hooks` diante de um hook `UNAPPROVED`**: ele para e pede ao dono o `wt config approvals add`. O `-y` aprovaria o hook sozinho, e o `--no-hooks` pularia o `pre-switch` junto.
+
 ## 6. A spec
 
 ### `omhl spec init`
@@ -201,8 +215,10 @@ A ativação seguiu esta ordem, que vale de novo se o texto do comando em `.conf
 
 1. Compile e reinstale o `omhl` fora de qualquer worktree, num único binário no `PATH`, por exemplo em `~/.local/bin` ([README](../README.md), "Instalação").
 2. Rode `omhl hooks install`.
-3. Só então versione o `.config/wt.toml` e as entradas `PreToolUse` em `plugin/hooks/hooks.json`.
+3. Só então versione o `.config/wt.toml` e as entradas `PreToolUse` em `plugin/hooks/hooks.json`: `Edit|Write|MultiEdit` para o `spec-lock` e `Bash|Monitor|Agent|Task` para o `agent-role`.
 4. O dono roda `wt config approvals add` e confere com `wt config approvals list` (seção 5), antes de qualquer `wt switch` do agente.
+5. Para o hook `post-start`: reinstale o `omhl` no `PATH` (passo 1). O hook chama o subcomando `hook wt-post-start`, e um binário velho sai com `2` em segundo plano, sem marcar nada e sem aviso.
+6. O dono roda `wt config approvals add` e confere com `wt config approvals list` que nada aparece `UNAPPROVED`, **antes de qualquer `wt switch`**. O `[post-start]` é um comando novo no `.config/wt.toml`; sem a aprovação e sem terminal interativo, o `wt` aborta todo `wt switch`, inclusive para a `develop`.
 
 Depois de puxar mudanças, recompile e reinstale o `omhl` do `PATH` antes de usar o plugin. Com um `omhl` velho, o congelamento fica sem efeito até a reinstalação. O mesmo vale para o binário ausente (saída `127`).
 
@@ -227,6 +243,9 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - A razão de uma retirada de `contradicts` pelo verifier não fica no grafo. A razão fica na mensagem dele e na coluna de evidência da tabela do PR.
 - O hook `agent-role` protege contra o erro do agente, não contra a má-fé.
 - A spec vive no diretório principal, fora do git. Ela não vai com um clone e some com o diretório.
+- Uma branch `wi-` criada fora do `wt` (`git branch`, `git switch -c`, `wt switch --no-hooks`) não dispara o `post-start`. Se for apagada sem nenhum evento de spec no meio, também não deixa marca: é o residual do congelamento.
+- O hook decide no instante da checagem. Se o alvo de um link simbólico mudar depois dela e antes da escrita (TOCTOU), o hook não detecta a troca.
+- O `spec-lock` acha o checkout pela raiz do `.omhl.toml`, não pela pasta do arquivo. Numa worktree ligada aninhada dentro do diretório principal e sem `.omhl.toml` próprio (branch anterior ao marcador), o marcador achado é o do principal, `linked_worktree` sai falso e o `spec-in-linked-worktree` não dispara. O fluxo do `wt` cria worktrees irmãs, então isso não acontece nele.
 
 ## 11. Diretivas: `kind`, âncora e retirada
 
@@ -292,5 +311,6 @@ flowchart TD
 
 ### O hook `agent-role`
 
+- **A chamada com `name` a um agente do plugin.** Com `name` na chamada da tool `Agent`, o Claude Code não pré-carrega a skill declarada em `skills:` do agente, e ele começaria sem a vista do seu papel; por isso o hook nega essa chamada.
 - **O que o agente portado roda.** O arquivo `plugin/agents/<papel>.md` traz no frontmatter o `omhl-allow` com os comandos do papel. Com o `allow`, o Claude Code pula o prompt de permissão desse comando nos modos `default` e `auto`, salvo regra `deny` ou `ask` das configurações do dono e as ações que nenhum modo aprova ([doc de hooks do Claude Code, "PreToolUse decision control"](https://code.claude.com/docs/en/hooks)).
 - **A matriz tem três cópias que um teste mantém iguais:** a matriz compilada no `omhl` (`nodes`, `relations`, `retire`, com as condições finas do `append`), o `omhl-allow` de cada agente (`commands` e as listas do `append`) e a tabela única de `docs/directives-flow.md` (seção 8). A decisão e o limite estão no [ADR 0008](adr/0008-papel-do-agente-imposto-por-hook-e-matriz.md).

@@ -537,7 +537,7 @@ fn subject<'a>(
     }
 }
 
-///  o gerador de ids só roda aqui, depois de todas as recusas.
+/// O gerador de ids só roda aqui, depois de todas as recusas.
 fn assemble(
     ctx: &DecideCtx<'_>,
     req: &AppendRequest,

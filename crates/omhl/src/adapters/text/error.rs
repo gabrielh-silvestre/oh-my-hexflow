@@ -1,4 +1,4 @@
-//!  lê só o `{"error": {...}}` de `AppError::to_json` e mostra todo escalar.
+//! Lê só o `{"error": {...}}` de `AppError::to_json` e mostra todo escalar.
 
 use serde_json::Value;
 

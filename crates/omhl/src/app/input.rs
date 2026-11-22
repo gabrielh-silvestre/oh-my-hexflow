@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -30,6 +31,14 @@ pub fn read_json_input(input: &mut impl Read) -> Result<Value, AppError> {
         .map_err(|_| AppError::input_unreadable())?;
 
     parse_json_text(&bytes)
+}
+
+/// Campo de caminho de um evento de hook: tem de ser um texto com caminho absoluto.
+pub fn absolute_path(value: &Value) -> Result<PathBuf, AppError> {
+    match value.as_str().map(Path::new) {
+        Some(path) if path.is_absolute() => Ok(path.to_path_buf()),
+        _ => Err(AppError::invalid_hook_input()),
+    }
 }
 
 #[cfg(test)]

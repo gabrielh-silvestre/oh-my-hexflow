@@ -65,7 +65,7 @@ const TOOLCHAIN_ENV: [&str; 5] = [
 
 type MissError = fn(Vec<CheckDetail>) -> AppError;
 
-///  `work_item` é `None` na `develop`.
+/// `work_item` é `None` na `develop`.
 struct Scope<'a> {
     event: &'a str,
     work_item: Option<&'a SemanticId>,
@@ -649,7 +649,7 @@ fn check_push(stdin: &str, facts: &HeadFacts, event: &str) -> Result<PushPlan, A
     })
 }
 
-///  o banco é a fonte da verdade só enquanto o arquivo o confirma (arquivo ausente é órfão e nem chega aqui).
+/// O banco é a fonte da verdade só enquanto o arquivo o confirma (arquivo ausente é órfão e nem chega aqui).
 fn tree_digests(root: &Path) -> HashMap<String, String> {
     collect(root)
         .extensions

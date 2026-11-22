@@ -307,7 +307,7 @@ impl<'d> Hexlog<'d> {
         self.read(tenant, |reader| WriteReads::chain_head(reader, tenant))
     }
 
-    ///  `expected_chain_head` revela uma cauda apagada ou reescrita.
+    /// `expected_chain_head` revela uma cauda apagada ou reescrita.
     pub fn verify_chain(
         &mut self,
         tenant: &TenantId,

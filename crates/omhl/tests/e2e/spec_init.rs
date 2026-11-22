@@ -237,6 +237,19 @@ fn it_should_write_a_gitignore_with_a_star_in_the_specs_dir() {
     assert!(gitignore.lines().any(|line| line.trim() == "*"));
 }
 
+#[test]
+fn it_should_keep_a_preexisting_gitignore_in_the_specs_dir() {
+    let custom = "# mine\nnotes.md\n";
+    let fixture = Fixture::with_files(&[(".omhl/specs/.gitignore", custom)]);
+
+    let output = fixture.init_from_linked(WORK_ITEM, SLUG);
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    let gitignore = fs::read_to_string(fixture.main_dir().join(DEFAULT_SPECS).join(".gitignore"))
+        .expect("the specs dir keeps its .gitignore");
+    assert_eq!(gitignore, custom);
+}
+
 // Conteúdo da parte
 
 #[test]

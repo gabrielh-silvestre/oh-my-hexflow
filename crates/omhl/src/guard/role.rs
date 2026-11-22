@@ -4,6 +4,9 @@ use serde_json::{Map, Value};
 
 use crate::workflow::gap::{CRITIC_CONFIRMATION, confirmer, is_confirmed_premise};
 
+/// O papel gravado em `OMHL_ROLE` e no `agent` dos records é `omhl:<papel>`.
+pub const ROLE_PREFIX: &str = "omhl:";
+pub const ROLE_VARIABLE: &str = "OMHL_ROLE";
 pub(super) const CLAUDE: &str = "claude";
 pub(super) const USER: &str = "user";
 pub(super) const CRITIC: &str = "omhl:critic";
@@ -72,7 +75,7 @@ macro_rules! commands {
     };
 }
 
-///  só para os testes (paridade com o `omhl-allow` dos agentes).
+/// Só para os testes (paridade com o `omhl-allow` dos agentes).
 #[doc(hidden)]
 pub const ROLE_REFERENCE_COMMANDS: [(&str, &[&str]); 7] = [
     (ANALYST, commands!["append"]),

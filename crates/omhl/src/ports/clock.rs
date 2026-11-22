@@ -15,7 +15,7 @@ impl Clock for SystemClock {
     }
 }
 
-///  the engine only accepts the 24-character form.
+/// The engine only accepts the 24-character form.
 pub fn format_system_time(time: SystemTime) -> String {
     let Ok(since_epoch) = time.duration_since(UNIX_EPOCH) else {
         return ORIGIN.to_owned();

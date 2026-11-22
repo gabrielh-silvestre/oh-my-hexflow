@@ -101,7 +101,7 @@ impl AppError {
         json!({ "error": error })
     }
 
-    ///  todo código estável tem construtor nomeado; só o código dinâmico de `ProjectError` passa por aqui direto.
+    /// Todo código estável tem construtor nomeado; só o código dinâmico de `ProjectError` passa por aqui direto.
     fn plain(code: &str, message: &str) -> AppError {
         AppError {
             code: code.to_owned(),
@@ -158,6 +158,22 @@ impl AppError {
         AppError::plain(
             "invalid-hook-input",
             "hook input must be a JSON object with an absolute string cwd",
+        )
+    }
+
+    pub(crate) fn freeze_mark_unwritable(work_item: &str) -> AppError {
+        AppError::plain(
+            "freeze-mark-unwritable",
+            &format!(
+                "the freeze mark of work item {work_item} could not be written; the lock decided without it"
+            ),
+        )
+    }
+
+    pub(crate) fn path_unresolvable() -> AppError {
+        AppError::plain(
+            "path-unresolvable",
+            "the physical path of the edited file cannot be resolved; the lock decided by the lexical path only",
         )
     }
 

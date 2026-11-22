@@ -82,7 +82,7 @@ fn check_event(data: &Value) -> Result<(), SpecError> {
     }
 }
 
-///  a mesma régua do hexlog.
+/// A mesma régua do hexlog.
 fn check_size(
     value: &Value,
     path: &str,

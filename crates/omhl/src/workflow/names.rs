@@ -8,6 +8,8 @@ pub const PART_PREFIX: &str = "parte-";
 pub const AMENDMENT_PREFIX: &str = "emenda-";
 pub const FILE_SUFFIX: &str = ".md";
 pub const FIRST_PART_FILE: &str = "parte-01.md";
+/// Arquivo vazio na pasta de spec que a congela para sempre, mesmo sem branch do work item.
+pub const FREEZE_MARK: &str = ".frozen";
 pub const WORK_ITEM_ID_PREFIX: &str = "work-items.";
 
 pub fn folder_prefix(work_item: &str) -> String {

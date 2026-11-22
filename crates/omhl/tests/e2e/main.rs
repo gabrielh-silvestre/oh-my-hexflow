@@ -35,3 +35,4 @@ mod spec_init;
 mod spec_lock;
 mod spec_validate;
 mod spec_validate_graph;
+mod wt_post_start;

@@ -1,4 +1,4 @@
-//!  lê só o `Value` que o JSON já mostra, nunca o domínio.
+//! Lê só o `Value` que o JSON já mostra, nunca o domínio.
 
 use serde_json::Value;
 

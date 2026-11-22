@@ -7,10 +7,10 @@ use serde_json::{Value, json};
 
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
-use crate::app::input::read_json_input;
+use crate::app::input::{absolute_path, read_json_input};
 use crate::app::runtime::Runtime;
 use crate::app::{
-    AgentRoleEnv, RoleVerdict, Verdict, agent_role as check_agent_role,
+    AgentRoleEnv, RoleVerdict, SpecLockEvent, Tool, Verdict, agent_role as check_agent_role,
     spec_lock as check_spec_lock,
 };
 use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
@@ -41,19 +41,41 @@ pub fn session_start(
     }
 }
 
-/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar.
+/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr (exceção: a falha ao listar `specs.dir` ou ao ler a marca congela).
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
-    pre_tool_use(stdin, out, err, |input| {
-        Ok(match check_spec_lock(input)? {
+    let mut notices = Vec::new();
+    let code = pre_tool_use(stdin, out, err, |input| {
+        let outcome = check_spec_lock(spec_lock_event(input)?)?;
+        notices = outcome.notices;
+
+        Ok(match outcome.verdict {
             Verdict::Allow => None,
             Verdict::Deny { reason, .. } => {
                 Some(json!({ "permissionDecision": "deny", "permissionDecisionReason": reason }))
             }
         })
+    });
+    // Os avisos acompanham a decisão: a negação vai no stdout e uma linha por aviso, no stderr.
+    for notice in notices {
+        let _ = writeln!(err, "{}", notice.to_json());
+    }
+
+    code
+}
+
+/// Ferramenta que não edita sai antes de ler o `file_path`: o evento dela não precisa dele.
+fn spec_lock_event(input: &Value) -> Result<SpecLockEvent, AppError> {
+    let Some(tool) = input["tool_name"].as_str().and_then(Tool::parse) else {
+        return Ok(SpecLockEvent::NotAnEdit);
+    };
+
+    Ok(SpecLockEvent::Edit {
+        tool,
+        file_path: absolute_path(&input["tool_input"]["file_path"])?,
     })
 }
 
-/// Mesmo contrato do `spec_lock`; só o Bash.
+/// Mesmo contrato do `spec_lock`; o Bash, o Monitor e a tool Agent. O que passa segue o fluxo normal de permissão; só o comando dentro da matriz recebe `allow`.
 pub fn agent_role(
     stdin: &mut impl Read,
     out: &mut impl Write,
@@ -105,8 +127,8 @@ fn pre_tool_use(
 }
 
 fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<String>, AppError> {
-    let cwd = read_cwd(stdin)?;
-    let runtime = match Runtime::discover(Path::new(&cwd), None, env) {
+    let cwd = absolute_path(&read_json_input(stdin)?["cwd"])?;
+    let runtime = match Runtime::discover(&cwd, None, env) {
         Ok(runtime) => runtime,
         Err(error) if error.code() == "no-marker" => return Ok(None),
         Err(error) => return Err(error),
@@ -209,11 +231,4 @@ fn issue_counts(error: &AppError) -> String {
         .map(|(code, count)| format!("{code} x{count}"))
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-fn read_cwd(stdin: &mut impl Read) -> Result<String, AppError> {
-    match read_json_input(stdin)?.get_mut("cwd").map(Value::take) {
-        Some(Value::String(cwd)) if Path::new(&cwd).is_absolute() => Ok(cwd),
-        _ => Err(AppError::invalid_hook_input()),
-    }
 }

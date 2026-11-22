@@ -30,9 +30,21 @@ mod lock {
     }
 
     fn verdict(tool: Tool, file: &str, existing: &[&str], frozen: bool, linked: bool) -> Verdict {
+        verdict_with(tool, file, existing, frozen, false, linked)
+    }
+
+    fn verdict_with(
+        tool: Tool,
+        file: &str,
+        existing: &[&str],
+        has_branch: bool,
+        marked: bool,
+        linked: bool,
+    ) -> Verdict {
         let files = strings(existing);
         let facts = Facts {
-            frozen,
+            has_branch,
+            marked,
             linked_worktree: linked,
             folder_exists: true,
             file_exists: existing.contains(&file),
@@ -446,7 +458,8 @@ mod lock {
     #[test]
     fn it_should_deny_a_spec_file_in_a_folder_that_does_not_exist_when_frozen() {
         let facts = Facts {
-            frozen: true,
+            has_branch: true,
+            marked: false,
             linked_worktree: false,
             folder_exists: false,
             file_exists: false,
@@ -462,5 +475,73 @@ mod lock {
 
         assert_eq!(code, "spec-folder-unknown");
         assert!(reason.contains(MAIN_FOLDER), "reason: {reason}");
+    }
+
+    #[test]
+    fn it_should_deny_when_the_work_item_is_marked_without_a_branch() {
+        let verdict = verdict_with(
+            Tool::Edit,
+            "parte-01.md",
+            &["parte-01.md", ".frozen"],
+            false,
+            true,
+            false,
+        );
+
+        assert_eq!(denial(verdict).0, FROZEN);
+    }
+
+    #[test]
+    fn it_should_allow_when_neither_branch_nor_mark_exists() {
+        let verdict = verdict_with(
+            Tool::Edit,
+            "parte-01.md",
+            &["parte-01.md"],
+            false,
+            false,
+            false,
+        );
+
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    #[test]
+    fn it_should_deny_an_edit_of_the_mark_itself() {
+        let verdict = verdict_with(
+            Tool::Edit,
+            ".frozen",
+            &["parte-01.md", ".frozen"],
+            false,
+            true,
+            false,
+        );
+
+        assert_eq!(denial(verdict).0, FROZEN);
+    }
+
+    #[test]
+    fn it_should_allow_a_new_file_named_like_a_part_inside_a_subfolder() {
+        let verdict = verdict(
+            Tool::Write,
+            "sub/parte-01.md",
+            &["parte-01.md"],
+            true,
+            false,
+        );
+
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    #[test]
+    fn it_should_allow_a_new_file_named_like_an_amendment_inside_a_subfolder() {
+        let verdict = verdict(
+            Tool::Write,
+            "sub/emenda-07.md",
+            &["parte-01.md"],
+            true,
+            false,
+        );
+
+        assert_eq!(verdict, Verdict::Allow);
     }
 }

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use hexlog::Snapshot;
 
 pub use crate::mechanical::branch::HeadFacts;
@@ -11,20 +9,11 @@ pub enum TreeSource {
 }
 
 pub trait SnapshotProbe: Send + Sync {
-    ///  Não tem efeito colateral.
+    /// Não tem efeito colateral.
     fn probe(&self) -> Result<ProbeOutcome, ProbeError>;
     fn probe_tree(&self, source: TreeSource) -> Result<ProbeOutcome, ProbeError>;
     fn tree_dirty(&self) -> Result<bool, ProbeError>;
     fn head_facts(&self) -> Result<HeadFacts, ProbeError>;
-}
-
-///  Nenhuma operação escreve.
-pub trait GitTopology: Send + Sync {
-    fn main_dir(&self) -> Result<PathBuf, ProbeError>;
-    /// Nome inválido ou inexistente é `Ok(false)`.
-    fn branch_exists(&self, name: &str) -> Result<bool, ProbeError>;
-    fn worktree_branches(&self) -> Result<Vec<String>, ProbeError>;
-    fn local_branches(&self) -> Result<Vec<String>, ProbeError>;
 }
 
 /// Porta própria da marca de `develop`: a sonda de leitura não escreve.

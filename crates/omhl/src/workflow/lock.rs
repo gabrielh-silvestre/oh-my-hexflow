@@ -1,6 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
-use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, PART_PREFIX, work_item_of_folder};
+use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, FREEZE_MARK, PART_PREFIX, work_item_of_folder};
 use super::spec::amendment_number;
 
 const FROZEN: &str = "spec-frozen";
@@ -40,7 +40,9 @@ pub enum Verdict {
 }
 
 pub struct Facts<'a> {
-    pub frozen: bool,
+    pub has_branch: bool,
+    /// Alguma pasta `wi-<id>__*` do work item tem a marca `.frozen`.
+    pub marked: bool,
     pub linked_worktree: bool,
     pub folder_exists: bool,
     pub file_exists: bool,
@@ -94,6 +96,7 @@ pub fn next_amendment(folder_files: &[String]) -> String {
     format!("{AMENDMENT_PREFIX}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
+/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {
@@ -104,14 +107,14 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
             ),
         };
     }
-    if !facts.frozen {
+    if !(facts.has_branch || facts.marked) {
         return Verdict::Allow;
     }
     if !facts.folder_exists {
         return Verdict::Deny {
             code: FOLDER_UNKNOWN,
             reason: format!(
-                "{FOLDER_UNKNOWN}: the work item has a branch and {} does not exist; spec files are only written in the existing spec folder of the work item",
+                "{FOLDER_UNKNOWN}: the work item is frozen (it has a branch or the {FREEZE_MARK} mark, or the mark could not be read) and {} does not exist; spec files are only written in the existing spec folder of the work item",
                 facts.main_folder.display()
             ),
         };
@@ -124,7 +127,7 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     Verdict::Deny {
         code: FROZEN,
         reason: format!(
-            "{FROZEN}: the spec in {} is frozen because the work item has a branch; to correct it, record a divergence and create the amendment {} (Write of a new file)",
+            "{FROZEN}: the spec in {} is frozen because the work item has a branch or the {FREEZE_MARK} mark, or the mark could not be read; to correct it, record a divergence and create the amendment {} (Write of a new file)",
             facts.main_folder.display(),
             amendment.display()
         ),

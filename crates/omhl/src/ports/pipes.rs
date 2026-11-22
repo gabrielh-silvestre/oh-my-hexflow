@@ -13,7 +13,7 @@ pub enum Chunk {
     Capped,
 }
 
-///  o excedente é
+/// O excedente é
 /// lido e descartado, para o comando nunca travar com o cano cheio.
 pub fn spawn_reader(mut source: impl Read + Send + 'static, max_bytes: u64) -> Receiver<Chunk> {
     let (sender, receiver) = mpsc::channel();

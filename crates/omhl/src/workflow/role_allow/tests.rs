@@ -76,3 +76,21 @@ fn it_should_permit_read_only_leaves_to_every_role() {
     assert!(allow.permits(&Leaf::Named("list".to_owned())));
     assert!(!allow.permits(&Leaf::Named("attest".to_owned())));
 }
+
+#[test]
+fn it_should_not_put_a_newline_in_the_yaml_error() {
+    let error = parse_role_allow(&file_with("omhl-allow:\n  commands: [list\n  append: {\n"))
+        .expect_err("the YAML is malformed");
+
+    assert!(!error.contains('\n'), "{error:?}");
+}
+
+#[test]
+fn it_should_replace_a_newline_from_a_quoted_key_in_the_yaml_error() {
+    let error = parse_role_allow(&file_with(
+        "omhl-allow:\n  commands: [list]\n  \"bad\\nkey\": 1\n",
+    ))
+    .expect_err("the key is unknown");
+
+    assert!(!error.contains(char::is_control), "{error:?}");
+}
