@@ -8,7 +8,7 @@ use std::process::{Command, Output as GitOutput, Stdio};
 use serde_json::{Value, json};
 use support::child::{Cmd, Output, omhl, omhl_json};
 use support::ext::ExtTree;
-use support::git::{git_in, git_with_env, write_executable};
+use support::git::{git_in, git_ok, git_with_env, write_executable};
 use support::omhl::work_item_data;
 use support::project::Project;
 use tempfile::TempDir;
@@ -309,14 +309,7 @@ impl HookRepo {
 
     /// `git` sem hook instalado ou que não dispara hook; exige exit 0 e devolve o stdout.
     fn git(&self, args: &[&str]) -> String {
-        let output = git_in(self.d(), args);
-        assert!(
-            output.status.success(),
-            "git {args:?} failed: {}",
-            stderr(&output)
-        );
-
-        stdout(&output)
+        git_ok(self.d(), args)
     }
 
     fn git_hooked(&self, args: &[&str]) -> GitOutput {

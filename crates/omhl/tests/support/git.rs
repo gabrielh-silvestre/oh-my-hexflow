@@ -29,6 +29,21 @@ pub fn git_in(dir: &Path, args: &[&str]) -> Output {
         .expect("the git executable must be on the PATH to run these tests")
 }
 
+/// Exige código de saída 0 de um `git` já rodado e devolve o stdout; o teste falha com o stderr.
+pub fn expect_git_success(output: &Output, args: &[&str]) -> String {
+    assert!(
+        output.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// `git_in` que exige código de saída 0 e devolve o stdout.
+pub fn git_ok(dir: &Path, args: &[&str]) -> String {
+    expect_git_success(&git_in(dir, args), args)
+}
+
 /// Transforma a pasta de um projeto de teste num repositório git limpo, com o marcador commitado
 /// (o que o `close` exige).
 pub fn commit_marker(dir: &Path) {
@@ -40,12 +55,7 @@ pub fn commit_marker(dir: &Path) {
         &["commit", "-m", "add marker"],
     ];
     for args in steps {
-        let output = git_in(dir, args);
-        assert!(
-            output.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        git_ok(dir, args);
     }
 }
 
@@ -132,13 +142,7 @@ impl GitRepo {
 
     /// Roda o `git` no repositório; o teste falha se o código de saída não for 0. Devolve o stdout.
     pub fn git(&self, args: &[&str]) -> String {
-        let output = self.git_unchecked(args);
-        assert!(
-            output.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        String::from_utf8_lossy(&output.stdout).into_owned()
+        expect_git_success(&self.git_unchecked(args), args)
     }
 }
 

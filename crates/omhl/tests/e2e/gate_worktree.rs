@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl};
-use support::git::{git_in, write_executable};
+use support::git::{git_in, git_ok, write_executable};
 use support::legacy::seed_legacy_confirmed_premise;
 use support::omhl::{project_dir_refusal, work_item_data};
 use support::project::Project;
@@ -36,8 +36,7 @@ impl Fixture {
             &["add", "-A"],
             &["commit", "-m", "add marker"],
         ] {
-            let output = git_in(project.dir(), args);
-            assert!(output.status.success(), "git {args:?} failed");
+            git_ok(project.dir(), args);
         }
         let scratch = TempDir::new().expect("scratch directory is created");
         let linked = scratch.path().join("wt");
@@ -125,12 +124,6 @@ impl Fixture {
         let path = self.linked.join(".omhl/workflow.toml");
         fs::create_dir_all(path.parent().expect("the file has a parent")).expect("parent");
         fs::write(path, toml).expect("workflow.toml is written");
-    }
-
-    fn git(&self, args: &[&str]) {
-        let output = git_in(self.project.dir(), args);
-
-        assert!(output.status.success(), "git {args:?} failed");
     }
 
     fn close_work_item(&self, work_item: &str) {
@@ -358,7 +351,7 @@ fn it_should_allow_a_branch_that_has_a_worktree_when_run_from_that_worktree() {
 #[test]
 fn it_should_apply_the_matrix_to_a_local_branch_that_has_no_worktree() {
     let fixture = Fixture::seeded();
-    fixture.git(&["branch", "feat/wi-w1__nowt"]);
+    git_ok(fixture.project.dir(), &["branch", "feat/wi-w1__nowt"]);
 
     let output = fixture.gate("feat/wi-w1__nowt");
 

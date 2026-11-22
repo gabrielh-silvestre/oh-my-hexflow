@@ -13,7 +13,7 @@ use tempfile::TempDir;
 
 use super::child::{Cmd, omhl};
 use super::ext::ExtTree;
-use super::git::{commit_marker, git_in};
+use super::git::{commit_marker, git_ok};
 use super::inproc::run_inproc;
 use super::omhl::work_item_data;
 use super::project::Project;
@@ -57,16 +57,6 @@ pub fn parsed(text: &str) -> Value {
 }
 
 // ---------------------------------------------------------------- git e `omhl` de preparo
-
-pub fn git(dir: &Path, args: &[&str]) {
-    let output = git_in(dir, args);
-
-    assert!(
-        output.status.success(),
-        "git {args:?} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
 
 /// Preparo pelo binário: o teste não segue se o comando não saiu 0.
 pub fn omhl_succeeds(project: &Project, args: &[&str], stdin: &str) {
@@ -120,16 +110,16 @@ pub fn check_file(concern: &str, variant: &str, command: &str) -> String {
 pub fn check_repo(checks: &[(&str, &str)]) -> Project {
     let project = Project::new("acme");
     let dir = project.dir();
-    git(dir, &["init", "-q", "-b", "main"]);
-    git(dir, &["config", "user.name", "Test Author"]);
-    git(dir, &["config", "user.email", "author@example.com"]);
+    git_ok(dir, &["init", "-q", "-b", "main"]);
+    git_ok(dir, &["config", "user.name", "Test Author"]);
+    git_ok(dir, &["config", "user.email", "author@example.com"]);
     let tree = ExtTree::at(dir);
     for (slug, toml) in checks {
         tree.check(slug, toml);
     }
-    git(dir, &["add", "-A"]);
-    git(dir, &["commit", "-q", "-m", "base"]);
-    git(dir, &["switch", "-q", "-c", WORK_BRANCH]);
+    git_ok(dir, &["add", "-A"]);
+    git_ok(dir, &["commit", "-q", "-m", "base"]);
+    git_ok(dir, &["switch", "-q", "-c", WORK_BRANCH]);
     let work_item = json!({
         "items": [{ "body": {
             "kind": "node", "id": WORK_ITEM, "type": "work-item",

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use support::child::{Cmd, omhl_json};
 use support::ext::ExtTree;
-use support::git::git_in;
+use support::git::git_ok;
 use support::project::Project;
 use tempfile::TempDir;
 
@@ -46,15 +46,6 @@ fn stray_wait(pidfile: &Path, go: &Path) -> String {
     check_toml(&["sh", "-c", STRAY_WAIT_SCRIPT, "sh", utf8(pidfile), utf8(go)])
 }
 
-fn git(p: &Project, args: &[&str]) {
-    let output = git_in(p.dir(), args);
-    assert!(
-        output.status.success(),
-        "git {args:?} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
 fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
     omhl_json(args).cwd(p.dir()).xdg(p.xdg())
 }
@@ -62,16 +53,16 @@ fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
 /// Repositório git limpo na branch `feat/wi-w1__x`, com o work item `w1` e os checks carregados.
 fn cli_repo(checks: &[(&str, &str)]) -> Project {
     let p = Project::new("acme");
-    git(&p, &["init", "-q", "-b", "main"]);
-    git(&p, &["config", "user.name", "Test Author"]);
-    git(&p, &["config", "user.email", "author@example.com"]);
+    git_ok(p.dir(), &["init", "-q", "-b", "main"]);
+    git_ok(p.dir(), &["config", "user.name", "Test Author"]);
+    git_ok(p.dir(), &["config", "user.email", "author@example.com"]);
     let tree = ExtTree::at(p.dir());
     for (slug, toml) in checks {
         tree.check(slug, toml);
     }
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "base"]);
-    git(&p, &["switch", "-q", "-c", "feat/wi-w1__x"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "base"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "feat/wi-w1__x"]);
 
     let appended = omhl_in(&p, &["append"]).stdin(WORK_ITEM_APPEND).run();
     assert_eq!(appended.code, Some(0), "append stderr: {}", appended.stderr);
