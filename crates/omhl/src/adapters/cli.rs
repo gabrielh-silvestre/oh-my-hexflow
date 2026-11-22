@@ -220,7 +220,7 @@ pub enum ReportCommand {
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,
-    /// Deny edits to the spec of a work item that already has a branch, and deny them when git or the spec folder cannot be read; reads the PreToolUse event on stdin.
+    /// Deny edits to the spec of a work item that already has a branch, and deny them when git or the spec folder cannot be read; also deny a change of `specs.dir` in the main workflow.toml while a spec is frozen, any edit under a `.git` folder of an omhl project, and an edit that would leave the project marker invalid; reads the PreToolUse event on stdin.
     SpecLock,
     /// Impose the role matrix on the Bash and Monitor tools of plugin agents and deny a plugin agent call that carries `name`; reads the PreToolUse event on stdin.
     AgentRole,
