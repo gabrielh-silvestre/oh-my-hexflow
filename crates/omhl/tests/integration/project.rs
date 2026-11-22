@@ -9,11 +9,14 @@ use std::thread;
 use std::time::Duration;
 
 use hexlog::Config;
+use omhl::app::runtime::Runtime;
 use omhl::facade::{Omhl, OmhlDeps};
+use omhl::project::Env;
 use omhl::project::marker::find_marker;
 use omhl::project::paths::prepare_db_file;
 
 use support::omhl::{acme, seed_pull_request};
+use support::project::Project;
 use support::{FakeProbe, FixedClock, SeqIds, snap};
 use tempfile::TempDir;
 
@@ -90,4 +93,117 @@ fn sibling_with_suffix(db: &Path, suffix: &str) -> PathBuf {
     name.push(suffix);
 
     PathBuf::from(name)
+}
+
+// Banco dentro do projeto (`Runtime::discover` com o sistema de arquivos real)
+
+/// Código e mensagem do erro de `discover` para o banco em `db`, ou `None` quando o banco abre.
+fn discover_error(project: &Project, db: &Path) -> Option<(String, String)> {
+    let env = Env {
+        xdg_data_home: Some(project.xdg().as_os_str()),
+        home: None,
+        git_index_file: None,
+        parent_pid: 1,
+        claude_code: false,
+        role: None,
+        plugin_root: None,
+    };
+
+    Runtime::discover(project.dir(), Some(db), &env)
+        .err()
+        .map(|error| (error.code().to_owned(), error.message().to_owned()))
+}
+
+fn error_code(error: Option<(String, String)>) -> Option<String> {
+    error.map(|(code, _)| code)
+}
+
+#[cfg(unix)]
+#[test]
+fn it_should_refuse_a_db_reached_through_a_missing_folder_and_dot_dot() {
+    let project = Project::new("acme");
+    let outside = TempDir::new().expect("temporary directory is created");
+    let project_name = project.dir().file_name().expect("the project has a name");
+    // `missing/..` some por texto e deixa `outside/<projeto>/x.db`, que é um link para o projeto.
+    std::os::unix::fs::symlink(project.dir(), outside.path().join(project_name))
+        .expect("the symlink is created");
+    let db = outside
+        .path()
+        .join("missing")
+        .join("..")
+        .join(project_name)
+        .join("x.db");
+
+    let error = discover_error(&project, &db);
+
+    assert_eq!(error_code(error).as_deref(), Some("db-inside-project"));
+    assert!(!project.dir().join("x.db").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn it_should_refuse_a_db_file_that_is_a_symlink_into_the_project() {
+    let project = Project::new("acme");
+    let outside = TempDir::new().expect("temporary directory is created");
+    let db = outside.path().join("x.db");
+    std::os::unix::fs::symlink(project.dir().join("real.db"), &db).expect("the symlink is created");
+
+    let error = discover_error(&project, &db);
+
+    assert_eq!(error_code(error).as_deref(), Some("db-inside-project"));
+    assert!(!project.dir().join("real.db").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn it_should_refuse_a_db_folder_that_is_a_symlink_into_the_project() {
+    let project = Project::new("acme");
+    let outside = TempDir::new().expect("temporary directory is created");
+    std::os::unix::fs::symlink(project.dir(), outside.path().join("folder"))
+        .expect("the symlink is created");
+
+    let error = discover_error(&project, &outside.path().join("folder").join("x.db"));
+
+    assert_eq!(error_code(error).as_deref(), Some("db-inside-project"));
+    assert!(!project.dir().join("x.db").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn it_should_report_database_file_when_the_db_path_is_a_symlink_loop() {
+    let project = Project::new("acme");
+    let outside = TempDir::new().expect("temporary directory is created");
+    let (first, second) = (outside.path().join("a"), outside.path().join("b"));
+    std::os::unix::fs::symlink(&second, &first).expect("the symlink is created");
+    std::os::unix::fs::symlink(&first, &second).expect("the symlink is created");
+
+    let error = discover_error(&project, &first.join("x.db"));
+
+    assert_eq!(
+        error,
+        Some((
+            "database-file".to_owned(),
+            "the database path cannot be resolved".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn it_should_report_database_file_when_the_db_path_ends_in_dot_dot() {
+    let project = Project::new("acme");
+    let outside = TempDir::new().expect("temporary directory is created");
+    fs::create_dir(outside.path().join("sub")).expect("the folder is created");
+
+    let error = discover_error(&project, &outside.path().join("sub").join(".."));
+
+    assert_eq!(error_code(error).as_deref(), Some("database-file"));
+}
+
+#[test]
+fn it_should_open_a_db_outside_the_project() {
+    let project = Project::new("acme");
+
+    let error = discover_error(&project, &project.db_path());
+
+    assert_eq!(error, None);
 }
