@@ -1,6 +1,5 @@
 use hexlog::SemanticId;
 
-/// Cada par `(from, to)` diz que `from` roda depois de `to`.
 pub fn order(ids: &[SemanticId], after: &[(SemanticId, SemanticId)]) -> Vec<SemanticId> {
     let mut remaining: Vec<&SemanticId> = ids.iter().collect();
     remaining.sort_by(|left, right| left.as_str().cmp(right.as_str()));

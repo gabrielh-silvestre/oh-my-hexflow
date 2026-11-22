@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -9,7 +10,6 @@ pub const INPUT_MAX_BYTES: usize = 1_048_576;
 /// Texto do `serde_json` quando passa do limite de 128 níveis de contêiner (versão fixada no `Cargo.toml`).
 const DEPTH_LIMIT_MESSAGE: &str = "recursion limit exceeded";
 
-/// Tamanho, UTF-8, profundidade e JSON, nessa ordem; o erro não repete o texto recebido.
 pub fn parse_json_text(bytes: &[u8]) -> Result<Value, AppError> {
     if bytes.len() > INPUT_MAX_BYTES {
         return Err(AppError::input_too_large(INPUT_MAX_BYTES));
@@ -31,6 +31,14 @@ pub fn read_json_input(input: &mut impl Read) -> Result<Value, AppError> {
         .map_err(|_| AppError::input_unreadable())?;
 
     parse_json_text(&bytes)
+}
+
+/// Campo de caminho de um evento de hook: tem de ser um texto com caminho absoluto.
+pub fn absolute_path(value: &Value) -> Result<PathBuf, AppError> {
+    match value.as_str().map(Path::new) {
+        Some(path) if path.is_absolute() => Ok(path.to_path_buf()),
+        _ => Err(AppError::invalid_hook_input()),
+    }
 }
 
 #[cfg(test)]

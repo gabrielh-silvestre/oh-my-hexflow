@@ -10,7 +10,6 @@ const ID_SEGMENT_MAX: usize = 63;
 /// Teto de um `SemanticId` no `hexlog`; um prefixo maior nunca casa.
 const ID_PREFIX_MAX: usize = 200;
 
-/// Campo de texto para o `--where`: `type` igual a `string`; sem `type`, `enum` só de strings.
 pub fn is_text_field(schema: &Value) -> bool {
     match (schema.get("type"), schema.get("enum")) {
         (Some(kind), _) => kind == "string",
@@ -19,9 +18,6 @@ pub fn is_text_field(schema: &Value) -> bool {
     }
 }
 
-/// Recusa o filtro que nunca casa nada; o primeiro erro vence. A ordem: sintaxe do `--id-prefix`,
-/// sintaxe do `--type`, `--type` no catálogo, namespace do `--id-prefix`, campo repetido com valor
-/// diferente e, por fim, cada `--where` em ordem de índice (campo, texto, valor aceito).
 pub(super) fn validate_list_filter(
     catalog: &Catalog,
     type_name: Option<&str>,
@@ -53,7 +49,6 @@ pub(super) fn validate_list_filter(
     })
 }
 
-/// `SemanticId::parse` só como predicado: o código e a mensagem do hexlog não saem daqui.
 fn check_id_prefix_syntax(prefix: &str) -> Result<(), AppError> {
     if SemanticId::parse(prefix).is_ok() {
         return Ok(());
@@ -97,7 +92,6 @@ fn check_prefix_namespace(
     Err(AppError::invalid_arguments("/id_prefix", message))
 }
 
-/// O schema do campo, se o tipo o declara no topo de `properties`.
 fn declared_schema<'a>(def: &'a TypeDef, field: &str) -> Option<&'a Value> {
     def.schema.get("properties")?.get(field)
 }
@@ -117,7 +111,6 @@ fn declares_text(defs: &[&TypeDef], field: &str) -> bool {
         .any(|def| declared_schema(def, field).is_some_and(is_text_field))
 }
 
-/// Reduz o conjunto de tipos candidatos a cada `--where`; esvaziá-lo recusa o filtro.
 fn check_where_fields(
     defs: &[&TypeDef],
     typed: Option<&TypeDef>,
@@ -157,7 +150,6 @@ fn check_where_fields(
     Ok(pairs)
 }
 
-/// O motivo de o conjunto esvaziar, olhando o conjunto antes do `--where` e sem repetir o valor.
 fn empty_set_reason(
     typed: Option<&TypeDef>,
     initial: &[&TypeDef],
@@ -180,7 +172,6 @@ fn empty_set_reason(
     "value is not one of the values the field allows"
 }
 
-/// Um campo tem um valor só: dois valores distintos nunca casam; o par idêntico segue aceito.
 fn check_repeated_fields(where_eq: &[(String, String)]) -> Result<(), AppError> {
     for (index, (field, value)) in where_eq.iter().enumerate() {
         if where_eq[..index]

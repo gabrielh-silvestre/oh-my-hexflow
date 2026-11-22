@@ -10,7 +10,6 @@ use crate::ids::{RelationTypeName, SemanticId, TypeName};
 #[cfg(test)]
 mod tests;
 
-/// Forma de `Clock::now()`: `d` é um dígito e o resto é literal.
 const INSTANT_SHAPE: &[u8] = b"dddd-dd-ddTdd:dd:dd.dddZ";
 
 /// Só a forma de 24 caracteres, não o calendário: quem implementa o `Clock` responde pelo valor.
@@ -25,7 +24,6 @@ pub fn instant_is_well_formed(text: &str) -> bool {
         })
 }
 
-/// Passo 1: tamanho do lote, autor e profundidade de `data`. Devolve o primeiro achado.
 pub fn validate_shape(req: &AppendRequest, limits: &Limits) -> Result<(), HexlogError> {
     if !(1..=limits.batch_items).contains(&req.items.len()) {
         return Err(HexlogError::refused(
@@ -76,7 +74,6 @@ fn validate_item_shape(index: usize, body: &ItemBody) -> Result<(), HexlogError>
     Ok(())
 }
 
-/// Passo 4: tipo e id reservado recusam no primeiro achado; o resto do conteúdo acumula num só erro.
 pub fn static_rules(
     req: &AppendRequest,
     defs: &dyn Definitions,
@@ -168,7 +165,6 @@ fn validate_relation_type(
     .at_item(index, "body/relation_type"))
 }
 
-/// Acrescenta os achados do item a `details`; devolve se o catálogo marcou corte (`too-many-errors`).
 fn item_details(
     index: usize,
     item: &AppendItem,
@@ -265,7 +261,6 @@ fn data_details(
     Ok(marker)
 }
 
-/// Extremo da relation que o relation type recusa.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Endpoint {
     From,
@@ -273,7 +268,6 @@ pub enum Endpoint {
 }
 
 impl Endpoint {
-    /// Caminho do campo dentro do item.
     pub fn field(self) -> &'static str {
         match self {
             Endpoint::From => "body/from",
@@ -282,7 +276,6 @@ impl Endpoint {
     }
 }
 
-/// `None` em `from` ou `to` do relation type aceita qualquer tipo; `from` é conferido antes de `to`.
 pub fn endpoint_types_allowed(
     info: &RelationTypeInfo,
     from: &str,

@@ -141,7 +141,6 @@ string_id!(
     "invalid external id"
 );
 
-/// Leitura de nomes de tipo: o texto passa por `parse` e nome inválido falha na leitura.
 macro_rules! deserialize_name {
     ($name:ident) => {
         impl<'de> Deserialize<'de> for $name {
@@ -170,7 +169,6 @@ deserialize_name!(TypeName);
 deserialize_name!(RelationTypeName);
 
 impl Hash {
-    /// Quem chama garante 64 hexadecimais minúsculos (saída de `sha256hex`).
     pub(crate) fn from_lower_hex(hex: String) -> Hash {
         debug_assert!(is_hash(&hex));
         Hash(hex)

@@ -181,7 +181,6 @@ fn headers(text: &str) -> Vec<&str> {
         .collect()
 }
 
-/// The lines of the block headed by `### <id>`, up to the next blank line.
 fn block<'t>(text: &'t str, id: &str) -> Vec<&'t str> {
     let header = format!("### {id}");
 
@@ -420,6 +419,79 @@ fn it_should_indent_continuation_lines_so_a_value_cannot_forge_a_block() {
     );
 }
 
+fn rendered_text_of(value: &str) -> String {
+    let fixture = Fixture {
+        decisions: vec![decision("decisions.forge", value)],
+        ..Fixture::default()
+    };
+
+    fixture.rendered(BUDGET).text
+}
+
+#[test]
+fn it_should_not_start_a_block_header_after_a_carriage_return() {
+    let text = rendered_text_of("a\r### decisions.fake\rb");
+
+    assert!(
+        text.contains("- text: a\n  ### decisions.fake\n  b\n"),
+        "{text}"
+    );
+    assert!(!text.contains('\r'), "{text}");
+}
+
+#[test]
+fn it_should_not_start_a_block_header_after_nel_ls_or_ps() {
+    for terminator in ['\u{85}', '\u{2028}', '\u{2029}'] {
+        let text = rendered_text_of(&format!("a{terminator}### decisions.fake"));
+
+        assert!(
+            text.contains("- text: a\n  ### decisions.fake\n"),
+            "{terminator:?}: {text}"
+        );
+        assert!(!text.contains(terminator), "{terminator:?}: {text}");
+    }
+}
+
+#[test]
+fn it_should_not_start_a_block_header_after_vt_or_ff() {
+    for terminator in ['\u{b}', '\u{c}'] {
+        let text = rendered_text_of(&format!("a{terminator}### decisions.fake"));
+
+        assert!(
+            text.contains("- text: a\n  ### decisions.fake\n"),
+            "{terminator:?}: {text}"
+        );
+        assert!(!text.contains(terminator), "{terminator:?}: {text}");
+    }
+}
+
+#[test]
+fn it_should_not_start_a_block_header_after_a_file_group_or_record_separator() {
+    for terminator in ['\u{1c}', '\u{1d}', '\u{1e}'] {
+        let text = rendered_text_of(&format!("a{terminator}### decisions.fake"));
+
+        assert!(
+            text.contains("- text: a\n  ### decisions.fake\n"),
+            "{terminator:?}: {text}"
+        );
+        assert!(!text.contains(terminator), "{terminator:?}: {text}");
+    }
+}
+
+#[test]
+fn it_should_treat_crlf_as_one_line_break() {
+    let text = rendered_text_of("a\r\nb");
+
+    assert!(text.contains("- text: a\n  b\n"), "{text}");
+}
+
+#[test]
+fn it_should_keep_the_lf_behavior() {
+    let text = rendered_text_of("a\nb\n\nc");
+
+    assert!(text.contains("- text: a\n  b\n  \n  c\n"), "{text}");
+}
+
 #[test]
 fn it_should_omit_nothing_within_the_budget() {
     let fixture = golden_two_fixture();
@@ -537,7 +609,6 @@ fn confirmation() -> Value {
     json!({ "by": "person:ana", "question": "Is it right?", "answer": "Yes." })
 }
 
-/// Premissa com `kind` e `status`; a confirmada leva `confirmed_by`, como a guarda exige.
 fn kinded_premise(id: &str, kind: &str, status: &str) -> NodeView {
     let mut data = json!({
         "text": "the rule", "kind": kind, "status": status, "work_item": "work-items.w1",
@@ -557,7 +628,6 @@ fn kinded_guideline(id: &str, kind: &str, text: &str) -> NodeView {
     directive(id, json!({ "text": text, "kind": kind }))
 }
 
-/// O texto de `## <title>` até o próximo `## `; vazio se a seção não existe.
 fn section<'t>(text: &'t str, title: &str) -> &'t str {
     let Some((_, from_title)) = text.split_once(&format!("\n## {title}\n")) else {
         return "";
@@ -619,7 +689,7 @@ fn it_should_mark_a_confirmed_technical_premise_as_confirmed() {
     assert!(block(&rendered.text, "premises.t").contains(&"- mark: confirmed"));
 }
 
-/// Premissa de antes do PR: `status: confirmed` sem `confirmed_by`.
+/// Premissa de antes do PR.
 fn legacy_confirmed_premise(id: &str, kind: &str) -> NodeView {
     node(
         id,

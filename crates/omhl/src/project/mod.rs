@@ -12,7 +12,6 @@ pub struct Env<'e> {
     pub claude_code: bool,
     /// Valor cru do `OMHL_ROLE`: vazio é um valor (recusado), não ausência.
     pub role: Option<String>,
-    /// Raiz do plugin (`CLAUDE_PLUGIN_ROOT`); ausente vale `None`.
     pub plugin_root: Option<&'e std::ffi::OsStr>,
 }
 

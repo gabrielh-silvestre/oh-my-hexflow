@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 
-/// Work item de apoio dos testes da camada de invariantes (aberto, ver `seed_pull_request`).
 pub const PR_7: &str = "work-items.pr-7";
 pub const RUN_TESTS: &str = "checks.run-tests";
 

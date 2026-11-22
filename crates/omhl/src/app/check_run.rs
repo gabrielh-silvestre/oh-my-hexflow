@@ -26,7 +26,6 @@ use crate::probe::{ProbeError, ProbeOutcome, TreeSource};
 use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
 
 const ATTESTATION: &str = "attestation";
-/// 4 MiB por fluxo.
 const MAX_STREAM_BYTES: u64 = 4_194_304;
 const CUT_OUTPUT_NOTE: &str = "output was cut at 4 MiB; the rule could not be checked; ";
 const TAIL_LINES: usize = 20;
@@ -64,21 +63,18 @@ const TOOLCHAIN_ENV: [&str; 5] = [
     "CARGO_BUILD_RUSTFLAGS",
 ];
 
-/// Construtor do erro sem veredito de um check.
 type MissError = fn(Vec<CheckDetail>) -> AppError;
 
-/// O que vale para todos os checks de uma execução; `work_item` é `None` na `develop`.
+/// `work_item` é `None` na `develop`.
 struct Scope<'a> {
     event: &'a str,
     work_item: Option<&'a SemanticId>,
     branch: &'a str,
     cwd: &'a Path,
     project_root: &'a Path,
-    /// Digest da definição de cada check lida do TOML da working tree (id -> digest).
     tree_digests: HashMap<String, String>,
 }
 
-/// Check sem veredito gravado; `stops` para a fila (tabela 2.3).
 struct Miss {
     error: MissError,
     detail: CheckDetail,
@@ -104,7 +100,6 @@ enum Recording {
     Failed(AppError),
 }
 
-/// `error` é o do primeiro check sem veredito; `details` seguem a ordem de execução.
 #[derive(Default)]
 struct Tally {
     results: Vec<CheckResult>,
@@ -115,7 +110,6 @@ struct Tally {
 }
 
 impl Engine<'_> {
-    /// O autor da attestation é sempre o `executor`; o `check run` cuida das próprias tentativas.
     pub(super) fn check_run(
         &mut self,
         target: &CheckTarget,
@@ -236,7 +230,6 @@ impl Engine<'_> {
         Ok(tally)
     }
 
-    /// `GitCommit` é sondado só antes do primeiro check que vai executar; `GitTree`, antes de cada um.
     fn snapshot_before(
         &self,
         scope: &Scope<'_>,
@@ -262,7 +255,6 @@ impl Engine<'_> {
         }
     }
 
-    /// Árvore do índice; arquivo não rastreado também recusa, e a sonda que falha para a fila.
     fn index_tree(
         &self,
         scope: &Scope<'_>,
@@ -280,7 +272,6 @@ impl Engine<'_> {
         }
     }
 
-    /// Árvore alterada pelo comando, ou sonda que falha depois dele, param a fila sem gravar nada.
     fn tree_change(
         &self,
         scope: &Scope<'_>,
@@ -519,7 +510,6 @@ impl Engine<'_> {
         Ok(Step::Miss(miss))
     }
 
-    /// Recusa da guarda, `Busy` esgotado e outro erro do motor viram resultado.
     fn record(
         &mut self,
         check: &PlannedCheck,
@@ -588,7 +578,6 @@ impl Scope<'_> {
         self.tree_digests.get(check.id.as_str()) != Some(&check.spec_digest)
     }
 
-    /// Campos do `context` comuns a todo detalhe de um check.
     fn context(&self, kind: &str, check: &SemanticId, argv: Option<&[String]>) -> Value {
         let mut context = json!({
             "kind": kind,
@@ -607,7 +596,6 @@ impl Scope<'_> {
         context
     }
 
-    /// `context` de um check cujo comando rodou sobre `snapshot`.
     fn ran_context(
         &self,
         kind: &str,
@@ -621,7 +609,6 @@ impl Scope<'_> {
         context
     }
 
-    /// `context` de uma recusa da árvore antes de qualquer check.
     fn refusal_context(&self, kind: &str) -> Value {
         let mut context = json!({ "kind": kind, "event": self.event, "branch": self.branch });
         if let Some(work_item) = self.work_item {
@@ -632,7 +619,6 @@ impl Scope<'_> {
     }
 }
 
-/// `pre-push`: lê a stdin inteira antes de decidir.
 fn check_push(stdin: &str, facts: &HeadFacts, event: &str) -> Result<PushPlan, AppError> {
     let checkout = current_branch(facts).ok();
 
@@ -663,7 +649,7 @@ fn check_push(stdin: &str, facts: &HeadFacts, event: &str) -> Result<PushPlan, A
     })
 }
 
-/// Digest da definição de cada check que o TOML da working tree declara; arquivo inválido fica de fora, e o banco é a fonte da verdade só enquanto o arquivo o confirma (arquivo ausente é órfão e nem chega aqui).
+/// O banco é a fonte da verdade só enquanto o arquivo o confirma (arquivo ausente é órfão e nem chega aqui).
 fn tree_digests(root: &Path) -> HashMap<String, String> {
     collect(root)
         .extensions
@@ -673,7 +659,6 @@ fn tree_digests(root: &Path) -> HashMap<String, String> {
         .collect()
 }
 
-/// A recusa de um check cujo TOML da working tree é inválido ou diverge do banco: nada roda.
 fn spec_stale_miss(scope: &Scope<'_>, check: &PlannedCheck) -> Miss {
     let mut context = scope.context("spec-stale", &check.id, None);
     context["hint"] = json!(SPEC_STALE_HINT);
@@ -690,7 +675,6 @@ fn spec_stale_miss(scope: &Scope<'_>, check: &PlannedCheck) -> Miss {
     }
 }
 
-/// Spec inválido não executa e segue para o próximo check.
 fn ready_spec<'p>(scope: &Scope<'_>, check: &'p PlannedCheck) -> Result<&'p CheckSpec, Miss> {
     let error = match &check.spec {
         Ok(spec) => return Ok(spec),
@@ -709,7 +693,6 @@ fn ready_spec<'p>(scope: &Scope<'_>, check: &'p PlannedCheck) -> Result<&'p Chec
     })
 }
 
-/// Erro de spawn segue; plataforma sem suporte e pai perdido param a fila (tabela 2.3).
 fn run_error(
     scope: &Scope<'_>,
     check: &PlannedCheck,
@@ -768,7 +751,6 @@ fn run_error(
     }
 }
 
-/// Sonda que falha antes ou depois do comando para a fila; só o `context.kind` a distingue.
 fn probe_stop(check: &PlannedCheck, mut context: Value, error: &ProbeError) -> Miss {
     context["os_error"] = json!(error.message);
     context["hint"] = json!(PROBE_FAILED_HINT);
@@ -780,7 +762,6 @@ fn probe_stop(check: &PlannedCheck, mut context: Value, error: &ProbeError) -> M
     }
 }
 
-/// Check que ficou na fila depois de um erro que para tudo.
 fn not_run(scope: &Scope<'_>, check: &PlannedCheck) -> CheckDetail {
     let argv = check.spec.as_ref().ok().map(|spec| spec.run.as_slice());
     let context = scope.context("not-run", &check.id, argv);
@@ -811,7 +792,6 @@ fn refusal_hint(code: RuleCode) -> Option<&'static str> {
     }
 }
 
-/// Erro sem veredito vence `checks-failed`; entre eles vale o primeiro na ordem de execução.
 fn finish(
     scope: &Scope<'_>,
     tally: Tally,
@@ -853,7 +833,6 @@ fn finish(
     Ok(output)
 }
 
-/// O que vale para o `checks-failed` inteiro: evento, work item (ausente na `develop`) e o resumo do plano.
 fn failure_context(scope: &Scope<'_>, results: &[CheckResult], checks_planned: usize) -> Value {
     let failed = results
         .iter()
@@ -877,7 +856,6 @@ fn failure_context(scope: &Scope<'_>, results: &[CheckResult], checks_planned: u
     context
 }
 
-/// Campos curtos de um check reprovado, sem a saída do comando nem o `how`.
 fn failure_fields(check: &PlannedCheck, spec: &CheckSpec, report: &RunReport) -> Value {
     let mut fields = json!({
         "blocking": check.blocking,
@@ -894,7 +872,6 @@ fn failure_fields(check: &PlannedCheck, spec: &CheckSpec, report: &RunReport) ->
     with_run_fields(fields, report)
 }
 
-/// Cabeçalho e os dois fluxos completos; nada do ambiente, do `argv`, do `cwd` nem do `context`.
 fn byproduct_blob(report: &RunReport) -> Vec<u8> {
     byproduct::encode(&report.stdout, &report.stderr)
 }
@@ -926,7 +903,6 @@ fn run_attestation_data(
     with_run_fields(data, report)
 }
 
-/// `exit_code` fica de fora, nunca `null`, quando o comando não terminou com código.
 fn with_run_fields(mut value: Value, report: &RunReport) -> Value {
     if let Some(code) = report.exit_code {
         value["exit_code"] = json!(code);
@@ -938,7 +914,6 @@ fn with_run_fields(mut value: Value, report: &RunReport) -> Value {
     value
 }
 
-/// As últimas linhas de cada fluxo, convertidas com perda e cortadas.
 fn output_tail(report: &RunReport) -> Value {
     json!({ "stdout": tail(&report.stdout), "stderr": tail(&report.stderr) })
 }

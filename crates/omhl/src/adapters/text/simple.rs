@@ -1,6 +1,3 @@
-//! Texto dos comandos simples do ciclo: `project`, `check sweep`, `check retire`, `guideline retire`,
-//! `hooks install`, `spec init`, `byproduct`, `append` e `attest`. Todos usam a base e o erro genérico.
-
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
@@ -296,7 +293,6 @@ impl Specialization for HooksInstall {
         paths.into_iter().chain(warnings).collect()
     }
 
-    /// A dica do aviso é a ação: vai para o fecho, como a dica do erro.
     fn closing(&self, value: &Value) -> Closing {
         match items(value, "warnings").find_map(|warning| opt_text(warning, "hint")) {
             Some(hint) => Closing::Next(without_final_period(&hint)),

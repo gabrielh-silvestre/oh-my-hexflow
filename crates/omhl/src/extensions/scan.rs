@@ -4,7 +4,8 @@ use std::path::Path;
 use super::model::{ExtensionIssue, ExtensionKind, RawExtension};
 use crate::ports::files::{list_sorted_capped, read_regular_utf8};
 use crate::project::layout::{
-    DIR_ENTRIES_MAX, EXT_FILE_MAX_BYTES, OMHL_DIR, PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE,
+    DIR_ENTRIES_MAX, EXT_FILE_MAX_BYTES, NOTES_DIR, OMHL_DIR, PROJECTION_DIR, SPECS_DIR,
+    WORKFLOW_FILE,
 };
 
 const KINDS: [ExtensionKind; 2] = [ExtensionKind::Check, ExtensionKind::Guideline];
@@ -21,7 +22,6 @@ pub fn scan(root: &Path) -> ScanOutput {
     scan_with(root, &[])
 }
 
-/// `extra_ignored` são nomes diretos de `.omhl/` ignorados além dos fixos, como o `specs.dir` configurado.
 pub fn scan_with(root: &Path, extra_ignored: &[&str]) -> ScanOutput {
     let mut output = ScanOutput::default();
     let omhl = root.join(OMHL_DIR);
@@ -89,7 +89,7 @@ fn names_in(dir: &Path, rel: &str) -> Result<Vec<String>, ExtensionIssue> {
 fn scan_root_entry(root: &Path, name: &str, extra_ignored: &[&str], output: &mut ScanOutput) {
     if let Some(kind) = KINDS.into_iter().find(|kind| kind.dir() == name) {
         scan_dir(root, kind, output);
-    } else if ![PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE].contains(&name)
+    } else if ![PROJECTION_DIR, SPECS_DIR, NOTES_DIR, WORKFLOW_FILE].contains(&name)
         && !extra_ignored.contains(&name)
     {
         output

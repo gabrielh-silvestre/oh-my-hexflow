@@ -289,7 +289,6 @@ fn it_should_default_no_open_contradiction_to_all_current_nodes() {
 
 // Anchored
 
-/// Predicado de teste: o alvo está confirmado quando o `data` traz `flagged: true`.
 fn is_flagged(fact: &TargetFact<'_>) -> bool {
     fact.data["flagged"] == true
 }

@@ -5,7 +5,6 @@ use hexlog::chain::sha256hex;
 pub const RUN_MARKER_VAR: &str = "OMHL_RUN_ID";
 const ROOT_HASH_LEN: usize = 16;
 
-/// Quem chamou o runner: pid, início (campo 22 de `/proc/<pid>/stat`), namespace de pid e a raiz do projeto (`root_hash`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunMarker {
     pub pid: u32,
@@ -14,7 +13,7 @@ pub struct RunMarker {
     pub root: String,
 }
 
-/// Os 16 primeiros hex do sha256 do caminho da raiz: a marca identifica o projeto sem expor o caminho.
+/// A marca identifica o projeto sem expor o caminho.
 pub fn root_hash(root: &Path) -> String {
     sha256hex(&root.to_string_lossy()).as_str()[..ROOT_HASH_LEN].to_owned()
 }
@@ -51,7 +50,6 @@ pub fn start_from_stat(stat: &str) -> Option<u64> {
     after_comm.split_whitespace().nth(22 - 3)?.parse().ok()
 }
 
-/// Processo com a variável da marca no ambiente; `pgrp` é o campo 5 do stat.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Candidate {
     pub pid: u32,

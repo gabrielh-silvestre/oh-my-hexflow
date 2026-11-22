@@ -5,17 +5,16 @@ const GUIDELINE: &str = "guideline";
 const ANSWERS: &str = "answers";
 const SUPPORTS: &str = "supports";
 const CONTRADICTS: &str = "contradicts";
-pub const PERSON_PREFIX: &str = "person:";
-/// `confirmed_by.by` da premissa técnica que o `omhl:critic` confirma.
+const PERSON_PREFIX: &str = "person:";
+/// Menor nome de pessoa, em caracteres visíveis, que vale como confirmação humana.
+const MIN_VISIBLE_NAME_CHARS: usize = 3;
 pub const CRITIC_CONFIRMATION: &str = "critic";
 
-/// Um node do grafo; `data` é `Null` quando o node é nativo.
 #[derive(Debug, Clone)]
 pub struct Fact {
     pub id: String,
     pub type_name: String,
     pub native: bool,
-    /// Gravado pelo cliente `loader`: diretiva de extension, vinculante sem `confirmed_by`.
     pub loader: bool,
     pub data: Value,
 }
@@ -64,12 +63,10 @@ pub fn gap_state(facts: &GapFacts, gap: &str) -> GapState {
     }
 }
 
-/// Id da premissa que responde o gap, no mesmo critério de `gap_state`.
 pub fn answered_by(facts: &GapFacts, gap: &str) -> Option<String> {
     answering_premise(facts, gap).map(|premise| premise.id.clone())
 }
 
-/// Vale a resposta de pessoa, depois a do critic; empatando, a primeira gravada.
 fn answering_premise<'a>(facts: &'a GapFacts, gap: &str) -> Option<&'a Fact> {
     facts
         .edges
@@ -80,19 +77,48 @@ fn answering_premise<'a>(facts: &'a GapFacts, gap: &str) -> Option<&'a Fact> {
         .min_by_key(|fact| answerer_of(&fact.data))
 }
 
-/// Só `person:` conta como humano; o critic só vale confirmado por ele mesmo.
 fn answerer_of(data: &Value) -> Answerer {
     let by = is_confirmed_premise(data)
         .then(|| confirmer(data))
         .flatten();
     match by {
-        Some(by) if by.starts_with(PERSON_PREFIX) => Answerer::Human,
+        Some(by) if is_person_confirmer(by) => Answerer::Human,
         Some(CRITIC_CONFIRMATION) => Answerer::Critic,
         _ => Answerer::Autonomous,
     }
 }
 
-/// `confirmed_by.by` do node, quando existe.
+/// `person:<nome>` com ao menos 3 caracteres visíveis no nome.
+pub fn is_person_confirmer(by: &str) -> bool {
+    by.strip_prefix(PERSON_PREFIX).is_some_and(|name| {
+        name.chars().filter(|c| is_visible(*c)).count() >= MIN_VISIBLE_NAME_CHARS
+    })
+}
+
+/// O `is_whitespace` e o `is_control` deixam passar os invisíveis de largura zero, bidi e seletores; a lista os cobre.
+fn is_visible(c: char) -> bool {
+    !c.is_whitespace()
+        && !c.is_control()
+        && !matches!(
+            c,
+            '\u{00AD}'
+                | '\u{034F}'
+                | '\u{061C}'
+                | '\u{115F}'
+                | '\u{1160}'
+                | '\u{180E}'
+                | '\u{200B}'..='\u{200F}'
+                | '\u{202A}'..='\u{202E}'
+                | '\u{2060}'..='\u{2069}'
+                | '\u{2800}'
+                | '\u{3164}'
+                | '\u{FE00}'..='\u{FE0F}'
+                | '\u{FEFF}'
+                | '\u{FFA0}'
+                | '\u{E0000}'..='\u{E007F}'
+        )
+}
+
 pub fn confirmer(data: &Value) -> Option<&str> {
     data.get("confirmed_by")?.get("by")?.as_str()
 }
@@ -101,13 +127,11 @@ fn node<'a>(facts: &'a GapFacts, id: &str) -> Option<&'a Fact> {
     facts.nodes.iter().find(|fact| fact.id == id)
 }
 
-/// Premissa confirmada: `status` confirmado e `confirmed_by`; a legada `confirmed` sem `confirmed_by` não conta.
 pub fn is_confirmed_premise(data: &Value) -> bool {
     data.get("status").and_then(Value::as_str) == Some("confirmed")
         && data.get("confirmed_by").is_some()
 }
 
-/// Diretiva confirmada: nativa, escrita pelo cliente `loader` ou com `confirmed_by`.
 pub fn is_confirmed_guideline(native: bool, loader: bool, data: &Value) -> bool {
     native || loader || data.get("confirmed_by").is_some()
 }

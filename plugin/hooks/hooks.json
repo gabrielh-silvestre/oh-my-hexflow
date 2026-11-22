@@ -25,7 +25,7 @@
         ]
       },
       {
-        "matcher": "Bash|Monitor",
+        "matcher": "Bash|Monitor|Agent|Task",
         "hooks": [
           {
             "type": "command",

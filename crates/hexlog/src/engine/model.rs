@@ -21,7 +21,6 @@ pub(crate) enum LineageKind {
 }
 
 impl LineageKind {
-    /// Texto da coluna `lineage_kind` e do campo `kind` do corpo.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             LineageKind::Node => "node",
@@ -96,7 +95,6 @@ pub enum Lineage {
     },
 }
 
-/// A linhagem emprestada: as portas de leitura a recebem por valor, sem copiar os ids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum LineageRef<'a> {
     Node(&'a SemanticId),
@@ -150,7 +148,6 @@ impl Serialize for Lineage {
     }
 }
 
-/// Tipo da linhagem em texto e a chave que a identifica: o id do node, ou `tipo|de|para` da relation.
 pub(crate) fn lineage_columns(lineage: LineageRef<'_>) -> (&'static str, Cow<'_, str>) {
     match lineage {
         LineageRef::Node(id) => (LineageKind::Node.as_str(), Cow::Borrowed(id.as_str())),
@@ -179,7 +176,6 @@ pub enum Origin {
 }
 
 impl Origin {
-    /// Texto gravado no corpo do record.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Origin::Tenant => "tenant",
@@ -229,7 +225,6 @@ pub enum BreakReason {
 }
 
 impl BreakReason {
-    /// Código do detalhe de `ChainBroken` quando a política `Full` recusa uma consulta.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             BreakReason::DivergingSeq => "diverging-seq",
@@ -243,7 +238,7 @@ impl BreakReason {
     }
 }
 
-/// `seq` é `None` nas quebras que não são de um record: âncora, lote e chain head esperado.
+/// `seq` é `None` nas quebras que não são de um record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainBreak {
     pub seq: Option<u64>,
@@ -256,7 +251,6 @@ pub struct ChainReport {
     pub total_records: u64,
     /// Hash recalculado do último record (a âncora recalculada, num tenant vazio).
     pub chain_head: Hash,
-    /// As primeiras 100 quebras; `total_breaks` conta todas.
     pub breaks: Vec<ChainBreak>,
     pub total_breaks: u64,
 }
@@ -319,7 +313,6 @@ pub struct RelationQuery {
 
 // Corpo do record (JCS desta estrutura é o que entra no hash)
 
-/// Versão do formato do corpo: a escrita grava e `verify_chain` confere.
 pub(crate) const BODY_VERSION: u8 = 1;
 
 // O serde só empresta `Cow<str>` direto; `Option<Cow<str>>` viria sempre dono sem este passo.

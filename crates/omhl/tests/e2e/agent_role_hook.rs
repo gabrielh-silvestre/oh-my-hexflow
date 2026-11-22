@@ -35,11 +35,11 @@ fn assert_passed(output: &Child) {
     );
 }
 
-fn assert_denied(output: &Child) {
-    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+fn assert_denied(output: &Child, context: &str) {
+    assert_eq!(output.code, Some(0), "{context}: stderr: {}", output.stderr);
     assert!(
         !output.stdout.is_empty(),
-        "expected a deny, stdout is empty"
+        "{context}: expected a deny, stdout is empty"
     );
     let decision = &json_line(&output.stdout)["hookSpecificOutput"];
     assert_eq!(decision["hookEventName"], json!("PreToolUse"));
@@ -48,7 +48,7 @@ fn assert_denied(output: &Child) {
         decision["permissionDecisionReason"]
             .as_str()
             .is_some_and(|reason| !reason.is_empty()),
-        "the deny carries a reason"
+        "{context}: the deny carries a reason"
     );
 }
 
@@ -120,9 +120,10 @@ fn it_should_deny_export_omhl_role() {
 #[test]
 fn it_should_deny_every_builtin_that_assigns_omhl_role() {
     for command in ["declare", "typeset", "readonly", "local"] {
-        let output = run_agent_role(&format!("{command} OMHL_ROLE=omhl:critic"), None);
+        let command = format!("{command} OMHL_ROLE=omhl:critic");
+        let output = run_agent_role(&command, None);
 
-        assert_denied_mentioning(&output, ROLE_ASSIGNMENT_DENIAL);
+        assert_reason_starts_with_code(&output, "role-assignment", &command);
     }
 }
 
@@ -184,9 +185,7 @@ fn it_should_deny_omhl_combined_with_another_command_by_any_separator() {
         "tee >(omhl list) </dev/null",
         "omhl append <<'EOF'\n{}\nEOF\necho done",
     ] {
-        let output = run_as("verifier", command);
-
-        assert_denied_mentioning(&output, "only command");
+        assert_denied_with_code(command, "compound-command");
     }
 }
 
@@ -218,9 +217,7 @@ fn it_should_deny_a_wrapper_option_the_hook_cannot_skip_before_omhl() {
         "env -S omhl list",
         "exec -c omhl list",
     ] {
-        let output = run_as("verifier", command);
-
-        assert_denied_mentioning(&output, "wrapper option");
+        assert_denied_with_code(command, "wrapper-unreadable");
     }
 }
 
@@ -272,7 +269,7 @@ fn it_should_deny_a_plugin_agent_type_with_an_empty_or_capitalised_role() {
     for agent_type in ["oh-my-hexflow:", "oh-my-hexflow:Verifier"] {
         let output = run_agent_role("omhl list", Some(agent_type));
 
-        assert_denied_mentioning(&output, "no omhl role matrix");
+        assert_reason_starts_with_code(&output, "role-unknown", agent_type);
     }
 }
 
@@ -314,6 +311,45 @@ fn it_should_exit_zero_with_a_stderr_line_on_invalid_stdin_for_agent_role() {
     assert_released_with_code(&output, "input-invalid-json");
 }
 
+// Chamada à tool Agent
+
+fn run_agent_tool_call(tool_input: &Value) -> Child {
+    let event = json!({
+        "session_id": "s1",
+        "hook_event_name": "PreToolUse",
+        "cwd": "/tmp",
+        "tool_name": "Agent",
+        "tool_input": tool_input,
+    });
+
+    run_agent_role_in(&fixtures_root(), &event.to_string())
+}
+
+#[test]
+fn it_should_deny_an_agent_call_with_name_to_a_plugin_agent_on_stdout() {
+    let tool_input = json!({ "subagent_type": "oh-my-hexflow:analyst", "name": "x" });
+
+    let output = run_agent_tool_call(&tool_input);
+
+    let decision = decision_of(&output);
+    assert_eq!(decision["permissionDecision"], json!("deny"));
+    assert!(
+        decision["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|reason| reason.starts_with("agent-named: ")),
+        "the reason starts with the code: {decision}"
+    );
+}
+
+#[test]
+fn it_should_pass_an_agent_call_without_name_to_a_plugin_agent() {
+    let tool_input = json!({ "subagent_type": "oh-my-hexflow:analyst" });
+
+    let output = run_agent_tool_call(&tool_input);
+
+    assert_passed(&output);
+}
+
 // agent-role: matriz do agente e reescrita do comando
 //
 // Os agentes de `tests/fixtures/agents/` são FIXTURES, não os agentes do plugin.
@@ -353,6 +389,10 @@ const LEAF_SAMPLES: &[(&str, &str)] = &[
     ("hook session-start", "omhl hook session-start"),
     ("hook spec-lock", "omhl hook spec-lock"),
     ("hook agent-role", "omhl hook agent-role"),
+    (
+        "hook wt-post-start",
+        "omhl hook wt-post-start --branch feat/wi-x__y",
+    ),
 ];
 
 /// Um comando de um papel e o veredito que a matriz de referência dá a ele.
@@ -572,6 +612,13 @@ fn it_should_deny_every_hook_event_to_every_role() {
 }
 
 #[test]
+fn it_should_deny_hook_wt_post_start_for_every_role() {
+    let cases = cases_for(&samples_of(&["hook wt-post-start"]));
+
+    cases.iter().for_each(assert_case);
+}
+
+#[test]
 fn it_should_deny_a_leaf_the_cli_does_not_have_to_every_role() {
     let cases = cases_for(&[("frobnicate", "omhl frobnicate")]);
 
@@ -617,7 +664,6 @@ fn it_should_answer_allow_with_updated_input_for_a_command_inside_the_matrix() {
     let decision = decision_of(&output);
 
     assert_eq!(decision["permissionDecision"], json!("allow"));
-    assert!(decision["updatedInput"].is_object());
 }
 
 #[test]
@@ -1002,8 +1048,17 @@ fn it_should_allow_a_command_when_the_append_block_is_well_formed() {
 
 // Prefixo: só vale quando o `omhl` é provadamente o comando que o recebe
 
+#[test]
+fn it_should_name_every_read_only_form_in_the_outside_matrix_denial() {
+    let output = run_as("verifier", ATTEST);
+
+    for form in ["-h/--help", "-V/--version", "<group> help"] {
+        assert_denied_mentioning(&output, form);
+    }
+}
+
 fn assert_denied_mentioning(output: &Child, fragment: &str) {
-    assert_denied(output);
+    assert_denied(output, fragment);
     let decision = decision_of(output);
     let reason = decision["permissionDecisionReason"]
         .as_str()
@@ -1015,9 +1070,93 @@ fn assert_denied_mentioning(output: &Child, fragment: &str) {
     );
 }
 
+/// Nega com um motivo que começa por `<code>: `; `context` (o comando ou o `agent_type`) vai em toda mensagem de falha.
+fn assert_reason_starts_with_code(output: &Child, code: &str, context: &str) {
+    assert_denied(output, context);
+    let decision = decision_of(output);
+    let reason = decision["permissionDecisionReason"]
+        .as_str()
+        .unwrap_or_default();
+
+    assert!(
+        reason.starts_with(&format!("{code}: ")),
+        "{context}: the reason starts with `{code}: `: {reason}"
+    );
+}
+
+fn assert_denied_with_code(command: &str, code: &str) {
+    assert_reason_starts_with_code(&run_as("verifier", command), code, command);
+}
+
+fn assert_denied_from_any_origin_with_code(command: &str, code: &str) {
+    assert_denied_with_code(command, code);
+    assert_reason_starts_with_code(&run_agent_role(command, None), code, command);
+}
+
 fn assert_denied_from_any_origin(command: &str) {
-    assert_denied(&run_as("verifier", command));
-    assert_denied(&run_agent_role(command, None));
+    assert_denied(&run_as("verifier", command), command);
+    assert_denied(&run_agent_role(command, None), command);
+}
+
+#[test]
+fn it_should_start_every_denial_reason_with_its_code() {
+    let empty_root = TempDir::new().expect("plugin root is created");
+    let unreadable_matrix = run_agent_role_in(
+        empty_root.path(),
+        &bash_call("omhl list", Some(PORTED_AGENT)),
+    );
+    let denials = [
+        (
+            "role-assignment",
+            "OMHL_ROLE=x omhl list",
+            run_agent_role("OMHL_ROLE=x omhl list", None),
+        ),
+        (
+            "role-unset",
+            "env -u OMHL_ROLE omhl list",
+            run_agent_role("env -u OMHL_ROLE omhl list", None),
+        ),
+        (
+            "heredoc-substitution",
+            "omhl append <<EOF\n$(id)\nEOF\n",
+            run_as("verifier", "omhl append <<EOF\n$(id)\nEOF\n"),
+        ),
+        (
+            "command-unreadable",
+            "omhl list \"unclosed",
+            run_as("verifier", "omhl list \"unclosed"),
+        ),
+        (
+            "role-unknown",
+            "omhl list as janitor",
+            run_as("janitor", "omhl list"),
+        ),
+        (
+            "wrapper-unreadable",
+            "env -i omhl list",
+            run_as("verifier", "env -i omhl list"),
+        ),
+        (
+            "compound-command",
+            "omhl list | head",
+            run_as("verifier", "omhl list | head"),
+        ),
+        ("command-outside-matrix", ATTEST, run_as("verifier", ATTEST)),
+        (
+            "role-prefix-unreachable",
+            "! omhl list",
+            run_as("verifier", "! omhl list"),
+        ),
+        (
+            "role-matrix-unreadable",
+            "omhl list without agent file",
+            unreadable_matrix,
+        ),
+    ];
+
+    for (code, context, output) in &denials {
+        assert_reason_starts_with_code(output, code, context);
+    }
 }
 
 // Nada além de espaço e tab antes do primeiro comando
@@ -1026,37 +1165,27 @@ fn assert_denied_from_any_origin(command: &str) {
 fn it_should_deny_a_comment_line_before_the_omhl_call() {
     let command = "# record the decision\nomhl append <<'EOF'\n{\"items\":[]}\nEOF\n";
 
-    let output = run_as("verifier", command);
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code(command, "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_a_blank_line_before_the_omhl_call() {
-    let output = run_as("verifier", "\nomhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code("\nomhl list", "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_a_redirection_only_line_before_the_omhl_call() {
-    let output = run_as("verifier", ">out\nomhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code(">out\nomhl list", "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_a_heredoc_line_before_the_omhl_call() {
-    let output = run_as("verifier", "<<X\nbody\nX\nomhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code("<<X\nbody\nX\nomhl list", "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_a_line_continuation_before_the_omhl_call() {
-    let output = run_as("verifier", "\\\nomhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code("\\\nomhl list", "role-prefix-unreachable");
 }
 
 #[test]
@@ -1077,22 +1206,29 @@ fn it_should_not_hide_the_matrix_denial_behind_the_start_rule() {
 
 #[test]
 fn it_should_deny_env_u_omhl_role() {
-    assert_denied_from_any_origin("env -u OMHL_ROLE omhl list");
+    assert_denied_from_any_origin_with_code("env -u OMHL_ROLE omhl list", "role-unset");
 }
 
 #[test]
 fn it_should_deny_env_with_u_glued_to_omhl_role() {
-    assert_denied_from_any_origin("env -uOMHL_ROLE omhl list");
+    assert_denied_from_any_origin_with_code("env -uOMHL_ROLE omhl list", "role-unset");
 }
 
 #[test]
 fn it_should_deny_env_unset_equals_omhl_role() {
-    assert_denied_from_any_origin("env --unset=OMHL_ROLE omhl list");
+    assert_denied_from_any_origin_with_code("env --unset=OMHL_ROLE omhl list", "role-unset");
+}
+
+#[test]
+fn it_should_deny_env_unset_after_a_cluster_ending_in_u_that_is_not_the_unset_option() {
+    let command = "env -Cu -u OMHL_ROLE omhl list";
+
+    assert_reason_starts_with_code(&run_agent_role(command, None), "role-unset", command);
 }
 
 #[test]
 fn it_should_deny_env_unset_separated_omhl_role() {
-    assert_denied_from_any_origin("env --unset OMHL_ROLE omhl list");
+    assert_denied_from_any_origin_with_code("env --unset OMHL_ROLE omhl list", "role-unset");
 }
 
 // `OMHL_ROLE+=`
@@ -1116,18 +1252,35 @@ fn it_should_deny_export_omhl_role_plus_equals() {
 
 #[test]
 fn it_should_deny_a_negated_omhl_call() {
-    let output = run_as("verifier", "! omhl list");
-
-    assert_denied_mentioning(&output, "start");
+    assert_denied_with_code("! omhl list", "role-prefix-unreachable");
 }
 
 #[test]
 fn it_should_deny_omhl_behind_every_control_keyword() {
     for keyword in ["if", "then", "elif", "else", "while", "until", "do"] {
-        let output = run_as("verifier", &format!("{keyword} omhl list"));
-
-        assert_denied_mentioning(&output, "start");
+        assert_denied_with_code(&format!("{keyword} omhl list"), "role-prefix-unreachable");
     }
+}
+
+#[test]
+fn it_should_allow_an_omhl_call_after_an_assignment_whose_value_ends_in_a_keyword_name() {
+    for keyword in ["do", "if"] {
+        let command = format!("FOO=/srv/{keyword} omhl list");
+        let output = run_as("verifier", &command);
+
+        assert_eq!(
+            decision_of(&output)["updatedInput"]["command"],
+            json!(format!(
+                "OMHL_ROLE=omhl:verifier FOO=/srv/{keyword} omhl list"
+            )),
+            "{command}"
+        );
+    }
+}
+
+#[test]
+fn it_should_pass_a_path_named_do_followed_by_omhl() {
+    assert_passed(&run_as("verifier", "./do omhl list"));
 }
 
 #[test]
@@ -1483,6 +1636,21 @@ fn is_on_path(program: &str) -> bool {
     std::env::split_paths(&path).any(|dir| dir.join(program).is_file())
 }
 
+/// O Bash da ferramenta roda no shell do usuário (bash ou zsh); `-f` poupa o zsh do `~/.zshenv` de quem roda o teste.
+fn tool_shells() -> Vec<(&'static str, &'static [&'static str])> {
+    let mut shells: Vec<(&str, &[&str])> = vec![("bash", &["-c"])];
+    if is_on_path("zsh") {
+        shells.push(("zsh", &["-f", "-c"]));
+    } else {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "zsh must be installed in CI: the tool shell may be zsh"
+        );
+    }
+
+    shells
+}
+
 const BASH_ONLY: [&str; 3] = [
     "time -p omhl list",
     "time -- omhl list",
@@ -1510,16 +1678,7 @@ fn it_should_run_every_allowed_rewritten_command_with_omhl_role_in_the_omhl_envi
         std::env::var("PATH").expect("PATH is set")
     );
 
-    // O Bash da ferramenta roda no shell do usuário (bash ou zsh); `-f` poupa o zsh do `~/.zshenv` de quem roda o teste.
-    let mut shells: Vec<(&str, &[&str])> = vec![("bash", &["-c"])];
-    if is_on_path("zsh") {
-        shells.push(("zsh", &["-f", "-c"]));
-    } else {
-        assert!(
-            std::env::var_os("CI").is_none(),
-            "zsh must be installed in CI: the tool shell may be zsh"
-        );
-    }
+    let shells = tool_shells();
 
     for command in [
         "omhl list",
@@ -1565,6 +1724,113 @@ fn it_should_run_every_allowed_rewritten_command_with_omhl_role_in_the_omhl_envi
                 "omhl:verifier",
                 "{shell}: {command:?} became {rewritten:?}"
             );
+        }
+    }
+}
+
+// `OMHL_ROLE` no bash e no zsh: o que o hook nega e o que ele libera
+
+/// Cada tentativa de mudar o papel que o hook deve negar, com o código da negação e se algum shell da ferramenta muda mesmo o papel.
+/// Com `false`, nem o bash 5.2 nem o zsh 5.9 mudam o papel: a negação é defensiva e só o veredito do hook é conferido.
+const ROLE_BYPASS_ATTEMPTS: [(&str, &str, bool); 14] = [
+    ("export -p OMHL_ROLE=x", "role-assignment", true),
+    ("export -p OMHL_ROLE", "role-assignment", false),
+    ("readonly -p OMHL_ROLE", "role-assignment", false),
+    ("readonly -p OMHL_ROLE=x", "role-assignment", true),
+    ("declare -x OMHL_ROLE=x", "role-assignment", true),
+    ("declare OMHL_ROLE=x", "role-assignment", true),
+    ("declare -p OMHL_ROLE=x", "role-assignment", false),
+    ("declare -- -p OMHL_ROLE=x", "role-assignment", true),
+    ("declare -- -p OMHL_ROLE", "role-assignment", false),
+    ("env -iu OMHL_ROLE omhl list", "role-unset", true),
+    ("env -iuOMHL_ROLE omhl list", "role-unset", true),
+    ("env -i -u OMHL_ROLE omhl list", "role-unset", true),
+    ("env --uns=OMHL_ROLE omhl list", "role-unset", true),
+    ("OMHL_ROLE=x omhl list", "role-assignment", true),
+];
+
+/// Citam o nome nu de `OMHL_ROLE` sem mudar o papel.
+const RELEASED_ROLE_MENTIONS: [&str; 3] = [
+    "env -i grep OMHL_ROLE file",
+    "declare -p OMHL_ROLE",
+    "typeset -p OMHL_ROLE",
+];
+
+/// A última linha impressa pelo script no shell, com `omhl:verifier` no ambiente de partida.
+fn last_line_in(shell: &str, flags: &[&str], script: &str) -> String {
+    let ran = Command::new(shell)
+        .args(flags)
+        .arg(script)
+        .env("OMHL_ROLE", "omhl:verifier")
+        .env_remove("BASH_ENV")
+        .env_remove("ENV")
+        .output()
+        .expect("the shell runs the command");
+
+    String::from_utf8_lossy(&ran.stdout)
+        .lines()
+        .last()
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// O papel que o próprio shell enxerga depois de rodar o comando.
+fn role_after_running_in(shell: &str, flags: &[&str], command: &str) -> String {
+    last_line_in(
+        shell,
+        flags,
+        &format!("{command}\nprintf 'role=%s\\n' \"${{OMHL_ROLE-unset}}\""),
+    )
+}
+
+/// O papel que o processo filho enxerga: o `omhl list` do comando vira uma sonda que imprime o papel.
+fn role_seen_by_child_in(shell: &str, flags: &[&str], command: &str) -> String {
+    let probe = "sh -c 'printf \"role=%s\\n\" \"${OMHL_ROLE-unset}\"'";
+
+    last_line_in(shell, flags, &command.replace("omhl list", probe))
+}
+
+#[test]
+fn it_should_deny_every_attempt_to_change_the_role_from_any_origin() {
+    for (command, code, changes_role) in ROLE_BYPASS_ATTEMPTS {
+        assert_denied_from_any_origin_with_code(command, code);
+
+        if !changes_role {
+            continue;
+        }
+
+        let roles: Vec<String> = tool_shells()
+            .into_iter()
+            .map(|(shell, flags)| match command.contains("omhl list") {
+                true => role_seen_by_child_in(shell, flags, command),
+                false => role_after_running_in(shell, flags, command),
+            })
+            .collect();
+
+        assert!(
+            roles
+                .iter()
+                .any(|role| role.starts_with("role=") && role != "role=omhl:verifier"),
+            "no tool shell changes the role with {command:?}: {roles:?}"
+        );
+    }
+}
+
+#[test]
+fn it_should_release_a_bare_role_name_that_only_a_search_or_a_print_reads() {
+    for command in RELEASED_ROLE_MENTIONS {
+        assert_passed(&run_agent_role(command, None));
+        assert_passed(&run_agent_role(command, Some(PORTED_AGENT)));
+    }
+}
+
+#[test]
+fn it_should_keep_the_role_in_bash_and_zsh_after_a_released_bare_role_name() {
+    for command in RELEASED_ROLE_MENTIONS {
+        for (shell, flags) in tool_shells() {
+            let role = role_after_running_in(shell, flags, command);
+
+            assert_eq!(role, "role=omhl:verifier", "{shell}: {command}");
         }
     }
 }

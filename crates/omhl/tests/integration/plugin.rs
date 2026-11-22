@@ -50,7 +50,7 @@ fn it_should_wire_the_session_start_hook_in_exec_form_and_the_pre_tool_use_hooks
                         }],
                     },
                     {
-                        "matcher": "Bash|Monitor",
+                        "matcher": "Bash|Monitor|Agent|Task",
                         "hooks": [{
                             "type": "command",
                             "command": "omhl hook agent-role || exit 1",
@@ -63,20 +63,20 @@ fn it_should_wire_the_session_start_hook_in_exec_form_and_the_pre_tool_use_hooks
     );
 }
 
-/// A entrada de `PreToolUse` do matcher `Bash|Monitor`, a do `agent-role`.
-fn bash_hook(hooks: &Value) -> &Value {
+/// A entrada de `PreToolUse` do matcher `Bash|Monitor|Agent|Task`, a do `agent-role`.
+fn agent_role_hook_entry(hooks: &Value) -> &Value {
     hooks["hooks"]["PreToolUse"]
         .as_array()
         .and_then(|entries| {
             entries
                 .iter()
-                .find(|entry| entry["matcher"] == json!("Bash|Monitor"))
+                .find(|entry| entry["matcher"] == json!("Bash|Monitor|Agent|Task"))
         })
         .expect("PreToolUse has a Bash entry")
 }
 
 #[test]
-fn it_should_wire_the_agent_role_hook_on_the_bash_and_monitor_matcher_beside_the_spec_lock_hook() {
+fn it_should_wire_the_agent_role_hook_on_four_tool_matchers_beside_the_spec_lock_hook() {
     let hooks = plugin_file("hooks/hooks.json");
 
     let matchers: Vec<&Value> = hooks["hooks"]["PreToolUse"]
@@ -88,7 +88,10 @@ fn it_should_wire_the_agent_role_hook_on_the_bash_and_monitor_matcher_beside_the
 
     assert_eq!(
         matchers,
-        [&json!("Edit|Write|MultiEdit"), &json!("Bash|Monitor")]
+        [
+            &json!("Edit|Write|MultiEdit"),
+            &json!("Bash|Monitor|Agent|Task")
+        ]
     );
 }
 
@@ -96,7 +99,7 @@ fn it_should_wire_the_agent_role_hook_on_the_bash_and_monitor_matcher_beside_the
 fn it_should_wrap_the_agent_role_command_with_exit_one() {
     let hooks = plugin_file("hooks/hooks.json");
 
-    let command = &bash_hook(&hooks)["hooks"][0]["command"];
+    let command = &agent_role_hook_entry(&hooks)["hooks"][0]["command"];
 
     assert_eq!(command, &json!("omhl hook agent-role || exit 1"));
 }
@@ -104,7 +107,7 @@ fn it_should_wrap_the_agent_role_command_with_exit_one() {
 #[test]
 fn it_should_not_block_bash_when_omhl_does_not_know_the_hook_subcommand() {
     let hooks = plugin_file("hooks/hooks.json");
-    let command = bash_hook(&hooks)["hooks"][0]["command"]
+    let command = agent_role_hook_entry(&hooks)["hooks"][0]["command"]
         .as_str()
         .expect("the command is a string");
     let bin = TempDir::new().expect("bin directory is created");

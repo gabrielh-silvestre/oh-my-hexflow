@@ -805,7 +805,7 @@ fn it_should_explain_in_the_help_that_hooks_install_writes_git_hooks_and_not_cla
     assert!(output.stdout.contains("git hooks"), "{}", output.stdout);
     assert!(output.stdout.contains("Claude Code"), "{}", output.stdout);
     assert!(
-        output.stdout.contains("omhl hook session-start"),
+        output.stdout.contains("`omhl hook` group"),
         "{}",
         output.stdout
     );

@@ -1,6 +1,5 @@
 use super::*;
 
-/// Caminhos das folhas do clap (`list`, `check run`, `hook spec-lock`...), sem o nome da raiz.
 fn leaf_paths(command: &clap::Command, prefix: &str) -> Vec<String> {
     command
         .get_subcommands()

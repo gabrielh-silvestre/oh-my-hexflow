@@ -70,7 +70,6 @@ pub fn closed(closed: &ClosedWorkItem, retro_report: Option<&Retro>) -> Value {
     })
 }
 
-/// Só ids e nomes de arquivo: nunca o texto de divergência, spec ou emenda.
 pub fn retro(report: Option<&Retro>) -> Value {
     let Some(report) = report else {
         return Value::Null;

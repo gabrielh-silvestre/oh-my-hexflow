@@ -40,7 +40,6 @@ pub(super) fn connect(
     run(SqliteConnection::connect_with(&options))
 }
 
-/// Abertura: conecta, lê o esquema sem transação e só toma a trava de escrita se o banco estiver vazio; por fim, o WAL.
 pub(super) fn open(
     db_path: &Path,
     busy_timeout: Duration,
@@ -62,7 +61,6 @@ enum Schema {
     Ready,
 }
 
-/// Decide pelo trio lido do banco: instalar, usar como está ou recusar (`schema-missing`, `unsupported-schema-version`).
 fn classify(version: i64, objects: i64, tables: i64) -> Result<Schema, HexlogError> {
     match (version, objects, tables) {
         (0, 0, _) => Ok(Schema::Install),
@@ -84,7 +82,6 @@ async fn probe(conn: &mut SqliteConnection) -> Result<(i64, i64, i64), sqlx::Err
     sqlx::query_as(PROBE_SCHEMA).fetch_one(conn).await
 }
 
-/// Banco já inicializado abre sem tomar a trava de escrita; só o vazio vai ao `BEGIN IMMEDIATE`.
 fn prepare_schema(conn: &mut SqliteConnection) -> Result<(), HexlogError> {
     let (version, objects, tables) = run(probe(conn))?;
     match classify(version, objects, tables)? {

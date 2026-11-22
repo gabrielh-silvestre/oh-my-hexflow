@@ -1,7 +1,6 @@
 const HEADER_PREFIX: &str = "omhl-byproduct v1 stdout=";
 const HEADER_STDERR: &str = " stderr=";
 
-/// Cabeçalho `omhl-byproduct v1 stdout=<o> stderr=<e>\n`, depois `o` bytes de stdout e `e` de stderr.
 pub fn encode(stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
     let mut blob = format!(
         "{HEADER_PREFIX}{}{HEADER_STDERR}{}\n",
@@ -15,7 +14,6 @@ pub fn encode(stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
     blob
 }
 
-/// Inverso de `encode`; `None` para cabeçalho ausente, malformado ou tamanhos que não fecham com o corpo.
 pub fn decode(blob: &[u8]) -> Option<(&[u8], &[u8])> {
     let newline = blob.iter().position(|byte| *byte == b'\n')?;
     let header = std::str::from_utf8(&blob[..newline]).ok()?;
@@ -31,7 +29,6 @@ pub fn decode(blob: &[u8]) -> Option<(&[u8], &[u8])> {
     Some(body.split_at(stdout_size))
 }
 
-/// 64 hexadecimais minúsculos.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ByproductHash(String);
 
@@ -66,7 +63,6 @@ pub struct ByproductError {
 
 pub trait ByproductStore: Send + Sync {
     fn put(&self, bytes: &[u8]) -> Result<ByproductHash, ByproductError>;
-    /// Confere que o sha256 dos bytes é o próprio hash.
     fn get(&self, hash: &ByproductHash) -> Result<Option<Vec<u8>>, ByproductError>;
 }
 

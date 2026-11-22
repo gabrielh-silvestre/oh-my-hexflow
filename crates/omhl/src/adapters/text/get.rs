@@ -1,5 +1,3 @@
-//! Texto do `omhl get`: o nó inteiro, um campo por escalar, e o aviso quando o nó não existe.
-
 use serde_json::Value;
 
 use super::base::{Entry, NodeContainer, Profile, Region, Shape, Specialization};
@@ -7,7 +5,6 @@ use super::doc::{Closing, Join, Line, Marker, scalar_fields, text};
 use super::error;
 use super::vocab::{State, seq_label};
 
-/// Sem curinga: toda chave real do catálogo está declarada por tipo, e uma chave nova reprova o teste de folhas.
 /// O `record_id` fica à vista porque é o `base` de uma revisão do nó.
 pub static PROFILE: Profile = Profile {
     label: "get",
@@ -155,7 +152,6 @@ pub static PROFILE: Profile = Profile {
 
 pub struct Get;
 
-/// Chaves do nó que o cabeçalho ou o bloco `data` já mostram.
 const NOT_IN_IDENTITY: [&str; 4] = ["id", "type", "seq", "data"];
 
 impl Specialization for Get {

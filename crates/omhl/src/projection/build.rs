@@ -14,7 +14,6 @@ use crate::render::sort_by_id;
 const TRUNCATION_MARKER: &str = "<!-- omhl: truncated -->\n";
 const INLINE_STRING_MAX_CHARS: usize = 80;
 const FILE_MAX_BYTES: usize = PROJECTION_FILE_MAX_BYTES as usize;
-/// Node types listed inside a work item file, in section order.
 const SECTIONS: [(&str, &str); 5] = [
     ("premise", "Premises"),
     ("decision", "Decisions"),
@@ -23,7 +22,7 @@ const SECTIONS: [(&str, &str); 5] = [
     ("divergence", "Divergences"),
 ];
 
-/// One file per current work item or pull request, sorted by name; the bytes depend only on the
+/// The bytes depend only on the
 /// current state, never on record ids, sequence numbers, timestamps or authors.
 pub fn build(state: &ProjectionState) -> Result<Vec<ProjectedFile>, ProjectionError> {
     let mut items: Vec<&NodeView> = state
@@ -80,7 +79,6 @@ fn children_by_owner(nodes: &[NodeView]) -> BTreeMap<&str, Vec<&NodeView>> {
     grouped
 }
 
-/// A work item owns itself; every listed node is owned by the work item it points to.
 fn owner_by_node_id<'s>(
     items: &[&'s NodeView],
     children: &BTreeMap<&'s str, Vec<&'s NodeView>>,
@@ -214,7 +212,6 @@ fn push_node_blocks(blocks: &mut Vec<String>, node: &NodeView) {
     }
 }
 
-/// The fields of a `data` object in key order, minus `skipped`.
 fn data_fields(data: &Value, skipped: &[&str]) -> Vec<String> {
     data.as_object()
         .into_iter()
@@ -248,8 +245,6 @@ fn fenced(key: &str, info: &str, body: &str) -> String {
     format!("- {key}:\n{fence}{info}\n{body}\n{fence}")
 }
 
-/// Replaces every control (C0, DEL, C1) or invisible format character not in `keep` with
-/// `\uXXXX`; characters above U+FFFF become a UTF-16 surrogate pair, as in JSON.
 fn escape<'a>(text: &'a str, keep: &[char]) -> Cow<'a, str> {
     let needs_escape = |c: char| (c.is_control() || is_invisible_format(c)) && !keep.contains(&c);
     if !text.chars().any(needs_escape) {
@@ -268,7 +263,6 @@ fn escape<'a>(text: &'a str, keep: &[char]) -> Cow<'a, str> {
     Cow::Owned(escaped)
 }
 
-/// Keeps the longest prefix of whole lines that still leaves room for the truncation marker.
 fn truncate_to_limit(mut content: String) -> String {
     if content.len() <= FILE_MAX_BYTES {
         return content;

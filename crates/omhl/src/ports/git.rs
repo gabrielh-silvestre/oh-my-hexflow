@@ -9,9 +9,7 @@ use std::time::{Duration, Instant};
 
 use hexlog::{Snapshot, SnapshotKind};
 
-use crate::probe::{
-    DevelopMark, GitTopology, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
-};
+use crate::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -22,7 +20,6 @@ const DIRTY_PREFIXES: [&[u8]; 4] = [b"1 ", b"2 ", b"u ", b"? "];
 const MARK_FILE: &str = "omhl-develop-mark";
 const MARK_LINE: &[u8] = b"omhl-develop-mark v1";
 
-/// Sonda que pergunta ao executável `git` se a árvore do repositório que envolve `dir` está limpa.
 pub struct GitProbe {
     dir: PathBuf,
     program: OsString,
@@ -57,7 +54,7 @@ impl GitProbe {
         GitProbe { timeout, ..self }
     }
 
-    /// Caminho relativo é resolvido contra `base` já aqui: o `git -C <dir>` troca de diretório antes de ler a variável.
+    /// O `git -C <dir>` troca de diretório antes de ler a variável.
     pub fn with_index_file(self, index_file: Option<&Path>, base: &Path) -> GitProbe {
         GitProbe {
             index_file: index_file.map(|path| base.join(path)),
@@ -91,7 +88,6 @@ impl GitProbe {
         command
     }
 
-    /// Só as chamadas de árvore recebem o índice injetado.
     fn tree_git(&self, args: &[&str]) -> Command {
         let mut command = self.git(args);
         if let Some(index_file) = &self.index_file {
@@ -120,7 +116,6 @@ impl GitProbe {
         })
     }
 
-    /// Exige exit 0 e devolve o stdout.
     fn run_ok(&self, command: Command) -> Result<Vec<u8>, ProbeError> {
         let output = self.run(command)?;
         if !output.status.success() {
@@ -133,7 +128,6 @@ impl GitProbe {
         text_line(self.run_ok(self.git(args))?)
     }
 
-    /// Working tree diferente do índice, ou não rastreado fora do `.gitignore`.
     fn index_dirty(&self) -> Result<bool, ProbeError> {
         // Sem esta conferência o `git` trataria o índice ausente como vazio.
         if let Some(index_file) = &self.index_file
@@ -209,7 +203,6 @@ impl GitProbe {
         Ok(text.lines().map(str::to_owned).collect())
     }
 
-    /// Raiz do checkout (diretório principal ou worktree ligada) que contém o diretório da sonda.
     pub fn checkout_dir(&self) -> Result<PathBuf, ProbeError> {
         self.line(&["rev-parse", "--path-format=absolute", "--show-toplevel"])
             .map(PathBuf::from)
@@ -298,8 +291,9 @@ impl DevelopMark for GitProbe {
     }
 }
 
-impl GitTopology for GitProbe {
-    fn main_dir(&self) -> Result<PathBuf, ProbeError> {
+impl GitProbe {
+    /// Diretório de trabalho principal, o mesmo de qualquer worktree ligada.
+    pub fn main_dir(&self) -> Result<PathBuf, ProbeError> {
         let common_dir = self.line(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
         Path::new(&common_dir)
             .parent()
@@ -307,18 +301,8 @@ impl GitTopology for GitProbe {
             .ok_or_else(|| error("unexpected git output"))
     }
 
-    fn branch_exists(&self, name: &str) -> Result<bool, ProbeError> {
-        let output =
-            self.run(self.git(&["show-ref", "--verify", "-q", &format!("refs/heads/{name}")]))?;
-        match output.status.code() {
-            Some(0) => Ok(true),
-            // Ref inexistente sai 1; nome que o git não aceita sai 128.
-            Some(1 | 128) => Ok(false),
-            _ => Err(git_error(&output)),
-        }
-    }
-
-    fn worktree_branches(&self) -> Result<Vec<String>, ProbeError> {
+    /// Branches com worktree (a principal inclusive), em ordem crescente.
+    pub fn worktree_branches(&self) -> Result<Vec<String>, ProbeError> {
         let stdout = self.run_ok(self.git(&["worktree", "list", "--porcelain"]))?;
         let text = utf8_output(stdout)?;
         let mut branches: Vec<String> = text
@@ -330,7 +314,8 @@ impl GitTopology for GitProbe {
         Ok(branches)
     }
 
-    fn local_branches(&self) -> Result<Vec<String>, ProbeError> {
+    /// Branches locais, em ordem crescente.
+    pub fn local_branches(&self) -> Result<Vec<String>, ProbeError> {
         let stdout =
             self.run_ok(self.git(&["for-each-ref", "--format=%(refname:short)", "refs/heads"]))?;
         let text = utf8_output(stdout)?;
@@ -361,7 +346,6 @@ fn git_error(output: &GitOutput) -> ProbeError {
     )
 }
 
-/// Stdout de uma linha, sem o `\n` final.
 fn text_line(stdout: Vec<u8>) -> Result<String, ProbeError> {
     let mut text = utf8_output(stdout)?;
     if text.ends_with('\n') {
@@ -383,14 +367,12 @@ fn spawn_reader(pipe: impl Read + Send + 'static) -> Receiver<Vec<u8>> {
     receiver
 }
 
-/// Sem `join`: o que não chegou até o prazo é abandonado.
 fn collect(reader: &Receiver<Vec<u8>>, deadline: Instant) -> Result<Vec<u8>, ProbeError> {
     reader
         .recv_timeout(deadline.saturating_duration_since(Instant::now()))
         .map_err(|_| error("git timed out"))
 }
 
-/// Espera o filho até o prazo; passado o prazo, mata e recolhe o processo.
 fn wait_until(child: &mut Child, deadline: Instant) -> Result<ExitStatus, ProbeError> {
     loop {
         match child.try_wait() {

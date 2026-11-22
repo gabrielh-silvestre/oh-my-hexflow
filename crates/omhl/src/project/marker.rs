@@ -36,7 +36,7 @@ fn invalid(path: &Path, reason: impl std::fmt::Display) -> ProjectError {
     }
 }
 
-/// O texto de erro do TOML repete trechos do arquivo: só a posição, e o nome de uma chave extra, saem.
+/// O texto de erro do TOML repete trechos do arquivo.
 fn parse_raw(path: &Path, text: &str) -> Result<RawMarker, ProjectError> {
     let table: toml::Table = text.parse().map_err(|error: toml::de::Error| {
         let (line, column) = toml_error_position(text, &error);
@@ -80,7 +80,7 @@ pub fn parse_marker(path: &Path, bytes: &[u8]) -> Result<Marker, ProjectError> {
     })
 }
 
-/// Lê no máximo um byte além do limite, para que um marcador gigante não vá inteiro à memória.
+/// Para que um marcador gigante não vá inteiro à memória.
 fn read_capped(path: &Path) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     File::open(path)?
@@ -90,7 +90,6 @@ fn read_capped(path: &Path) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// `start` é absoluto; o marcador mais próximo vence e, se for inválido, a busca não sobe.
 pub fn find_marker(start: &Path) -> Result<Option<Located>, ProjectError> {
     for dir in start.ancestors() {
         let path = dir.join(MARKER_FILE);

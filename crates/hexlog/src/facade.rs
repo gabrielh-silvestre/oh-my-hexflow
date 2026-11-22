@@ -39,7 +39,7 @@ pub enum VerifyPolicy {
 pub struct Config {
     pub db_path: PathBuf,
     pub limits: Limits,
-    /// Espera máxima por uma trava; passado o prazo a chamada devolve `Busy`. Um `fsync` parado pode
+    /// Um `fsync` parado pode
     /// estender o `COMMIT` de quem segura a trava por dezenas de segundos, então nenhum prazo é
     /// garantido sob `fsync` sem teto.
     pub busy_timeout: Duration,
@@ -105,7 +105,6 @@ pub struct RevisionView {
     pub author: Author,
 }
 
-/// Situação de um extremo de relation, pela origem guardada no record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EndpointStatus {
     Current,
@@ -131,7 +130,6 @@ pub struct RelationView {
     pub retired: bool,
 }
 
-/// Dono do banco e do catálogo; empresta relógio, gerador de ids e nós nativos.
 pub struct Hexlog<'d> {
     store: SqliteStore,
     deps: Deps<'d>,
@@ -173,14 +171,11 @@ impl<'d> Hexlog<'d> {
         })
     }
 
-    /// Grava o lote numa transação só, ou devolve o resultado gravado se a chave de idempotência já existe.
-    ///
     /// - O adaptador limita bytes e profundidade antes de montar o `Value`, porque o trabalho
     ///   proporcional à entrada vem antes do teto de `data_max_chars`.
     /// - `at` é o instante do pedido, e `seq` é a ordem: entre escritores concorrentes `at` pode
     ///   sair fora da ordem de `seq`.
-    /// - O custo do `acyclic` cresce com o número de pares de cada `append`. Medido nesta máquina,
-    ///   com o piso de `fsync`: 16 a 27 ms com 0 pares, 53 a 65 ms com 1.000 e 320 a 566 ms com 5.000.
+    /// - O custo do `acyclic` cresce com o número de pares de cada `append`.
     /// - O invariante `acyclic` só é conferido na escrita da relation: reativar um nó retirado, ou
     ///   um nativo que volta numa versão nova do catálogo, não revalida.
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, HexlogError> {
@@ -230,7 +225,6 @@ impl<'d> Hexlog<'d> {
         })
     }
 
-    /// Todas as revisões da lineage, em ordem de `seq`, sem paginação.
     pub fn lineage_records(
         &mut self,
         tenant: &TenantId,
@@ -294,7 +288,6 @@ impl<'d> Hexlog<'d> {
         })
     }
 
-    /// Último record de cada relation do tenant, em ordem de `seq`, com o estado dos extremos; sem paginação.
     pub fn relations(
         &mut self,
         tenant: &TenantId,
@@ -314,7 +307,7 @@ impl<'d> Hexlog<'d> {
         self.read(tenant, |reader| WriteReads::chain_head(reader, tenant))
     }
 
-    /// Quebra é resultado do relatório; `expected_chain_head` revela uma cauda apagada ou reescrita.
+    /// `expected_chain_head` revela uma cauda apagada ou reescrita.
     pub fn verify_chain(
         &mut self,
         tenant: &TenantId,
@@ -332,8 +325,6 @@ impl<'d> Hexlog<'d> {
         &self.deps.catalog
     }
 
-    /// Leitura numa transação só; tenant desconhecido é recusado antes da consulta.
-    /// Com `Full`, a cadeia inteira é verificada antes (que já recusa o tenant desconhecido).
     fn read<T>(
         &mut self,
         tenant: &TenantId,
@@ -355,7 +346,6 @@ impl<'d> Hexlog<'d> {
     }
 }
 
-/// `ChainBroken` com o motivo da primeira quebra, em kebab, como código do detalhe.
 fn refuse_when_broken(reader: &mut dyn StoreReader, tenant: &TenantId) -> Result<(), HexlogError> {
     let report = verify_chain(reader, tenant, None)?;
     match report.breaks.first() {
@@ -532,7 +522,6 @@ fn relation_view(
     })
 }
 
-/// Pela origem guardada: nativo some sem erro; node do tenant sem record é corpo inconsistente.
 fn endpoint_status(
     reader: &mut dyn StoreReader,
     native: &dyn NativeNodes,

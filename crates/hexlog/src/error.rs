@@ -41,7 +41,6 @@ impl ErrorCode {
     }
 }
 
-/// Código do detalhe que marca o corte das violações.
 pub(crate) const TOO_MANY_ERRORS: &str = "too-many-errors";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,7 +74,7 @@ pub struct HexlogError {
 }
 
 impl HexlogError {
-    /// Recusa com um único detalhe de `path` vazio; `message` descreve a regra, nunca o valor.
+    /// `message` descreve a regra, nunca o valor.
     pub(crate) fn refused(code: ErrorCode, detail_code: &str, message: &str) -> HexlogError {
         HexlogError {
             code,
@@ -102,7 +101,6 @@ impl HexlogError {
         .at("/tenant")
     }
 
-    /// Antepõe `prefix` ao `path` de cada detalhe (um `path` vazio vira o próprio `prefix`).
     pub fn at(mut self, prefix: &str) -> HexlogError {
         for detail in &mut self.details {
             detail.path.insert_str(0, prefix);
@@ -110,7 +108,6 @@ impl HexlogError {
         self
     }
 
-    /// Como `at`, para o campo `field` do item `index` do lote.
     pub(crate) fn at_item(self, index: usize, field: &str) -> HexlogError {
         self.at(&format!("/items/{index}/{field}"))
     }
@@ -123,7 +120,6 @@ pub fn pointer_segment(segment: &str) -> String {
     escaped
 }
 
-/// Como `pointer_segment`, mas acrescenta ao `out` em vez de alocar.
 pub(crate) fn push_pointer_segment(out: &mut String, segment: &str) {
     for c in segment.chars() {
         match c {

@@ -19,7 +19,6 @@ use crate::{graphs, guard};
 
 static NATIVE: NativeBase = NativeBase;
 
-/// Tipos de node e de relação que a projeção lê (os que `projection::build` consome).
 const PROJECTED_NODE_TYPES: [&str; 7] = [
     "work-item",
     "pull-request",
@@ -32,7 +31,6 @@ const PROJECTED_NODE_TYPES: [&str; 7] = [
 const PROJECTED_RELATIONS: [&str; 3] = ["supports", "contradicts", "answers"];
 const AFTER_RELATION: &str = "after";
 
-/// Portas que o `Omhl` empresta; o dono é quem chama.
 #[derive(Clone, Copy)]
 pub struct OmhlDeps<'d> {
     pub clock: &'d dyn Clock,
@@ -46,11 +44,9 @@ pub struct ClosedWorkItem {
     pub report: GateReport,
 }
 
-/// Dono do `Hexlog`: monta o catalog de `graphs::catalog()` e usa o `NativeBase` real.
 pub struct Omhl<'d> {
     hexlog: Hexlog<'d>,
     probe: &'d dyn SnapshotProbe,
-    /// Tamanho de página do `HexlogSource`.
     page_size: u32,
 }
 
@@ -74,12 +70,10 @@ impl<'d> Omhl<'d> {
         Ok(self.hexlog.ensure_tenant(tenant)?)
     }
 
-    /// Catalog montado em `graphs::catalog()`, o mesmo que a guarda usa.
     pub fn catalog(&self) -> &Catalog {
         self.hexlog.catalog()
     }
 
-    /// A guarda valida o lote inteiro antes de qualquer escrita.
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, OmhlError> {
         guard::check_append(&mut self.hexlog, self.probe, req)?;
 
@@ -94,7 +88,6 @@ impl<'d> Omhl<'d> {
         Ok(self.hexlog.get(tenant, id)?)
     }
 
-    /// Todas as revisões da lineage, em ordem de `seq`; a última diz se ela foi aposentada.
     pub fn lineage_records(
         &mut self,
         tenant: &TenantId,
@@ -134,7 +127,6 @@ impl<'d> Omhl<'d> {
         Ok(self.hexlog.verify_chain(tenant, expected_chain_head)?)
     }
 
-    /// Avalia as perguntas entre duas leituras do chain head; não escreve nada.
     pub fn evaluate(
         &mut self,
         tenant: &TenantId,
@@ -150,7 +142,6 @@ impl<'d> Omhl<'d> {
         Ok(GateReport::assemble(gate, head, reports))
     }
 
-    /// O work item pode estar aberto ou fechado. A listagem dos checks fica dentro do colchete do head.
     pub fn evaluate_pr_gate(
         &mut self,
         tenant: &TenantId,
@@ -162,7 +153,6 @@ impl<'d> Omhl<'d> {
         self.gate_report(tenant, work_item, snapshots)
     }
 
-    /// Nodes e relações vigentes lidos entre duas leituras iguais do chain head.
     pub fn read_projection_state(
         &mut self,
         tenant: &TenantId,
@@ -190,7 +180,6 @@ impl<'d> Omhl<'d> {
         Ok(state)
     }
 
-    /// Todos os nodes `check` vigentes do projeto, todas as páginas.
     pub fn check_nodes(&mut self, tenant: &TenantId) -> Result<Vec<CheckNode>, OmhlError> {
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
         let views = source.nodes(tenant, &project_checks_filter())?;
@@ -205,7 +194,6 @@ impl<'d> Omhl<'d> {
             .collect())
     }
 
-    /// Relações `after` vigentes, como pares `(from, to)`.
     pub fn check_after_relations(
         &mut self,
         tenant: &TenantId,
@@ -239,7 +227,6 @@ impl<'d> Omhl<'d> {
         Ok(GateReport::assemble(GATE_NAME, head, reports))
     }
 
-    /// Fecha mesmo com o gate reprovado: o resultado fica gravado no work item. Escreve direto, sem a guarda.
     /// Os snapshots têm de ser o `HEAD` e a árvore dele, de uma árvore limpa, conferidos na sonda antes do gate.
     pub fn close_work_item(
         &mut self,
@@ -267,7 +254,6 @@ impl<'d> Omhl<'d> {
         Ok(ClosedWorkItem { outcome, report })
     }
 
-    /// Recusa `work-item-not-found` quando o id não é de um work item, aberto ou fechado.
     pub fn find_work_item(
         &mut self,
         tenant: &TenantId,

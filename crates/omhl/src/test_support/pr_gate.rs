@@ -22,7 +22,6 @@ pub fn native_check(id: &'static str, event: &'static str, blocking: bool) -> Na
     }
 }
 
-/// Os dois checks que o gate cobra por padrão, na ordem de `NativeBase::checks()`.
 pub fn default_natives() -> Vec<NativeCheck> {
     vec![
         native_check(RUN_TESTS, "before-commit", true),
@@ -30,7 +29,6 @@ pub fn default_natives() -> Vec<NativeCheck> {
     ]
 }
 
-/// `NodeView` de um check do projeto, montado por literal.
 pub fn project_check(id: &str, event: &str, blocking: bool, shadowed: bool) -> NodeView {
     NodeView {
         id: sid(id),
@@ -46,7 +44,6 @@ pub fn project_check(id: &str, event: &str, blocking: bool, shadowed: bool) -> N
     }
 }
 
-/// Como `project_check`, mas com `run`, `timeout_secs` e `expect` e gravado pelo `loader`.
 pub fn mechanical_project_check(id: &str, event: &str, blocking: bool, shadowed: bool) -> NodeView {
     let mut data = check_data(event, "run it", blocking);
     data["run"] = json!(["true"]);
@@ -60,7 +57,6 @@ pub fn mechanical_project_check(id: &str, event: &str, blocking: bool, shadowed:
     }
 }
 
-/// O que `required_checks` devolve, escrito por ids de texto: `(id, kind)` na ordem dada.
 pub fn required_pairs(pairs: &[(&str, SnapshotKind)]) -> Vec<(SemanticId, SnapshotKind)> {
     pairs.iter().map(|(id, kind)| (sid(id), *kind)).collect()
 }

@@ -7,6 +7,7 @@ use super::engine::{Engine, parse_at};
 use super::error::AppError;
 use super::output;
 use super::read::{all_nodes, nodes_matching};
+use crate::native::NativeBase;
 use crate::ports::workflow::read_policy;
 use crate::workflow::config::WorkflowConfig;
 use crate::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_by, gap_state};
@@ -16,7 +17,6 @@ use crate::workflow::retro::{DivergenceFact, GapFact, RetroFacts, retro};
 const GAP_RELATIONS: [&str; 3] = ["answers", "supports", "contradicts"];
 
 impl Engine<'_> {
-    /// Só gaps vivos, na ordem de criação; o filtro vale para o campo `work_item` do gap.
     pub(super) fn report_answers(&mut self, work_item: Option<&str>) -> Result<Value, AppError> {
         let where_eq = match work_item {
             None => Vec::new(),
@@ -36,7 +36,6 @@ impl Engine<'_> {
         Ok(json!({ "gaps": entries }))
     }
 
-    /// Só lê: vale para work item aberto ou fechado.
     pub(super) fn report_retro(&mut self, work_item: &str) -> Result<Value, AppError> {
         let id = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let facts = self.retro_facts(&id)?;
@@ -88,7 +87,6 @@ impl Engine<'_> {
         })
     }
 
-    /// Só lê: sugerir a promoção é com o agente, e a `guideline` só entra com `confirmed_by`.
     pub(super) fn report_recurrences(&mut self, min: Option<u32>) -> Result<Value, AppError> {
         let min = match min {
             Some(min) => min,
@@ -98,9 +96,14 @@ impl Engine<'_> {
             .iter()
             .filter_map(recurrence_premise)
             .collect();
+        let native = NativeBase
+            .guidelines()
+            .iter()
+            .map(|guideline| guideline.text.to_owned());
         let directives: Vec<String> = all_nodes(&mut self.omhl, &self.tenant, "guideline")?
             .iter()
             .filter_map(|view| text_field(view, "text"))
+            .chain(native)
             .collect();
         let groups: Vec<Value> = recurrences(&premises, &directives, min)
             .into_iter()
@@ -117,7 +120,6 @@ impl Engine<'_> {
         Ok(json!({ "min": min, "recurrences": groups }))
     }
 
-    /// Sem raiz de projeto (`--db`) não há `workflow.toml`: vale o padrão.
     fn default_promotion_min(&self) -> Result<u32, AppError> {
         let config = match self.project_root.as_deref() {
             Some(root) => read_policy(root)?,
@@ -127,7 +129,6 @@ impl Engine<'_> {
         Ok(config.promotion.min_work_items)
     }
 
-    /// As premissas vigentes e os fatos de gap do tenant (premissas, diretivas e relations).
     pub(super) fn load_gap_facts(&mut self) -> Result<(Vec<NodeView>, GapFacts), AppError> {
         let premises = all_nodes(&mut self.omhl, &self.tenant, "premise")?;
         let guidelines = all_nodes(&mut self.omhl, &self.tenant, "guideline")?;
@@ -163,7 +164,6 @@ fn divergence_fact(view: &NodeView) -> Option<DivergenceFact> {
     })
 }
 
-/// Diretiva nativa não é node do tenant: entra pelas pontas das relations.
 fn gap_facts(
     premises: &[NodeView],
     guidelines: &[NodeView],
@@ -240,7 +240,6 @@ pub(super) fn state_name(state: GapState) -> &'static str {
     }
 }
 
-/// Premissa legada, sem `kind` ou `work_item`, não entra no agrupamento.
 fn recurrence_premise(view: &NodeView) -> Option<Premise> {
     Some(Premise {
         id: view.id.as_str().to_owned(),

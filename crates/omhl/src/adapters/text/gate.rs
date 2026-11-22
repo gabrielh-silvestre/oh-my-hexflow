@@ -1,5 +1,3 @@
-//! Texto do `gate-pr` e do `close`: o `close` reusa o corpo do gate, o do `append` e o do `report retro`.
-
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
@@ -33,7 +31,6 @@ pub static GATE_PR_PROFILE: Profile = Profile {
     failure: &error::ENTRIES,
 };
 
-/// As chaves do gate vivem sob `report`; as do append, sob `outcome`; as do retro, sob `retro` (nulo sem projeto).
 pub static CLOSE_PROFILE: Profile = Profile {
     label: "close",
     nodes: None,
@@ -98,7 +95,6 @@ fn failed_questions(report: &Value) -> impl Iterator<Item = &Value> {
     items(report, "questions").filter(|question| question["passed"] != true)
 }
 
-/// O passo da primeira pergunta que reprova e traz um; as demais ficam no campo da própria linha.
 fn first_next_step(report: &Value) -> Option<String> {
     failed_questions(report).find_map(|question| opt_text(question, "next_step"))
 }
@@ -120,7 +116,6 @@ fn gate_summary(report: &Value) -> Vec<String> {
     parts
 }
 
-/// Uma linha por pergunta; o `next_step` de quem reprova vira campo, menos o que já é o `Next:` (`action`).
 fn question_lines(report: &Value, action: Option<&str>) -> Vec<Line> {
     items(report, "questions")
         .flat_map(|question| {
@@ -229,7 +224,6 @@ impl Specialization for Close {
         lines
     }
 
-    /// Só há o que propor quando o retro traz algum item.
     fn closing(&self, value: &Value) -> Closing {
         match Retro.detail_lines(value).is_empty() {
             true => Closing::None,

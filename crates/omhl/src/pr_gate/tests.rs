@@ -19,7 +19,6 @@ fn tree(fill: char) -> Snapshot {
     Snapshot::new(SnapshotKind::GitTree, &fill.to_string().repeat(40)).expect("valid snapshot")
 }
 
-/// O commit `snap('a')` e a árvore `tree('c')` de um HEAD limpo.
 fn at_head() -> GateSnapshots {
     snapshots(&snap('a'), &tree('c'))
 }

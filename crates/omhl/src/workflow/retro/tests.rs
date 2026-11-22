@@ -21,7 +21,6 @@ fn divergence_fact(id: &str, kind: &str, resolution: &str) -> DivergenceFact {
     }
 }
 
-/// Divergência `spec-stale` que cita a emenda `amendment` (sem `.md`), como o grafo a guarda.
 fn stale_fact(id: &str, amendment: &str) -> DivergenceFact {
     DivergenceFact {
         amendment: Some(amendment.to_owned()),

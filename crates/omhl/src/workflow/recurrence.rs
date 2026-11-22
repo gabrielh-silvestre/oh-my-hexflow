@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-/// Premissa vigente com os campos que entram na chave de agrupamento.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Premise {
     pub id: String,
@@ -9,19 +8,14 @@ pub struct Premise {
     pub work_item: String,
 }
 
-/// Grupo de premissas com o mesmo `kind` e o mesmo texto normalizado.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Recurrence {
     pub kind: String,
-    /// Texto normalizado: é a chave do grupo.
     pub text: String,
-    /// Distintos, na ordem da primeira aparição.
     pub work_items: Vec<String>,
-    /// Todas as premissas do grupo, na ordem da entrada.
     pub premises: Vec<String>,
 }
 
-/// `trim`, minúsculas, espaços colapsados e sem pontuação final.
 pub fn normalize(text: &str) -> String {
     let collapsed = text
         .to_lowercase()
@@ -34,7 +28,6 @@ pub fn normalize(text: &str) -> String {
         .to_owned()
 }
 
-/// Grupos com pelo menos `min` work items distintos, sem os que já viraram diretiva.
 pub fn recurrences(premises: &[Premise], directives: &[String], min: u32) -> Vec<Recurrence> {
     let directives: HashSet<String> = directives.iter().map(|text| normalize(text)).collect();
     let mut index: HashMap<(&str, String), usize> = HashMap::new();

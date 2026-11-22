@@ -1,4 +1,3 @@
-//! Leitor de comando de shell do hook `agent-role`: só o que as regras do hook precisam saber.
 //! Puro, sem IO e sem biblioteca de shell: aspas, heredocs, separadores, redirecionamentos e embrulhos.
 
 mod cursor;
@@ -9,10 +8,9 @@ mod wrapper;
 
 use self::wrapper::{Opacity, Resolved, basename};
 
-/// Maior comando que o leitor aceita (256 KiB): acima disso ele não lê.
 const MAX_COMMAND_BYTES: usize = 256 * 1024;
+const OMHL: &str = "omhl";
 
-/// O leitor não sabe o que o comando faz: aspas ou heredoc sem fechar, aninhamento ou tamanho acima do limite.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadError {
     UnclosedQuote,
@@ -21,21 +19,15 @@ pub enum ReadError {
     TooLong,
 }
 
-/// O comando da ferramenta Bash como lista de comandos simples.
 #[derive(Debug)]
 pub struct CommandLine {
     pub commands: Vec<SimpleCommand>,
-    /// Mais de um comando simples, ou algum separador. Redirecionamento e a quebra de linha final não contam.
     pub compound: bool,
-    /// Só espaços e tabs antes da primeira palavra do primeiro comando (sem comentário, linha em branco, redirecionamento ou continuação).
     pub clean_start: bool,
-    /// Heredoc sem aspas no terminador cujo corpo tem `$(` ou crase: o bash executa o que está lá dentro.
     pub executes_heredoc: bool,
-    /// O texto cru do comando inteiro tem `omhl`: `$(command -v omhl)` e `P=omhl; $P` também contam.
     pub mentions_omhl: bool,
 }
 
-/// Um comando simples: o trecho entre separadores, com as palavras sem aspas.
 #[derive(Debug)]
 pub struct SimpleCommand {
     words: Vec<String>,
@@ -43,12 +35,10 @@ pub struct SimpleCommand {
 }
 
 impl SimpleCommand {
-    /// O programa real (basename) depois de pular atribuições e embrulhos; `None` se o leitor não o achou.
     pub fn program(&self) -> Option<&str> {
         self.resolved.program_at.map(|at| basename(&self.words[at]))
     }
 
-    /// O comando em três partes: as palavras antes do programa (atribuições, embrulhos e suas opções), o programa real e as palavras depois dele.
     pub fn split(&self) -> (&[String], Option<&str>, &[String]) {
         match self.resolved.program_at {
             Some(at) => (
@@ -60,16 +50,14 @@ impl SimpleCommand {
         }
     }
 
-    /// Uma palavra reservada (`!`, `if`, `do`...) antes do programa: ali um `VAR=valor` na frente não vale.
     pub fn follows_keyword(&self) -> bool {
         self.split().0.iter().any(|word| wrapper::is_keyword(word))
     }
 
     /// Roda o `omhl` ou o leitor não consegue descartar que rode: nega-se em vez de adivinhar.
-    /// `mentions_omhl` vem do texto cru do comando inteiro (`CommandLine::mentions_omhl`).
     pub fn may_run_omhl(&self, mentions_omhl: bool) -> bool {
         match self.resolved.opacity {
-            None if self.program() == Some("omhl") => true,
+            None if self.program().is_some_and(is_omhl_word) => true,
             // O programa é uma expansão (`$X`, `${...}`): o bash decide o que roda, o leitor não sabe.
             None => {
                 self.resolved
@@ -79,11 +67,21 @@ impl SimpleCommand {
             }
             Some(Opacity::Rewriting) => mentions_omhl,
             Some(Opacity::UnknownOption) => {
-                self.words.iter().any(|word| basename(word) == "omhl")
+                self.words.iter().any(|word| is_omhl_word(word))
                     || (mentions_omhl && self.words.iter().any(|word| word.contains('$')))
             }
         }
     }
+}
+
+/// O texto cru tem `omhl` em qualquer lugar; sensível a caixa.
+pub fn mentions_omhl(text: &str) -> bool {
+    text.contains(OMHL)
+}
+
+/// A palavra é o programa `omhl`, com ou sem diretório na frente.
+pub fn is_omhl_word(word: &str) -> bool {
+    basename(word) == OMHL
 }
 
 pub fn read_command(command: &str) -> Result<CommandLine, ReadError> {
@@ -113,7 +111,7 @@ pub fn read_command(command: &str) -> Result<CommandLine, ReadError> {
         compound,
         clean_start,
         executes_heredoc: lexed.executes_heredoc,
-        mentions_omhl: command.contains("omhl"),
+        mentions_omhl: mentions_omhl(command),
     })
 }
 

@@ -1,6 +1,5 @@
 //! Vocabulário central da saída: o único lugar com símbolos, marcadores, separadores, recuo, `Next:`, o aviso de
-//! segredos e as palavras que mais de um comando repete. `Vocabulary` é a base; `AgentVocabulary` e `HumanVocabulary`
-//! a implementam e sobrescrevem só o que difere. Frases que um comando só usa ficam no comando.
+//! segredos e as palavras que mais de um comando repete. Frases que um comando só usa ficam no comando.
 
 use std::fmt::Display;
 
@@ -21,7 +20,6 @@ pub const NEXT_LABEL: &str = "Next:";
 pub const NOTHING_BLOCKED: &str = "Nothing blocked.";
 pub const SECRET_WARNING: &str = "The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.";
 
-/// Caracteres que o texto mostra de um hash de snapshot ou de commit; o `Profile` e o corte do texto usam este valor.
 pub const HASH_PREFIX_LEN: usize = 7;
 
 pub const BLOCKING: &str = "blocking";
@@ -32,12 +30,10 @@ pub const NONE: &str = "none";
 pub const UNCHANGED: &str = "unchanged";
 pub const WARNING: &str = "warning";
 
-/// `seq 7`.
 pub fn seq_label(seq: impl Display) -> String {
     format!("seq {seq}")
 }
 
-/// "N nouns", com o singular em 1.
 pub fn plural(count: usize, noun: &str) -> String {
     match count {
         1 => format!("1 {noun}"),
@@ -45,7 +41,6 @@ pub fn plural(count: usize, noun: &str) -> String {
     }
 }
 
-/// `none` quando vazio; senão `plural`.
 pub fn counted(count: usize, noun: &str) -> String {
     match count {
         0 => NONE.to_owned(),
@@ -78,7 +73,6 @@ pub trait Vocabulary {
         }
     }
 
-    /// Dois espaços por nível de hierarquia.
     fn indent(&self, depth: usize) -> String {
         "  ".repeat(depth)
     }
@@ -91,7 +85,6 @@ pub trait Vocabulary {
         format!("{NOTHING_BLOCKED} {}", self.next(step))
     }
 
-    /// Limpeza de um valor (parte de cabeçalho ou de item, valor de campo, fato, nota, passo do fecho).
     fn clean(&self, value: &str) -> String {
         value.to_owned()
     }
@@ -102,12 +95,10 @@ pub trait Vocabulary {
     }
 }
 
-/// Texto legível: mantém o espaçamento como o produto escreve.
 pub struct HumanVocabulary;
 
 impl Vocabulary for HumanVocabulary {}
 
-/// Texto compacto: um só espaço entre as partes, sem espaço repetido nem nas pontas dos valores.
 pub struct AgentVocabulary;
 
 impl Vocabulary for AgentVocabulary {

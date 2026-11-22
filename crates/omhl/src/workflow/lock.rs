@@ -1,13 +1,12 @@
 use std::path::{Component, Path, PathBuf};
 
-use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, PART_PREFIX, work_item_of_folder};
+use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, FREEZE_MARK, PART_PREFIX, work_item_of_folder};
 use super::spec::amendment_number;
 
 const FROZEN: &str = "spec-frozen";
 const IN_LINKED_WORKTREE: &str = "spec-in-linked-worktree";
 const FOLDER_UNKNOWN: &str = "spec-folder-unknown";
 
-/// Um arquivo sob `<specs.dir>/wi-<id>__<slug>/`; `file` é o restante do caminho depois da pasta.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecPath {
     pub work_item: String,
@@ -41,20 +40,17 @@ pub enum Verdict {
 }
 
 pub struct Facts<'a> {
-    /// Existe branch local cujo work item é o do segmento da pasta.
-    pub frozen: bool,
-    /// O caminho está dentro de uma worktree ligada, não no diretório principal.
+    pub has_branch: bool,
+    /// Alguma pasta `wi-<id>__*` do work item tem a marca `.frozen`.
+    pub marked: bool,
     pub linked_worktree: bool,
-    /// A pasta `wi-<id>__<slug>` do caminho já existe no diretório principal.
     pub folder_exists: bool,
     pub file_exists: bool,
-    /// Nomes dos arquivos da pasta de spec no diretório principal.
     pub folder_files: &'a [String],
-    /// `<diretório principal>/<specs.dir>/<pasta>`.
     pub main_folder: &'a Path,
 }
 
-/// Pré-filtro barato, só texto: algum componente do caminho tem a forma da pasta de work item. A pasta tem forma fixa mesmo com `specs.dir` customizado, então sem ela o caminho nunca é de spec.
+/// A pasta tem forma fixa mesmo com `specs.dir` customizado, então sem ela o caminho nunca é de spec.
 pub fn has_spec_folder_component(file_path: &Path) -> bool {
     file_path.components().any(|component| {
         component
@@ -64,7 +60,7 @@ pub fn has_spec_folder_component(file_path: &Path) -> bool {
     })
 }
 
-/// Só texto: `.` e `..` são resolvidos sem tocar o disco, para `specs/../specs/wi-x__y/...` não escapar.
+/// Para `specs/../specs/wi-x__y/...` não escapar.
 pub fn parse_spec_path(specs_dir: &str, file_path: &Path) -> Option<SpecPath> {
     let names = normalized_names(file_path)?;
     let dir = normalized_names(Path::new(specs_dir))?;
@@ -90,7 +86,6 @@ pub fn parse_spec_path(specs_dir: &str, file_path: &Path) -> Option<SpecPath> {
         })
 }
 
-/// Maior `emenda-NN.md` (dois dígitos) mais um; `emenda-01.md` quando não há nenhuma.
 pub fn next_amendment(folder_files: &[String]) -> String {
     let highest = folder_files
         .iter()
@@ -101,7 +96,7 @@ pub fn next_amendment(folder_files: &[String]) -> String {
     format!("{AMENDMENT_PREFIX}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
-/// Ordem: worktree ligada; sem branch libera; congelada nega qualquer arquivo em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
+/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {
@@ -112,14 +107,14 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
             ),
         };
     }
-    if !facts.frozen {
+    if !(facts.has_branch || facts.marked) {
         return Verdict::Allow;
     }
     if !facts.folder_exists {
         return Verdict::Deny {
             code: FOLDER_UNKNOWN,
             reason: format!(
-                "{FOLDER_UNKNOWN}: the work item has a branch and {} does not exist; spec files are only written in the existing spec folder of the work item",
+                "{FOLDER_UNKNOWN}: the work item is frozen (it has a branch or the {FREEZE_MARK} mark, or the mark could not be read) and {} does not exist; spec files are only written in the existing spec folder of the work item",
                 facts.main_folder.display()
             ),
         };
@@ -132,7 +127,7 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     Verdict::Deny {
         code: FROZEN,
         reason: format!(
-            "{FROZEN}: the spec in {} is frozen because the work item has a branch; to correct it, record a divergence and create the amendment {} (Write of a new file)",
+            "{FROZEN}: the spec in {} is frozen because the work item has a branch or the {FREEZE_MARK} mark, or the mark could not be read; to correct it, record a divergence and create the amendment {} (Write of a new file)",
             facts.main_folder.display(),
             amendment.display()
         ),
@@ -151,7 +146,6 @@ fn is_spec_family(spec: &SpecPath) -> bool {
     spec.file.starts_with(PART_PREFIX) || spec.file.starts_with(AMENDMENT_PREFIX)
 }
 
-/// Componentes `Normal` do caminho depois de resolver `.` e `..` no texto; `None` se algum não é UTF-8.
 fn normalized_names(path: &Path) -> Option<Vec<&str>> {
     let mut names = Vec::new();
     for component in path.components() {

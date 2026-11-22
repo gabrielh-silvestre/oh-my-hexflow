@@ -502,7 +502,7 @@ fn it_should_release_spec_lock_with_an_error_line_on_invalid_stdin() {
 }
 
 #[test]
-fn it_should_release_spec_lock_with_an_error_line_on_a_relative_cwd() {
+fn it_should_ignore_a_relative_cwd_in_spec_lock() {
     let project = Project::new("acme");
     let stdin = pre_tool_use(
         Path::new("relative/project"),
@@ -511,7 +511,9 @@ fn it_should_release_spec_lock_with_an_error_line_on_a_relative_cwd() {
 
     let output = run_spec_lock(project.xdg(), &stdin);
 
-    assert_released_with_code(&output, "invalid-hook-input");
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+    assert!(output.stderr.is_empty(), "stderr stays empty");
 }
 
 #[test]

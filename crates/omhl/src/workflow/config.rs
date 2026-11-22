@@ -23,7 +23,6 @@ pub struct WorkflowConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecsConfig {
-    /// Relativo ao diretório principal.
     pub dir: String,
     pub max_lines: u32,
     pub placeholders: Vec<String>,
@@ -106,7 +105,7 @@ struct RawSpecs {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawPromotion {
-    min_work_items: Option<u32>,
+    min_work_items: Option<Spanned<u32>>,
 }
 
 #[derive(Deserialize)]
@@ -136,8 +135,6 @@ const RESERVED_OMHL_SUBTREES: [&str; 4] =
     [CHECKS_DIR, GUIDELINES_DIR, PROJECTION_DIR, WORKFLOW_FILE];
 
 /// `specs.dir` é relativo ao diretório principal: absoluto ou com `..` escaparia dele.
-/// Precisa ter pasta própria (`""`, `.` e `./` são a raiz) e ficar fora do `.git`, da raiz do `.omhl`
-/// e das subárvores reservadas dele.
 fn is_usable_specs_dir(dir: &str) -> bool {
     let dir = Path::new(dir);
     if dir.has_root() || dir.components().any(|c| c == Component::ParentDir) {
@@ -204,7 +201,15 @@ pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, Proje
         }
     }
     if let Some(min_work_items) = raw.promotion.and_then(|promotion| promotion.min_work_items) {
-        config.promotion.min_work_items = min_work_items;
+        if *min_work_items.as_ref() == 0 {
+            return Err(invalid_at(
+                path,
+                text,
+                min_work_items.span(),
+                "promotion.min_work_items must be at least 1",
+            ));
+        }
+        config.promotion.min_work_items = min_work_items.into_inner();
     }
     for (prefix, table) in raw.prefix.unwrap_or_default() {
         config.prefixes.insert(prefix, table.require);

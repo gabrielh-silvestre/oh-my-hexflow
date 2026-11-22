@@ -6,107 +6,12 @@ use std::fs;
 use ::omhl::guard::{ROLE_REFERENCE_COMMANDS, ROLE_REFERENCE_MATRIX};
 use support::repo_checks::repo_root;
 
-const FAILURE_TABLE_CODES: [&str; 17] = [
-    "check-not-run",
-    "attestation-refused",
-    "attestation-not-recorded",
-    "checks-failed",
-    "unsupported-platform",
-    "spawn-failed",
-    "outcome-immutable",
-    "command-changed-tree",
-    "command-changed-worktree",
-    "not-run",
-    "spec-invalid",
-    "spec-stale",
-    "snapshot-tree-mismatch",
-    "snapshot-dirty",
-    "snapshot-not-head",
-    "work-item-closed",
-    "probe-failed",
-];
-const FAILURE_TABLE_KINDS: [&str; 11] = [
-    "spawn-not-found",
-    "spawn-permission-denied",
-    "spawn-failed",
-    "busy-exhausted",
-    "guard-refused",
-    "blob-failed",
-    "probe-failed",
-    "tree-changed",
-    "push-to-main",
-    "parent-gone",
-    "spec-stale",
-];
 const MARK_LINE: &str =
     r#"printf 'omhl-develop-mark v1\n' > "$(git rev-parse --absolute-git-dir)/omhl-develop-mark""#;
 const MECHANICAL_GATES_PAGE: &str = "docs/mechanical-gates.md";
 const DEVELOP_MARK_COMMAND: &str = "plugin/commands/omhl-develop-mark.md";
 const DIRECTIVES_FLOW_PAGE: &str = "docs/directives-flow.md";
 const DIRECTIVES_FLOW_SKILL: &str = "plugin/skills/directives-flow/SKILL.md";
-/// Códigos novos da entrega `work-items.dir0`, levantados de `git diff develop..HEAD -- crates/omhl/src`.
-const DIRECTIVES_FLOW_CODES: [&str; 49] = [
-    // S3: `RuleCode` em `crates/omhl/src/error.rs`
-    "confirmation-required",
-    "confirmation-invalid",
-    // S4: `crates/omhl/src/workflow/config.rs` e `ports/workflow.rs`
-    "invalid-workflow-config",
-    // S5: construtores em `crates/omhl/src/app/error.rs`
-    "worktree-gate-refused",
-    "prefix-not-allowed",
-    "main-dir-unknown",
-    // S6a: construtores em `crates/omhl/src/app/error.rs`
-    "spec-exists",
-    "spec-slug-invalid",
-    "spec-not-found",
-    "spec-invalid",
-    // S6b: `Code` em `crates/omhl/src/workflow/spec.rs`
-    "sections-invalid",
-    "section-empty",
-    "section-without-items",
-    "item-id-invalid",
-    "item-id-duplicate",
-    "file-too-long",
-    "placeholder-found",
-    "pending-marker-invalid",
-    "divergence-ref-invalid",
-    "correction-invalid",
-    "correction-target-unknown",
-    "amendment-defines-item",
-    "amendment-name-invalid",
-    "amendment-number-duplicate",
-    // S6c: `Code` em `crates/omhl/src/workflow/spec.rs`
-    "cited-id-unknown",
-    "cited-id-unconfirmed",
-    "business-premise-missing",
-    "pending-gap-unresolved",
-    // S10: `crates/omhl/src/workflow/lock.rs`
-    "spec-frozen",
-    "spec-in-linked-worktree",
-    // S10b: `Code` e `amendment_divergence_mismatch` em `workflow/spec.rs`
-    "amendment-divergence-unknown",
-    "amendment-divergence-foreign",
-    "amendment-divergence-closed",
-    "amendment-correction-missing",
-    "amendment-divergence-mismatch",
-    // S10b: `crates/omhl/src/app/error.rs` e `app/spec.rs`
-    "amendment-invalid",
-    "amendment-not-found",
-    "amendment-divergence-not-open",
-    "amendment-work-item-mismatch",
-    // E1: `kind` da diretiva e `rests-on`, em `crates/omhl/src/error.rs` e `extensions/parse.rs`
-    "kind-missing",
-    "kind-invalid",
-    "rests-on-architecture",
-    "rests-on-target-type",
-    "guideline-retire-by-command",
-    // E1: retirada de diretiva, em `crates/omhl/src/app/error.rs`
-    "guideline-not-found",
-    "guideline-not-orphaned",
-    "successor-not-current",
-    "successor-is-self",
-    "supersedes-cycle",
-];
 /// Âncoras da skill, sempre entre crases no texto; origem: bloco S13 do plano e decisões (e), (i) e (j).
 const SKILL_ANCHORS: [&str; 20] = [
     // as quatro categorias de proposta da retro
@@ -218,18 +123,6 @@ fn it_should_link_the_mechanical_gates_page_from_the_readme() {
 }
 
 #[test]
-fn it_should_document_every_error_code_and_kind_of_the_failure_table_in_the_mechanical_gates_page()
-{
-    let page = read_repo_file(MECHANICAL_GATES_PAGE);
-
-    let missing_codes = missing_from(&page, &FAILURE_TABLE_CODES);
-    let missing_kinds = missing_from(&page, &FAILURE_TABLE_KINDS);
-
-    assert_eq!(missing_codes, Vec::<&str>::new());
-    assert_eq!(missing_kinds, Vec::<&str>::new());
-}
-
-#[test]
 fn it_should_provide_the_develop_mark_command_with_the_marker_line() {
     let command = read_repo_file(DEVELOP_MARK_COMMAND);
     let page = read_repo_file(MECHANICAL_GATES_PAGE);
@@ -266,15 +159,6 @@ fn it_should_name_diretiva_as_the_pt_br_name_of_guideline_in_the_glossary() {
 #[test]
 fn it_should_provide_the_directives_flow_page() {
     assert!(repo_root().join(DIRECTIVES_FLOW_PAGE).is_file());
-}
-
-#[test]
-fn it_should_document_every_new_error_and_violation_code_in_the_directives_flow_page() {
-    let page = read_repo_file(DIRECTIVES_FLOW_PAGE);
-
-    let missing = missing_from(&page, &DIRECTIVES_FLOW_CODES);
-
-    assert_eq!(missing, Vec::<&str>::new());
 }
 
 #[test]

@@ -244,7 +244,6 @@ impl Catalog {
         self.relation_entry(name).map(|entry| &entry.info.def_hash)
     }
 
-    /// Todas as violações de `data` contra o schema do tipo, até 50 e o marcador `too-many-errors`.
     pub fn validate_data(&self, name: &TypeName, data: &Value) -> Result<(), Vec<DataViolation>> {
         match self.type_entry(name) {
             Some(entry) => entry.schema.validate(data),

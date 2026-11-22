@@ -22,7 +22,6 @@ use crate::project::Env;
 use crate::project::marker::find_marker;
 use crate::project::paths::{data_root, default_db_path, prepare_db_file};
 
-/// Dono do projeto e das portas de produção; cada `app()` as empresta.
 pub struct Runtime {
     tenant: TenantId,
     db_path: PathBuf,
@@ -39,7 +38,6 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    /// O banco só é preparado depois que o marcador é achado.
     pub fn discover(start: &Path, db: Option<&Path>, env: &Env<'_>) -> Result<Runtime, AppError> {
         let cwd = std::env::current_dir().map_err(|_| AppError::invalid_project_dir())?;
         let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
@@ -97,14 +95,12 @@ impl Runtime {
         }))
     }
 
-    /// Antes do `check run`: nada do que acontece aqui muda a saída nem o código de saída.
     fn sweep_quietly(&self) {
         if let Ok(report) = sweep_project_strays(&self.root) {
             self.append_sweep_log(&report);
         }
     }
 
-    /// Uma linha em `<data_root>/omhl/sweep.jsonl` quando algo foi varrido; erro de escrita é descartado.
     fn append_sweep_log(&self, report: &SweepReport) {
         let Some(data_root) = &self.data_root else {
             return;
@@ -129,7 +125,6 @@ impl Runtime {
     }
 }
 
-/// Compara a pasta do banco com a raiz depois de resolver links simbólicos, quando a pasta já existe.
 // shortcut: pasta que ainda não existe é comparada só pelo texto (`..` não é resolvido); canonicalizar o ancestral existente se aparecer.
 fn is_inside(db_path: &Path, root: &Path) -> bool {
     let absolute = std::path::absolute(db_path).unwrap_or_else(|_| db_path.to_path_buf());
@@ -164,7 +159,6 @@ fn run_gate_worktree(
     }
 }
 
-/// Descobre o projeto, abre o `App` e executa uma ação, para quem só precisa de uma chamada.
 pub fn run_action(
     start: &Path,
     db: Option<&Path>,

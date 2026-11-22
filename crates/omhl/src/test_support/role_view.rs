@@ -39,7 +39,7 @@ pub enum Channel {
     AgentBody,
 }
 
-// Medido pelo G1, Claude Code 2.1.327, 2026-11-18; registro no ADR 0010 (PR 3 desta agregadora).
+// Medido pelo G1, Claude Code 2.1.327, 2026-11-18; registro no ADR 0011 (PR 3 desta agregadora).
 pub const SKILLS_SPELLING: SkillsSpelling = SkillsSpelling::Qualified;
 pub const CHANNEL: Channel = Channel::SkillsField;
 
