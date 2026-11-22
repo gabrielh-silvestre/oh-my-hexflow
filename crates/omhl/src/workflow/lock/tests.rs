@@ -731,3 +731,269 @@ mod lock {
         assert!(denial(verdict).1.contains("git failed without a message"));
     }
 }
+
+mod specs_dir_change {
+    use std::path::Path;
+
+    use crate::project::layout::EXT_FILE_MAX_BYTES;
+    use crate::workflow::lock::{
+        EditInput, Replacement, Verdict, is_same_path, is_workflow_candidate, resulting_texts,
+        spec_dir_frozen, specs_dir_of,
+    };
+
+    const DEFAULT_DIR: &str = ".omhl/specs";
+    const CUSTOM_WORKFLOW: &str = "version = 1\n\n[specs]\ndir = \"x\"\n";
+
+    fn replacement(old: &str, new: &str, replace_all: bool) -> Replacement {
+        Replacement {
+            old: old.to_owned(),
+            new: new.to_owned(),
+            replace_all,
+        }
+    }
+
+    fn edit(old: &str, new: &str, replace_all: bool) -> EditInput {
+        EditInput::Edit(replacement(old, new, replace_all))
+    }
+
+    fn texts(input: &EditInput, current: &str) -> Option<Vec<String>> {
+        resulting_texts(input, Some(current))
+    }
+
+    fn reason(verdict: Verdict) -> String {
+        match verdict {
+            Verdict::Deny { code, reason } => {
+                assert_eq!(code, "spec-dir-frozen");
+                reason
+            }
+            Verdict::Allow => panic!("expected a denial"),
+        }
+    }
+
+    // `specs_dir_of`
+
+    #[test]
+    fn it_should_use_the_default_specs_dir_when_the_file_is_absent() {
+        assert_eq!(specs_dir_of(None), DEFAULT_DIR);
+    }
+
+    #[test]
+    fn it_should_use_the_default_specs_dir_when_a_valid_file_has_no_key() {
+        let dir = specs_dir_of(Some(b"version = 1\n\n[specs]\nmax_lines = 10\n"));
+
+        assert_eq!(dir, DEFAULT_DIR);
+    }
+
+    #[test]
+    fn it_should_use_the_specs_dir_of_a_valid_file() {
+        assert_eq!(specs_dir_of(Some(CUSTOM_WORKFLOW.as_bytes())), "x");
+    }
+
+    #[test]
+    fn it_should_treat_a_dot_slash_specs_dir_as_the_same_folder() {
+        assert!(is_same_path(
+            Path::new("./docs/specs"),
+            Path::new("docs/specs")
+        ));
+    }
+
+    #[test]
+    fn it_should_tell_two_different_specs_dirs_apart() {
+        assert!(!is_same_path(
+            Path::new("docs/specs"),
+            Path::new(DEFAULT_DIR)
+        ));
+    }
+
+    #[test]
+    fn it_should_use_the_default_specs_dir_when_the_file_is_refused_by_parse_workflow() {
+        assert_eq!(specs_dir_of(Some(b"[specs")), DEFAULT_DIR);
+    }
+
+    #[test]
+    fn it_should_use_the_default_specs_dir_when_the_file_is_not_utf8() {
+        assert_eq!(specs_dir_of(Some(&[0xff, 0xfe, 0x00])), DEFAULT_DIR);
+    }
+
+    #[test]
+    fn it_should_cut_the_file_above_the_size_limit_to_the_default_specs_dir_and_keep_the_limit_itself()
+     {
+        let padding = |extra: usize| {
+            let size = EXT_FILE_MAX_BYTES as usize + extra - CUSTOM_WORKFLOW.len();
+
+            format!("{CUSTOM_WORKFLOW}{}", "#".repeat(size))
+        };
+
+        let at_limit = specs_dir_of(Some(padding(0).as_bytes()));
+        let above_limit = specs_dir_of(Some(padding(1).as_bytes()));
+
+        assert_eq!(
+            (at_limit.as_str(), above_limit.as_str()),
+            ("x", DEFAULT_DIR)
+        );
+    }
+
+    // Filtro lexical
+
+    #[test]
+    fn it_should_match_the_workflow_file_by_its_last_two_normalized_names() {
+        for path in ["/p/.omhl/workflow.toml", "/p/.omhl/specs/../workflow.toml"] {
+            assert!(is_workflow_candidate(Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
+    fn it_should_not_match_a_workflow_file_outside_the_omhl_folder() {
+        for path in ["/p/.omhl/specs/workflow.toml", "/p/omhl/workflow.toml"] {
+            assert!(!is_workflow_candidate(Path::new(path)), "{path}");
+        }
+    }
+
+    // Conteúdo resultante
+
+    #[test]
+    fn it_should_take_the_content_of_a_write_as_it_is() {
+        let input = EditInput::Write {
+            content: "novo".to_owned(),
+        };
+
+        assert_eq!(resulting_texts(&input, None), Some(vec!["novo".to_owned()]));
+    }
+
+    #[test]
+    fn it_should_replace_every_occurrence_with_replace_all() {
+        let result = texts(&edit("a", "b", true), "a-a");
+
+        assert_eq!(result, Some(vec!["b-b".to_owned(); 3]));
+    }
+
+    #[test]
+    fn it_should_replace_only_the_first_occurrence_without_replace_all() {
+        let result = texts(&edit("a", "b", false), "a-a");
+
+        assert_eq!(result, Some(vec!["b-a".to_owned(); 3]));
+    }
+
+    #[test]
+    fn it_should_apply_a_multi_edit_in_order() {
+        let input = EditInput::MultiEdit(vec![
+            replacement("a", "b", false),
+            replacement("b", "c", false),
+        ]);
+
+        assert_eq!(texts(&input, "a"), Some(vec!["c".to_owned(); 3]));
+    }
+
+    #[test]
+    fn it_should_fail_when_the_old_string_is_missing_from_the_text() {
+        assert_eq!(texts(&edit("zzz", "b", false), "a"), None);
+    }
+
+    #[test]
+    fn it_should_fail_when_the_old_string_is_empty() {
+        assert_eq!(texts(&edit("", "b", false), "a"), None);
+    }
+
+    #[test]
+    fn it_should_fail_when_the_payload_field_is_missing() {
+        assert_eq!(texts(&EditInput::Unreadable, "a"), None);
+    }
+
+    #[test]
+    fn it_should_fail_when_an_edit_has_no_current_text() {
+        assert_eq!(resulting_texts(&edit("a", "b", false), None), None);
+    }
+
+    #[test]
+    fn it_should_apply_an_old_string_with_a_line_feed_to_the_normalized_text() {
+        let result = texts(
+            &edit("\"a\"\nmax", "\"b\"\nmax", false),
+            "dir = \"a\"\r\nmax = 1\r\n",
+        );
+
+        assert_eq!(result, Some(vec!["dir = \"b\"\nmax = 1\n".to_owned(); 2]));
+    }
+
+    #[test]
+    fn it_should_replace_different_occurrences_in_each_version_with_replace_all() {
+        let result = texts(&edit("x\n", "y\n", true), "x\r\nx\nx");
+
+        assert_eq!(
+            result,
+            Some(vec![
+                "x\r\ny\nx".to_owned(),
+                "y\ny\nx".to_owned(),
+                "y\ny\nx".to_owned(),
+            ])
+        );
+    }
+
+    #[test]
+    fn it_should_apply_strings_with_a_carriage_return_only_in_the_third_version() {
+        let result = texts(&edit("a\r\nb", "c\r\nd", false), "a\nb");
+
+        assert_eq!(result, Some(vec!["c\nd".to_owned()]));
+    }
+
+    #[test]
+    fn it_should_fail_a_multi_edit_whose_first_edit_fits_only_the_raw_text_and_second_only_the_normalized()
+     {
+        let input = EditInput::MultiEdit(vec![
+            replacement("a\r", "X", false),
+            replacement("b\nc", "Y", false),
+        ]);
+
+        assert_eq!(texts(&input, "a\r\nb\r\nc"), None);
+    }
+
+    // Veredito
+
+    #[test]
+    fn it_should_build_the_spec_dir_frozen_denial_on_one_line_naming_path_dirs_and_work_item() {
+        let verdict = spec_dir_frozen(
+            Path::new("/p/.omhl/workflow.toml"),
+            ".omhl/specs",
+            "docs/specs",
+            "wi-w1",
+        );
+
+        let reason = reason(verdict);
+
+        assert!(reason.starts_with("spec-dir-frozen: "), "reason: {reason}");
+        assert!(!reason.contains('\n'), "reason: {reason}");
+        for fact in [
+            "/p/.omhl/workflow.toml",
+            "\".omhl/specs\"",
+            "\"docs/specs\"",
+            "wi-w1",
+        ] {
+            assert!(reason.contains(fact), "{fact}: {reason}");
+        }
+    }
+
+    #[test]
+    fn it_should_end_the_spec_dir_frozen_denial_asking_the_owner_without_naming_a_way_around() {
+        let verdict = spec_dir_frozen(Path::new("/p/.omhl/workflow.toml"), "a", "b", "wi-w1");
+
+        let reason = reason(verdict);
+
+        assert!(reason.contains("outside Claude Code"), "reason: {reason}");
+        assert!(
+            reason.ends_with("ask the owner and do not change it through any tool"),
+            "reason: {reason}"
+        );
+        assert!(!reason.contains("Bash"), "reason: {reason}");
+        assert!(!reason.contains("terminal"), "reason: {reason}");
+    }
+
+    #[test]
+    fn it_should_cut_the_values_of_the_spec_dir_frozen_denial_at_200_characters() {
+        let long = "Q".repeat(500);
+
+        let verdict = spec_dir_frozen(Path::new("/p/\n.omhl/workflow.toml"), &long, &long, &long);
+
+        let reason = reason(verdict);
+        assert_eq!(reason.matches('Q').count(), 600);
+        assert!(!reason.contains('\n'), "reason: {reason:?}");
+    }
+}

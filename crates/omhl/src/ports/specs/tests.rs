@@ -360,3 +360,56 @@ fn it_should_not_count_the_mark_as_a_spec_file() {
     assert!(spec.amendments.is_empty());
     assert_eq!(amendments, Ok(Vec::new()));
 }
+
+#[test]
+fn it_should_find_the_first_frozen_work_item_by_the_mark_in_any_folder() {
+    let (dir, store) = store();
+    seed(dir.path(), "wi-w2__other", &[".frozen"]);
+    seed(dir.path(), FOLDER, &["parte-01.md", ".frozen"]);
+
+    let frozen = store.frozen_work_item();
+
+    assert_eq!(frozen, Ok(Some("w1".to_owned())));
+}
+
+#[test]
+fn it_should_find_no_frozen_work_item_when_no_folder_has_the_mark() {
+    let (dir, store) = store();
+    seed(dir.path(), FOLDER, &["parte-01.md"]);
+    seed(dir.path(), "notes", &[".frozen"]);
+
+    let frozen = store.frozen_work_item();
+
+    assert_eq!(frozen, Ok(None));
+}
+
+#[test]
+fn it_should_find_no_frozen_work_item_when_the_specs_dir_is_missing() {
+    let (dir, _) = store();
+    let store = SpecStore::new(dir.path().join("missing"));
+
+    let frozen = store.frozen_work_item();
+
+    assert_eq!(frozen, Ok(None));
+}
+
+#[test]
+fn it_should_count_a_mark_that_is_a_symlink_as_frozen() {
+    let (dir, store) = store();
+    seed(dir.path(), FOLDER, &["parte-01.md"]);
+    symlink("nowhere", dir.path().join(FOLDER).join(".frozen")).unwrap();
+
+    let frozen = store.frozen_work_item();
+
+    assert_eq!(frozen, Ok(Some("w1".to_owned())));
+}
+
+#[test]
+fn it_should_return_an_error_when_listing_the_specs_dir_fails_looking_for_a_frozen_work_item() {
+    let (dir, store) = store();
+    seed_entries(dir.path(), ENTRIES_MAX + 1);
+
+    let frozen = store.frozen_work_item();
+
+    assert_eq!(frozen, Err(TOO_MANY_ENTRIES));
+}

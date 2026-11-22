@@ -1,12 +1,14 @@
 use std::path::{Component, Path, PathBuf};
 
+use super::config::parse_workflow;
 use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, FREEZE_MARK, PART_PREFIX, work_item_of_folder};
 use super::spec::amendment_number;
 use crate::probe::GIT_TIMED_OUT;
-use crate::project::layout::OMHL_DIR;
+use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
 use crate::project::marker::MARKER_FILE;
 
 const FROZEN: &str = "spec-frozen";
+const SPEC_DIR_FROZEN: &str = "spec-dir-frozen";
 const UNAVAILABLE: &str = "spec-lock-unavailable";
 const TEXT_MAX_CHARS: usize = 200;
 const FIX_CLOSING: &str = "the edit stays denied until this is fixed";
@@ -44,6 +46,22 @@ impl Tool {
 pub enum Verdict {
     Allow,
     Deny { code: &'static str, reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Replacement {
+    pub old: String,
+    pub new: String,
+    pub replace_all: bool,
+}
+
+/// O que a ferramenta vai gravar, já lido do payload pelo adapter; `Unreadable` é campo ausente ou com tipo errado.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditInput {
+    Write { content: String },
+    Edit(Replacement),
+    MultiEdit(Vec<Replacement>),
+    Unreadable,
 }
 
 /// Por que a decisão não pôde ser tomada depois de reconhecer a spec; montada no `app`, que mapeia o erro do git.
@@ -87,6 +105,93 @@ fn one_line(text: &str) -> String {
         })
         .take(TEXT_MAX_CHARS)
         .collect()
+}
+
+/// O `specs.dir` efetivo de um `workflow.toml`: o que a política do hook usaria. Ausente (`None`), acima do teto, que não é UTF-8 ou que `parse_workflow` recusa vale o padrão.
+pub fn specs_dir_of(bytes: Option<&[u8]>) -> String {
+    bytes
+        .filter(|bytes| bytes.len() as u64 <= EXT_FILE_MAX_BYTES)
+        .and_then(|bytes| parse_workflow(Path::new(WORKFLOW_FILE), bytes).ok())
+        .unwrap_or_default()
+        .specs
+        .dir
+}
+
+/// Os textos que o arquivo pode ter depois da edição, um por versão em que todas as trocas se aplicam;
+/// `None` quando o payload não diz o que gravar ou nenhuma versão aceita a lista. A ferramenta pode
+/// normalizar CRLF para LF antes de aplicar as trocas, então o hook testa as três combinações.
+pub fn resulting_texts(input: &EditInput, current: Option<&str>) -> Option<Vec<String>> {
+    let replacements = match input {
+        EditInput::Write { content } => return Some(vec![content.clone()]),
+        EditInput::Edit(replacement) => std::slice::from_ref(replacement),
+        EditInput::MultiEdit(replacements) => replacements.as_slice(),
+        EditInput::Unreadable => return None,
+    };
+    let current = current?;
+    let normalized = to_lf(current);
+    let texts: Vec<String> = [
+        apply(current, replacements, false),
+        apply(&normalized, replacements, false),
+        apply(&normalized, replacements, true),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    (!texts.is_empty()).then_some(texts)
+}
+
+fn to_lf(text: &str) -> String {
+    text.replace("\r\n", "\n")
+}
+
+/// Aplica as trocas na ordem; uma que não casa (ou com `old` vazio) invalida a versão inteira.
+fn apply(text: &str, replacements: &[Replacement], normalize_strings: bool) -> Option<String> {
+    replacements
+        .iter()
+        .try_fold(text.to_owned(), |text, replacement| {
+            let (old, new) = if normalize_strings {
+                (to_lf(&replacement.old), to_lf(&replacement.new))
+            } else {
+                (replacement.old.clone(), replacement.new.clone())
+            };
+            if old.is_empty() || !text.contains(&old) {
+                return None;
+            }
+
+            Some(if replacement.replace_all {
+                text.replace(&old, &new)
+            } else {
+                text.replacen(&old, &new, 1)
+            })
+        })
+}
+
+/// Os dois últimos nomes, com o `..` resolvido, são `.omhl` e `workflow.toml`.
+pub fn is_workflow_candidate(file_path: &Path) -> bool {
+    matches!(
+        normalized_names(file_path).as_deref(),
+        Some([.., OMHL_DIR, WORKFLOW_FILE])
+    )
+}
+
+/// Igualdade pelos nomes normalizados: `./a/../b` é `b`.
+pub fn is_same_path(left: &Path, right: &Path) -> bool {
+    matches!((normalized_names(left), normalized_names(right)), (Some(left), Some(right)) if left == right)
+}
+
+/// `work_item` é o `wi-<id>`; a razão não sugere o `Bash`: quem a lê tem `Bash`, e o dono muda a chave fora do Claude Code.
+pub fn spec_dir_frozen(file_path: &Path, old: &str, new: &str, work_item: &str) -> Verdict {
+    Verdict::Deny {
+        code: SPEC_DIR_FROZEN,
+        reason: format!(
+            "{SPEC_DIR_FROZEN}: this edit would change specs.dir from \"{}\" to \"{}\" in {} while the spec of work item {} is frozen, which would release the spec lock; only the owner changes specs.dir, outside Claude Code: ask the owner and do not change it through any tool",
+            one_line(old),
+            one_line(new),
+            one_line(&file_path.display().to_string()),
+            one_line(work_item)
+        ),
+    }
 }
 
 pub struct Facts<'a> {

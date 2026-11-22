@@ -141,14 +141,19 @@ fn payload(cwd: &Path, tool: &str, file_path: &Path) -> String {
         _ => json!({ "file_path": file_path, "content": "x" }),
     };
 
-    json!({
+    payload_of(cwd, tool, tool_input)
+}
+
+fn payload_of(cwd: &Path, tool: &str, tool_input: Value) -> String {
+    let mut event = json!({
         "session_id": "s1",
         "hook_event_name": "PreToolUse",
         "cwd": cwd,
         "tool_name": tool,
-        "tool_input": tool_input,
-    })
-    .to_string()
+    });
+    event["tool_input"] = tool_input;
+
+    event.to_string()
 }
 
 fn run_spec_lock(xdg: &Path, stdin: &str) -> Child {
@@ -1850,4 +1855,560 @@ fn it_should_release_with_the_marker_error_when_no_valid_marker_exists_above_the
         json_line(&output.stderr)["error"]["code"],
         json!("invalid-marker")
     );
+}
+
+// `workflow.toml` principal: mudar o `specs.dir` com spec congelada
+
+const SPEC_DIR_FROZEN: &str = "spec-dir-frozen";
+const NEW_CONTENT_STEP: &str = "reading the new content of workflow.toml";
+const MOVED_WORKFLOW: &str = "version = 1\n\n[specs]\ndir = \"docs/specs\"\n";
+const EXPLICIT_DEFAULT_WORKFLOW: &str =
+    "version = 1\n\n[specs]\ndir = \".omhl/specs\"\nmax_lines = 300\n";
+
+/// Work item congelado pela branch; `workflow` é o `.omhl/workflow.toml` commitado, se houver.
+fn frozen_workflow_repo(workflow: Option<&str>) -> Repo {
+    let files: Vec<(&str, &str)> = workflow
+        .map(|content| (".omhl/workflow.toml", content))
+        .into_iter()
+        .collect();
+    let repo = Repo::with_files(&files);
+    repo.branch(BRANCH);
+
+    repo
+}
+
+fn main_workflow(repo: &Repo) -> PathBuf {
+    repo.main.join(".omhl/workflow.toml")
+}
+
+fn write_input(path: &Path, content: &str) -> Value {
+    json!({ "file_path": path, "content": content })
+}
+
+fn edit_input(path: &Path, old: &str, new: &str, replace_all: Option<bool>) -> Value {
+    let mut input = json!({ "file_path": path, "old_string": old, "new_string": new });
+    if let Some(flag) = replace_all {
+        input["replace_all"] = json!(flag);
+    }
+
+    input
+}
+
+fn hook_input(repo: &Repo, cwd: &Path, tool: &str, tool_input: Value) -> Child {
+    run_spec_lock(repo.project.xdg(), &payload_of(cwd, tool, tool_input))
+}
+
+/// A negação `spec-dir-frozen`: uma linha, com o caminho, as duas pastas e o work item congelado.
+fn spec_dir_frozen_reason(output: &Child) -> String {
+    let reason = denied_reason(output);
+    assert!(
+        reason.starts_with(&format!("{SPEC_DIR_FROZEN}: ")),
+        "reason: {reason}"
+    );
+    assert!(!reason.contains('\n'), "reason: {reason}");
+
+    reason
+}
+
+/// A negação `spec-lock-unavailable` de um caminho que não é de work item: o sujeito é o caminho.
+fn path_unavailable_reason(output: &Child, path: &Path, step: &str) -> String {
+    let reason = denied_reason(output);
+    assert!(
+        reason.starts_with("spec-lock-unavailable: "),
+        "reason: {reason}"
+    );
+    assert!(!reason.contains('\n'), "reason: {reason}");
+    assert!(reason.contains(step), "reason: {reason}");
+    assert!(
+        reason.contains(&path.display().to_string()),
+        "reason: {reason}"
+    );
+
+    reason
+}
+
+fn break_git_config(repo: &Repo) {
+    fs::write(repo.main.join(".git/config"), "[core").expect("git config is broken");
+}
+
+#[test]
+fn it_should_deny_a_write_of_the_main_workflow_file_that_moves_the_specs_dir_while_a_spec_is_frozen()
+ {
+    let repo = frozen_workflow_repo(None);
+    let path = main_workflow(&repo);
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&path, MOVED_WORKFLOW),
+    );
+
+    let reason = spec_dir_frozen_reason(&output);
+    let path_text = path.display().to_string();
+    for fact in [
+        path_text.as_str(),
+        ".omhl/specs",
+        "docs/specs",
+        "wi-w1",
+        "outside Claude Code",
+    ] {
+        assert!(reason.contains(fact), "{fact}: {reason}");
+    }
+}
+
+#[test]
+fn it_should_deny_an_edit_of_the_main_workflow_file_that_changes_only_the_dir_line() {
+    let repo = frozen_workflow_repo(Some(EXPLICIT_DEFAULT_WORKFLOW));
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(
+            &main_workflow(&repo),
+            "dir = \".omhl/specs\"",
+            "dir = \"docs/specs\"",
+            None,
+        ),
+    );
+
+    spec_dir_frozen_reason(&output);
+}
+
+#[test]
+fn it_should_deny_a_multi_edit_of_the_main_workflow_file_in_two_replacements() {
+    let repo = frozen_workflow_repo(Some(EXPLICIT_DEFAULT_WORKFLOW));
+    let input = json!({
+        "file_path": main_workflow(&repo),
+        "edits": [
+            { "old_string": "max_lines = 300", "new_string": "max_lines = 200" },
+            { "old_string": "dir = \".omhl/specs\"", "new_string": "dir = \"docs/specs\"" },
+        ],
+    });
+
+    let output = hook_input(&repo, &repo.main, "MultiEdit", input);
+
+    spec_dir_frozen_reason(&output);
+}
+
+#[test]
+fn it_should_allow_a_write_of_the_main_workflow_file_that_keeps_the_specs_dir() {
+    let repo = frozen_workflow_repo(Some(EXPLICIT_DEFAULT_WORKFLOW));
+    let path = main_workflow(&repo);
+
+    for content in [
+        "version = 1\n\n[specs]\ndir = \".omhl/specs\"\nmax_lines = 10\n",
+        "version = 1\n\n[specs]\ndir = \"./.omhl/specs\"\n",
+    ] {
+        let output = hook_input(&repo, &repo.main, "Write", write_input(&path, content));
+
+        assert_allowed(&output);
+    }
+}
+
+#[test]
+fn it_should_deny_a_write_of_invalid_content_over_a_main_workflow_file_with_a_custom_dir() {
+    let repo = frozen_workflow_repo(Some(CUSTOM_WORKFLOW));
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&main_workflow(&repo), "[specs"),
+    );
+
+    spec_dir_frozen_reason(&output);
+}
+
+#[test]
+fn it_should_allow_a_write_of_invalid_content_when_the_main_workflow_file_is_absent_or_default() {
+    for current in [None, Some(EXPLICIT_DEFAULT_WORKFLOW)] {
+        let repo = frozen_workflow_repo(current);
+
+        let output = hook_input(
+            &repo,
+            &repo.main,
+            "Write",
+            write_input(&main_workflow(&repo), "[specs"),
+        );
+
+        assert_allowed(&output);
+    }
+}
+
+#[test]
+fn it_should_allow_moving_the_specs_dir_when_no_work_item_has_a_branch_or_a_mark() {
+    let repo = Repo::new();
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&main_workflow(&repo), MOVED_WORKFLOW),
+    );
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_deny_moving_the_specs_dir_when_only_the_freeze_mark_is_left_after_the_branch_was_deleted()
+ {
+    let repo = frozen_repo();
+    delete_branch(&repo, BRANCH);
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&main_workflow(&repo), MOVED_WORKFLOW),
+    );
+
+    spec_dir_frozen_reason(&output);
+}
+
+#[test]
+fn it_should_allow_moving_the_specs_dir_in_the_workflow_file_of_a_linked_worktree() {
+    let repo = Repo::new();
+    let linked = repo.linked(BRANCH);
+
+    let output = hook_input(
+        &repo,
+        &linked,
+        "Write",
+        write_input(&linked.join(".omhl/workflow.toml"), MOVED_WORKFLOW),
+    );
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_deny_with_spec_lock_unavailable_when_the_new_content_of_the_workflow_file_cannot_be_computed()
+ {
+    let repo = frozen_workflow_repo(Some(EXPLICIT_DEFAULT_WORKFLOW));
+    let path = main_workflow(&repo);
+    let cases = [
+        ("Edit", edit_input(&path, "not in the file", "x", None)),
+        ("Edit", json!({ "file_path": path, "new_string": "x" })),
+        ("Write", json!({ "file_path": path })),
+        ("MultiEdit", json!({ "file_path": path, "edits": "x" })),
+    ];
+
+    for (tool, input) in cases {
+        let output = hook_input(&repo, &repo.main, tool, input);
+
+        path_unavailable_reason(&output, &path, NEW_CONTENT_STEP);
+    }
+}
+
+#[test]
+fn it_should_deny_with_spec_lock_unavailable_an_edit_of_a_main_workflow_file_that_is_missing() {
+    let repo = frozen_workflow_repo(None);
+    let path = main_workflow(&repo);
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(&path, "dir", "dir", None),
+    );
+
+    path_unavailable_reason(&output, &path, NEW_CONTENT_STEP);
+}
+
+#[test]
+fn it_should_deny_the_workflow_file_with_spec_lock_unavailable_when_git_is_broken_and_allow_other_files()
+ {
+    let repo = frozen_workflow_repo(None);
+    break_git_config(&repo);
+    let path = main_workflow(&repo);
+
+    let denied = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&path, MOVED_WORKFLOW),
+    );
+    let other = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&repo.main.join("notas.md"), "x"),
+    );
+
+    path_unavailable_reason(&denied, &path, "checking the main directory");
+    assert_allowed(&other);
+}
+
+#[test]
+fn it_should_deny_both_the_move_of_the_specs_dir_and_the_edit_of_the_spec_and_leave_the_tree_untouched()
+ {
+    let repo = frozen_workflow_repo(None);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+    fs::write(repo.spec_file(MARK), "").expect("freeze mark is written");
+    let before = tree_snapshot(&repo.main);
+
+    let moved = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&main_workflow(&repo), MOVED_WORKFLOW),
+    );
+    let edited = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    spec_dir_frozen_reason(&moved);
+    let reason = denied_reason(&edited);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+    assert_eq!(tree_snapshot(&repo.main), before);
+}
+
+#[test]
+fn it_should_deny_the_workflow_file_with_spec_lock_unavailable_when_a_planted_marker_sits_under_omhl_and_git_is_broken()
+ {
+    let repo = frozen_workflow_repo(None);
+    write_file(&repo.main.join(".omhl/.omhl.toml"), VALID_MARKER);
+    break_git_config(&repo);
+    let path = main_workflow(&repo);
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&path, MOVED_WORKFLOW),
+    );
+
+    path_unavailable_reason(&output, &path, "checking the main directory");
+}
+
+#[test]
+fn it_should_deny_with_spec_dir_frozen_when_a_planted_marker_and_a_fake_git_folder_sit_under_omhl()
+{
+    let repo = frozen_workflow_repo(None);
+    write_file(&repo.main.join(".omhl/.omhl.toml"), VALID_MARKER);
+    write_file(&repo.main.join(".omhl/.git/HEAD"), "ref: refs/heads/main\n");
+    write_file(&repo.main.join(".omhl/.git/objects/x"), "");
+    write_file(&repo.main.join(".omhl/.git/refs/x"), "");
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&main_workflow(&repo), MOVED_WORKFLOW),
+    );
+
+    spec_dir_frozen_reason(&output);
+}
+
+#[test]
+fn it_should_deny_by_the_normalized_path_a_write_that_climbs_out_of_the_specs_dir_to_the_workflow_file()
+ {
+    let repo = frozen_workflow_repo(None);
+    let climbing = repo.main.join(".omhl/specs/../workflow.toml");
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(&climbing, MOVED_WORKFLOW),
+    );
+
+    spec_dir_frozen_reason(&output);
+}
+
+#[test]
+fn it_should_deny_a_valid_write_without_the_dir_key_over_a_workflow_file_with_a_custom_dir() {
+    let repo = frozen_workflow_repo(Some(CUSTOM_WORKFLOW));
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(
+            &main_workflow(&repo),
+            "version = 1\n\n[specs]\nmax_lines = 10\n",
+        ),
+    );
+
+    spec_dir_frozen_reason(&output);
+}
+
+const TWO_DIR_LINES: &str =
+    "version = 1\n\n# dir = \".omhl/specs\"\n[specs]\ndir = \".omhl/specs\"\n";
+
+#[test]
+fn it_should_deny_an_edit_with_replace_all_that_reaches_the_dir_line_in_a_later_occurrence() {
+    let repo = frozen_workflow_repo(Some(TWO_DIR_LINES));
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(
+            &main_workflow(&repo),
+            "dir = \".omhl/specs\"",
+            "dir = \"docs/specs\"",
+            Some(true),
+        ),
+    );
+
+    spec_dir_frozen_reason(&output);
+}
+
+#[test]
+fn it_should_allow_an_edit_without_replace_all_that_only_reaches_the_commented_occurrence() {
+    let repo = frozen_workflow_repo(Some(TWO_DIR_LINES));
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(
+            &main_workflow(&repo),
+            "dir = \".omhl/specs\"",
+            "dir = \"docs/specs\"",
+            Some(false),
+        ),
+    );
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_deny_an_edit_that_only_fits_the_workflow_file_after_the_crlf_is_normalized() {
+    let repo = frozen_workflow_repo(Some(
+        "version = 1\r\n\r\n[specs]\r\ndir = \".omhl/specs\"\r\n",
+    ));
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(
+            &main_workflow(&repo),
+            "[specs]\ndir = \".omhl/specs\"",
+            "[specs]\ndir = \"docs/specs\"",
+            None,
+        ),
+    );
+
+    spec_dir_frozen_reason(&output);
+}
+
+// Marcador e `workflow.toml` plantados sob `.omhl/`
+
+fn plant_marker_and_workflow_under_omhl(repo: &Repo) {
+    write_file(&repo.main.join(".omhl/specs/.omhl.toml"), VALID_MARKER);
+    write_file(
+        &repo.main.join(".omhl/specs/.omhl/workflow.toml"),
+        "version = 1\n\n[specs]\ndir = \"x\"\n",
+    );
+}
+
+fn planted_repo() -> Repo {
+    let repo = frozen_repo();
+    plant_marker_and_workflow_under_omhl(&repo);
+
+    repo
+}
+
+#[test]
+fn it_should_deny_a_frozen_spec_with_spec_lock_unavailable_when_planted_files_sit_under_omhl_and_git_is_broken()
+ {
+    let repo = planted_repo();
+    break_git_config(&repo);
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    unavailable_reason(&output);
+}
+
+#[test]
+fn it_should_deny_a_frozen_spec_with_spec_frozen_when_planted_files_sit_under_omhl_and_git_works() {
+    let repo = planted_repo();
+
+    let output = repo.hook_in_main("Edit", &repo.spec_file("parte-01.md"));
+
+    let reason = denied_reason(&output);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+}
+
+#[test]
+fn it_should_deny_the_planted_workflow_file_when_git_is_broken_and_allow_it_when_git_works() {
+    let repo = planted_repo();
+    let planted = repo.main.join(".omhl/specs/.omhl/workflow.toml");
+    let write = || {
+        hook_input(
+            &repo,
+            &repo.main,
+            "Write",
+            write_input(&planted, MOVED_WORKFLOW),
+        )
+    };
+    let released = write();
+    break_git_config(&repo);
+
+    let denied = write();
+
+    assert_allowed(&released);
+    path_unavailable_reason(&denied, &planted, "checking the main directory");
+}
+
+// Resíduo documentado: `specs.dir` customizado com marcador válido plantado na pasta de specs
+
+fn run_with_home(repo: &Repo, home: &Path, stdin: &str) -> Child {
+    let elsewhere = TempDir::new().expect("other directory is created");
+
+    omhl(&["hook", "spec-lock"])
+        .cwd(elsewhere.path())
+        .xdg(repo.project.xdg())
+        .env("HOME", home)
+        .stdin(stdin)
+        .run()
+}
+
+/// Spec congelada sob `specs.dir` customizado, ainda sem nada plantado.
+fn custom_dir_repo() -> Repo {
+    let repo = frozen_workflow_repo(Some(CUSTOM_WORKFLOW));
+    repo.seed(CUSTOM_SPECS, "parte-01.md");
+
+    repo
+}
+
+#[test]
+fn it_should_residual_release_a_frozen_spec_when_a_planted_marker_and_a_fake_bare_repository_sit_in_the_custom_specs_dir()
+ {
+    let repo = custom_dir_repo();
+    let spec = repo.folder(CUSTOM_SPECS).join("parte-01.md");
+    let control = repo.hook_in_main("Edit", &spec);
+    let specs_dir = repo.main.join(CUSTOM_SPECS);
+    write_file(&specs_dir.join(".omhl.toml"), VALID_MARKER);
+    write_file(&specs_dir.join("HEAD"), "ref: refs/heads/main\n");
+    write_file(&specs_dir.join("objects/x"), "");
+    write_file(&specs_dir.join("refs/x"), "");
+
+    let output = repo.hook_in_main("Edit", &spec);
+
+    let reason = denied_reason(&control);
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_residual_release_a_frozen_spec_when_a_planted_marker_sits_in_the_custom_specs_dir_and_the_global_git_config_is_broken()
+ {
+    let repo = custom_dir_repo();
+    let spec = repo.folder(CUSTOM_SPECS).join("parte-01.md");
+    let home = TempDir::new().expect("home directory is created");
+    fs::write(home.path().join(".gitconfig"), "[core").expect("global git config is broken");
+    let stdin = payload(&repo.main, "Edit", &spec);
+    let control = run_with_home(&repo, home.path(), &stdin);
+    write_file(
+        &repo.main.join(CUSTOM_SPECS).join(".omhl.toml"),
+        VALID_MARKER,
+    );
+
+    let output = run_with_home(&repo, home.path(), &stdin);
+
+    unavailable_reason(&control);
+    assert_allowed(&output);
 }

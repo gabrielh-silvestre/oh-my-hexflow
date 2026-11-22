@@ -10,8 +10,8 @@ use crate::app::error::AppError;
 use crate::app::input::{absolute_path, read_json_input};
 use crate::app::runtime::Runtime;
 use crate::app::{
-    AgentRoleEnv, RoleVerdict, SpecLockEvent, Tool, Verdict, agent_role as check_agent_role,
-    spec_lock as check_spec_lock,
+    AgentRoleEnv, EditInput, Replacement, RoleVerdict, SpecLockEvent, Tool, Verdict,
+    agent_role as check_agent_role, spec_lock as check_spec_lock,
 };
 use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
 use crate::project::Env;
@@ -72,6 +72,38 @@ fn spec_lock_event(input: &Value) -> Result<SpecLockEvent, AppError> {
     Ok(SpecLockEvent::Edit {
         tool,
         file_path: absolute_path(&input["tool_input"]["file_path"])?,
+        input: edit_input(tool, &input["tool_input"]),
+    })
+}
+
+/// O que a ferramenta vai gravar; campo ausente ou com tipo errado vira `Unreadable`, e quem decide vê o que fazer.
+fn edit_input(tool: Tool, tool_input: &Value) -> EditInput {
+    match tool {
+        Tool::Write => tool_input["content"]
+            .as_str()
+            .map(|content| EditInput::Write {
+                content: content.to_owned(),
+            }),
+        Tool::Edit => replacement(tool_input).map(EditInput::Edit),
+        Tool::MultiEdit => tool_input["edits"]
+            .as_array()
+            .and_then(|edits| edits.iter().map(replacement).collect())
+            .map(EditInput::MultiEdit),
+    }
+    .unwrap_or(EditInput::Unreadable)
+}
+
+fn replacement(value: &Value) -> Option<Replacement> {
+    let replace_all = match &value["replace_all"] {
+        Value::Null => false,
+        Value::Bool(flag) => *flag,
+        _ => return None,
+    };
+
+    Some(Replacement {
+        old: value["old_string"].as_str()?.to_owned(),
+        new: value["new_string"].as_str()?.to_owned(),
+        replace_all,
     })
 }
 
