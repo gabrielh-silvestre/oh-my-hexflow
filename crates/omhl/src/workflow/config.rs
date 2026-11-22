@@ -7,7 +7,7 @@ use toml::Spanned;
 
 use crate::project::ProjectError;
 use crate::project::layout::{
-    CHECKS_DIR, GUIDELINES_DIR, OMHL_DIR, PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE,
+    CHECKS_DIR, DOT_GIT_DIR, GUIDELINES_DIR, OMHL_DIR, PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE,
 };
 use crate::project::text::{position_at, toml_error_position};
 
@@ -127,9 +127,6 @@ fn invalid_at(path: &Path, text: &str, span: Range<usize>, reason: &str) -> Proj
     invalid(path, format!("{reason} at line {line}, column {column}"))
 }
 
-/// Pasta do git na raiz do projeto: nenhuma spec cabe nela.
-const GIT_DIR: &str = ".git";
-
 /// Subárvores de `.omhl/` com dono próprio: `specs.dir` dentro delas misturaria as specs com outro conteúdo.
 const RESERVED_OMHL_SUBTREES: [&str; 4] =
     [CHECKS_DIR, GUIDELINES_DIR, PROJECTION_DIR, WORKFLOW_FILE];
@@ -145,7 +142,7 @@ fn is_usable_specs_dir(dir: &str) -> bool {
         _ => None,
     });
     match (names.next(), names.next()) {
-        (None, _) | (Some(GIT_DIR), _) | (Some(OMHL_DIR), None) => false,
+        (None, _) | (Some(DOT_GIT_DIR), _) | (Some(OMHL_DIR), None) => false,
         (Some(OMHL_DIR), Some(child)) => !RESERVED_OMHL_SUBTREES.contains(&child),
         _ => true,
     }

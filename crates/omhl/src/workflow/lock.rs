@@ -4,11 +4,12 @@ use super::config::parse_workflow;
 use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, FREEZE_MARK, PART_PREFIX, work_item_of_folder};
 use super::spec::amendment_number;
 use crate::probe::GIT_TIMED_OUT;
-use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
+use crate::project::layout::{DOT_GIT_DIR, EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
 use crate::project::marker::MARKER_FILE;
 
 const FROZEN: &str = "spec-frozen";
 const SPEC_DIR_FROZEN: &str = "spec-dir-frozen";
+const GIT_DIR_PROTECTED: &str = "git-dir-protected";
 const UNAVAILABLE: &str = "spec-lock-unavailable";
 const TEXT_MAX_CHARS: usize = 200;
 const FIX_CLOSING: &str = "the edit stays denied until this is fixed";
@@ -173,6 +174,30 @@ pub fn is_workflow_candidate(file_path: &Path) -> bool {
         normalized_names(file_path).as_deref(),
         Some([.., OMHL_DIR, WORKFLOW_FILE])
     )
+}
+
+/// Algum nome normalizado abaixo da raiz é `.git`; sem a raiz como prefixo, contam todos os nomes.
+/// Pura: não chama git, então vale com o git quebrado. Com a raiz `/`, contam todos.
+pub fn has_git_component(file_path: &Path, root: &Path) -> bool {
+    let Some(names) = normalized_names(file_path) else {
+        return false;
+    };
+    let below_root = normalized_names(root)
+        .and_then(|root| names.strip_prefix(root.as_slice()))
+        .unwrap_or(&names);
+
+    below_root.contains(&DOT_GIT_DIR)
+}
+
+/// A razão não sugere o `Bash`: quem a lê tem `Bash`, e o dono muda o `.git` fora do Claude Code.
+pub fn git_dir_protected(file_path: &Path) -> Verdict {
+    Verdict::Deny {
+        code: GIT_DIR_PROTECTED,
+        reason: format!(
+            "{GIT_DIR_PROTECTED}: {} is under a .git folder of an omhl project, which the spec lock relies on; only the owner changes it, outside Claude Code: ask the owner and do not change it through any tool",
+            one_line(&file_path.display().to_string())
+        ),
+    }
 }
 
 /// Igualdade pelos nomes normalizados: `./a/../b` é `b`.

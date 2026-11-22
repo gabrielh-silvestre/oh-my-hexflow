@@ -997,3 +997,114 @@ mod specs_dir_change {
         assert!(!reason.contains('\n'), "reason: {reason:?}");
     }
 }
+
+mod git_dir {
+    use std::path::Path;
+
+    use crate::workflow::lock::{Verdict, git_dir_protected, has_git_component};
+
+    fn matches(path: &str) -> bool {
+        has_git_component(Path::new(path), Path::new("/"))
+    }
+
+    fn reason(verdict: Verdict) -> String {
+        match verdict {
+            Verdict::Deny { code, reason } => {
+                assert_eq!(code, "git-dir-protected");
+                reason
+            }
+            Verdict::Allow => panic!("expected a denial"),
+        }
+    }
+
+    #[test]
+    fn it_should_match_a_name_equal_to_dot_git_at_any_depth() {
+        for path in [
+            "/p/.git",
+            "/p/.git/config",
+            "/p/a/.git/b",
+            "/p/.omhl/.git/HEAD",
+        ] {
+            assert!(matches(path), "{path}");
+        }
+    }
+
+    #[test]
+    fn it_should_match_a_dot_git_that_only_shows_after_resolving_the_parent_dir() {
+        assert!(matches("/p/a/x/../.git/c"));
+    }
+
+    #[test]
+    fn it_should_not_match_a_name_that_only_resembles_dot_git() {
+        for path in [
+            "/p/.gitignore",
+            "/p/.github/workflows/ci.yml",
+            "/p/foo.git",
+            "/p/a/git",
+        ] {
+            assert!(!matches(path), "{path}");
+        }
+    }
+
+    #[test]
+    fn it_should_not_match_a_dot_git_that_the_parent_dir_climbs_out_of() {
+        assert!(!matches("/p/.git/../notes.md"));
+    }
+
+    #[test]
+    fn it_should_not_count_a_dot_git_folder_above_the_root() {
+        let path = Path::new("/tmp/.git/proj/notes.md");
+
+        assert!(!has_git_component(path, Path::new("/tmp/.git/proj")));
+    }
+
+    #[test]
+    fn it_should_count_a_dot_git_folder_below_the_root() {
+        let path = Path::new("/tmp/.git/proj/.git/config");
+
+        assert!(has_git_component(path, Path::new("/tmp/.git/proj")));
+    }
+
+    #[test]
+    fn it_should_count_every_name_when_the_root_is_not_a_prefix_of_the_path() {
+        let path = Path::new("/main/docs/../.git/config");
+
+        assert!(has_git_component(path, Path::new("/other")));
+    }
+
+    #[test]
+    fn it_should_match_when_the_root_still_has_the_parent_dir_the_path_climbs_through() {
+        let path = Path::new("/main/docs/../.git/config");
+
+        assert!(has_git_component(path, Path::new("/main/docs/..")));
+    }
+
+    #[test]
+    fn it_should_build_the_git_dir_protected_denial_on_one_line_asking_the_owner() {
+        let verdict = git_dir_protected(Path::new("/p/.git/config"));
+
+        let reason = reason(verdict);
+
+        assert!(
+            reason.starts_with("git-dir-protected: /p/.git/config is under"),
+            "reason: {reason}"
+        );
+        assert!(!reason.contains('\n'), "reason: {reason}");
+        assert!(
+            reason.ends_with("ask the owner and do not change it through any tool"),
+            "reason: {reason}"
+        );
+        assert!(!reason.contains("Bash"), "reason: {reason}");
+        assert!(!reason.contains("terminal"), "reason: {reason}");
+    }
+
+    #[test]
+    fn it_should_cut_a_long_path_of_the_git_dir_protected_denial_at_200_characters() {
+        let long = format!("/p/\n{}/.git/config", "Q".repeat(500));
+
+        let reason = reason(git_dir_protected(Path::new(&long)));
+
+        assert_eq!(reason.matches('Q').count(), 196);
+        assert!(!reason.contains('\n'), "reason: {reason:?}");
+    }
+}

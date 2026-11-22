@@ -2412,3 +2412,159 @@ fn it_should_residual_release_a_frozen_spec_when_a_planted_marker_sits_in_the_cu
     unavailable_reason(&control);
     assert_allowed(&output);
 }
+
+// `.git` protegido (b9): negado com `git-dir-protected`, sem chamar git
+
+/// A negação `git-dir-protected`: uma linha, com o caminho, pedindo ao dono e sem sugerir o `Bash`.
+fn git_dir_reason(output: &Child, path: &Path) -> String {
+    let reason = denied_reason(output);
+    assert!(
+        reason.starts_with("git-dir-protected: "),
+        "reason: {reason}"
+    );
+    assert!(reason.contains(&path.display().to_string()), "{reason}");
+    assert!(reason.contains("ask the owner"), "reason: {reason}");
+    assert!(!reason.contains("Bash"), "reason: {reason}");
+    assert!(!reason.contains("terminal"), "reason: {reason}");
+    assert!(!reason.contains('\n'), "reason: {reason}");
+
+    reason
+}
+
+fn assert_denied_as_git_dir(repo: &Repo, tool: &str, path: &Path) {
+    let output = repo.hook_in_main(tool, path);
+
+    git_dir_reason(&output, path);
+}
+
+#[test]
+fn it_should_deny_each_editing_tool_on_a_file_under_the_git_folder_with_git_dir_protected() {
+    let repo = frozen_repo();
+
+    for tool in ["Write", "Edit", "MultiEdit"] {
+        assert_denied_as_git_dir(&repo, tool, &repo.main.join(".git/config"));
+    }
+    assert_denied_as_git_dir(&repo, "Write", &repo.main.join(".git/commondir"));
+    assert_denied_as_git_dir(&repo, "Write", &repo.main.join(".omhl/.git/HEAD"));
+}
+
+#[test]
+fn it_should_deny_a_write_of_the_git_folder_itself() {
+    let repo = frozen_repo();
+
+    assert_denied_as_git_dir(&repo, "Write", &repo.main.join(".git"));
+}
+
+#[test]
+fn it_should_deny_a_write_that_reaches_the_git_folder_climbing_with_a_parent_dir() {
+    let repo = frozen_repo();
+
+    assert_denied_as_git_dir(&repo, "Write", &repo.main.join("docs/../.git/config"));
+}
+
+#[test]
+fn it_should_deny_a_write_through_a_symlink_that_points_inside_the_git_folder() {
+    let repo = frozen_repo();
+    symlink(repo.main.join(".git"), repo.main.join("link")).expect("link is created");
+
+    let output = repo.hook_in_main("Write", &repo.main.join("link/config"));
+
+    git_dir_reason(&output, &repo.main.join(".git/config"));
+}
+
+#[test]
+fn it_should_deny_the_git_folder_even_when_the_git_config_is_broken() {
+    let repo = frozen_repo();
+    fs::write(repo.main.join(".git/config"), "[core\n").expect("git config is broken");
+
+    assert_denied_as_git_dir(&repo, "Write", &repo.main.join(".git/config"));
+}
+
+#[test]
+fn it_should_deny_the_git_folder_without_calling_git_when_git_hangs() {
+    let repo = frozen_repo();
+    let fake_bin = TempDir::new().expect("fake git directory is created");
+    executable_in(fake_bin.path(), "git", "#!/bin/sh\nexec sleep 30\n");
+    let path = format!(
+        "{}:{}",
+        fake_bin.path().display(),
+        std::env::var("PATH").expect("PATH is set")
+    );
+    let target = repo.main.join(".git/config");
+    let started = std::time::Instant::now();
+
+    let output = run_with_path(&repo, path.as_ref(), &target);
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the hook took {:?}",
+        started.elapsed()
+    );
+    git_dir_reason(&output, &target);
+}
+
+#[test]
+fn it_should_deny_the_git_file_and_the_admin_folder_of_a_linked_worktree() {
+    let repo = frozen_repo();
+    let linked = repo.linked("feat/wi-w2__other");
+
+    assert_denied_as_git_dir(&repo, "Write", &linked.join(".git"));
+    assert_denied_as_git_dir(
+        &repo,
+        "Write",
+        &repo.main.join(".git/worktrees/wt/commondir"),
+    );
+}
+
+#[test]
+fn it_should_not_let_a_planted_marker_under_omhl_hide_the_git_folder_below_it() {
+    let repo = frozen_repo();
+    write_file(&repo.main.join(".omhl/.omhl.toml"), VALID_MARKER);
+
+    assert_denied_as_git_dir(&repo, "Write", &repo.main.join(".omhl/.git/HEAD"));
+}
+
+#[test]
+fn it_should_allow_a_project_that_lives_under_a_folder_named_dot_git() {
+    let home = TempDir::new().expect("directory is created");
+    let project = home.path().join(".git/proj");
+    write_file(&project.join(".omhl.toml"), VALID_MARKER);
+    let output = run_spec_lock(
+        home.path(),
+        &payload(&project, "Write", &project.join("notes.md")),
+    );
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_allow_names_that_only_resemble_dot_git_and_plain_files() {
+    let repo = frozen_repo();
+
+    for file in [".gitignore", ".github/workflows/ci.yml", "notes.md"] {
+        let output = repo.hook_in_main("Write", &repo.main.join(file));
+
+        assert_allowed(&output);
+    }
+}
+
+#[test]
+fn it_should_allow_a_path_with_dot_git_outside_any_omhl_project() {
+    let outside = TempDir::new().expect("directory is created");
+    let target = outside.path().join(".git/config");
+
+    let output = run_spec_lock(outside.path(), &payload(outside.path(), "Write", &target));
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_allow_a_path_with_dot_git_with_the_marker_error_when_the_only_marker_is_invalid() {
+    let outside = TempDir::new().expect("directory is created");
+    write_file(&outside.path().join(".omhl.toml"), "[core\n");
+    let target = outside.path().join(".git/config");
+
+    let output = run_spec_lock(outside.path(), &payload(outside.path(), "Write", &target));
+
+    assert_released_with_error(&output);
+}

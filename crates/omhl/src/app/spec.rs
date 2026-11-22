@@ -21,9 +21,9 @@ use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
 use crate::project::marker::{find_marker, find_valid_marker};
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{
-    Cause, EditInput, Facts, SpecPath, Tool, Verdict, decide, has_spec_folder_component,
-    is_same_path, is_workflow_candidate, parse_spec_path, resulting_texts, spec_dir_frozen,
-    specs_dir_of, unavailable,
+    Cause, EditInput, Facts, SpecPath, Tool, Verdict, decide, git_dir_protected, has_git_component,
+    has_spec_folder_component, is_same_path, is_workflow_candidate, parse_spec_path,
+    resulting_texts, spec_dir_frozen, specs_dir_of, unavailable,
 };
 use crate::workflow::names::{FOLDER_PREFIX, WORK_ITEM_ID_PREFIX};
 use crate::workflow::spec::{
@@ -368,14 +368,20 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
     }
 }
 
-/// O filtro barato pelo texto: só estes caminhos gastam o git.
+/// O filtro barato pelo texto: só estes caminhos passam pelas regras. O `.git` conta em qualquer
+/// posição aqui; a posição abaixo da raiz do marcador só se sabe depois de achá-lo.
 fn is_lock_candidate(file_path: &Path) -> bool {
+    needs_git(file_path) || has_git_component(file_path, Path::new("/"))
+}
+
+/// Só estes caminhos gastam o git.
+fn needs_git(file_path: &Path) -> bool {
     has_spec_folder_component(file_path) || is_workflow_candidate(file_path)
 }
 
 /// O veredito para um caminho já filtrado pelo texto, mais os avisos da cura das marcas; sem
-/// marcador válido acima do arquivo, libera. Antes de `parse_spec_path` reconhecer a spec, o erro
-/// libera; depois dele, qualquer falha nega com `spec-lock-unavailable`.
+/// marcador válido acima do arquivo, libera. A primeira negação vence, nesta ordem: `.git` (puro,
+/// sem git), specs, `workflow.toml` e marcador (puro, sem git).
 fn decide_path(
     tool: Tool,
     input: &EditInput,
@@ -385,12 +391,33 @@ fn decide_path(
     let Some(located) = find_valid_marker(nearest_existing_dir(file_path))? else {
         return Ok((Verdict::Allow, Vec::new()));
     };
+    if has_git_component(file_path, &located.root) {
+        return Ok((git_dir_protected(file_path), Vec::new()));
+    }
+    let (verdict, healed) = if needs_git(file_path) {
+        decide_with_git(tool, input, file_path, &located.root, deadline)
+    } else {
+        (Verdict::Allow, Vec::new())
+    };
+    Ok((verdict, healed))
+}
+
+/// As regras das specs e do `workflow.toml`, as que consultam o git. Antes de `parse_spec_path`
+/// reconhecer a spec, o erro do git cai na política padrão; depois dele, qualquer falha nega com
+/// `spec-lock-unavailable`.
+fn decide_with_git(
+    tool: Tool,
+    input: &EditInput,
+    file_path: &Path,
+    root: &Path,
+    deadline: Instant,
+) -> (Verdict, Vec<AppError>) {
     // Um `main_dir` só, com prazo: ele também diz de onde vem a política. Com o git falhando, da pasta do marcador.
-    let probe = GitProbe::new(&located.root).with_deadline(deadline);
+    let probe = GitProbe::new(root).with_deadline(deadline);
     let main_dir = probe
         .main_dir()
         .map_err(git_step("checking the main directory"));
-    let policy_dir = main_dir.as_ref().map_or(located.root.as_path(), |dir| dir);
+    let policy_dir = main_dir.as_ref().map_or(root, |dir| dir);
     // Arquivo inválido cai nos padrões: liberar aqui deixaria a spec congelada editável por um typo.
     let config = read_workflow(policy_dir).unwrap_or_default();
     let (verdict, healed) = match parse_spec_path(&config.specs.dir, file_path) {
@@ -406,10 +433,10 @@ fn decide_path(
         None => (Verdict::Allow, Vec::new()),
     };
     if matches!(verdict, Verdict::Deny { .. }) || !is_workflow_candidate(file_path) {
-        return Ok((verdict, healed));
+        return (verdict, healed);
     }
 
-    Ok((decide_workflow(input, file_path, &probe, &main_dir), healed))
+    (decide_workflow(input, file_path, &probe, &main_dir), healed)
 }
 
 /// Falha de leitura depois do reconhecimento da spec: o passo que falhou e a causa.
