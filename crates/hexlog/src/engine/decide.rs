@@ -30,7 +30,6 @@ pub struct DecideCtx<'a> {
     pub now: &'a str,
 }
 
-/// Os seis passos da escrita, todos dentro da transação do chamador (a ordem é a da recusa).
 pub fn decide(
     ctx: &DecideCtx<'_>,
     req: &AppendRequest,
@@ -64,7 +63,6 @@ pub fn decide(
     assemble(ctx, req, &lineages, &head, batch_fingerprint, &validated)
 }
 
-/// `Err` de impressão não tem replay possível: a consulta é pulada e a recusa vem dos passos seguintes.
 fn find_replay(
     req: &AppendRequest,
     batch_fingerprint: &Result<Hash, HexlogError>,
@@ -104,7 +102,6 @@ fn find_replay(
     }))
 }
 
-/// Política `Tail`: o último record tem de bater com o seu hash e com o chain head.
 fn validate_tail(
     tenant: &TenantId,
     head: &ChainHead,
@@ -169,13 +166,11 @@ struct Ends {
     native_catalog: Option<String>,
 }
 
-/// O que o passo 6 descobre de um item e a montagem usa.
 struct Validated {
     latest: Option<LatestRow>,
     ends: Option<Ends>,
 }
 
-/// Situação de um node escrito por um item anterior do mesmo lote.
 enum Overlay<'a> {
     Live(&'a TypeName),
     Retired,
@@ -203,10 +198,8 @@ struct Resolved<'a> {
     type_name: EndpointType<'a>,
 }
 
-/// Arestas dos relation types `acyclic` do lote: vigentes no banco e nativas.
 type PairsByType<'r> = HashMap<&'r str, Vec<(SemanticId, SemanticId)>>;
 
-/// Passo 6: devolve o que cada item descobriu, na ordem dos itens.
 fn validate_history(
     ctx: &DecideCtx<'_>,
     req: &AppendRequest,
@@ -249,7 +242,6 @@ fn validate_history(
     Ok(validated)
 }
 
-/// Extremos que o item descobriu; atualiza o grafo e o overlay para os itens seguintes do lote.
 fn ends_of_item<'a>(
     ctx: &DecideCtx<'_>,
     reads: &mut dyn WriteReads,
@@ -326,7 +318,6 @@ fn relation_info<'d>(
         .ok_or_else(|| HexlogError::internal("relation type is missing from the catalog"))
 }
 
-/// Regras 3 a 6 de uma relation: extremos, os dois nativos, tipos dos extremos e ciclo.
 fn validate_relation(
     ctx: &DecideCtx<'_>,
     reads: &mut dyn WriteReads,
@@ -385,7 +376,6 @@ fn endpoint_not_found(index: usize, side: Endpoint) -> HexlogError {
     .at_item(index, side.field())
 }
 
-/// O nativo prevalece; depois o lote; por último o latest gravado. `None` é ausente ou retirado.
 fn resolve_endpoint<'o>(
     ctx: &DecideCtx<'_>,
     reads: &mut dyn WriteReads,
@@ -415,7 +405,6 @@ fn resolve_endpoint<'o>(
     }
 }
 
-/// Retirement de relation copia as origens e a versão nativa do latest: não revalida extremos.
 fn inherited_ends(
     reads: &mut dyn WriteReads,
     tenant: &TenantId,
@@ -465,7 +454,6 @@ fn validate_item_history(
     }
 }
 
-/// Lineage sem records: um node só aceita raiz (sem `base`) e uma retirement não tem o que retirar.
 fn validate_first_record(index: usize, item: &AppendItem) -> Result<(), HexlogError> {
     match (&item.body, &item.base) {
         (ItemBody::Retirement { .. }, _) => Err(HexlogError::refused(
@@ -496,7 +484,6 @@ fn not_current(index: usize, latest: &LatestRow) -> HexlogError {
     error
 }
 
-/// O que um item grava: tipo, hash da definição e `data` vêm do catálogo (node, relation) ou do latest (retirement).
 struct Subject<'a> {
     lineage: LineageRef<'a>,
     type_name: Name,
@@ -550,7 +537,7 @@ fn subject<'a>(
     }
 }
 
-/// Monta os records do lote; `at` é o mesmo em todos e o gerador de ids só roda aqui, depois de todas as recusas.
+///  o gerador de ids só roda aqui, depois de todas as recusas.
 fn assemble(
     ctx: &DecideCtx<'_>,
     req: &AppendRequest,
@@ -615,7 +602,6 @@ fn assemble(
     })
 }
 
-/// Posição do record na cadeia: o seu `seq` e o hash do anterior (ou a âncora).
 struct Link {
     seq: u64,
     prev_hash: Hash,

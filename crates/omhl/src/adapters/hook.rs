@@ -16,7 +16,6 @@ use crate::app::{
 use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
 use crate::project::Env;
 
-/// Without a marker the hook stays silent; any failure leaves stdout empty so no partial context is injected.
 pub fn session_start(
     stdin: &mut impl Read,
     out: &mut impl Write,
@@ -42,7 +41,7 @@ pub fn session_start(
     }
 }
 
-/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr.
+/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar.
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
     pre_tool_use(stdin, out, err, |input| {
         Ok(match check_spec_lock(input)? {
@@ -54,7 +53,7 @@ pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Wri
     })
 }
 
-/// Mesmo contrato do `spec_lock`; só o Bash. O que passa segue o fluxo normal de permissão; só o comando dentro da matriz recebe `allow`.
+/// Mesmo contrato do `spec_lock`; só o Bash.
 pub fn agent_role(
     stdin: &mut impl Read,
     out: &mut impl Write,
@@ -85,7 +84,6 @@ pub fn agent_role(
     })
 }
 
-/// `decide` devolve os campos da decisão (sem o nome do evento); `None` deixa o stdout vazio.
 fn pre_tool_use(
     stdin: &mut impl Read,
     out: &mut impl Write,

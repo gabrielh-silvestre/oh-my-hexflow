@@ -1,5 +1,3 @@
-//! Texto do `load`: contagens no cabeçalho e uma linha por item dos grupos de lista não vazios.
-
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};

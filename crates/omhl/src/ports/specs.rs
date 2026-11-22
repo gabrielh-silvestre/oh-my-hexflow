@@ -8,35 +8,29 @@ use crate::workflow::names::{
     AMENDMENT_PREFIX, FILE_SUFFIX, FIRST_PART_FILE, PART_PREFIX, folder_prefix,
 };
 
-/// Teto próprio da busca por prefixo; o `DIR_ENTRIES_MAX` (100) é das pastas de extension.
+/// Teto próprio da busca por prefixo.
 const SPEC_ENTRIES_MAX: usize = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecStoreError {
-    /// Já existe uma pasta `wi-<id>__*`.
     Exists,
     /// O motivo nunca traz nome de arquivo nem conteúdo.
     Unusable(&'static str),
 }
 
-/// Um arquivo `parte-*.md` ou `emenda-*.md` da pasta de spec.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecDocument {
     pub name: String,
-    /// Vazio quando `oversized`.
     pub text: String,
-    /// Passa de `EXT_FILE_MAX_BYTES`: o arquivo não é lido, a validação reporta `file-too-large`.
     pub oversized: bool,
 }
 
-/// O conteúdo de uma pasta de spec, cada lista ordenada pelo nome do arquivo.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecFolder {
     pub parts: Vec<SpecDocument>,
     pub amendments: Vec<SpecDocument>,
 }
 
-/// As pastas `wi-<id>__<slug>` de um diretório de specs (`specs.dir` sob o diretório principal).
 pub struct SpecStore {
     dir: PathBuf,
 }
@@ -46,12 +40,10 @@ impl SpecStore {
         SpecStore { dir }
     }
 
-    /// Diretório ausente não tem pasta de spec.
     pub fn has_spec(&self, work_item: &str) -> Result<bool, SpecStoreError> {
         Ok(self.find_folder(work_item)?.is_some())
     }
 
-    /// Lê as partes e as emendas da pasta do work item; qualquer outro arquivo é ignorado.
     pub fn read_folder(&self, work_item: &str) -> Result<Option<SpecFolder>, SpecStoreError> {
         let Some(folder) = self.find_folder(work_item)? else {
             return Ok(None);
@@ -87,7 +79,6 @@ impl SpecStore {
         Ok(Some(spec))
     }
 
-    /// Os `emenda-NN.md` da pasta do work item, só pelo nome: o conteúdo não é lido.
     pub fn amendment_names(&self, work_item: &str) -> Result<Vec<String>, SpecStoreError> {
         let Some(folder) = self.find_folder(work_item)? else {
             return Ok(Vec::new());
@@ -99,12 +90,10 @@ impl SpecStore {
             .collect())
     }
 
-    /// Nomes dos arquivos da pasta `folder`; pasta ausente lista vazio.
     pub fn folder_files(&self, folder: &str) -> Result<Vec<String>, SpecStoreError> {
         list_names(&self.dir.join(folder))
     }
 
-    /// Não segue link simbólico: um link pendente também ocupa o nome.
     pub fn file_exists(&self, folder: &str, file: &str) -> Result<bool, SpecStoreError> {
         exists_without_following(&self.dir.join(folder).join(file))
     }
@@ -129,7 +118,6 @@ impl SpecStore {
         Ok(first.map(|name| self.dir.join(name)))
     }
 
-    /// Cria o `.gitignore` do diretório (sem sobrescrever o que existe), a pasta e a primeira parte; devolve a pasta e o arquivo.
     // shortcut: dois `init` simultâneos com slugs diferentes passam ambos pela busca; trocar por um lock se aparecer.
     pub fn create_first_part(
         &self,
@@ -161,7 +149,6 @@ impl SpecStore {
     }
 }
 
-/// Em ordem estável. Passar do teto é recusa, nunca omissão silenciosa. Pasta ausente lista vazio.
 fn list_names(dir: &Path) -> Result<Vec<String>, SpecStoreError> {
     if matches!(fs::metadata(dir), Err(error) if error.kind() == ErrorKind::NotFound) {
         return Ok(Vec::new());

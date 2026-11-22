@@ -8,7 +8,6 @@ use serde_json::{Value, json};
 
 use super::{DEFAULT_INSTANT, author, rty, sid, tenant, tname};
 
-/// Rótulo de toda pergunta montada por `evaluate_one`.
 pub const LABEL: &str = "q";
 
 const RECORD_ID: &str = "acme:0192a000-0000-7000-8000-000000000001";
@@ -28,9 +27,6 @@ pub fn node_view(id: &str) -> NodeView {
     }
 }
 
-/// Fonte falsa de porta própria: sem lógica de filtro. Devolve a lista configurada para um filtro
-/// `==` ao pedido (e vazia para qualquer outro), as relations configuradas por tipo e os chain
-/// heads programados, um por chamada de `chain_head`.
 pub struct FakeSource {
     nodes: Vec<(ListFilter, Vec<NodeView>)>,
     relations: Vec<(RelationTypeName, Vec<RelationView>)>,
@@ -128,7 +124,6 @@ pub fn all_filter() -> ListFilter {
     }
 }
 
-/// Filtro só por tipo; filtros de tipos diferentes são diferentes para o `FakeSource`.
 pub fn type_filter(type_name: &str) -> ListFilter {
     ListFilter {
         type_name: Some(tname(type_name)),

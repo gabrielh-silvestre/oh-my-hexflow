@@ -1,5 +1,3 @@
-//! Leitoras dos canos do runner: interno do runner.
-
 use std::io::{ErrorKind, Read};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
@@ -15,7 +13,7 @@ pub enum Chunk {
     Capped,
 }
 
-/// Lê `source` numa thread solta até o EOF, mandando no máximo `max_bytes` bytes; o excedente é
+///  o excedente é
 /// lido e descartado, para o comando nunca travar com o cano cheio.
 pub fn spawn_reader(mut source: impl Read + Send + 'static, max_bytes: u64) -> Receiver<Chunk> {
     let (sender, receiver) = mpsc::channel();
@@ -44,7 +42,6 @@ pub fn spawn_reader(mut source: impl Read + Send + 'static, max_bytes: u64) -> R
     receiver
 }
 
-/// Acumula até o `Sender` cair ou até `deadline`; `truncated` = teto atingido ou prazo vencido.
 pub fn collect(receiver: &Receiver<Chunk>, deadline: Instant) -> (Vec<u8>, bool) {
     let mut bytes = Vec::new();
     let mut capped = false;

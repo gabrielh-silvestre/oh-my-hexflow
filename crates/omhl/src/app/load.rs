@@ -22,7 +22,6 @@ const AFTER: &str = "after";
 const KEY_PREFIX: &str = "omhl-load-";
 
 impl Engine<'_> {
-    /// Reconcilia `.omhl/` com o tenant; `dry_run` devolve o mesmo relatório sem gravar.
     pub(super) fn load(&mut self, dry_run: bool) -> Result<Value, AppError> {
         let Engine {
             omhl,
@@ -70,7 +69,6 @@ fn reconcile(
     plan(&input).map_err(|issues| AppError::extensions_invalid(&issues, 0))
 }
 
-/// Os vigentes do banco mais as lineages aposentadas que as extensions declaram ou citam em `after`.
 fn existing_nodes(
     omhl: &mut Omhl<'_>,
     tenant: &TenantId,
@@ -204,7 +202,6 @@ fn split_changes(changes: &[PlannedChange]) -> [Vec<Value>; 3] {
     split
 }
 
-/// Lotes de até `BATCH_SIZE` na ordem do plano; falha depois do 1º lote vira `load-partial`.
 fn write_changes(
     omhl: &mut Omhl<'_>,
     tenant: &TenantId,

@@ -728,7 +728,6 @@ fn text_of(length: usize) -> String {
     "x".repeat(length)
 }
 
-/// `premise` ou `guideline` mínimo e válido, sem os campos novos.
 fn plain(type_name: &str) -> Value {
     match type_name {
         "premise" => json!({ "text": "users have a git repo", "status": "assumed" }),

@@ -1,5 +1,3 @@
-//! Blob store local por hash: `<db>/blobs/<2 primeiros hex>/<hash>`, gravação atômica e leitura conferida.
-
 use crate::byproduct::{ByproductErrorKind, ByproductHash, ByproductStore};
 use crate::ports::blob::BlobStore;
 use std::fs;

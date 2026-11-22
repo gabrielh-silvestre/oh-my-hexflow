@@ -1,5 +1,3 @@
-//! Os dois serializadores do `Doc`: `agent` (compacto, sem linha em branco) e `human` (blocos separados e rótulos alinhados).
-
 use super::doc::{Closing, Doc, Join, Line, Marker};
 use super::vocab::Vocabulary;
 #[cfg(test)]
@@ -18,7 +16,6 @@ pub fn agent(doc: &Doc, vocabulary: &impl Vocabulary) -> String {
     lines.join("\n")
 }
 
-/// Um bloco por cabeçalho, nota, item com filhos e fecho, separados por uma linha em branco.
 pub fn human(doc: &Doc, vocabulary: &impl Vocabulary) -> String {
     let mut blocks: Vec<String> = blocks(&doc.lines)
         .into_iter()
@@ -82,7 +79,6 @@ fn label_width(block: &[Line]) -> usize {
         .unwrap_or_default()
 }
 
-/// `label_width` alinha os valores dos campos no `human`; o `agent` passa `None` e escreve `rótulo: valor`.
 fn render_line(line: &Line, label_width: Option<usize>, vocabulary: &impl Vocabulary) -> String {
     match line {
         Line::Header { state, parts } => {

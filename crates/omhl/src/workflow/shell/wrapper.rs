@@ -1,28 +1,21 @@
-/// Por que o leitor não achou o programa de um comando que embrulha outro.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opacity {
-    /// A opção reescreve o ambiente ou o comando (`env -i`, `env -S`, `exec -c`): a palavra com o programa pode vir dentro de outra.
     Rewriting,
-    /// A opção do embrulho não está na tabela: o leitor não adivinha o que vem depois dela.
     UnknownOption,
 }
 
-/// Onde está o programa de um comando simples, depois de pular atribuições e embrulhos.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Resolved {
     pub(super) program_at: Option<usize>,
     pub(super) opacity: Option<Opacity>,
 }
 
-/// Um programa que executa o comando da palavra seguinte; as opções que sabe pular de forma determinística.
+/// As opções que sabe pular de forma determinística.
 struct Wrapper {
     name: &'static str,
     flags: &'static [&'static str],
-    /// Opções com valor: na palavra seguinte ou grudado (`-n5`, `--signal=TERM`).
     valued: &'static [&'static str],
-    /// Prefixos de opção que mudam o que roda; uma opção de 1 caractere só vale por igualdade (`env -`).
     rewriting: &'static [&'static str],
-    /// Opções que só consultam o que o nome resolve, sem executar nada (`command -v`).
     lookups: &'static [&'static str],
     /// Palavras posicionais antes do comando embrulhado (a duração do `timeout`).
     positionals: usize,

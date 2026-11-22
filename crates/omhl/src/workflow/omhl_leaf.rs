@@ -1,19 +1,13 @@
-//! A folha da CLI que um comando `omhl` pede: o nome que o `omhl-allow` do papel lista.
-
 pub const GLOBAL_OPTIONS: [&str; 3] = ["--db", "--project-dir", "--format"];
 pub const INFO_FLAGS: [&str; 4] = ["-h", "--help", "-V", "--version"];
 const HELP_WORD: &str = "help";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Leaf {
-    /// `--help`, `-V`, `<grupo> help`: só imprimem, valem para todo papel.
     ReadOnly,
-    /// `append`, `spec validate`: o texto que `commands` lista.
     Named(String),
 }
 
-/// `args` são as palavras depois do `omhl`; `groups` são os comandos que só existem com subcomando (`spec`, `check`...).
-/// `None` quando a primeira palavra é uma opção que o hook não conhece ou falta a folha.
 pub fn resolve_leaf(args: &[String], groups: &[&str]) -> Option<Leaf> {
     let mut informational = false;
     let mut words: Vec<&str> = Vec::new();
@@ -45,7 +39,6 @@ pub fn resolve_leaf(args: &[String], groups: &[&str]) -> Option<Leaf> {
     }
 }
 
-/// `--db=x`, `--project-dir=x`, `--format=x`.
 fn is_global_assignment(arg: &str) -> bool {
     GLOBAL_OPTIONS.iter().any(|option| {
         arg.strip_prefix(option)

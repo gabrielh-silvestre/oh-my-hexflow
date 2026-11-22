@@ -10,7 +10,6 @@ pub(super) const CRITIC: &str = "omhl:critic";
 const ANALYST: &str = "omhl:analyst";
 const VERIFIER: &str = "omhl:verifier";
 
-/// O que um papel portado pode gravar; as condições finas (ex.: `kind` do gap) ficam nas funções abaixo.
 pub(super) struct Matrix {
     role: &'static str,
     nodes: &'static [&'static str],
@@ -18,7 +17,6 @@ pub(super) struct Matrix {
     pub(super) retire: &'static [&'static str],
 }
 
-/// Os sete papéis que o `OMHL_ROLE` aceita; lista fechada, o valor é gravado como `agent` do record.
 const MATRICES: [Matrix; 7] = [
     Matrix {
         role: ANALYST,
@@ -64,7 +62,6 @@ const MATRICES: [Matrix; 7] = [
     },
 ];
 
-/// Leitura vale para os sete papéis; vem depois dos comandos próprios de cada um.
 macro_rules! commands {
     ($($own:literal),*) => {
         &[
@@ -75,7 +72,7 @@ macro_rules! commands {
     };
 }
 
-/// `commands` de referência por papel, só para os testes (paridade com o `omhl-allow` dos agentes).
+///  só para os testes (paridade com o `omhl-allow` dos agentes).
 #[doc(hidden)]
 pub const ROLE_REFERENCE_COMMANDS: [(&str, &[&str]); 7] = [
     (ANALYST, commands!["append"]),
@@ -119,7 +116,6 @@ pub const ROLE_REFERENCE_MATRIX: [RoleMatrixRow; 7] = {
     table
 };
 
-/// O papel lista `name` no campo da matriz escolhido por `pick` (`nodes`, `relations` ou `retire`).
 pub(super) fn matrix_lists(
     role: &str,
     pick: fn(&Matrix) -> &'static [&'static str],
@@ -141,7 +137,6 @@ pub(super) fn node_allowed(role: &str, type_name: &str, data: &Value) -> bool {
     listed && content_ok
 }
 
-/// Papel portado cria divergência só `open`; as demais resoluções vêm de revisão (verifier) ou do humano.
 pub(super) fn creation_allowed(type_name: &str, data: &Value) -> bool {
     type_name != "divergence" || resolution_of(data) == Some("open")
 }
@@ -158,8 +153,6 @@ pub(super) struct Revision<'a> {
     pub(super) revised: &'a Value,
 }
 
-/// Só o próprio papel revisa o que gravou; `kind` de premissa e gap não muda, divergência só sai de `open`
-/// pelo fechamento do verifier e premissa confirmada ou divergência já resolvida não são revisadas, nem pelo autor.
 pub(super) fn revision_allowed(revision: &Revision<'_>) -> bool {
     if changes_kind(revision)
         || leaves_open_outside_verifier_close(revision)
@@ -196,7 +189,6 @@ fn leaves_open_outside_verifier_close(revision: &Revision<'_>) -> bool {
         && !verifier_closes_divergence(revision)
 }
 
-/// O verifier confere a correção: `open` vira `code-fixed` e a evidência só cresce; nada mais muda.
 fn verifier_closes_divergence(revision: &Revision<'_>) -> bool {
     let (Some(current), Some(revised)) =
         (revision.current.as_object(), revision.revised.as_object())
@@ -213,7 +205,6 @@ fn verifier_closes_divergence(revision: &Revision<'_>) -> bool {
             == fields_except(revised, &["resolution", "evidence"])
 }
 
-/// O critic confirma premissa técnica de qualquer autor ainda não confirmada; só `status` e `confirmed_by` mudam.
 fn critic_confirms_premise(revision: &Revision<'_>) -> bool {
     let (Some(current), Some(revised)) =
         (revision.current.as_object(), revision.revised.as_object())
@@ -246,8 +237,6 @@ fn fields_except<'a>(
         .collect()
 }
 
-/// Quem retira um `contradicts`: o verifier e o `user`, e nunca o `agent` que o gravou; `claude` não retira.
-/// Outros autores (loader, hooks, testes) seguem como antes.
 pub(super) fn contradicts_retirement_allowed(agent: &str, relation_author: Option<&str>) -> bool {
     match agent {
         CLAUDE => false,

@@ -1,4 +1,4 @@
-//! Erro genérico dos comandos de base: lê só o `{"error": {...}}` de `AppError::to_json` e mostra todo escalar.
+//!  lê só o `{"error": {...}}` de `AppError::to_json` e mostra todo escalar.
 
 use serde_json::Value;
 
@@ -6,7 +6,6 @@ use super::base::{Entry, Region, Shape, Specialization};
 use super::doc::{Closing, Doc, Join, Line, Marker, items, opt_text, scalar_fields, text};
 use super::vocab::{State, without_final_period};
 
-/// Tabela de erro compartilhada pelos comandos de base: ruído vazio, tudo opcional exceto `code` e `message` da raiz
 /// (cada comando monta contextos diferentes e o `no-marker` tem `details: []`).
 pub static ENTRIES: [Entry; 14] = [
     Entry::new(Region::Root, "code", Shape::Closed),
@@ -49,11 +48,9 @@ pub static ENTRIES: [Entry; 14] = [
         .optional(),
 ];
 
-/// Os fatos do envelope que o detalhe e o fecho precisam.
 pub struct ErrorFacts {
     pub code: String,
     pub message: String,
-    /// A ação do erro: o primeiro `next_step` dos detalhes ou, sem ele, o primeiro `hint` do contexto.
     pub action: Option<String>,
 }
 
@@ -73,7 +70,6 @@ impl ErrorFacts {
     }
 }
 
-/// `value` é o `{"error": {...}}`: cabeçalho, detalhes, extras e fecho.
 pub fn failure<S: Specialization>(specialization: &S, value: &Value) -> Doc {
     let error = &value["error"];
     let facts = ErrorFacts::of(error);
@@ -98,7 +94,6 @@ pub fn header(error: &Value) -> Line {
     }
 }
 
-/// O que o detalhe repete do envelope (mesmo `code`, mesma `message`) fica só no cabeçalho.
 pub fn detail_lines(detail: &Value, facts: &ErrorFacts) -> Vec<Line> {
     let code = text(detail, "code");
     let message = text(detail, "message");
@@ -150,8 +145,6 @@ pub fn detail_lines(detail: &Value, facts: &ErrorFacts) -> Vec<Line> {
     lines
 }
 
-/// Todo escalar do contexto como campo; `kind` só aparece quando difere do `code`, e a ação vai para o fecho.
-/// `own_code` é o `code` do dono do contexto (o erro ou o detalhe).
 pub fn context_lines(
     context: &Value,
     depth: usize,

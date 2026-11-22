@@ -15,7 +15,7 @@ impl Clock for SystemClock {
     }
 }
 
-/// Clamps both extremes: the engine only accepts the 24-character form.
+///  the engine only accepts the 24-character form.
 pub fn format_system_time(time: SystemTime) -> String {
     let Ok(since_epoch) = time.duration_since(UNIX_EPOCH) else {
         return ORIGIN.to_owned();
@@ -26,7 +26,6 @@ pub fn format_system_time(time: SystemTime) -> String {
     format_utc(since_epoch.as_secs(), since_epoch.subsec_millis())
 }
 
-/// Days since 1970-01-01 become a date through the era algorithm over a March-based year.
 pub fn format_utc(secs: u64, millis: u32) -> String {
     let shifted_days = secs / SECS_PER_DAY + 719_468;
     let era = shifted_days / 146_097;

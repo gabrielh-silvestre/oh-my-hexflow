@@ -1,5 +1,3 @@
-//! O `omhl-allow` do frontmatter de um agente: as folhas do `omhl` que o papel pode rodar.
-
 use serde::Deserialize;
 
 use super::omhl_leaf::Leaf;

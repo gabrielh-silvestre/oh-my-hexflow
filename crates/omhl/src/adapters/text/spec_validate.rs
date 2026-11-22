@@ -1,6 +1,3 @@
-//! Texto do `spec validate`: as partes, as emendas com o estado e as violações de cada uma.
-//! A reprovação das partes e das emendas aprovadas sai como erro pelo genérico.
-
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};

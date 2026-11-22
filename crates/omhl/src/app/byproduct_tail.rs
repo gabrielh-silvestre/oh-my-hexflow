@@ -12,7 +12,6 @@ const TAIL_MAX: usize = 500;
 const LINE_MAX_CHARS: usize = 2_000;
 
 impl Engine<'_> {
-    /// Somente leitura: as últimas linhas da saída guardada da attestation mais recente.
     pub(super) fn byproduct(
         &mut self,
         check: &str,
@@ -62,7 +61,6 @@ impl Engine<'_> {
         Ok(result)
     }
 
-    /// A de maior `seq` entre as attestations do par; o id não ordena nada.
     fn latest_attestation(
         &mut self,
         check: &str,

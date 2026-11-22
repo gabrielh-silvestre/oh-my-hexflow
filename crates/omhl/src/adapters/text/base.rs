@@ -1,5 +1,3 @@
-//! Esqueleto dos comandos de base: o `BaseRenderer` monta o `Doc` por Template Method e o `Profile` declara a forma de cada chave do `Value`.
-
 use serde_json::Value;
 
 use super::Renderer;
@@ -12,9 +10,7 @@ use super::vocab::State;
 pub enum Region {
     /// Escalares na raiz do nó e, nos comandos sem nó, na raiz do `Value`.
     Root,
-    /// Dentro do objeto `snapshot` da raiz.
     Snapshot,
-    /// Dentro do objeto `author` da raiz.
     Author,
     /// Tudo sob `data` e, nos comandos sem nó, tudo sob objeto aninhado da raiz.
     Data,
@@ -49,13 +45,10 @@ pub enum Outcome {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeContainer {
-    /// Array de nós sob a chave (`items` do `list`).
     Array(&'static str),
-    /// Um nó sob a chave (`node` do `get`).
     Object(&'static str),
 }
 
-/// A chave `"*"` casa qualquer outra chave, só na região `Data`.
 pub const WILDCARD: &str = "*";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,8 +110,6 @@ impl Entry {
         self.region == region && in_scope && same_key
     }
 
-    /// Ordem de precedência (menor vence): explícita com `parent` igual, explícita sem `parent`, curinga do tipo,
-    /// curinga qualquer; empatando, o escopo `NodeType` vence o `Any`.
     fn rank(&self, parent: Option<&str>) -> Option<(u8, bool)> {
         let any_scope = self.scope == Scope::Any;
         match (self.key == WILDCARD, self.parent) {
@@ -133,16 +124,13 @@ impl Entry {
 /// Tabela de formas de um comando: o que o teste de folhas cobra do texto e o que o `BaseRenderer` tem de mostrar.
 #[derive(Debug)]
 pub struct Profile {
-    /// Rótulo do comando no cabeçalho; vazio quando o cabeçalho abre direto pelo resumo (o `check run`).
     pub label: &'static str,
-    /// `None` nos comandos sem nó.
     pub nodes: Option<NodeContainer>,
     pub success: &'static [Entry],
     pub failure: &'static [Entry],
 }
 
 impl Profile {
-    /// Comando ainda sem tabela: toda chave fica fora dela.
     pub const EMPTY: Profile = Profile {
         label: "",
         nodes: None,
@@ -174,8 +162,6 @@ impl Profile {
     }
 }
 
-/// Pontos de extensão do Template Method: cada comando de base escolhe o `Profile` e os trechos do `Doc`;
-/// o que não sobrescreve vem da base (e do erro genérico).
 pub trait Specialization {
     fn profile(&self) -> &'static Profile;
 
@@ -183,7 +169,6 @@ pub trait Specialization {
         State::Ok
     }
 
-    /// As partes do cabeçalho depois do rótulo do comando.
     fn summary(&self, value: &Value) -> Vec<String>;
 
     fn detail_lines(&self, _value: &Value) -> Vec<Line> {

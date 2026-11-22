@@ -19,10 +19,8 @@ use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
 use crate::workflow::retro::retro;
 
-/// Tamanho de página quando o pedido não traz `limit` (o padrão do motor).
 const DEFAULT_PAGE_LIMIT: u32 = 50;
 
-/// Estado que as ações compartilham; as tentativas ficam por conta do `App`.
 pub(super) struct Engine<'d> {
     pub(super) omhl: Omhl<'d>,
     pub(super) tenant: TenantId,
@@ -31,10 +29,8 @@ pub(super) struct Engine<'d> {
     pub(super) runner: Option<&'d dyn CommandRunner>,
     pub(super) byproducts: Option<&'d dyn ByproductStore>,
     pub(super) mark: Option<&'d dyn DevelopMark>,
-    /// Cópia da política do `App`, para a leitura inicial do `check run`.
     pub(super) retry: RetryPolicy,
     pub(super) retry_after_run: RetryPolicy,
-    /// Pasta de usuário dos hooks do git; `None` só com `--db` e sem `HOME` nem `XDG_DATA_HOME`.
     pub(super) hooks_dir: Option<PathBuf>,
 }
 
@@ -178,7 +174,6 @@ impl Engine<'_> {
         Ok(output::closed(&closed, retro(&facts).as_ref()))
     }
 
-    /// Regenera `.omhl/projection` a partir do estado vigente; não grava nenhum record.
     fn project(&mut self) -> Result<Value, AppError> {
         let root = require_project_root(self.project_root.as_deref())?;
         let state = self.omhl.read_projection_state(&self.tenant)?;
@@ -193,12 +188,10 @@ impl Engine<'_> {
         }))
     }
 
-    /// O snapshot de uma árvore limpa; árvore suja e sonda com falha são recusas em `/snapshot`.
     pub(super) fn probe_snapshot(&self) -> Result<Snapshot, AppError> {
         reproducible(self.probe.probe())
     }
 
-    /// O commit e a árvore do `HEAD`, com a mesma recusa de `probe_snapshot`.
     fn probe_gate_snapshots(&self) -> Result<GateSnapshots, AppError> {
         Ok(GateSnapshots {
             head_commit: self.probe_snapshot()?,

@@ -38,7 +38,6 @@ const INSERT_RECORD: &str = "INSERT INTO records (tenant, seq, id, prev_hash, ha
 
 // ---------------------------------------------------------------- cadeia de teste
 
-/// Um record por montar: o que o `decide` entregaria ao store, escrito à mão.
 struct Draft {
     key: String,
     type_name: String,
@@ -215,7 +214,6 @@ fn body_of(tenant: &TenantId, seq: u64, id: &RecordId, draft: &Draft) -> String 
     chain::canonical(&body).unwrap()
 }
 
-/// O estado da cadeia de um tenant na visão do teste: próximo `seq`, último hash e próximo id.
 struct Ledger {
     tenant: TenantId,
     anchor_doc: String,
@@ -527,7 +525,6 @@ fn assert_row_matches(row: &RecordRow, expected: &NewRecord) {
 
 // ---------------------------------------------------------------- conexão crua (sem desligar nada)
 
-/// Conexão `sqlx` ao mesmo arquivo, com os triggers e as chaves estrangeiras ligados.
 struct Raw {
     conn: SqliteConnection,
 }

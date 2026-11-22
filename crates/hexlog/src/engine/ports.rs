@@ -20,7 +20,6 @@ pub trait Clock: Send + Sync {
 }
 
 pub trait IdGenerator: Send + Sync {
-    /// uuid v7 em produção.
     fn next(&self) -> Uuid;
 }
 
@@ -30,7 +29,6 @@ pub struct NativeNode {
 }
 
 pub trait NativeNodes: Send + Sync {
-    /// Id reservado é `lookup(id).is_some()`.
     fn lookup(&self, id: &SemanticId) -> Option<NativeNode>;
     fn native_relations(&self, relation_type: &RelationTypeName) -> Vec<(SemanticId, SemanticId)>;
     fn catalog_version(&self) -> &str;
@@ -56,11 +54,9 @@ pub struct DataViolation {
     pub code: String,
 }
 
-/// Implementada por `Catalog` (em `catalog`); o `engine` só conhece este trait.
 pub(crate) trait Definitions: Send + Sync {
     fn node_type(&self, name: &TypeName) -> Option<&NodeTypeInfo>;
     fn relation_type(&self, name: &RelationTypeName) -> Option<&RelationTypeInfo>;
-    /// No máximo 50 violações, com ponteiro JSON, e `too-many-errors` quando passa disso: o corte é só aqui.
     fn validate_data(&self, name: &TypeName, data: &Value) -> Result<(), Vec<DataViolation>>;
 }
 
@@ -119,14 +115,13 @@ pub(crate) struct NewRecord {
     pub(crate) columns: RecordColumns,
 }
 
-/// Resultado de `decide`: o que gravar (vazio no replay) e o que devolver ao chamador.
 pub(crate) struct AppendPlan {
     pub(crate) records: Vec<NewRecord>,
     pub(crate) batch: Option<BatchRow>,
     pub(crate) outcome: AppendOutcome,
 }
 
-/// O que `decide` lê para gravar. Portas síncronas: o `block_on` fica dentro de `store/sqlite`.
+/// Portas síncronas: o `block_on` fica dentro de `store/sqlite`.
 pub(crate) trait WriteReads {
     fn tenant(&mut self, tenant: &TenantId) -> Result<Option<TenantRow>, HexlogError>;
     fn chain_head(&mut self, tenant: &TenantId) -> Result<ChainHead, HexlogError>;
@@ -151,7 +146,6 @@ pub(crate) trait WriteReads {
         first_seq: u64,
         count: u32,
     ) -> Result<Vec<RecordRow>, HexlogError>;
-    /// Pares das relations vigentes de `relation_type` cujos extremos do tenant também estão vigentes.
     fn live_relation_pairs(
         &mut self,
         tenant: &TenantId,
@@ -159,7 +153,6 @@ pub(crate) trait WriteReads {
     ) -> Result<Vec<(SemanticId, SemanticId)>, HexlogError>;
 }
 
-/// O que a Facade lê para responder consultas.
 pub(crate) trait QueryReads {
     fn current_nodes(
         &mut self,
@@ -231,7 +224,6 @@ pub(crate) trait VerifyReads {
     fn stored_batches(&mut self, tenant: &TenantId) -> Result<Vec<StoredBatch>, HexlogError>;
 }
 
-/// A soma das três, implementada uma vez pela transação do SQLite.
 pub(crate) trait StoreReader: WriteReads + QueryReads + VerifyReads {}
 impl<T: WriteReads + QueryReads + VerifyReads + ?Sized> StoreReader for T {}
 
@@ -243,13 +235,11 @@ pub(crate) trait Store: Send {
         anchor: &Hash,
         created_at: &str,
     ) -> Result<(TenantRow, bool), HexlogError>;
-    /// Abre transação exclusiva, entrega `WriteReads` a `decide` e anexa o plano devolvido de forma atômica.
     fn append_with(
         &mut self,
         tenant: &TenantId,
         decide: &mut dyn FnMut(&mut dyn WriteReads) -> Result<AppendPlan, HexlogError>,
     ) -> Result<AppendPlan, HexlogError>;
-    /// Leitura consistente; o resultado sai por variável capturada pelo fechamento.
     fn read(
         &mut self,
         f: &mut dyn FnMut(&mut dyn StoreReader) -> Result<(), HexlogError>,

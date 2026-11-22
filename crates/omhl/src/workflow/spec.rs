@@ -1,4 +1,3 @@
-//! Validador estrutural das partes (`parte-NN.md`) e das emendas (`emenda-NN.md`) de uma spec.
 //! Puro: recebe o texto dos arquivos e a configuração, devolve violações com `arquivo:linha`.
 
 use std::collections::{HashMap, HashSet};
@@ -8,7 +7,6 @@ use super::gap::GapState;
 use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX};
 use crate::graphs::{DIVERGENCE_NAMESPACE, GAP_NAMESPACE, GUIDELINE_NAMESPACE, PREMISE_NAMESPACE};
 
-/// Resolução da divergência que a emenda aprovada leva (`resolution`).
 pub const SPEC_STALE: &str = "spec-stale";
 const PART_SECTIONS: [&str; 5] = [
     "Objetivo",
@@ -33,7 +31,6 @@ const CLOSED_RESOLUTIONS: [&str; 2] = ["code-fixed", "accepted"];
 
 #[derive(Debug, Clone, Copy)]
 pub struct SpecFile<'a> {
-    /// `parte-NN.md` ou `emenda-NN.md`.
     pub name: &'a str,
     pub text: &'a str,
 }
@@ -193,8 +190,7 @@ impl<'a> Doc<'a> {
     }
 }
 
-/// As partes e as emendas chegam já ordenadas pelo nome; a saída segue essa ordem (partes primeiro) e,
-/// dentro de um arquivo, a linha crescente.
+/// As partes e as emendas chegam já ordenadas pelo nome.
 pub fn validate_spec(
     parts: &[SpecFile<'_>],
     amendments: &[SpecFile<'_>],
@@ -265,9 +261,7 @@ fn check_part<'a>(
 }
 
 struct AmendmentContext<'a> {
-    /// `CMP-###` e `CA-###` definidos nas partes.
     part_ids: HashSet<&'a str>,
-    /// `EMD-###` -> número da primeira emenda que o define.
     emd_numbers: HashMap<&'a str, u32>,
     seen_emds: HashSet<&'a str>,
     seen_numbers: HashSet<u32>,
@@ -398,7 +392,6 @@ fn section_order_violation(doc: &Doc, expected: &[&str]) -> Option<Found> {
     })
 }
 
-/// Regras comuns a parte e emenda: seções, tamanho, placeholders e marcador `[PENDENTE`.
 fn check_shared(doc: &Doc, expected: &[&str], config: &SpecsConfig) -> Vec<Found> {
     let mut found = Vec::new();
     if let Some(violation) = section_order_violation(doc, expected) {
@@ -459,13 +452,11 @@ pub(crate) fn is_digits(text: &str, len: usize) -> bool {
     text.len() == len && text.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-/// `emenda-NN`, sempre com dois dígitos.
 pub(crate) fn is_amendment_id(id: &str) -> bool {
     id.strip_prefix(AMENDMENT_PREFIX)
         .is_some_and(|number| is_digits(number, 2))
 }
 
-/// `emenda-NN.md` com exatamente dois dígitos.
 pub(crate) fn amendment_number(name: &str) -> Option<u32> {
     let digits = name
         .strip_prefix(AMENDMENT_PREFIX)?
@@ -498,7 +489,6 @@ fn defined_emds<'a>(docs: &[Doc<'a>]) -> HashMap<&'a str, u32> {
     defined
 }
 
-/// Segmento de id semântico: `[a-z0-9][a-z0-9-]*`.
 fn name_len(text: &str) -> usize {
     let len = text
         .bytes()
@@ -508,7 +498,7 @@ fn name_len(text: &str) -> usize {
     if text.starts_with('-') { 0 } else { len }
 }
 
-/// Id semântico `nome(.nome)*`; um `.` sem segmento válido depois é pontuação da frase e fica fora.
+/// Um `.` sem segmento válido depois é pontuação da frase e fica fora.
 fn semantic_id_len(text: &str) -> usize {
     let mut len = name_len(text);
     if len == 0 {
@@ -533,7 +523,6 @@ fn divergence_ref_prefix() -> String {
     id_prefix(DIVERGENCE_NAMESPACE)
 }
 
-/// `[PENDENTE: gaps.`: o que antecede o nome do gap num marcador de pendência.
 fn pending_prefix() -> String {
     format!("{PENDING_OPEN}{}", id_prefix(GAP_NAMESPACE))
 }
@@ -562,18 +551,14 @@ fn count_divergence_refs(line: &str) -> usize {
         .count()
 }
 
-/// Fatos do grafo de que as regras de `validate_graph` precisam; o app os monta do banco.
 pub trait SpecFacts {
     fn exists(&self, id: &str) -> bool;
-    /// Premissa: `confirmed` com `confirmed_by`. Diretiva: `confirmed_by`, de extension ou nativa.
     fn confirmed(&self, id: &str) -> bool;
     /// `business` ou `technical` (premissa).
     fn kind(&self, id: &str) -> Option<String>;
     fn work_item(&self, id: &str) -> Option<String>;
-    /// Gap inexistente vale `Open`.
     fn gap_state(&self, gap: &str) -> GapState;
     fn divergence(&self, id: &str) -> Option<DivergenceFact>;
-    /// Há `divergence` do work item em `spec-stale` com `amendment` igual a `amendment` (sem `.md`).
     fn amendment_approved(&self, work_item: &str, amendment: &str) -> bool;
 }
 
@@ -606,8 +591,6 @@ pub fn amendment_state(
     }
 }
 
-/// Só as regras que dependem do grafo; as estruturais ficam em `validate_spec`. A ordem é a de
-/// `validate_spec`: arquivos como recebidos (partes, depois emendas) e, em cada um, a linha crescente.
 pub fn validate_graph(
     work_item: &str,
     parts: &[SpecFile<'_>],
@@ -646,7 +629,6 @@ pub fn validate_graph(
     violations
 }
 
-/// A seção Divergência cita uma divergência que não é a revisada: `None` quando cita a esperada ou
 /// quando a citação já é `divergence-ref-invalid` da validação estrutural.
 pub fn amendment_divergence_mismatch(file: &SpecFile<'_>, expected: &str) -> Option<Violation> {
     let doc = Doc::new(file);
@@ -722,7 +704,6 @@ fn corrects(doc: &Doc, item_ref: &str) -> bool {
         .any(|target| target == Some(item_ref))
 }
 
-/// Um `[PENDENTE: gaps.x]` válido por linha; o malformado é da validação estrutural.
 fn check_pending_gaps(doc: &Doc, facts: &impl SpecFacts) -> Vec<Found> {
     doc.lines
         .iter()
@@ -756,7 +737,6 @@ fn pending_gaps(line: &str) -> Vec<&str> {
         .collect()
 }
 
-/// `(linha, id)` de cada `premises.x` e `guidelines.x` da seção de diretivas e premissas.
 fn cited_ids<'a>(doc: &Doc<'a>) -> Vec<(usize, &'a str)> {
     let Some(section) = doc.section(DIRECTIVES) else {
         return Vec::new();

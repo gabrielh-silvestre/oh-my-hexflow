@@ -2,7 +2,6 @@ use hexlog::SemanticId;
 
 use crate::workflow::names::{WORK_ITEM_ID_PREFIX, work_item_of_folder};
 
-/// Fatos crus do HEAD, montados pela sonda; `head` é `None` em repositório sem commit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeadFacts {
     pub current: Option<String>,
@@ -73,14 +72,12 @@ pub fn classify(branch: &str) -> BranchKind {
     }
 }
 
-/// O `<tipo>` de `<tipo>/wi-<id>__<slug>`; não julga se o tipo existe na tabela de prefixos.
 pub fn branch_prefix(branch: &str) -> Option<&str> {
     work_item_id(branch)?;
 
     branch.split_once('/').map(|(kind, _)| kind)
 }
 
-/// `<tipo>/wi-<id>__<slug>`: o `<id>` vai até o primeiro `__` e precisa ser nome de um segmento.
 pub fn work_item_id(branch: &str) -> Option<SemanticId> {
     let (kind, rest) = branch.split_once('/')?;
     if kind.is_empty() {
@@ -91,7 +88,6 @@ pub fn work_item_id(branch: &str) -> Option<SemanticId> {
     SemanticId::parse(&format!("{WORK_ITEM_ID_PREFIX}{id}")).ok()
 }
 
-/// Lê todas as linhas da stdin do `pre-push` antes de decidir.
 pub fn plan_push(
     lines: &str,
     head: Option<&str>,
@@ -133,7 +129,6 @@ pub fn plan_push(
     })
 }
 
-/// `<lref> <lsha> <rref> <rsha>`, separados por um espaço, nenhum vazio.
 fn push_fields(line: &str) -> Option<[&str; 4]> {
     let fields: [&str; 4] = line.split(' ').collect::<Vec<_>>().try_into().ok()?;
     fields

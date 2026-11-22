@@ -14,7 +14,6 @@ pub(super) fn all_nodes(
     nodes_matching(omhl, tenant, type_name, Vec::new())
 }
 
-/// Os nodes vigentes do tipo cujos campos casam com `where_eq`, filtrados no banco, página a página.
 pub(super) fn nodes_matching(
     omhl: &mut Omhl<'_>,
     tenant: &TenantId,

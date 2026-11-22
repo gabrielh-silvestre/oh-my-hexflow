@@ -169,7 +169,6 @@ deserialize_name!(TypeName);
 deserialize_name!(RelationTypeName);
 
 impl Hash {
-    /// Quem chama garante 64 hexadecimais minúsculos (saída de `sha256hex`).
     pub(crate) fn from_lower_hex(hex: String) -> Hash {
         debug_assert!(is_hash(&hex));
         Hash(hex)

@@ -7,7 +7,6 @@ const FROZEN: &str = "spec-frozen";
 const IN_LINKED_WORKTREE: &str = "spec-in-linked-worktree";
 const FOLDER_UNKNOWN: &str = "spec-folder-unknown";
 
-/// Um arquivo sob `<specs.dir>/wi-<id>__<slug>/`; `file` é o restante do caminho depois da pasta.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecPath {
     pub work_item: String,
@@ -41,20 +40,15 @@ pub enum Verdict {
 }
 
 pub struct Facts<'a> {
-    /// Existe branch local cujo work item é o do segmento da pasta.
     pub frozen: bool,
-    /// O caminho está dentro de uma worktree ligada, não no diretório principal.
     pub linked_worktree: bool,
-    /// A pasta `wi-<id>__<slug>` do caminho já existe no diretório principal.
     pub folder_exists: bool,
     pub file_exists: bool,
-    /// Nomes dos arquivos da pasta de spec no diretório principal.
     pub folder_files: &'a [String],
-    /// `<diretório principal>/<specs.dir>/<pasta>`.
     pub main_folder: &'a Path,
 }
 
-/// Pré-filtro barato, só texto: algum componente do caminho tem a forma da pasta de work item. A pasta tem forma fixa mesmo com `specs.dir` customizado, então sem ela o caminho nunca é de spec.
+/// A pasta tem forma fixa mesmo com `specs.dir` customizado, então sem ela o caminho nunca é de spec.
 pub fn has_spec_folder_component(file_path: &Path) -> bool {
     file_path.components().any(|component| {
         component
@@ -64,7 +58,7 @@ pub fn has_spec_folder_component(file_path: &Path) -> bool {
     })
 }
 
-/// Só texto: `.` e `..` são resolvidos sem tocar o disco, para `specs/../specs/wi-x__y/...` não escapar.
+/// Para `specs/../specs/wi-x__y/...` não escapar.
 pub fn parse_spec_path(specs_dir: &str, file_path: &Path) -> Option<SpecPath> {
     let names = normalized_names(file_path)?;
     let dir = normalized_names(Path::new(specs_dir))?;
@@ -90,7 +84,6 @@ pub fn parse_spec_path(specs_dir: &str, file_path: &Path) -> Option<SpecPath> {
         })
 }
 
-/// Maior `emenda-NN.md` (dois dígitos) mais um; `emenda-01.md` quando não há nenhuma.
 pub fn next_amendment(folder_files: &[String]) -> String {
     let highest = folder_files
         .iter()
@@ -101,7 +94,6 @@ pub fn next_amendment(folder_files: &[String]) -> String {
     format!("{AMENDMENT_PREFIX}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
-/// Ordem: worktree ligada; sem branch libera; congelada nega qualquer arquivo em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {

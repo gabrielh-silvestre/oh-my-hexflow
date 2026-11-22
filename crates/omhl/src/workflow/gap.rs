@@ -6,16 +6,13 @@ const ANSWERS: &str = "answers";
 const SUPPORTS: &str = "supports";
 const CONTRADICTS: &str = "contradicts";
 pub const PERSON_PREFIX: &str = "person:";
-/// `confirmed_by.by` da premissa técnica que o `omhl:critic` confirma.
 pub const CRITIC_CONFIRMATION: &str = "critic";
 
-/// Um node do grafo; `data` é `Null` quando o node é nativo.
 #[derive(Debug, Clone)]
 pub struct Fact {
     pub id: String,
     pub type_name: String,
     pub native: bool,
-    /// Gravado pelo cliente `loader`: diretiva de extension, vinculante sem `confirmed_by`.
     pub loader: bool,
     pub data: Value,
 }
@@ -64,12 +61,10 @@ pub fn gap_state(facts: &GapFacts, gap: &str) -> GapState {
     }
 }
 
-/// Id da premissa que responde o gap, no mesmo critério de `gap_state`.
 pub fn answered_by(facts: &GapFacts, gap: &str) -> Option<String> {
     answering_premise(facts, gap).map(|premise| premise.id.clone())
 }
 
-/// Vale a resposta de pessoa, depois a do critic; empatando, a primeira gravada.
 fn answering_premise<'a>(facts: &'a GapFacts, gap: &str) -> Option<&'a Fact> {
     facts
         .edges
@@ -80,7 +75,6 @@ fn answering_premise<'a>(facts: &'a GapFacts, gap: &str) -> Option<&'a Fact> {
         .min_by_key(|fact| answerer_of(&fact.data))
 }
 
-/// Só `person:` conta como humano; o critic só vale confirmado por ele mesmo.
 fn answerer_of(data: &Value) -> Answerer {
     let by = is_confirmed_premise(data)
         .then(|| confirmer(data))
@@ -92,7 +86,6 @@ fn answerer_of(data: &Value) -> Answerer {
     }
 }
 
-/// `confirmed_by.by` do node, quando existe.
 pub fn confirmer(data: &Value) -> Option<&str> {
     data.get("confirmed_by")?.get("by")?.as_str()
 }
@@ -101,13 +94,11 @@ fn node<'a>(facts: &'a GapFacts, id: &str) -> Option<&'a Fact> {
     facts.nodes.iter().find(|fact| fact.id == id)
 }
 
-/// Premissa confirmada: `status` confirmado e `confirmed_by`; a legada `confirmed` sem `confirmed_by` não conta.
 pub fn is_confirmed_premise(data: &Value) -> bool {
     data.get("status").and_then(Value::as_str) == Some("confirmed")
         && data.get("confirmed_by").is_some()
 }
 
-/// Diretiva confirmada: nativa, escrita pelo cliente `loader` ou com `confirmed_by`.
 pub fn is_confirmed_guideline(native: bool, loader: bool, data: &Value) -> bool {
     native || loader || data.get("confirmed_by").is_some()
 }

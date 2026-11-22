@@ -14,23 +14,19 @@ use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 
 pub const GATE_NAME: &str = "pull-request";
 pub const REQUIRED_EVENTS: [&str; 3] = RUNNABLE_EVENTS;
-/// Fonte única do kind de snapshot dos checks nativos.
 pub const NATIVE_SNAPSHOT: SnapshotKind = SnapshotKind::GitCommit;
 
 const NO_OPEN_CONTRADICTION_LABEL: &str = "no-open-contradiction";
 const DECISIONS_ANCHORED_LABEL: &str = "decisions-anchored";
 const ANCHORS_CONFIRMED_LABEL: &str = "anchors-confirmed";
 const RESTS_ON: &str = "rests-on";
-/// Prefixo da pergunta que cobra, de um check com `run`, a attestation selada com a definição vigente.
 const SPEC_DIGEST_LABEL: &str = "spec-digest-match";
 
-/// Os dois snapshots que o gate usa: cada check é atestado no kind que o seu `snapshot_for` manda.
 pub struct GateSnapshots {
     pub head_commit: Snapshot,
     pub head_tree: Snapshot,
 }
 
-/// Checks que o gate cobra, com o kind do snapshot de cada um: primeiro os nativos, depois os do projeto, sem repetir id.
 pub fn required_checks(
     native: &[NativeCheck],
     tenant_checks: &[NodeView],
@@ -58,7 +54,6 @@ pub fn required_checks(
     required
 }
 
-/// Um check do projeto sombreado por um nativo é ignorado: o nativo manda.
 fn is_required_project_check(node: &NodeView) -> bool {
     let covered_event = node.data["when"]["event"]
         .as_str()
@@ -67,14 +62,12 @@ fn is_required_project_check(node: &NodeView) -> bool {
     !node.shadowed && node.data["blocking"] == true && covered_event
 }
 
-/// Um check mecânico (com `run`) do projeto, obrigatório no mesmo evento, dispensa o nativo daquele evento.
 fn is_replaced_by_mechanical_check(native: &NativeCheck, projects: &[&NodeView]) -> bool {
     projects.iter().any(|node| {
         is_mechanical(&node.data) && node.data["when"]["event"].as_str() == Some(native.event)
     })
 }
 
-/// Digest da definição vigente de cada check do projeto, não sombreado, com `run`.
 pub fn spec_digests(tenant_checks: &[NodeView]) -> Vec<(SemanticId, String)> {
     tenant_checks
         .iter()
@@ -83,8 +76,6 @@ pub fn spec_digests(tenant_checks: &[NodeView]) -> Vec<(SemanticId, String)> {
         .collect()
 }
 
-/// Um `Occurred` por check obrigatório, na ordem; o check com `run` ganha logo depois a pergunta do selo
-/// (a attestation com o `spec_digest` da definição vigente, que só o `check run` grava). Por fim, um `NoOpenContradiction`.
 pub fn pr_gate_questions(
     required: &[(SemanticId, SnapshotKind)],
     work_item: &SemanticId,
@@ -172,7 +163,6 @@ fn decisions_filter(work_item: &SemanticId) -> ListFilter {
     }
 }
 
-/// Toda decisão do work item se apoia (`rests-on`) em algo, e esse algo está confirmado.
 pub fn anchor_questions(work_item: &SemanticId) -> Vec<GateQuestion> {
     let anchored = |target| Question::Anchored {
         select: decisions_filter(work_item),
@@ -208,7 +198,6 @@ pub fn anchor_questions(work_item: &SemanticId) -> Vec<GateQuestion> {
     ]
 }
 
-/// Delega à regra única de confirmação; um destino nativo é diretriz (o gate não lhe sabe o tipo).
 fn is_anchor_confirmed(target: &TargetFact<'_>) -> bool {
     if target.native {
         return is_confirmed_guideline(true, false, target.data);
@@ -223,7 +212,6 @@ fn is_anchor_confirmed(target: &TargetFact<'_>) -> bool {
     }
 }
 
-/// Filtro dos checks do projeto que o gate lê.
 pub(crate) fn project_checks_filter() -> ListFilter {
     ListFilter {
         type_name: Some(type_name("check")),
@@ -233,7 +221,6 @@ pub(crate) fn project_checks_filter() -> ListFilter {
     }
 }
 
-/// Revision do work item com `status: closed` e o resultado do gate; vai direto ao `Hexlog`.
 pub(crate) fn closing_request(
     tenant: &TenantId,
     author: &Author,

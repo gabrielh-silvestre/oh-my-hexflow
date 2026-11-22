@@ -40,7 +40,6 @@ macro_rules! no_successor {
     };
 }
 
-/// Extremo da relation `r` vigente: de origem nativa, ou um node do tenant cujo latest record não é retirement.
 macro_rules! live_endpoint {
     ($id:literal, $origin:literal) => {
         concat!(
@@ -156,7 +155,7 @@ fn is_constraint(error: &sqlx::Error) -> bool {
     extended_code(error).is_some_and(|code| code & PRIMARY_CODE_MASK == SQLITE_CONSTRAINT)
 }
 
-/// Fork é o índice de raiz ou de sucessor; qualquer outra violação única é falha do banco.
+/// Fork é o índice de raiz ou de sucessor.
 fn is_fork(error: &sqlx::Error) -> bool {
     let Some(database) = error.as_database_error() else {
         return false;
@@ -205,7 +204,6 @@ fn signed(value: u64) -> Result<i64, HexlogError> {
 
 // ---------------------------------------------------------------- texto das colunas
 
-/// Condições de `where_eq` como `[caminho, tipo, valor]`; o tipo é um literal fixo escolhido aqui.
 fn conditions_json(where_eq: &[(FieldName, Scalar)]) -> String {
     let conditions = where_eq.iter().map(|(field, scalar)| {
         let (kind, value) = match scalar {
@@ -378,7 +376,6 @@ fn record_from(row: &SqliteRow) -> Result<RecordRow, HexlogError> {
 
 // ---------------------------------------------------------------- transação
 
-/// Uma transação aberta: as portas de leitura e a gravação do plano. Cada chamada faz o seu `block_on`.
 pub(super) struct Tx<'c> {
     tx: Transaction<'c, Sqlite>,
     /// Erro que não é violação de restrição: a conexão não é mais confiável (issue 4434 do `sqlx`).
@@ -520,7 +517,7 @@ impl<'c> Tx<'c> {
     }
 }
 
-/// Devolve o resultado e se a conexão ficou suspeita (falha ao abrir que não seja `BUSY`, ou erro dentro da transação).
+/// Devolve o resultado e se a conexão ficou suspeita.
 pub(super) fn run_in<T>(
     conn: &mut SqliteConnection,
     immediate: bool,

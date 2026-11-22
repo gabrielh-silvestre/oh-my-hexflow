@@ -12,8 +12,6 @@ use crate::project::layout::{
     PROJECTION_DIR_ENTRIES_MAX, TMP_PREFIX, TMP_SUFFIX,
 };
 
-/// Writes the projection under `<root>/.omhl/projection`: preflight first, then atomic
-/// replacement of every changed file, then removal of generated orphans.
 pub fn write(root: &Path, files: &[ProjectedFile]) -> Result<WriteReport, ProjectionError> {
     let omhl = root.join(OMHL_DIR);
     ensure_directory(&omhl, OMHL_DIR)?;
@@ -78,7 +76,6 @@ fn io_error(rel: &dyn Fn() -> String) -> impl Fn(io::Error) -> ProjectionError +
     move |_| error(rel(), "io-error", "the file system refused the operation")
 }
 
-/// `None` when the path is absent; a symlink is always refused, before anything is opened.
 fn inspect(path: &Path, rel: &dyn Fn() -> String) -> Result<Option<Metadata>, ProjectionError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_symlink() => {
@@ -116,7 +113,7 @@ fn ensure_directory(path: &Path, rel: &str) -> Result<(), ProjectionError> {
     }
 }
 
-/// A `.gitignore` other than the generated one is the user's: refused before anything is written.
+/// A `.gitignore` other than the generated one is the user's.
 fn ensure_gitignore(dir: &Path) -> Result<(), ProjectionError> {
     let rel = || relative(GITIGNORE_NAME);
     let path = dir.join(GITIGNORE_NAME);
@@ -134,7 +131,6 @@ fn ensure_gitignore(dir: &Path) -> Result<(), ProjectionError> {
     write_if_different(dir, GITIGNORE_NAME, bytes).map(drop)
 }
 
-/// The lock lives as long as the returned handle.
 fn acquire_lock(dir: &Path) -> Result<File, ProjectionError> {
     let rel = || relative(LOCK_NAME);
     let path = dir.join(LOCK_NAME);

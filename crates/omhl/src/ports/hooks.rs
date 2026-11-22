@@ -1,5 +1,3 @@
-//! Instalação dos hooks do git (`fs`, `chmod` e `git config`, nunca em `app/`).
-
 use std::ffi::OsStr;
 use std::fs;
 use std::io::{self, ErrorKind};
@@ -10,26 +8,17 @@ use std::process::{Command, Output, Stdio};
 const SAMPLE_SUFFIX: &str = ".sample";
 const SCRIPT_MODE: u32 = 0o755;
 
-/// O que a instalação pede ao git e ao sistema de arquivos; os erros do git saem com o stderr aparado.
 pub trait HookInstaller {
-    /// `git rev-parse --path-format=absolute --git-path hooks`.
     fn resolved_hooks_dir(&self) -> Result<PathBuf, String>;
-    /// `git config --get core.hooksPath`, em todos os escopos; `None` quando ausente.
     fn configured_hooks_path(&self) -> Result<Option<String>, String>;
-    /// Alguma entrada de `dir` que não termina em `.sample`; pasta inexistente conta como vazia.
     fn has_foreign_hooks(&self, dir: &Path) -> bool;
-    /// Raiz de cada worktree ligada do clone (`git worktree list --porcelain` sem a primeira entrada, a principal).
     fn linked_worktree_roots(&self) -> Result<Vec<PathBuf>, String>;
     fn binary(&self) -> io::Result<PathBuf>;
-    /// Cria `dir` e grava cada `(nome, conteúdo)` com modo `0755`, sobrescrevendo.
     fn write_scripts(&self, dir: &Path, scripts: &[(&str, String)]) -> io::Result<()>;
-    /// `git config --local core.hooksPath <dir>`.
     fn set_local_hooks_path(&self, dir: &Path) -> Result<(), String>;
     fn canonical(&self, dir: &Path) -> io::Result<PathBuf>;
 }
 
-/// O `git` desta máquina sobre o repositório que envolve `root`, com o ambiente do usuário inteiro
-/// (`GIT_CEILING_DIRECTORIES` e `GIT_CONFIG_GLOBAL` valem).
 pub struct GitHooks {
     root: PathBuf,
 }

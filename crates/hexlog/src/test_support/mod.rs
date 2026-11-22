@@ -1,10 +1,8 @@
-//! Helpers dos testes unitários (`tests.rs` ao lado da fonte).
-//!
 //! Cópias dos helpers de `tests/integration/support/` (uma mudança aqui vale também lá, e vice-versa):
 //! `SeqIds`, `assert_refusal` e `catalog::reference_catalog`.
 //!
 //! Helpers que o `catalog/types/tests.rs` copia de `tests/integration/catalog.rs` (uma mudança num
-//! vale também no outro): `type_def`, `pairs`, `refused`, `accepted` e `violations`.
+//! vale também no outro): `type_def`, `pairs`, `accepted` e `violations`.
 
 pub mod catalog;
 

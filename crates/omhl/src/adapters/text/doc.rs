@@ -1,5 +1,3 @@
-//! Modelo intermediário do texto: o renderizador monta o `Doc` e `layout` o serializa em `agent` ou `human`.
-
 use serde_json::Value;
 
 #[cfg(test)]
@@ -37,7 +35,6 @@ impl Fact {
     }
 }
 
-/// Uma linha tipada; `depth` é o nível de recuo (2 espaços por nível no `agent`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Line {
     Header {
@@ -59,17 +56,14 @@ pub enum Line {
         state: State,
         text: String,
     },
-    /// Texto verbatim, nos dois layouts (o `render`).
     Raw {
         depth: usize,
         text: String,
     },
-    /// Linha de saída de comando: o `agent` só apara o fim da linha.
     Output {
         depth: usize,
         text: String,
     },
-    /// Um nó: o `agent` escreve o id e os fatos numa linha só; o `human` abre um bloco com o id e um rótulo por fato.
     Node {
         depth: usize,
         id: String,
@@ -77,7 +71,6 @@ pub enum Line {
     },
 }
 
-/// A última linha: o próximo passo, com ou sem o aviso de que nada bloqueou.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Closing {
     None,
@@ -92,7 +85,6 @@ pub struct Doc {
 }
 
 /// Run, hint, cause e cauda vêm do TOML, do SO ou do comando: cada campo fica numa linha só e sem controle.
-/// Quebras de linha viram espaço; os demais controles e os caracteres de formato (zero-width, bidi) somem.
 pub fn one_line(raw: &str) -> String {
     raw.chars()
         .filter_map(|c| match c {
@@ -115,7 +107,6 @@ pub fn opt_text(value: &Value, key: &str) -> Option<String> {
     value[key].as_str().map(one_line)
 }
 
-/// Item de lista simples (`- a · b`) na raiz.
 pub fn dash(parts: Vec<String>) -> Line {
     Line::Item {
         depth: 0,
@@ -125,7 +116,6 @@ pub fn dash(parts: Vec<String>) -> Line {
     }
 }
 
-/// Campo `rótulo: valor` no nível `depth`.
 pub fn field(depth: usize, label: &str, value: String) -> Line {
     Line::Field {
         depth,
@@ -158,8 +148,6 @@ fn scalar_text(value: &Value) -> Option<String> {
     }
 }
 
-/// Todo escalar de `value` como par rótulo/valor: objeto aninhado vira `pai.filho`, array de escalares vira uma lista
-/// separada por vírgula, `null` não é folha e some.
 pub fn scalar_fields(label: &str, value: &Value) -> Vec<(String, String)> {
     match value {
         Value::Object(map) => map

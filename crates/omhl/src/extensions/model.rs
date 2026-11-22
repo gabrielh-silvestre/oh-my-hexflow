@@ -1,7 +1,6 @@
 use crate::guidance::Guidance;
 use crate::project::layout::{CHECKS_DIR, GUIDELINES_DIR};
 
-/// Tipo de extension; a ordem (`Check` antes de `Guideline`) é a ordem de listagem.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ExtensionKind {
     Check,
@@ -54,8 +53,6 @@ pub struct Extension {
     pub kind: ExtensionKind,
     pub id: String,
     pub path: String,
-    /// Exatamente o `data` do node, já com `"vocabulary":"closed"` no check.
     pub data: serde_json::Value,
-    /// Só ids de check, na ordem do arquivo.
     pub after: Vec<String>,
 }

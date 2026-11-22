@@ -29,8 +29,6 @@ mod lock {
         }
     }
 
-    /// O work item é sempre `w1` e a pasta `wi-w1__login`; `existing` lista a pasta, e o alvo existe
-    /// quando está nela.
     fn verdict(tool: Tool, file: &str, existing: &[&str], frozen: bool, linked: bool) -> Verdict {
         let files = strings(existing);
         let facts = Facts {

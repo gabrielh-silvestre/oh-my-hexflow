@@ -5,7 +5,7 @@ Plugin de desenvolvimento opinativo, construído sobre grafos, e o motor `hexlog
 ## Language
 
 **Engine**:
-O motor agnóstico que guarda os records append-only de cada tenant e valida cada um contra o catalog. Guarda o grafo e não o executa. Os products conhecem o engine, mas o engine não conhece nenhum product, graph ou host. Editar e apagar são feitos por revision e retirement, nunca alterando ou removendo um record. Chama-se HexCore (o crate ainda se chama `hexlog`). Não confundir com o `hexcore-legacy`, um motor de execução de workflows abandonado.
+O motor agnóstico que guarda os records append-only de cada tenant e valida cada um contra o catalog. Guarda o grafo e não o executa. Chama-se HexCore. Não confundir com o `hexcore-legacy`, um motor de execução de workflows abandonado.
 _Avoid_: core, framework, runtime
 
 **Product**:
@@ -13,15 +13,15 @@ Um conjunto de graphs, com seus gates, construído sobre o engine e ligado a um 
 _Avoid_: app, module, extension (extension é outra coisa)
 
 **Record**:
-Toda gravação imutável no histórico de um tenant: a criação ou a revision de um node ou de uma relation, ou uma retirement. Node e relation não são records: são aquilo sobre o que os records falam. Cada record ocupa uma posição na sequência e é encadeado ao anterior.
+Toda gravação imutável no histórico de um tenant: a criação ou a revision de um node ou de uma relation, ou uma retirement. Node e relation não são records: são aquilo sobre o que os records falam.
 _Avoid_: link, entry, elo, registro (na conversa, use o termo em inglês)
 
 **Tenant**:
-O espaço isolado que guarda todo o histórico de records de um projeto. Cada tenant tem a sua própria cadeia, e vários tenants convivem no mesmo banco global do usuário.
+O espaço isolado que guarda todo o histórico de records de um projeto.
 _Avoid_: project, workspace
 
 **Batch**:
-O grupo de 1 a 50 records enviados juntos e gravados de forma tudo-ou-nada: ou todos entram na chain, ou nenhum.
+O grupo de records enviados juntos e gravados de forma tudo-ou-nada: ou todos entram na chain, ou nenhum.
 _Avoid_: transaction, commit
 
 **Host**:
@@ -37,15 +37,15 @@ Uma coisa nomeada que existe no grafo de um tenant (uma decisão, uma premissa, 
 _Avoid_: entity, concept
 
 **Relation**:
-A ligação gravada entre dois nodes, de um relation type dado (por exemplo `after`), identificada pelo trio relation type, origem e destino. Pode carregar dados (por exemplo a condição de um ramo) só quando o relation type define um schema para eles, e tem revisões e retirement como um node: mudar os dados é uma revision, nunca uma alteração.
+A ligação gravada entre dois nodes, de um relation type dado (por exemplo `after`).
 _Avoid_: edge, link, aresta (na conversa, use o termo em inglês)
 
 **Relation type**:
-O nome do tipo de uma relation (`after`, `supports`, `contradicts`, `rests-on`, `supersedes`), definido como dado e não no código.
+O nome do tipo de uma relation, definido como dado e não no código.
 _Avoid_: edge type, link type, kind
 
 **Check**:
-Um node de instrução que diz ao agente o que fazer e quando: tem `when` (antes de qual evento), `how` (como executar) e `blocking` (se barra ou só informa). Na v1 é só texto.
+Um node de instrução que diz ao agente o que fazer e quando.
 _Avoid_: rule, hook, step
 
 **Gate**:
@@ -53,27 +53,27 @@ Uma pergunta avaliável sobre o histórico de um tenant que responde se algo pod
 _Avoid_: check, validation
 
 **Attestation**:
-Um node, de um tipo do graph de checks, cuja revision grava o desfecho de um check em um snapshot específico: passou, passou com alerta ou falhou. Refazer o check no mesmo snapshot deve dar o mesmo desfecho. Aproxima-se da attestation do in-toto.
+Um node, de um tipo do graph de checks, cuja revision grava o desfecho de um check em um snapshot específico. Refazer o check no mesmo snapshot deve dar o mesmo desfecho. Aproxima-se da attestation do in-toto.
 _Avoid_: approval (no GitHub é aprovação humana), result, verdict, evidence
 
 **Snapshot**:
-O instante de algo externo ao qual um record fica amarrado, identificado por um kind e um id (no HexLog, um commit do git amarra cada attestation). O engine valida o formato do kind e do id, mas não sabe quais kinds existem: isso é o product que define. Não é o estado aberto ou fechado de um work item.
+O instante de algo externo ao qual um record fica amarrado. Não é o estado aberto ou fechado de um work item.
 _Avoid_: state, revision
 
 **Work item**:
-Um node que representa uma unidade de trabalho em qualquer escopo: commit, pull request, issue, plano ou feature inteira. Cada escopo é um tipo de node especializado de work item; o pull request é uma dessas especializações.
+Um node que representa uma unidade de trabalho em qualquer escopo: commit, pull request, issue, plano ou feature inteira.
 _Avoid_: unit (não tem relação com unit test nem com o unit of work de Fowler), deliverable, change
 
 **Native**:
-O conteúdo de fábrica embutido no binário e comum a todos os projetos (checks e diretrizes). Cada projeto só o estende com nodes próprios e nunca o altera.
+O conteúdo de fábrica embutido no binário e comum a todos os projetos (checks e diretrizes).
 _Avoid_: built-in, base, default
 
 **Extension**:
-Um arquivo TOML escrito à mão em `.omhl/<pasta do tipo>/<slug>.toml` (`checks/` ou `guidelines/`), com o texto longo opcional num `.md` de mesmo nome ao lado, que acrescenta nodes do projeto (checks e diretrizes) e é carregado no banco por `omhl load`. É versionado com o projeto e estritamente validado. Só adiciona: nunca altera o native.
+Um arquivo TOML escrito à mão, que acrescenta nodes do projeto (checks e diretrizes) e é carregado no banco por `omhl load`. É versionado com o projeto e estritamente validado.
 _Avoid_: overlay, manifest, override
 
 **Projection**:
-Uma vista gerada sob demanda a partir do banco por `omhl project`, em arquivos só de leitura em `.omhl/projection/`, que nunca são editados à mão e não são versionados (a pasta traz o próprio `.gitignore`). A primeira projeção é o estado atual por work item, com tudo que está vigente para ele, um arquivo por work item. Não inclui o TOML nem o Markdown de uma extension, que são escritos à mão.
+Uma vista gerada sob demanda a partir do banco por `omhl project`. Não inclui o TOML nem o Markdown de uma extension, que são escritos à mão.
 _Avoid_: export, mirror
 
 **Graph**:
@@ -81,11 +81,11 @@ Uma área do modelo, com seus próprios tipos de node e relation types (por exem
 _Avoid_: domain, module
 
 **Premise**:
-Um node do graph de decisões que afirma algo tomado como verdadeiro para poder decidir. Em pt-BR, premissa. Quando pertence a um work item (a frente de trabalho), vale enquanto ele estiver aberto. Tem um `kind` opcional: `technical` (a afirmação tomada como verdadeira para decidir) ou `business` (a expectativa da frente de trabalho).
+Um node do graph de decisões que afirma algo tomado como verdadeiro para poder decidir. Em pt-BR, premissa. Quando pertence a um work item (a frente de trabalho), vale enquanto ele estiver aberto.
 _Avoid_: assumption, fact
 
 **Guideline**:
-Um node do graph de decisões que orienta como agir em um contexto, de forma atemporal, sem ser uma escolha pontual. Em pt-BR, diretiva: é o mesmo node, não um conceito novo. Tem um `kind` opcional: `business` ou `architecture`.
+Um node do graph de decisões que orienta como agir em um contexto, de forma atemporal, sem ser uma escolha pontual. Em pt-BR, diretiva: é o mesmo node, não um conceito novo.
 _Avoid_: rule, policy
 
 **Decision**:
@@ -93,23 +93,23 @@ Um node do graph de decisões que registra uma escolha tomada, com a evidência 
 _Avoid_: ADR, resolution
 
 **Gap**:
-Um node do graph de decisões que registra uma dúvida aberta de um work item (a pergunta e o seu contexto). Fecha quando uma premise a responde.
+Um node do graph de decisões que registra uma dúvida aberta de um work item (a pergunta e o seu contexto).
 _Avoid_: question, doubt
 
 **Divergence**:
-Um node do graph de decisões que registra a diferença entre a spec e o que foi feito, com uma `resolution` que diz como ela foi tratada (`open`, `spec-stale`, `code-fixed` ou `accepted`).
+Um node do graph de decisões que registra a diferença entre a spec e o que foi feito.
 _Avoid_: deviation
 
 **Confirmação**:
-A aprovação humana de uma premise, de uma guideline ou da emenda de uma divergence, dada dentro da sessão e registrada em `confirmed_by`, com a pergunta e a resposta literais como evidência. É autodeclarada: o `Author` do record continua sendo quem o digitou, não quem confirmou.
+A aprovação humana de uma premise, de uma guideline ou da emenda de uma divergence.
 _Avoid_: approval
 
 **Supports**:
-Relation type em que uma guideline ou premise serve de critério da resposta de uma premise ou decision. Sozinha, não ancora uma decision: a decision ligada só por `supports` reprova no anchor gate.
+Relation type em que uma guideline ou premise serve de critério da resposta de uma premise ou decision.
 _Avoid_: rests-on (são relation types distintos, em direções opostas)
 
 **Rests-on**:
-Relation type em que um node se apoia em uma guideline ou premise (direção inversa de `supports`). É a única relation que o anchor gate lê.
+Relation type em que um node se apoia em uma guideline ou premise (direção inversa de `supports`).
 _Avoid_: supports, depends-on
 
 **Anchor gate**:
@@ -121,7 +121,7 @@ O conjunto das definições dos graphs, isto é, os tipos de node e os relation 
 _Avoid_: schema, vocabulary
 
 **Definition**:
-Um tipo de node ou um relation type do catalog, gravado no histórico do tenant com versão `major.minor` imutável. Todo objeto de uma definition é fechado: não aceita chave que não declarou. Mudança que só acrescenta (propriedade opcional, valor novo de enum, alargar as pontas de um relation type) ou que só muda texto descritivo sobe a minor; qualquer outra sobe a major. Um record validado numa minor continua válido nas minors seguintes da mesma major. O número da versão é declarado pelo product que define o tipo; o engine só confere se a mudança podia ser minor e recusa a mesma versão com outro conteúdo. Cada record guarda a versão contra a qual foi validado; sem pedido explícito de major, vale a minor mais recente da major mais alta.
+Um tipo de node ou um relation type do catalog.
 _Avoid_: schema, model, versão (sozinho)
 
 **Lineage**:
@@ -149,7 +149,7 @@ Um record que muda o conteúdo de um node ou de uma relation, apontando para a r
 _Avoid_: version, amendment, update
 
 **Supersedes**:
-Relation type da guideline nova para a antiga, gravada por `omhl guideline retire --by`. Difere de uma revision (mesmo id) e de uma retirement (tira de vigência sem apontar substituta). Não distingue substituição total de parcial: a guideline dividida em duas grava um segundo `supersedes` por `omhl append`.
+Relation type da guideline nova para a antiga. Difere de uma revision (mesmo id) e de uma retirement (tira de vigência sem apontar substituta).
 _Avoid_: replaces, overrides
 
 **Origin**:
@@ -161,11 +161,11 @@ Quem gravou um record: o agente (com o modelo usado) ou uma pessoa.
 _Avoid_: creator, actor
 
 **External id**:
-Reservado, sem uso na v1: o id de origem externa de um node, guardado para uma futura substituição do node.
+O id de origem externa de um node, guardado para uma futura substituição do node.
 _Avoid_: original id, source id
 
 **Semantic id**:
-O nome estável que identifica um node em todas as suas revisões (por exemplo `checks.run-tests`). Escolhido por sentido, e não gerado, para que uma colisão revele um node que já existe: gravar um node novo com um semantic id em uso é recusado e aponta para o record vigente, e quem gravou decide se cabe uma revision, uma relation ou um node diferente. Aproxima-se do identificador da `prov:Entity` geral do PROV-O, à qual cada revision se liga por `prov:specializationOf`; é referência, não dependência.
+O nome estável que identifica um node em todas as suas revisões (por exemplo `checks.run-tests`). Escolhido por sentido, e não gerado, para que uma colisão revele um node que já existe: quem gravou decide se cabe uma revision, uma relation ou um node diferente. Aproxima-se do identificador da `prov:Entity` geral do PROV-O, à qual cada revision se liga por `prov:specializationOf`; é referência, não dependência.
 _Avoid_: id (sozinho), target, name
 
 **Record id**:
@@ -173,9 +173,5 @@ O identificador técnico de um record específico, gerado na gravação. Cada re
 _Avoid_: id (sozinho), uuid
 
 **Output format**:
-A forma em que um comando do `omhl` imprime o resultado, escolhida pela opção global `--format`: `agent` (texto compacto para o agente, o padrão dos 21 comandos ativos), `human` (os mesmos fatos em blocos, com os rótulos alinhados) e `json` (uma linha, para máquina). Os 5 comandos lidos por máquina seguem em `json` e recusam `agent` e `human`.
+A forma em que um comando do `omhl` imprime o resultado, escolhida pela opção global `--format`.
 _Avoid_: modo de saída, text (o antigo `--format text` virou `agent`)
-
-**Output vocabulary**:
-O módulo único (`adapters/text/vocab.rs`) que guarda os símbolos, o `Next:`, os separadores, o recuo e o aviso de segredos da saída em texto. O `agent` e o `human` herdam dele e sobrescrevem só o que difere, então mudar um símbolo muda os dois.
-_Avoid_: tema, estilo

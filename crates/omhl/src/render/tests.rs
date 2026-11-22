@@ -536,7 +536,6 @@ fn confirmation() -> Value {
     json!({ "by": "person:ana", "question": "Is it right?", "answer": "Yes." })
 }
 
-/// Premissa com `kind` e `status`; a confirmada leva `confirmed_by`, como a guarda exige.
 fn kinded_premise(id: &str, kind: &str, status: &str) -> NodeView {
     let mut data = json!({
         "text": "the rule", "kind": kind, "status": status, "work_item": "work-items.w1",
@@ -617,7 +616,7 @@ fn it_should_mark_a_confirmed_technical_premise_as_confirmed() {
     assert!(block(&rendered.text, "premises.t").contains(&"- mark: confirmed"));
 }
 
-/// Premissa de antes do PR: `status: confirmed` sem `confirmed_by`.
+/// Premissa de antes do PR.
 fn legacy_confirmed_premise(id: &str, kind: &str) -> NodeView {
     node(
         id,

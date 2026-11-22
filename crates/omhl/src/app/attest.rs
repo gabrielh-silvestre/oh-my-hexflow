@@ -13,7 +13,6 @@ const FAILED: &str = "failed";
 const ATTESTATION: &str = "attestation";
 
 impl Engine<'_> {
-    /// Grava o atestado de `check` para `work_item` no commit da sonda, com o id derivado.
     pub(super) fn attest(
         &mut self,
         caller: &Caller,
@@ -99,7 +98,6 @@ pub(super) fn attestation_data(
     data
 }
 
-/// `{"attestation": {...}}` mais os campos do `APPEND`.
 fn response(mut attestation: Value, data: Value, appended: Value) -> Value {
     if let (Some(target), Value::Object(fields)) = (attestation.as_object_mut(), data) {
         target.extend(fields);
@@ -112,7 +110,6 @@ fn response(mut attestation: Value, data: Value, appended: Value) -> Value {
     value
 }
 
-/// Os ponteiros do pedido sintético viram os dos argumentos da ação.
 fn attest_pointers(error: OmhlError) -> OmhlError {
     match error {
         OmhlError::Rule { code, pointer } => OmhlError::Rule {

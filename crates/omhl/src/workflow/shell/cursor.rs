@@ -19,9 +19,7 @@ impl Cursor {
         self.chars[start..self.at].iter().collect()
     }
 
-    /// Logo depois de `$(`: o `(` seguinte abre uma aritmética `$((...))` quando o primeiro `)` de fora
-    /// é seguido de outro `)`; senão é `$(` com um subshell, que executa.
-    /// Devolve também quantos caracteres a varredura leu, para o leitor limitar o custo total.
+    /// Devolve quantos caracteres a varredura leu, para o leitor limitar o custo total.
     pub(super) fn opens_arithmetic(&self) -> (bool, usize) {
         if self.peek() != Some('(') {
             return (false, 0);
@@ -54,7 +52,6 @@ impl Cursor {
         found
     }
 
-    /// Para o comentário: deixa a quebra de linha para o laço principal.
     pub(super) fn skip_to_newline(&mut self) {
         while self.peek().is_some_and(|c| c != '\n') {
             self.at += 1;

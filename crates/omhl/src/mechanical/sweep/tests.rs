@@ -3,7 +3,7 @@ use std::path::Path;
 
 /// Namespace de pid do varredor nos testes.
 const NS: u64 = 4026531836;
-/// Raiz do projeto do varredor nos testes (16 hex, o formato da marca).
+/// Raiz do projeto do varredor nos testes.
 const ROOT: &str = "a1b2c3d4e5f60718";
 const OTHER_ROOT: &str = "0f0e0d0c0b0a0908";
 

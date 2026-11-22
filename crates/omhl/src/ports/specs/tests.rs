@@ -1,5 +1,3 @@
-//! `SpecStore`: as pastas `wi-<id>__<slug>` de um diretório de specs.
-
 use crate::ports::specs::{SpecStore, SpecStoreError};
 use std::fs;
 use std::path::Path;

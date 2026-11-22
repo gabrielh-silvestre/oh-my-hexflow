@@ -8,16 +8,13 @@ use crate::workflow::omhl_leaf::resolve_leaf;
 use crate::workflow::role_allow::{RoleAllow, parse_role_allow};
 use crate::workflow::shell::{CommandLine, SimpleCommand, read_command};
 
-/// O `agent_type` real dos subagentes do plugin é `oh-my-hexflow:<papel>`.
 const PLUGIN_PREFIX: &str = "oh-my-hexflow:";
-/// O papel gravado em `OMHL_ROLE` e no `agent` dos records é `omhl:<papel>`.
 const ROLE_PREFIX: &str = "omhl:";
 const ROLE_VARIABLE: &str = "OMHL_ROLE";
 const ASSIGNING_PROGRAMS: [&str; 6] = ["export", "env", "declare", "typeset", "readonly", "local"];
 const AGENT_FILE_MAX_BYTES: u64 = 64 * 1024;
 const BLANKS: [char; 2] = [' ', '\t'];
 
-/// O que o hook decide: `Pass` deixa o fluxo normal de permissão; `Allow` troca o `tool_input` pelo reescrito.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoleVerdict {
     Pass,
@@ -31,13 +28,11 @@ pub enum RoleVerdict {
     },
 }
 
-/// O que o hook lê fora do evento: a raiz do plugin e os comandos do `omhl` que só existem com subcomando.
 pub struct AgentRoleEnv<'e> {
     pub plugin_root: Option<&'e Path>,
     pub groups: &'e [&'e str],
 }
 
-/// O hook `agent-role` para o evento `PreToolUse` do Bash; não abre o banco, só lê o arquivo do agente.
 pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
     let Some(command) = input["tool_input"]["command"].as_str() else {
         return RoleVerdict::Pass;
@@ -72,7 +67,6 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
     }
 }
 
-/// Atribuição de `OMHL_ROLE` como prefixo (também depois de embrulho) ou como argumento de `export` e afins.
 fn assigns_role_variable(line: &CommandLine) -> bool {
     line.commands.iter().any(|simple| {
         let (prefix, program, args) = simple.split();
@@ -85,7 +79,6 @@ fn assigns_role_variable(line: &CommandLine) -> bool {
     })
 }
 
-/// `OMHL_ROLE`, `OMHL_ROLE=`, `OMHL_ROLE+=` e o nome atrás de `env -u` / `env --unset=` (inclusive grudado).
 fn names_role_variable(word: &str) -> bool {
     let name = word
         .strip_prefix("--unset=")
@@ -96,7 +89,6 @@ fn names_role_variable(word: &str) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with('=') || rest.starts_with("+="))
 }
 
-/// Papel fora da lista, comando sem `omhl`, comando composto e embrulho que o leitor não pula.
 fn ported_agent_verdict(
     role: &str,
     line: &CommandLine,
@@ -133,7 +125,6 @@ fn ported_agent_verdict(
     }
 }
 
-/// A matriz `omhl-allow` do papel decide o único comando `omhl`; o `allow` só sai quando o prefixo chega ao `omhl`.
 fn role_matrix_verdict(
     role: &str,
     line: &CommandLine,
@@ -184,7 +175,7 @@ fn matrix_denial(
     })
 }
 
-/// Lê `${CLAUDE_PLUGIN_ROOT}/agents/<papel>.md`; o papel já passou pela lista fechada, então não vira caminho solto.
+///  o papel já passou pela lista fechada, então não vira caminho solto.
 fn read_role_allow(role: &str, plugin_root: Option<&Path>) -> Result<RoleAllow, String> {
     let root = plugin_root.ok_or("CLAUDE_PLUGIN_ROOT is not set")?;
     let path = root.join("agents").join(format!("{role}.md"));
@@ -207,7 +198,6 @@ fn with_role_prefix(input: &Value, role: &str) -> Value {
     tool_input
 }
 
-/// Onde o prefixo entra: na frente, salvo depois da palavra reservada `time` (e do `-p` e do `--`), que só vale no começo do comando.
 /// Com o prefixo antes dela o bash chamaria o `/usr/bin/time`, que pode nem existir.
 fn prefix_position(command: &str) -> usize {
     let Some(rest) = after_blank_word(command.trim_start_matches(BLANKS), "time") else {

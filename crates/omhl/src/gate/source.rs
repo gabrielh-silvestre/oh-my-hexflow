@@ -6,14 +6,12 @@ use hexlog::{
 use super::GateSource;
 use crate::error::OmhlError;
 
-/// Fonte do gate sobre o `Hexlog` real: o filtro e a vigência são da Facade.
 pub struct HexlogSource<'a, 'd> {
     hexlog: &'a mut Hexlog<'d>,
     page_size: u32,
 }
 
 impl<'a, 'd> HexlogSource<'a, 'd> {
-    /// `page_size` é o `limit` de cada página pedida a `Hexlog::list` (1..=page_max do Hexlog).
     pub fn new(hexlog: &'a mut Hexlog<'d>, page_size: u32) -> HexlogSource<'a, 'd> {
         HexlogSource { hexlog, page_size }
     }

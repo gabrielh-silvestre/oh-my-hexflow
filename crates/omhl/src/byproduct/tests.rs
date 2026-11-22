@@ -1,5 +1,3 @@
-//! Formato do blob de byproduct: `encode` e `decode` são as duas pontas do mesmo contrato.
-
 use crate::byproduct::{ByproductErrorKind, ByproductHash, decode, encode};
 
 #[test]

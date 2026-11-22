@@ -9,8 +9,6 @@ use crate::render::{CONTEXT_BUDGET, RenderInput, render};
 
 const AFTER: &str = "after";
 
-/// Ação `render`: lê todo o contexto do tenant (checks, guidelines, decisions, premises, `after`)
-/// e entrega o texto do render. Work items e atestados não entram.
 pub(super) fn render_context(omhl: &mut Omhl<'_>, tenant: &TenantId) -> Result<Value, AppError> {
     let checks = all_nodes(omhl, tenant, "check")?;
     let guidelines = all_nodes(omhl, tenant, "guideline")?;
@@ -35,7 +33,6 @@ pub(super) fn render_context(omhl: &mut Omhl<'_>, tenant: &TenantId) -> Result<V
     Ok(json!({ "text": rendered.text, "omitted": rendered.omitted }))
 }
 
-/// A premissa vale enquanto o work item está aberto; sem `work_item` ela não pertence a nenhum e não expira.
 fn open_premises(premises: Vec<NodeView>, work_items: &[NodeView]) -> Vec<NodeView> {
     premises
         .into_iter()
@@ -50,7 +47,6 @@ fn open_premises(premises: Vec<NodeView>, work_items: &[NodeView]) -> Vec<NodeVi
         .collect()
 }
 
-/// As relações `after` vigentes, mais a do par nativo se o motor não a devolveu.
 fn after_pairs(
     omhl: &mut Omhl<'_>,
     tenant: &TenantId,

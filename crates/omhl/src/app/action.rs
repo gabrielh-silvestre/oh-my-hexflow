@@ -29,7 +29,6 @@ pub enum Action {
     GatePr {
         work_item: String,
     },
-    /// Tratada pelo `Runtime`, não pelo `Engine`: o veredito costuma sair sem abrir o banco.
     GateWorktree {
         branch: String,
     },
@@ -41,16 +40,13 @@ pub enum Action {
         dry_run: bool,
     },
     Project,
-    /// Sem work item no pedido: ele vem da branch. `pre_push` é a stdin do git com `--pre-push`.
     CheckRun {
         target: CheckTarget,
         pre_push: Option<String>,
     },
-    /// Aposenta o node de um check órfão.
     CheckRetire {
         check: String,
     },
-    /// Aposenta o node de uma diretiva órfã; `by` é a diretiva que a substitui.
     GuidelineRetire {
         id: String,
         by: Option<String>,
@@ -61,7 +57,6 @@ pub enum Action {
         work_item: String,
         tail: u32,
     },
-    /// Tratada pelo `Runtime`, não pelo `Engine`.
     CheckSweep,
     HooksInstall {
         force: bool,
@@ -76,7 +71,6 @@ pub enum Action {
     ReportAnswers {
         work_item: Option<String>,
     },
-    /// Sem `min`, vale `promotion.min_work_items` do `workflow.toml`.
     ReportRecurrences {
         min: Option<u32>,
     },
@@ -115,8 +109,7 @@ impl Caller {
         }
     }
 
-    /// `OMHL_ROLE` válido troca só o `agent`; valor fora dos sete papéis, ou fora do Claude Code, é recusado
-    /// (ADR 0007: a opção é respeitada ou recusada, nunca ignorada).
+    /// (ADR 0007: ).
     pub fn cli_with_role(claude_code: bool, role: Option<&str>) -> Result<Caller, OmhlError> {
         match (claude_code, role) {
             (true, None) => Ok(Caller::cli_under_claude_code()),
@@ -145,7 +138,6 @@ impl Caller {
         }
     }
 
-    /// Só o `guideline retire` grava com ele; o `agent` é o real, não o `loader`.
     pub fn guideline_retirer(agent: &'static str) -> Caller {
         Caller {
             client: GUIDELINE_RETIRE_CLIENT,
@@ -153,7 +145,6 @@ impl Caller {
         }
     }
 
-    /// Só o `check run` grava com ele.
     pub fn executor() -> Caller {
         Caller {
             client: "executor",

@@ -1,6 +1,3 @@
-//! `NodeView` e `RelationView` montados à mão, sem banco: os campos que o teste não nomeia
-//! recebem valores fixos e determinísticos.
-
 use hexlog::{
     Author, EndpointStatus, NodeView, Origin, RecordId, RelationView, Snapshot, SnapshotKind,
 };
@@ -73,7 +70,6 @@ pub fn relation_view(name: &str, from: &str, to: &str) -> RelationView {
 pub trait NodeViewExt {
     fn shadowed(self) -> NodeView;
     fn author(self, client: &str) -> NodeView;
-    /// `record_id` inteiro, no formato `<tenant>:<uuid v7>`.
     fn record(self, id: &str) -> NodeView;
     fn snapshot(self, kind: SnapshotKind, id: &str) -> NodeView;
     fn seq(self, seq: u64) -> NodeView;

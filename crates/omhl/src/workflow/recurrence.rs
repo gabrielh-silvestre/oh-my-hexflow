@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-/// Premissa vigente com os campos que entram na chave de agrupamento.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Premise {
     pub id: String,
@@ -9,15 +8,11 @@ pub struct Premise {
     pub work_item: String,
 }
 
-/// Grupo de premissas com o mesmo `kind` e o mesmo texto normalizado.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Recurrence {
     pub kind: String,
-    /// Texto normalizado: é a chave do grupo.
     pub text: String,
-    /// Distintos, na ordem da primeira aparição.
     pub work_items: Vec<String>,
-    /// Todas as premissas do grupo, na ordem da entrada.
     pub premises: Vec<String>,
 }
 

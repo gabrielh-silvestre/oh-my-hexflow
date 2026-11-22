@@ -40,7 +40,6 @@ impl SqliteStore {
         }
     }
 
-    /// Roda `body` numa transação (`BEGIN IMMEDIATE` ou leitura) e troca a conexão se ela ficou suspeita.
     fn in_transaction<T>(
         &mut self,
         immediate: bool,

@@ -1,5 +1,3 @@
-//! Texto dos relatórios `report answers`, `report recurrences` e `report retro`: uma linha por item.
-
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};

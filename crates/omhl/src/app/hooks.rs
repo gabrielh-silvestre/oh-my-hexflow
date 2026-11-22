@@ -24,7 +24,6 @@ impl Engine<'_> {
     }
 }
 
-/// Toda recusa sai antes de qualquer escrita, salvo `hooks-path-unreachable`, que deixa a config local gravada.
 fn install(
     git: &dyn HookInstaller,
     hooks_dir: Option<&Path>,

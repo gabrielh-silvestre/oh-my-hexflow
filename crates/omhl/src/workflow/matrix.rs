@@ -6,7 +6,6 @@ pub enum PremiseKind {
     Technical,
 }
 
-/// Fatos de uma premissa do work item da branch; `confirmed` exige `status` confirmado e `confirmed_by`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PremiseFact {
     pub kind: Option<PremiseKind>,

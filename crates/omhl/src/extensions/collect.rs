@@ -59,7 +59,6 @@ pub fn collect(root: &Path) -> Collected {
     }
 }
 
-/// A configuração inválida cai nos padrões no scan, mas o aviso sobe: quem recusa é outro caminho.
 fn invalid_workflow_warning(error: &ProjectError) -> ExtensionIssue {
     ExtensionIssue {
         path: format!("{OMHL_DIR}/{WORKFLOW_FILE}"),
@@ -69,7 +68,6 @@ fn invalid_workflow_warning(error: &ProjectError) -> ExtensionIssue {
     }
 }
 
-/// Nome que o `specs.dir` configurado ocupa dentro de `.omhl/`; `specs.dir` fora de `.omhl/` não muda o scan.
 fn configured_specs_name(config: &WorkflowConfig) -> Option<String> {
     let mut components = Path::new(&config.specs.dir).components();
     match (components.next(), components.next()) {

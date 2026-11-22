@@ -41,7 +41,6 @@ impl ErrorCode {
     }
 }
 
-/// Código do detalhe que marca o corte das violações.
 pub(crate) const TOO_MANY_ERRORS: &str = "too-many-errors";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,7 +74,7 @@ pub struct HexlogError {
 }
 
 impl HexlogError {
-    /// Recusa com um único detalhe de `path` vazio; `message` descreve a regra, nunca o valor.
+    ///  `message` descreve a regra, nunca o valor.
     pub(crate) fn refused(code: ErrorCode, detail_code: &str, message: &str) -> HexlogError {
         HexlogError {
             code,
@@ -121,7 +120,6 @@ pub fn pointer_segment(segment: &str) -> String {
     escaped
 }
 
-/// Como `pointer_segment`, mas acrescenta ao `out` em vez de alocar.
 pub(crate) fn push_pointer_segment(out: &mut String, segment: &str) {
     for c in segment.chars() {
         match c {

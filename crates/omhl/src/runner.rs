@@ -43,7 +43,6 @@ pub struct RunError {
 pub trait CommandRunner: Send + Sync {
     fn run(&self, spec: &RunSpec) -> Result<RunReport, RunError>;
 
-    /// O arquivo que `run` executaria para `argv[0]`; `None` quando o runner não sabe ou o programa não existe.
     fn resolve_program(&self, _spec: &RunSpec) -> Option<PathBuf> {
         None
     }

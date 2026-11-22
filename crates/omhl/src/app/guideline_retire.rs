@@ -10,7 +10,6 @@ use crate::extensions::collect::extension_file_exists;
 use crate::extensions::model::ExtensionKind;
 
 impl Engine<'_> {
-    /// Aposenta o node de uma diretiva cujo arquivo sumiu da árvore; com `by`, grava no mesmo lote que a nova a substitui.
     pub(super) fn guideline_retire(
         &mut self,
         caller: &Caller,
