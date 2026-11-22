@@ -23,7 +23,7 @@ fn reference_roles() -> Vec<&'static str> {
         .collect()
 }
 
-fn read(relative: &str) -> String {
+pub(super) fn read(relative: &str) -> String {
     fs::read_to_string(skills_dir().join(relative))
         .unwrap_or_else(|error| panic!("{relative} must exist and be readable: {error}"))
 }
@@ -32,9 +32,15 @@ fn base_reference(name: &str) -> String {
     read(&format!("directives-flow/references/{name}"))
 }
 
-fn line_with(text: &str, needles: &[&str]) -> Option<usize> {
+pub(super) fn line_with(text: &str, needles: &[&str]) -> Option<usize> {
     text.lines()
         .position(|line| needles.iter().all(|needle| line.contains(needle)))
+}
+
+/// A linha do item de lista que começa por `prefix` (a conferência da mesma frase em outra linha não conta).
+fn list_item(text: &str, prefix: &str) -> Option<usize> {
+    text.lines()
+        .position(|line| line.trim_start().starts_with(prefix))
 }
 
 /// O texto depois do frontmatter: a `description` cita comandos e não conta como passo.
@@ -70,7 +76,7 @@ fn it_should_require_the_directives_flow_base_in_plan_consensus_and_in_review() 
 
 #[test]
 fn it_should_give_the_new_skills_the_house_frontmatter() {
-    for skill in ["plan-consensus", "review"] {
+    for skill in ["plan-consensus", "review", "interview"] {
         let text = read(&format!("{skill}/SKILL.md"));
         let lines: Vec<&str> = text.lines().collect();
 
@@ -284,12 +290,15 @@ fn it_should_tell_review_that_the_verifier_closes_a_reviewer_divergence_as_code_
 fn it_should_tell_review_to_list_decisions_and_critic_confirmed_premises_without_a_pipe() {
     let text = read("review/SKILL.md");
 
-    let decisions = line_with(&text, &["omhl list --type decision --where work_item="])
-        .expect("the decisions listing");
-    let premises = line_with(&text, &["omhl list --type premise --where work_item="])
-        .expect("the premises listing");
+    let decisions = list_item(&text, "- `omhl list --type decision --where work_item=")
+        .expect("the decisions listing item");
+    let premises = list_item(&text, "- `omhl list --type premise --where work_item=")
+        .expect("the premises listing item");
 
-    assert_ne!(decisions, premises, "one command per line");
+    for item in [decisions, premises] {
+        let line = text.lines().nth(item).unwrap_or_default();
+        assert!(!line.contains('|'), "no pipe in the listing item: {line}");
+    }
     assert!(
         line_with(&text, &["um comando por chamada", "sem pipe"]).is_some(),
         "one command per call, no pipe"
@@ -318,7 +327,7 @@ fn it_should_tell_review_to_list_decisions_and_critic_confirmed_premises_without
 
 const NEGATIONS: [&str; 3] = ["não", "nunca", "sem"];
 
-fn numbered_steps(text: &str) -> Vec<String> {
+pub(super) fn numbered_steps(text: &str) -> Vec<String> {
     let step = regex::Regex::new(r"^\d+\. ").expect("regex");
     body(text)
         .lines()
@@ -327,7 +336,7 @@ fn numbered_steps(text: &str) -> Vec<String> {
         .collect()
 }
 
-fn step_with(text: &str, needles: &[&str]) -> Option<usize> {
+pub(super) fn step_with(text: &str, needles: &[&str]) -> Option<usize> {
     numbered_steps(text)
         .iter()
         .position(|step| needles.iter().all(|needle| step.contains(needle)))

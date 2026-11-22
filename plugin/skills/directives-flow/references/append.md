@@ -1,5 +1,6 @@
 # omhl append
 
+- [Quem usa](#quem-usa-em-qual-etapa-e-com-qual-filtro)
 - [Quando usar](#quando-usar)
 - [Entradas](#entradas)
 - [Saída](#saída)

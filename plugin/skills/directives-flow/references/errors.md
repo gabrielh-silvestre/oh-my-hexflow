@@ -1,10 +1,10 @@
 # Erros comuns a todos os comandos
 
-Vale para todo comando desta skill. A página de cada comando lista só os erros dele.
+Vale para todo comando do `omhl`. A página de cada comando lista só os erros dele.
 
 ## Erros
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`); com `--format json`, numa linha JSON. Os comandos que só imprimem JSON seguem nela. Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
+Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`); com `--format json`, numa linha JSON. Os comandos lidos por máquina (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hooks post-commit` e `gate-worktree`) só imprimem JSON, também no erro. Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
 
 A ordem das checagens é: uso do clap; argumentos e entrada do comando; `OMHL_ROLE`; existência do `--project-dir`; marcador; `--db`. O primeiro que falha é o que você vê.
 

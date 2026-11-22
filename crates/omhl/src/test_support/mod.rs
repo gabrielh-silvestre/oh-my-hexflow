@@ -1,8 +1,10 @@
 //! Cópias dos helpers de `tests/support/`: uma mudança aqui vale também no arquivo de mesmo nome em `tests/support/`
 //! (`mod.rs`, `omhl.rs`, `gate.rs`, `views.rs`, `pr_gate.rs`, `ext.rs`), e vice-versa. O `ext.rs` daqui não tem o
-//! `mkfifo`, que fica fora de `src`.
+//! `mkfifo`, que fica fora de `src`. O `prove_both_sides` de `tests/support/scan.rs` tem cópia em `role_view.rs`.
 //!
 //! Helpers que um `tests.rs` copia do arquivo de integração/e2e de onde saíram (uma mudança num vale também no outro):
+//! - `role_view.rs`, de `workflow/role_allow.rs`, `tests/e2e/skills/coverage.rs` e `tests/e2e/skills/orchestration.rs`;
+//! - `role_view/who_uses.rs`, de `tests/e2e/skills/workflow.rs`;
 //! - `graphs/tests.rs`, de `tests/integration/catalogs.rs`;
 //! - `workflow/spec/tests.rs`, de `tests/e2e/spec_validate.rs` e de `tests/e2e/spec_validate_graph.rs`;
 //! - `workflow/gap/tests.rs`, de `tests/e2e/report_answers.rs`;
@@ -24,6 +26,7 @@ pub mod ext;
 pub mod gate;
 pub mod omhl;
 pub mod pr_gate;
+pub mod role_view;
 pub mod views;
 
 use hexlog::{Author, RelationTypeName, SemanticId, Snapshot, SnapshotKind, TenantId, TypeName};

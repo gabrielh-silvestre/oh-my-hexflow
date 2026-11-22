@@ -86,3 +86,6 @@ CLAUDE.local.md
 
 # Plugin binary: a copy of target/release/omhl, never versioned
 plugin/bin/omhl
+
+# Interview rounds and verifier retirement notes: ephemeral session state, never versioned
+.omhl/notes/

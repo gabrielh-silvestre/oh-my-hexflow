@@ -94,6 +94,8 @@ O comportamento está em [directives-flow.md](directives-flow.md). Aqui fica só
 
 ### As skills do plugin (`crates/omhl/tests/e2e/skills/`)
 
+O `role_view` (`--lib`, `src/test_support/role_view.rs`) trava cada skill `role-<papel>` contra o `omhl-allow` do agente e o `omhl-cycle` do `cycle.md`, e a tabela "quem usa" das páginas de comando contra a projeção dos agentes. Por ser `--lib`, roda no gate local; os testes de `tests/e2e/skills/` só rodam no CI. Decisão no [ADR 0011](adr/0011-skills-por-papel-e-entrevista-antes-do-work-item.md).
+
 O `skill_examples` executa `check sweep`, que varre o `/proc` inteiro e vale para qualquer raiz da máquina. Pelo mesmo motivo ele pega o flock `omhl-process-sweep.lock`: sem ele, a varredura de um teste poderia matar o processo de outro. O flock só protege contra outro `cargo` concorrente; os binários de um mesmo `cargo test` já rodam em sequência.
 
 ## 5. Pontos rasos ou com vazamento

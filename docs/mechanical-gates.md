@@ -4,7 +4,7 @@ Vocabulário em [GLOSSARY.md](../GLOSSARY.md). Visão geral e primeiros passos n
 
 Um check com o campo `run` é mecânico.
 
-**Formato da saída.** A referência com exemplos executáveis está em [check-run.md](../plugin/skills/mechanical-checks/references/check-run.md).
+**Formato da saída.** A referência com exemplos executáveis está em [check-run.md](../plugin/skills/review/references/check-run.md).
 
 ## 1. Falhas sem veredito
 

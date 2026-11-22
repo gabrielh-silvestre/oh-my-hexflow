@@ -36,8 +36,11 @@ Skills de orquestração dos agentes, em `plugin/skills/`:
 
 | Skill | O que cobre |
 |---|---|
+| `interview` | A entrevista de negócio com o dono, antes do work item: placar de ambiguidade, rodadas de perguntas e a gravação do work item e das premissas confirmadas. |
 | `plan-consensus` | O consenso do plano: chama o analyst, o planner, o architect e o critic em sequência, limita a 3 voltas, escala o impasse ao dono e retira os `contradicts` resolvidos antes do `spec validate`. |
-| `review` | A revisão da entrega: chama o code-reviewer, o security-reviewer e o verifier, grava os achados, monta a tabela do PR e confere o `gate-pr`. |
+| `review` | A revisão da entrega: chama o code-reviewer, o security-reviewer e o verifier, grava os achados, monta a tabela do PR e confere o `gate-pr`. Traz também a referência dos checks mecânicos e do fechamento do work item. |
+
+As sete skills `role-*` não são chamadas pela sessão: são as vistas por papel, pré-carregadas pelos agentes do plugin.
 
 O ciclo de dez passos, com o diagrama, está em
 [docs/directives-flow.md](docs/directives-flow.md), seção 12.
