@@ -8,8 +8,8 @@ use regex::Regex;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-use crate::adapters::cli::Cli;
-use crate::workflow::omhl_leaf::{Leaf, resolve_leaf};
+use crate::adapters::cli::{Cli, command_groups, command_leaves};
+use crate::workflow::omhl_leaf::{Group, Leaf, resolve_leaf};
 use crate::workflow::role_allow::{AppendAllow, RoleAllow};
 
 pub const VIEW_TAG: &str = "omhl-role-view";
@@ -198,59 +198,31 @@ fn frontmatter(agent_file: &str) -> Option<&str> {
     None
 }
 
-/// Os comandos que só existem com subcomando (`spec`, `check`...).
-fn cli_groups() -> Vec<String> {
-    Cli::command()
-        .get_subcommands()
-        .filter(|command| command.get_subcommands().next().is_some())
-        .map(|command| command.get_name().to_owned())
-        .collect()
+/// Os comandos que só existem com subcomando (`spec`, `check`...) e o híbrido `byproduct`.
+fn cli_groups() -> Vec<Group> {
+    command_groups(&Cli::command())
 }
 
-/// Cada folha de ação da CLI (`"check run"`), sem o `help` e sem o grupo `hook` (cópia da varredura de `coverage.rs`).
+/// Cada folha de ação da CLI (`"check run"`), sem o grupo `hook` e sem o `help` do clap.
 fn cli_leaves() -> Vec<String> {
-    let mut leaves = Vec::new();
-    for command in Cli::command().get_subcommands() {
-        collect_leaves(command, "", &mut leaves);
-    }
+    let mut leaves: Vec<String> = command_leaves(&Cli::command())
+        .into_iter()
+        .filter(|leaf| leaf.split(' ').next() != Some("hook"))
+        .collect();
     leaves.sort();
 
     leaves
 }
 
-fn collect_leaves(command: &clap::Command, prefix: &str, leaves: &mut Vec<String>) {
-    let name = command.get_name();
-    if name == "help" || (prefix.is_empty() && name == "hook") {
-        return;
-    }
-    let path = if prefix.is_empty() {
-        name.to_owned()
-    } else {
-        format!("{prefix} {name}")
-    };
-    let children: Vec<&clap::Command> = command
-        .get_subcommands()
-        .filter(|child| child.get_name() != "help")
-        .collect();
-    if children.is_empty() {
-        leaves.push(path.clone());
-    }
-    for child in children {
-        collect_leaves(child, &path, leaves);
-    }
-}
-
 /// A folha que o texto depois do `omhl ` pede; `None` quando o hook a negaria ou ela só imprime ajuda.
-fn leaf_of(words: &[String], groups: &[String]) -> Option<String> {
-    let groups: Vec<&str> = groups.iter().map(String::as_str).collect();
-
-    match resolve_leaf(words, &groups) {
+fn leaf_of(words: &[String], groups: &[Group]) -> Option<String> {
+    match resolve_leaf(words, groups) {
         Some(Leaf::Named(name)) => Some(name),
         Some(Leaf::ReadOnly) | None => None,
     }
 }
 
-fn command_leaf(command: &str, groups: &[String]) -> Option<String> {
+fn command_leaf(command: &str, groups: &[Group]) -> Option<String> {
     let words: Vec<String> = command
         .strip_prefix(OMHL_PREFIX)?
         .split_whitespace()
@@ -279,7 +251,7 @@ fn view_commands(step: &ViewStep) -> &[String] {
     step.comandos.as_deref().unwrap_or_default()
 }
 
-fn runs_append(step: &ViewStep, groups: &[String]) -> bool {
+fn runs_append(step: &ViewStep, groups: &[Group]) -> bool {
     view_commands(step)
         .iter()
         .any(|command| command_leaf(command, groups).as_deref() == Some("append"))
@@ -290,7 +262,7 @@ fn form_violations(
     role: &str,
     view: &RoleView,
     allow: &RoleAllow,
-    groups: &[String],
+    groups: &[Group],
 ) -> Vec<String> {
     let placeholder = Regex::new(r"<[^<>]*>").expect("regex");
     let mut violations: Vec<(u32, String)> = Vec::new();
@@ -346,12 +318,7 @@ fn form_violations(
     violations.into_iter().map(|(_, text)| text).collect()
 }
 
-fn grava_violation(
-    n: u32,
-    step: &ViewStep,
-    allow: &RoleAllow,
-    groups: &[String],
-) -> Option<String> {
+fn grava_violation(n: u32, step: &ViewStep, allow: &RoleAllow, groups: &[Group]) -> Option<String> {
     match (
         step.grava.is_some(),
         runs_append(step, groups),
@@ -418,7 +385,7 @@ fn stage_findings(role: &str, view: &RoleView, cycle: &Cycle) -> Vec<String> {
 }
 
 /// As regras 2 e 3.
-fn command_findings(view: &RoleView, allow: &RoleAllow, groups: &[String]) -> Vec<String> {
+fn command_findings(view: &RoleView, allow: &RoleAllow, groups: &[Group]) -> Vec<String> {
     let mut used = BTreeSet::new();
     let mut unresolved = BTreeSet::new();
     for command in view.etapas.iter().flat_map(view_commands) {

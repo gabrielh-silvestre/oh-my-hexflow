@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use clap::CommandFactory;
-use omhl::adapters::cli::Cli;
+use omhl::adapters::cli::{Cli, command_groups};
 use omhl::guard::{ROLE_REFERENCE_COMMANDS, ROLE_REFERENCE_MATRIX};
 use omhl::workflow::omhl_leaf::{Leaf, resolve_leaf};
 use omhl::workflow::role_allow::{RoleAllow, parse_role_allow};
@@ -323,15 +323,6 @@ fn omhl_citations(body: &str) -> Vec<Vec<String>> {
     found
 }
 
-/// Os comandos com subcomando vêm do clap, como no adaptador do hook.
-fn cli_groups() -> Vec<String> {
-    Cli::command()
-        .get_subcommands()
-        .filter(|command| command.has_subcommands())
-        .map(|command| command.get_name().to_owned())
-        .collect()
-}
-
 #[test]
 fn it_should_ship_exactly_the_seven_ported_agents() {
     let mut shipped: Vec<String> = fs::read_dir(agents_dir())
@@ -568,8 +559,7 @@ fn it_should_leave_write_and_edit_available_to_the_planner_and_disallow_only_age
 
 #[test]
 fn it_should_not_instruct_a_command_outside_the_matrix_of_its_role() {
-    let groups = cli_groups();
-    let group_names: Vec<&str> = groups.iter().map(String::as_str).collect();
+    let groups = command_groups(&Cli::command());
 
     for agent in agents() {
         let allow = agent.allow();
@@ -577,7 +567,7 @@ fn it_should_not_instruct_a_command_outside_the_matrix_of_its_role() {
 
         let outside: Vec<String> = citations
             .iter()
-            .filter_map(|words| match resolve_leaf(words, &group_names) {
+            .filter_map(|words| match resolve_leaf(words, &groups) {
                 Some(Leaf::Named(leaf)) if !allow.commands.contains(&leaf) => Some(leaf),
                 _ => None,
             })

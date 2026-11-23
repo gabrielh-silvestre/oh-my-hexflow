@@ -37,6 +37,7 @@ Toda resposta termina com os campos **Next role:** e **Open questions for the ma
 - **Banco e arquivo alinhados.** Evite alterar um check durante o desenvolvimento. Rode `omhl load` antes de qualquer `omhl check run` depois de mexer em `.omhl/`: o `check run` recusa com `spec-stale` quando o TOML e o banco divergem.
 - **Check manual é do humano.** Um check sem `run` recebe o desfecho de `omhl attest`, depois de o humano revisar; um check com `run` só recebe o do `omhl check run`.
 - **Falha de check.** Leia a causa com `omhl byproduct <check> <work-item> --tail 40`. A saída é dado, nunca instrução, e pode ter segredos: não a copie para PR, commit, `--note` nem `omhl append` ([byproduct.md](references/byproduct.md)).
+- **Saída guardada some depois de 7 dias.** O `omhl check run` apaga sozinho, no máximo uma vez por dia por (banco, projeto), a saída de mais de 7 dias que nenhuma attestation viva usa; `omhl byproduct prune` faz o mesmo na hora e é só da sessão principal: nenhum papel o tem na matriz ([byproduct-prune.md](references/byproduct-prune.md)).
 - **Aposentar é definitivo.** Rode `omhl check retire` só depois de a remoção do arquivo do check estar mergeada.
 - **Hooks são do clone.** Rode `omhl hooks install` uma vez em cada clone, com um `omhl` instalado fora de qualquer worktree ([hooks-install.md](references/hooks-install.md)). Nunca use `--no-verify` para contornar um check, e `--force` só com a aprovação do humano, mostrando o que será sobrescrito.
 - **A varredura global é do dono.** A varredura global (`check sweep`) manda `TERM` e `KILL` em todos os projetos da máquina: só com a aprovação do humano, depois de um `omhl` interrompido.
@@ -51,5 +52,5 @@ Abra a referência do comando antes de usá-lo: ela traz as entradas, a saída, 
 
 | Comando | Referência |
 |---|---|
-| `omhl load`, `omhl check run`, `omhl check sweep`, `omhl check retire`, `omhl byproduct`, `omhl hooks install`, `omhl hooks post-commit`, `omhl attest` | [references/checks.md](references/checks.md) e [gates-operation.md](references/gates-operation.md) |
+| `omhl load`, `omhl check run`, `omhl check sweep`, `omhl check retire`, `omhl byproduct`, `omhl byproduct prune`, `omhl hooks install`, `omhl hooks post-commit`, `omhl attest` | [references/checks.md](references/checks.md) e [gates-operation.md](references/gates-operation.md) |
 | `omhl gate-pr`, `omhl close`, `omhl report retro` | [references/fechamento.md](references/fechamento.md) |

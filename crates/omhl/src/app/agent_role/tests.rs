@@ -3,8 +3,18 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use super::{AgentRoleEnv, RoleVerdict, agent_role};
+use crate::workflow::omhl_leaf::Group;
 
-const GROUPS: [&str; 2] = ["spec", "report"];
+fn groups() -> Vec<Group> {
+    ["spec", "report"]
+        .iter()
+        .map(|name| Group {
+            name: (*name).to_owned(),
+            subcommands: Vec::new(),
+            takes_positionals: false,
+        })
+        .collect()
+}
 const PORTED_AGENT: &str = "oh-my-hexflow:verifier";
 const ATTEST: &str = "omhl attest checks.run-tests work-items.w1 --outcome pass";
 /// Os falsos positivos que a S5 libera: o nome nu só é argumento de `grep` ou do `-p` de `declare`/`typeset`.
@@ -79,9 +89,10 @@ fn tool_call(command: &str, agent_type: Option<&str>) -> Value {
 }
 
 fn verdict_of_event(event: &Value) -> RoleVerdict {
+    let groups = groups();
     let env = AgentRoleEnv {
         plugin_root: Some(plugin_root()),
-        groups: &GROUPS,
+        groups: &groups,
     };
 
     agent_role(event, &env)
@@ -339,9 +350,10 @@ fn it_should_put_the_prefix_before_an_assignment_whose_value_ends_in_a_keyword_n
 
 #[test]
 fn it_should_carry_the_code_of_each_denial() {
+    let groups = groups();
     let without_plugin_root = AgentRoleEnv {
         plugin_root: None,
-        groups: &GROUPS,
+        groups: &groups,
     };
     let denials = [
         ("role-assignment", verdict_of("OMHL_ROLE=x omhl list", None)),

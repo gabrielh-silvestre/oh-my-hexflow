@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use support::child::{Cmd, omhl_json};
 use support::ext::ExtTree;
-use support::git::git_in;
+use support::git::git_ok;
 use support::project::Project;
 use tempfile::TempDir;
 
@@ -46,15 +46,6 @@ fn stray_wait(pidfile: &Path, go: &Path) -> String {
     check_toml(&["sh", "-c", STRAY_WAIT_SCRIPT, "sh", utf8(pidfile), utf8(go)])
 }
 
-fn git(p: &Project, args: &[&str]) {
-    let output = git_in(p.dir(), args);
-    assert!(
-        output.status.success(),
-        "git {args:?} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
 fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
     omhl_json(args).cwd(p.dir()).xdg(p.xdg())
 }
@@ -62,16 +53,16 @@ fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
 /// Repositório git limpo na branch `feat/wi-w1__x`, com o work item `w1` e os checks carregados.
 fn cli_repo(checks: &[(&str, &str)]) -> Project {
     let p = Project::new("acme");
-    git(&p, &["init", "-q", "-b", "main"]);
-    git(&p, &["config", "user.name", "Test Author"]);
-    git(&p, &["config", "user.email", "author@example.com"]);
+    git_ok(p.dir(), &["init", "-q", "-b", "main"]);
+    git_ok(p.dir(), &["config", "user.name", "Test Author"]);
+    git_ok(p.dir(), &["config", "user.email", "author@example.com"]);
     let tree = ExtTree::at(p.dir());
     for (slug, toml) in checks {
         tree.check(slug, toml);
     }
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "base"]);
-    git(&p, &["switch", "-q", "-c", "feat/wi-w1__x"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "base"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "feat/wi-w1__x"]);
 
     let appended = omhl_in(&p, &["append"]).stdin(WORK_ITEM_APPEND).run();
     assert_eq!(appended.code, Some(0), "append stderr: {}", appended.stderr);
@@ -392,4 +383,65 @@ fn it_should_append_the_swept_stray_to_the_sweep_log_through_check_sweep() {
         "the line sweeps {s1}: {last}"
     );
     kill_stray(s1);
+}
+
+/// Semeia o `sweep.jsonl` com `seed_bytes` de `x` e roda uma varredura que acha um órfão.
+fn sweep_a_stray_over_a_log_of(seed_bytes: usize) -> Project {
+    let tmp = TempDir::new().expect("temp dir");
+    let pidfile = tmp.path().join("stray.pid");
+    let p = cli_repo(&[("stray", &stray(&pidfile))]);
+    let first = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-pr"],
+    )
+    .run();
+    assert_eq!(first.code, Some(0), "first stderr: {}", first.stderr);
+    let stray_pid = read_pid(&pidfile, Duration::from_secs(5));
+    fs::write(sweep_log(&p), "x".repeat(seed_bytes)).expect("the log is seeded");
+
+    let output = omhl_in(&p, &["check", "sweep"]).run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(
+        wait_dead(stray_pid, Duration::from_secs(4)),
+        "the stray {stray_pid} died"
+    );
+    kill_stray(stray_pid);
+
+    p
+}
+
+#[test]
+fn it_should_rotate_a_sweep_log_over_one_mebibyte_and_start_a_new_one() {
+    let _sweep = support::sweep_lock::serialize_sweeps();
+    let seed = 1024 * 1024 + 1;
+
+    let p = sweep_a_stray_over_a_log_of(seed);
+
+    let rotated = p.xdg().join("omhl").join("sweep.jsonl.1");
+    assert_eq!(
+        fs::metadata(rotated).expect("the old log is kept").len(),
+        1024 * 1024 + 1
+    );
+    assert_eq!(
+        sweep_log_lines(&p).len(),
+        1,
+        "the new log holds only the new line"
+    );
+}
+
+#[test]
+fn it_should_append_to_a_sweep_log_that_is_not_over_one_mebibyte() {
+    let _sweep = support::sweep_lock::serialize_sweeps();
+
+    let p = sweep_a_stray_over_a_log_of(1024 * 1024);
+
+    assert!(!p.xdg().join("omhl").join("sweep.jsonl.1").exists());
+    let lines = sweep_log_lines(&p);
+    assert_eq!(
+        lines.len(),
+        1,
+        "the seed has no line break, so it joins the new line"
+    );
+    assert!(lines[0].starts_with('x'), "the seed stays in the same file");
 }

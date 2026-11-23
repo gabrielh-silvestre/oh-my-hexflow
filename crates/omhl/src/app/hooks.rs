@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use super::engine::{Engine, require_project_root};
 use super::error::AppError;
-use crate::ports::hooks::{GitHooks, HookInstaller};
+use crate::ports::hooks::GitHooks;
 
 const SCRIPTS: [(&str, &str); 4] = [
     ("pre-commit", "check run --event before-commit"),
@@ -24,23 +24,12 @@ impl Engine<'_> {
     }
 }
 
-fn install(
-    git: &dyn HookInstaller,
-    hooks_dir: Option<&Path>,
-    force: bool,
-) -> Result<Value, AppError> {
+fn install(git: &GitHooks, hooks_dir: Option<&Path>, force: bool) -> Result<Value, AppError> {
     let probe_failed = |reason: String| AppError::probe_failed(&reason);
     let current = git.resolved_hooks_dir().map_err(probe_failed)?;
     let hooks_text = hooks_dir.map(Path::to_string_lossy);
     if !force {
-        let configured = git.configured_hooks_path().map_err(probe_failed)?;
-        match configured {
-            Some(path) if Some(path.as_str()) != hooks_text.as_deref() => {
-                return Err(AppError::hooks_path_conflict(""));
-            }
-            None if git.has_foreign_hooks(&current) => return Err(AppError::hooks_existing("")),
-            _ => {}
-        }
+        refuse_conflict(git, &current, hooks_text.as_deref())?;
     }
     let unwritable =
         || AppError::hooks_dir_unwritable("").with_context(json!({ "hint": UNWRITABLE_HINT }));
@@ -76,11 +65,26 @@ fn install(
     Ok(installed)
 }
 
+fn refuse_conflict(
+    git: &GitHooks,
+    current: &Path,
+    hooks_text: Option<&str>,
+) -> Result<(), AppError> {
+    let configured = git
+        .configured_hooks_path()
+        .map_err(|reason| AppError::probe_failed(&reason))?;
+    match configured {
+        Some(path) if Some(path.as_str()) != hooks_text => Err(AppError::hooks_path_conflict("")),
+        None if git.has_foreign_hooks(current) => Err(AppError::hooks_existing("")),
+        _ => Ok(()),
+    }
+}
+
 fn script(binary: &str, command: &str) -> String {
     let p = double_quoted(binary);
 
     format!(
-        "#!/bin/sh\n[ -x \"{p}\" ] || {{ echo \"omhl: binary not found at {p}; run omhl hooks install again\" >&2; exit 1; }}; exec \"{p}\" {command}\n"
+        "#!/bin/sh\n[ -x \"{p}\" ] || {{ printf '%s\n' \"omhl: binary not found at {p}; run omhl hooks install again\" >&2; exit 1; }}; exec \"{p}\" {command}\n"
     )
 }
 
@@ -117,3 +121,6 @@ fn in_build_dir(binary: &Path) -> bool {
             && (pair[1].as_os_str() == "debug" || pair[1].as_os_str() == "release")
     })
 }
+
+#[cfg(test)]
+mod tests;

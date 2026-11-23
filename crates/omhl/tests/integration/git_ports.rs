@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ::omhl::ports::git::GitProbe;
+use ::omhl::ports::hooks::GitHooks;
 use support::git::GitRepo;
 use tempfile::TempDir;
 
@@ -189,4 +190,24 @@ fn it_should_list_the_local_branches_the_same_from_inside_a_linked_worktree() {
         branches,
         Ok(names(&[WITHOUT_WORKTREE, WITH_WORKTREE, "main"]))
     );
+}
+
+// write_scripts
+
+#[test]
+fn it_should_remove_the_temp_file_when_the_script_cannot_be_put_in_place() {
+    let scratch = TempDir::new().expect("temp dir");
+    let blocked = scratch.path().join("pre-commit");
+    fs::create_dir_all(blocked.join("occupied")).expect("directory in the script's place");
+
+    let written = GitHooks::new(scratch.path())
+        .write_scripts(scratch.path(), &[("pre-commit", "#!/bin/sh\n".to_owned())]);
+
+    let leftovers: Vec<_> = fs::read_dir(scratch.path())
+        .expect("read dir")
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp-"))
+        .collect();
+    assert!(written.is_err());
+    assert!(leftovers.is_empty());
 }

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use hexlog::{NodeView, Scalar, SemanticId};
 use serde_json::{Value, json};
 
@@ -6,6 +8,7 @@ use super::error::AppError;
 use super::read::nodes_matching;
 use crate::byproduct::{self, ByproductHash};
 use crate::error::{OmhlError, RuleCode};
+use crate::mechanical::redact::Redactor;
 use crate::pr_gate::pair;
 
 const TAIL_MAX: usize = 500;
@@ -40,13 +43,15 @@ impl Engine<'_> {
             .and_then(|text| ByproductHash::parse(text).ok())
             .ok_or_else(missing)?;
         let store = self
-            .byproducts
-            .ok_or_else(AppError::byproducts_unavailable)?;
+            .exec
+            .ok_or_else(AppError::byproducts_unavailable)?
+            .byproducts;
         let blob = store
             .get(&hash)
             .map_err(|_| AppError::byproduct_corrupt("/work_item"))?
             .ok_or_else(missing)?;
-        let (lines, truncated_lines) = tail_lines(&blob, wanted).ok_or_else(missing)?;
+        let (lines, truncated_lines) =
+            tail_lines(&blob, wanted, &Redactor::new()).ok_or_else(missing)?;
         let mut result = json!({
             "check": check,
             "work_item": work_item,
@@ -71,20 +76,32 @@ impl Engine<'_> {
             pair("work_item", Scalar::Str(work_item.to_owned())),
         ];
 
-        Ok(
-            nodes_matching(&mut self.omhl, &self.tenant, "attestation", where_eq)?
-                .into_iter()
-                .max_by_key(|node| node.seq),
-        )
+        let nodes = nodes_matching(&mut self.omhl, &self.tenant, "attestation", where_eq)?;
+
+        Ok(latest_per_pair(nodes).into_iter().next())
     }
 }
 
-fn tail_lines(blob: &[u8], wanted: usize) -> Option<(Vec<String>, usize)> {
+/// A attestation de maior `seq` de cada par (check, work item); sem work item forma o par (check, sem work item).
+pub(super) fn latest_per_pair(mut nodes: Vec<NodeView>) -> Vec<NodeView> {
+    nodes.sort_by_key(|node| node.seq);
+    let mut latest: BTreeMap<(String, Option<String>), NodeView> = BTreeMap::new();
+    for node in nodes {
+        let check = node.data["check"].as_str().unwrap_or_default().to_owned();
+        let work_item = node.data["work_item"].as_str().map(str::to_owned);
+        latest.insert((check, work_item), node);
+    }
+
+    latest.into_values().collect()
+}
+
+/// Redige cada fluxo inteiro antes de cortar linhas: cobre o blob gravado sem redação e o bloco PEM de várias linhas.
+fn tail_lines(blob: &[u8], wanted: usize, redactor: &Redactor) -> Option<(Vec<String>, usize)> {
     let (stdout, stderr) = byproduct::decode(blob)?;
     let lines: Vec<String> = [stdout, stderr]
         .into_iter()
         .flat_map(|stream| {
-            String::from_utf8_lossy(stream)
+            String::from_utf8_lossy(&redactor.redact(stream))
                 .split_terminator('\n')
                 .map(str::to_owned)
                 .collect::<Vec<_>>()
@@ -104,3 +121,6 @@ fn tail_lines(blob: &[u8], wanted: usize) -> Option<(Vec<String>, usize)> {
 
     Some((window, truncated))
 }
+
+#[cfg(test)]
+mod tests;

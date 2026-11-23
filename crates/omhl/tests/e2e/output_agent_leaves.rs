@@ -8,8 +8,9 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 use support::child::{Output, omhl as binary};
-use support::cycle::{self, Program, State, check_file, check_repo, git};
+use support::cycle::{self, Program, State, check_file, check_repo};
 use support::ext::ExtTree;
+use support::git::git_ok;
 use support::inproc::{run_inproc, run_inproc_at};
 use support::omhl::decision_data;
 use support::output_agent_leaves::{
@@ -241,8 +242,8 @@ fn check_run_blocked() -> Fixture {
 fn check_run_stale() -> Fixture {
     let project = check_repo(&[("payroll-gate", &check_file("compile", "build", "exit 0"))]);
     ExtTree::at(project.dir()).check("payroll-gate", &check_file("compile", "build", "exit 3"));
-    git(project.dir(), &["add", "-A"]);
-    git(project.dir(), &["commit", "-q", "-m", "edit gate"]);
+    git_ok(project.dir(), &["add", "-A"]);
+    git_ok(project.dir(), &["commit", "-q", "-m", "edit gate"]);
 
     Fixture::spawned(project, "")
 }
@@ -257,8 +258,8 @@ fn check_run_nothing_to_attest() -> Fixture {
 fn check_run_head_ambiguous() -> Fixture {
     let toml = check_file("style", "format", "exit 0");
     let project = check_repo(&[("payroll-format", &toml)]);
-    git(project.dir(), &["branch", "payroll-copy"]);
-    git(project.dir(), &["switch", "-q", "--detach"]);
+    git_ok(project.dir(), &["branch", "payroll-copy"]);
+    git_ok(project.dir(), &["switch", "-q", "--detach"]);
 
     Fixture::spawned(project, "")
 }
@@ -890,6 +891,13 @@ fn byproduct_facts(value: &Value) -> Vec<String> {
     facts
 }
 
+fn byproduct_prune_facts(value: &Value) -> Vec<String> {
+    vec![format!(
+        "✔ byproduct prune · {} removed · {} kept live · {} bytes freed",
+        value["removed"], value["kept_live"], value["freed_bytes"]
+    )]
+}
+
 fn byproduct_whole_absent(_value: &Value) -> Vec<String> {
     vec!["cut short".to_owned()]
 }
@@ -1465,7 +1473,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 81] = [
+const CASES: [Case; 82] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -2021,6 +2029,16 @@ const CASES: [Case; 81] = [
         fixture: byproduct_state,
         derived: byproduct_facts,
         absent: byproduct_whole_absent,
+    },
+    Case {
+        name: "byproduct prune with nothing stored",
+        key: CommandKey::ByproductPrune,
+        args: &["byproduct", "prune"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: without_stored_extensions,
+        derived: byproduct_prune_facts,
+        absent: no_facts,
     },
     Case {
         name: "byproduct check-not-found",

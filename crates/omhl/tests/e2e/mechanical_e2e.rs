@@ -13,7 +13,9 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use support::assert_resolved_command;
 use support::child::{Cmd, Output as OmhlOutput, omhl_json};
-use support::git::{git_command_with_env, git_in, git_with_env, write_executable};
+use support::git::{
+    expect_git_success, git_command_with_env, git_ok, git_with_env, write_executable,
+};
 use tempfile::TempDir;
 
 const BEFORE_COMMIT: &str = "before-commit";
@@ -299,13 +301,7 @@ impl E2e {
 
     /// Só a montagem anterior ao `hooks install`; depois dele, todo `git` vai por `git`/`git_ok`.
     fn setup_git(&self, dir: &Path, args: &[&str]) -> String {
-        let output = git_in(dir, args);
-        assert!(
-            output.status.success(),
-            "git {args:?} failed: {}",
-            text(&output.stderr)
-        );
-        text(&output.stdout)
+        git_ok(dir, args)
     }
 
     fn git(&self, dir: &Path, args: &[&str]) -> Output {
@@ -313,13 +309,9 @@ impl E2e {
     }
 
     fn git_ok(&self, dir: &Path, args: &[&str]) -> String {
-        let output = self.git(dir, args);
-        assert!(
-            output.status.success(),
-            "git {args:?} failed: {}",
-            text(&output.stderr)
-        );
-        text(&output.stdout).trim().to_owned()
+        expect_git_success(&self.git(dir, args), args)
+            .trim()
+            .to_owned()
     }
 
     fn omhl(&self, args: &[&str]) -> Cmd {

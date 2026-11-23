@@ -26,6 +26,7 @@ Um check com o campo `run` é mecânico: o `omhl check run` executa o comando, c
 | Varrer processos fugidos | [check-sweep.md](check-sweep.md) |
 | Aposentar um check | [check-retire.md](check-retire.md) |
 | Ler a saída de um check | [byproduct.md](byproduct.md) |
+| Apagar as saídas guardadas vencidas | [byproduct-prune.md](byproduct-prune.md) |
 | Instalar os hooks de git | [hooks-install.md](hooks-install.md) |
 | Hook `post-commit` | [hooks-post-commit.md](hooks-post-commit.md) |
 | Atestar um check manual | [attest.md](attest.md) |

@@ -6,11 +6,11 @@ use super::engine::{Engine, parse_at};
 use super::error::AppError;
 use super::output;
 use crate::error::OmhlError;
+use crate::graphs;
 use crate::guard::attestation_id;
 
 const OUTCOMES: [&str; 3] = ["passed", "passed_with_warning", "failed"];
 const FAILED: &str = "failed";
-const ATTESTATION: &str = "attestation";
 
 impl Engine<'_> {
     pub(super) fn attest(
@@ -37,7 +37,7 @@ impl Engine<'_> {
         let item = AppendItem {
             body: ItemBody::Node {
                 id,
-                type_name: TypeName::parse(ATTESTATION)?,
+                type_name: TypeName::parse(graphs::ATTESTATION_TYPE)?,
                 data: data.clone(),
             },
             base,

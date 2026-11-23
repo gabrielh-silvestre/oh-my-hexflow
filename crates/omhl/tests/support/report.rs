@@ -2,7 +2,7 @@ use std::fs;
 
 use serde_json::{Value, json};
 
-use super::git::git_in;
+use super::git::git_ok;
 use super::inproc::run_inproc;
 use super::omhl::work_item_data;
 use super::project::Project;
@@ -237,12 +237,6 @@ fn amendment(target: &str) -> String {
     .join("\n")
 }
 
-fn git(project: &Project, args: &[&str]) {
-    let output = git_in(project.dir(), args);
-
-    assert!(output.status.success(), "git {args:?} failed");
-}
-
 /// Um work item sem divergência nem gap: a retro é `null`.
 pub fn retro_empty_project() -> Project {
     bare_project()
@@ -259,7 +253,7 @@ pub fn retro_project() -> Project {
         &["add", "-A"],
         &["commit", "-m", "add marker"],
     ] {
-        git(&project, args);
+        git_ok(project.dir(), args);
     }
     let folder = fs::canonicalize(project.dir())
         .expect("the project directory exists")

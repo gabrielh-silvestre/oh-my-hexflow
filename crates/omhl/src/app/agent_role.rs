@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use crate::guard::{ROLE_PREFIX, ROLE_VARIABLE, known_role};
 use crate::ports::files::read_regular_utf8;
-use crate::workflow::omhl_leaf::resolve_leaf;
+use crate::workflow::omhl_leaf::{Group, resolve_leaf};
 use crate::workflow::role_allow::{RoleAllow, parse_role_allow};
 use crate::workflow::shell::{
     CommandLine, SimpleCommand, is_omhl_word, mentions_omhl, read_command,
@@ -33,7 +33,7 @@ pub enum RoleVerdict {
 
 pub struct AgentRoleEnv<'e> {
     pub plugin_root: Option<&'e Path>,
-    pub groups: &'e [&'e str],
+    pub groups: &'e [Group],
 }
 
 /// O hook `agent-role` para o evento `PreToolUse` do Bash, do Monitor e da tool Agent; não abre o banco, só lê o arquivo do agente.

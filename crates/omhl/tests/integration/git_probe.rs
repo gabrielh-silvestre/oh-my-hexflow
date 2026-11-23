@@ -424,6 +424,63 @@ fn it_should_report_dirty_for_a_submodule_with_a_modified_file() {
     assert_eq!(result, Ok(ProbeOutcome::Dirty));
 }
 
+/// Repositório com o submódulo `vendor` já commitado e limpo.
+fn repo_with_clean_submodule() -> GitRepo {
+    let upstream = GitRepo::init();
+    upstream.write("lib.txt", "lib\n");
+    upstream.commit_all("lib");
+    let repo = GitRepo::init();
+    repo.write("top.txt", "top\n");
+    repo.commit_all("initial");
+    let upstream_path = upstream.path().to_string_lossy().into_owned();
+    repo.git(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        &upstream_path,
+        "vendor",
+    ]);
+    repo.commit_all("add submodule");
+    repo
+}
+
+#[test]
+fn it_should_report_dirty_for_a_submodule_with_an_untracked_file() {
+    let repo = repo_with_clean_submodule();
+    repo.write("vendor/untracked.txt", "new\n");
+    let probe = GitProbe::new(repo.path());
+
+    let result = (index(&probe), probe.tree_dirty());
+
+    assert_eq!(result, (Ok(ProbeOutcome::Dirty), Ok(true)));
+}
+
+#[test]
+fn it_should_report_dirty_for_an_untracked_submodule_file_even_with_ignore_all_in_the_config() {
+    let repo = repo_with_clean_submodule();
+    repo.git(&["config", "submodule.vendor.ignore", "all"]);
+    repo.write("vendor/untracked.txt", "new\n");
+    let probe = GitProbe::new(repo.path());
+
+    let result = (index(&probe), probe.tree_dirty());
+
+    assert_eq!(result, (Ok(ProbeOutcome::Dirty), Ok(true)));
+}
+
+#[test]
+fn it_should_report_reproducible_for_a_clean_submodule() {
+    let repo = repo_with_clean_submodule();
+    let probe = GitProbe::new(repo.path());
+
+    let result = (
+        index(&probe).map(|outcome| outcome != ProbeOutcome::Dirty),
+        probe.tree_dirty(),
+    );
+
+    assert_eq!(result, (Ok(true), Ok(false)));
+}
+
 #[test]
 fn it_should_not_run_the_fsmonitor_program_of_the_repository_config() {
     let (repo, head) = clean_repo();
@@ -465,6 +522,41 @@ fn it_should_fail_when_the_program_exceeds_the_timeout() {
 
     assert!(error_message(result).contains("timed out"));
     assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+#[test]
+fn it_should_fail_with_git_timed_out_when_the_shared_deadline_expires_first() {
+    let tools = TempDir::new().expect("temp dir");
+    let program = fake_program(tools.path(), "exec sleep 30");
+    let probe = GitProbe::new(tools.path())
+        .with_program(program)
+        .with_deadline(Instant::now() + Duration::from_millis(300));
+    let started = Instant::now();
+
+    let result = probe.probe();
+
+    assert_eq!(error_message(result), "git timed out");
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+#[test]
+fn it_should_not_start_a_process_when_the_shared_deadline_has_already_expired() {
+    let tools = TempDir::new().expect("temp dir");
+    let log = tools.path().join("runs.log");
+    let program = fake_program(
+        tools.path(),
+        &format!("echo run >> '{}'\nexec sleep 30", log.display()),
+    );
+    let probe = GitProbe::new(tools.path())
+        .with_program(program)
+        .with_deadline(Instant::now() + Duration::from_millis(300));
+    let _ = probe.probe();
+
+    let second = probe.probe();
+
+    assert_eq!(error_message(second), "git timed out");
+    let runs = fs::read_to_string(&log).expect("the fake git ran once");
+    assert_eq!(runs.lines().count(), 1);
 }
 
 #[test]

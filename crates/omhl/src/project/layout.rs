@@ -1,4 +1,6 @@
 pub const OMHL_DIR: &str = ".omhl";
+/// Pasta do git na raiz do projeto: nenhuma spec cabe nela.
+pub const DOT_GIT_DIR: &str = ".git";
 pub const CHECKS_DIR: &str = "checks";
 pub const GUIDELINES_DIR: &str = "guidelines";
 pub const PROJECTION_DIR: &str = "projection";

@@ -1,6 +1,6 @@
 use std::ffi::OsString;
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::Path;
 
 pub(crate) const FILE_TOO_LARGE: &str = "file-too-large";
@@ -32,15 +32,25 @@ pub(crate) fn read_regular_utf8(path: &Path, max_bytes: u64) -> Result<String, &
 /// que não é arquivo regular volta como `not-regular-file`. Cobre a troca do arquivo depois da
 /// pré-checagem por `symlink_metadata`.
 fn open_regular_nonblocking(path: &Path) -> Result<File, &'static str> {
-    let file = open_without_following_or_blocking(path)?;
+    let file = open_without_following_or_blocking(path).map_err(|error| match error {
+        OpenError::Symlink => "symlink",
+        OpenError::NotFound | OpenError::Io(_) => "io-error",
+    })?;
     if !file.metadata().map_err(|_| "io-error")?.is_file() {
         return Err("not-regular-file");
     }
     Ok(file)
 }
 
+/// Por que `open_without_following_or_blocking` falhou: o chamador decide o que cada motivo significa.
+pub(crate) enum OpenError {
+    Symlink,
+    NotFound,
+    Io(io::Error),
+}
+
 #[cfg(target_os = "linux")]
-fn open_without_following_or_blocking(path: &Path) -> Result<File, &'static str> {
+pub(crate) fn open_without_following_or_blocking(path: &Path) -> Result<File, OpenError> {
     use std::os::unix::fs::OpenOptionsExt;
 
     fs::OpenOptions::new()
@@ -48,16 +58,20 @@ fn open_without_following_or_blocking(path: &Path) -> Result<File, &'static str>
         // O_NOCTTY: se a troca trouxer um tty, ele não vira terminal de controle do processo
         .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY)
         .open(path)
-        .map_err(|error| match error.raw_os_error() {
-            Some(nix::libc::ELOOP) => "symlink",
-            _ => "io-error",
+        .map_err(|error| match (error.raw_os_error(), error.kind()) {
+            (Some(nix::libc::ELOOP), _) => OpenError::Symlink,
+            (_, io::ErrorKind::NotFound) => OpenError::NotFound,
+            _ => OpenError::Io(error),
         })
 }
 
 #[cfg(not(target_os = "linux"))]
-fn open_without_following_or_blocking(path: &Path) -> Result<File, &'static str> {
+pub(crate) fn open_without_following_or_blocking(path: &Path) -> Result<File, OpenError> {
     // shortcut: sem O_NONBLOCK fora do Linux, a pré-checagem cobre o caso comum
-    File::open(path).map_err(|_| "io-error")
+    File::open(path).map_err(|error| match error.kind() {
+        io::ErrorKind::NotFound => OpenError::NotFound,
+        _ => OpenError::Io(error),
+    })
 }
 
 #[cfg(test)]

@@ -8,6 +8,8 @@ mod agent_role_hook;
 mod agents;
 mod app;
 mod architecture;
+mod byproduct_prune;
+mod byproduct_store;
 mod catalogs;
 mod check_run;
 mod check_run_byproduct;

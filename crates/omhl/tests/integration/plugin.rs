@@ -2,6 +2,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -82,7 +83,7 @@ fn it_should_wire_the_session_start_hook_in_exec_form_and_the_pre_tool_use_hooks
                         "matcher": "Edit|Write|MultiEdit",
                         "hooks": [{
                             "type": "command",
-                            "command": "omhl hook spec-lock || exit 1",
+                            "command": "omhl hook spec-lock || exit 2",
                             "timeout": 10,
                         }],
                     },
@@ -161,6 +162,99 @@ fn it_should_not_block_bash_when_omhl_does_not_know_the_hook_subcommand() {
         .expect("the hook command runs");
 
     assert_eq!(status.code(), Some(1));
+}
+
+/// A entrada de `PreToolUse` do matcher `Edit|Write|MultiEdit`, a do `spec-lock`.
+fn spec_lock_hook_entry(hooks: &Value) -> &Value {
+    hooks["hooks"]["PreToolUse"]
+        .as_array()
+        .and_then(|entries| {
+            entries
+                .iter()
+                .find(|entry| entry["matcher"] == json!("Edit|Write|MultiEdit"))
+        })
+        .expect("PreToolUse has an Edit entry")
+}
+
+fn spec_lock_command(hooks: &Value) -> &str {
+    spec_lock_hook_entry(hooks)["hooks"][0]["command"]
+        .as_str()
+        .expect("the command is a string")
+}
+
+/// Roda o comando do `spec-lock` com `sh -c`, com um `omhl` falso (ou nenhum) como único programa do `PATH`.
+fn run_spec_lock_command_with(fake_omhl_script: Option<&str>) -> (Option<i32>, String) {
+    let hooks = plugin_file("hooks/hooks.json");
+    let bin = TempDir::new().expect("bin directory is created");
+    if let Some(script) = fake_omhl_script {
+        let fake_omhl = bin.path().join("omhl");
+        fs::write(&fake_omhl, script).expect("fake omhl is written");
+        fs::set_permissions(&fake_omhl, fs::Permissions::from_mode(0o755))
+            .expect("fake omhl is executable");
+    }
+
+    let output = Command::new("/bin/sh")
+        .args(["-c", spec_lock_command(&hooks)])
+        .env("PATH", bin.path())
+        .stdin(Stdio::null())
+        .output()
+        .expect("the hook command runs");
+
+    (
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+    )
+}
+
+#[test]
+fn it_should_wrap_the_spec_lock_command_with_exit_two() {
+    let hooks = plugin_file("hooks/hooks.json");
+
+    assert_eq!(spec_lock_command(&hooks), "omhl hook spec-lock || exit 2");
+}
+
+#[test]
+fn it_should_block_the_edit_when_omhl_exits_with_two() {
+    let (code, _) = run_spec_lock_command_with(Some("#!/bin/sh\nexit 2\n"));
+
+    assert_eq!(code, Some(2));
+}
+
+#[test]
+fn it_should_block_the_edit_when_omhl_exits_with_one() {
+    let (code, _) = run_spec_lock_command_with(Some("#!/bin/sh\nexit 1\n"));
+
+    assert_eq!(code, Some(2));
+}
+
+#[test]
+fn it_should_block_the_edit_when_omhl_is_missing_from_the_path() {
+    let (code, _) = run_spec_lock_command_with(None);
+
+    assert_eq!(code, Some(2));
+}
+
+#[test]
+fn it_should_let_the_json_denial_of_omhl_through_with_exit_zero() {
+    let denial = r#"{"hookSpecificOutput":{"permissionDecision":"deny"}}"#;
+
+    let (code, stdout) =
+        run_spec_lock_command_with(Some(&format!("#!/bin/sh\necho '{denial}'\nexit 0\n")));
+
+    assert_eq!(code, Some(0));
+    assert_eq!(stdout.trim_end(), denial);
+}
+
+#[test]
+fn it_should_keep_the_git_budget_of_the_spec_lock_plus_two_seconds_under_the_hook_timeout() {
+    let hooks = plugin_file("hooks/hooks.json");
+    let timeout = spec_lock_hook_entry(&hooks)["hooks"][0]["timeout"]
+        .as_u64()
+        .expect("the timeout is a number");
+
+    let budget = omhl::ports::git::SPEC_LOCK_GIT_BUDGET + Duration::from_secs(2);
+
+    assert!(budget < Duration::from_secs(timeout), "budget {budget:?}");
 }
 
 #[test]

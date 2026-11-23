@@ -1,9 +1,20 @@
 use std::path::{Component, Path, PathBuf};
 
+use super::config::parse_workflow;
 use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, FREEZE_MARK, PART_PREFIX, work_item_of_folder};
 use super::spec::amendment_number;
+use crate::probe::GIT_TIMED_OUT;
+use crate::project::layout::{DOT_GIT_DIR, EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
+use crate::project::marker::MARKER_FILE;
 
 const FROZEN: &str = "spec-frozen";
+const SPEC_DIR_FROZEN: &str = "spec-dir-frozen";
+const GIT_DIR_PROTECTED: &str = "git-dir-protected";
+const MARKER_PROTECTED: &str = "marker-protected";
+const UNAVAILABLE: &str = "spec-lock-unavailable";
+const TEXT_MAX_CHARS: usize = 200;
+const FIX_CLOSING: &str = "the edit stays denied until this is fixed";
+const RETRY_CLOSING: &str = "the edit stays denied; retry it";
 const IN_LINKED_WORKTREE: &str = "spec-in-linked-worktree";
 const FOLDER_UNKNOWN: &str = "spec-folder-unknown";
 
@@ -37,6 +48,194 @@ impl Tool {
 pub enum Verdict {
     Allow,
     Deny { code: &'static str, reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Replacement {
+    pub old: String,
+    pub new: String,
+    pub replace_all: bool,
+}
+
+/// O que a ferramenta vai gravar, já lido do payload pelo adapter; `Unreadable` é campo ausente ou com tipo errado.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditInput {
+    Write { content: String },
+    Edit(Replacement),
+    MultiEdit(Vec<Replacement>),
+    Unreadable,
+}
+
+/// Por que a decisão não pôde ser tomada depois de reconhecer a spec; montada no `app`, que mapeia o erro do git.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cause {
+    GitTimedOut,
+    Git(String),
+    /// Motivo fixo, sem nome de arquivo nem conteúdo.
+    Read(&'static str),
+}
+
+/// Negação por falha interna depois do reconhecimento da spec: a edição fica negada em vez de liberada.
+/// `subject` é o work item (`wi-<id>`) ou o caminho de quem não tem work item; tudo sai numa linha só.
+pub fn unavailable(subject: &str, step: &str, cause: &Cause) -> Verdict {
+    let (cause, closing) = match cause {
+        Cause::GitTimedOut => (GIT_TIMED_OUT.to_owned(), RETRY_CLOSING),
+        Cause::Git(message) if message.trim().is_empty() => {
+            ("git failed without a message".to_owned(), FIX_CLOSING)
+        }
+        Cause::Git(message) => (one_line(message), FIX_CLOSING),
+        Cause::Read(reason) => ((*reason).to_owned(), FIX_CLOSING),
+    };
+
+    Verdict::Deny {
+        code: UNAVAILABLE,
+        reason: format!(
+            "{UNAVAILABLE}: the spec lock could not decide the edit for {}: {step} failed ({cause}); {closing}",
+            one_line(subject)
+        ),
+    }
+}
+
+fn one_line(text: &str) -> String {
+    text.chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .take(TEXT_MAX_CHARS)
+        .collect()
+}
+
+/// O `specs.dir` efetivo de um `workflow.toml`: o que a política do hook usaria. Ausente (`None`), acima do teto, que não é UTF-8 ou que `parse_workflow` recusa vale o padrão.
+pub fn specs_dir_of(bytes: Option<&[u8]>) -> String {
+    bytes
+        .filter(|bytes| bytes.len() as u64 <= EXT_FILE_MAX_BYTES)
+        .and_then(|bytes| parse_workflow(Path::new(WORKFLOW_FILE), bytes).ok())
+        .unwrap_or_default()
+        .specs
+        .dir
+}
+
+/// Os textos que o arquivo pode ter depois da edição, um por versão em que todas as trocas se aplicam;
+/// `None` quando o payload não diz o que gravar ou nenhuma versão aceita a lista. A ferramenta pode
+/// normalizar CRLF para LF antes de aplicar as trocas, então o hook testa as três combinações.
+pub fn resulting_texts(input: &EditInput, current: Option<&str>) -> Option<Vec<String>> {
+    let replacements = match input {
+        EditInput::Write { content } => return Some(vec![content.clone()]),
+        EditInput::Edit(replacement) => std::slice::from_ref(replacement),
+        EditInput::MultiEdit(replacements) => replacements.as_slice(),
+        EditInput::Unreadable => return None,
+    };
+    let current = current?;
+    let normalized = to_lf(current);
+    let texts: Vec<String> = [
+        apply(current, replacements, false),
+        apply(&normalized, replacements, false),
+        apply(&normalized, replacements, true),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    (!texts.is_empty()).then_some(texts)
+}
+
+fn to_lf(text: &str) -> String {
+    text.replace("\r\n", "\n")
+}
+
+/// Aplica as trocas na ordem; uma que não casa (ou com `old` vazio) invalida a versão inteira.
+fn apply(text: &str, replacements: &[Replacement], normalize_strings: bool) -> Option<String> {
+    replacements
+        .iter()
+        .try_fold(text.to_owned(), |text, replacement| {
+            let (old, new) = if normalize_strings {
+                (to_lf(&replacement.old), to_lf(&replacement.new))
+            } else {
+                (replacement.old.clone(), replacement.new.clone())
+            };
+            if old.is_empty() || !text.contains(&old) {
+                return None;
+            }
+
+            Some(if replacement.replace_all {
+                text.replace(&old, &new)
+            } else {
+                text.replacen(&old, &new, 1)
+            })
+        })
+}
+
+/// Os dois últimos nomes, com o `..` resolvido, são `.omhl` e `workflow.toml`.
+pub fn is_workflow_candidate(file_path: &Path) -> bool {
+    matches!(
+        normalized_names(file_path).as_deref(),
+        Some([.., OMHL_DIR, WORKFLOW_FILE])
+    )
+}
+
+/// Algum nome normalizado abaixo da raiz é `.git`; sem a raiz como prefixo, contam todos os nomes.
+/// Pura: não chama git, então vale com o git quebrado. Com a raiz `/`, contam todos.
+pub fn has_git_component(file_path: &Path, root: &Path) -> bool {
+    let Some(names) = normalized_names(file_path) else {
+        return false;
+    };
+    let below_root = normalized_names(root)
+        .and_then(|root| names.strip_prefix(root.as_slice()))
+        .unwrap_or(&names);
+
+    below_root.contains(&DOT_GIT_DIR)
+}
+
+/// O último nome normalizado é `.omhl.toml` e nenhum anterior é `.omhl`: um marcador sob `.omhl/` não é raiz de projeto.
+pub fn is_marker_candidate(file_path: &Path) -> bool {
+    matches!(
+        normalized_names(file_path).as_deref(),
+        Some([init @ .., MARKER_FILE]) if !init.contains(&OMHL_DIR)
+    )
+}
+
+/// A razão não sugere o `Bash`: quem a lê tem `Bash`, e o dono muda o `.git` fora do Claude Code.
+pub fn git_dir_protected(file_path: &Path) -> Verdict {
+    Verdict::Deny {
+        code: GIT_DIR_PROTECTED,
+        reason: format!(
+            "{GIT_DIR_PROTECTED}: {} is under a .git folder of an omhl project, which the spec lock relies on; only the owner changes it, outside Claude Code: ask the owner and do not change it through any tool",
+            one_line(&file_path.display().to_string())
+        ),
+    }
+}
+
+pub fn marker_protected(file_path: &Path) -> Verdict {
+    Verdict::Deny {
+        code: MARKER_PROTECTED,
+        reason: format!(
+            "{MARKER_PROTECTED}: this edit would leave {} without a valid project marker, which the spec lock relies on; keep it a valid marker or ask the owner, and do not change it through any tool",
+            one_line(&file_path.display().to_string())
+        ),
+    }
+}
+
+/// Igualdade pelos nomes normalizados: `./a/../b` é `b`.
+pub fn is_same_path(left: &Path, right: &Path) -> bool {
+    matches!((normalized_names(left), normalized_names(right)), (Some(left), Some(right)) if left == right)
+}
+
+/// `work_item` é o `wi-<id>`; a razão não sugere o `Bash`: quem a lê tem `Bash`, e o dono muda a chave fora do Claude Code.
+pub fn spec_dir_frozen(file_path: &Path, old: &str, new: &str, work_item: &str) -> Verdict {
+    Verdict::Deny {
+        code: SPEC_DIR_FROZEN,
+        reason: format!(
+            "{SPEC_DIR_FROZEN}: this edit would change specs.dir from \"{}\" to \"{}\" in {} while the spec of work item {} is frozen, which would release the spec lock; only the owner changes specs.dir, outside Claude Code: ask the owner and do not change it through any tool",
+            one_line(old),
+            one_line(new),
+            one_line(&file_path.display().to_string()),
+            one_line(work_item)
+        ),
+    }
 }
 
 pub struct Facts<'a> {
@@ -96,7 +295,7 @@ pub fn next_amendment(folder_files: &[String]) -> String {
     format!("{AMENDMENT_PREFIX}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
-/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
+/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe e qualquer arquivo de marcador do projeto; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {
@@ -119,6 +318,15 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
             ),
         };
     }
+    if names_project_marker(spec) {
+        return Verdict::Deny {
+            code: FROZEN,
+            reason: format!(
+                "{FROZEN}: the spec in {} is frozen, and the project marker files ({MARKER_FILE} and {OMHL_DIR}/) are neither created nor edited in the spec folder of a frozen work item",
+                facts.main_folder.display()
+            ),
+        };
+    }
     if creates_allowed_file(tool, spec, facts) {
         return Verdict::Allow;
     }
@@ -132,6 +340,13 @@ pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
             amendment.display()
         ),
     }
+}
+
+/// Um `.omhl.toml` plantado na pasta congelada soltaria a trava das specs do projeto.
+fn names_project_marker(spec: &SpecPath) -> bool {
+    spec.file
+        .split('/')
+        .any(|name| name == MARKER_FILE || name == OMHL_DIR)
 }
 
 fn creates_allowed_file(tool: Tool, spec: &SpecPath, facts: &Facts) -> bool {

@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use hexlog::SemanticId;
 use serde_json::{Value, json};
@@ -10,18 +11,21 @@ use super::spec_facts::GraphFacts;
 use super::work_item::work_item_refusal;
 use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::branch::work_item_id;
-use crate::ports::files::FILE_TOO_LARGE;
-use crate::ports::git::GitProbe;
+use crate::ports::files::{FILE_TOO_LARGE, read_regular_utf8};
+use crate::ports::git::{GitProbe, SPEC_LOCK_GIT_BUDGET};
 use crate::ports::paths::resolve_physical;
 use crate::ports::specs::{FreezeMarkWrite, SpecDocument, SpecFolder, SpecStore, SpecStoreError};
 use crate::ports::workflow::{read_policy, read_workflow};
-use crate::probe::ProbeError;
-use crate::project::marker::find_marker;
+use crate::probe::{GIT_TIMED_OUT, ProbeError};
+use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
+use crate::project::marker::{find_marker, find_valid_marker, is_valid_marker};
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{
-    Facts, Tool, Verdict, decide, has_spec_folder_component, parse_spec_path,
+    Cause, EditInput, Facts, SpecPath, Tool, Verdict, decide, git_dir_protected, has_git_component,
+    has_spec_folder_component, is_marker_candidate, is_same_path, is_workflow_candidate,
+    marker_protected, parse_spec_path, resulting_texts, spec_dir_frozen, specs_dir_of, unavailable,
 };
-use crate::workflow::names::WORK_ITEM_ID_PREFIX;
+use crate::workflow::names::{FOLDER_PREFIX, WORK_ITEM_ID_PREFIX};
 use crate::workflow::spec::{
     AmendmentState, SPEC_STALE, SpecFile, Violation, amendment_divergence_mismatch,
     amendment_state, is_amendment_id, validate_graph, validate_spec,
@@ -294,7 +298,11 @@ fn folder_violations(
 /// O evento `PreToolUse` já lido pelo adapter: `app` não conhece o formato do payload.
 pub enum SpecLockEvent {
     NotAnEdit,
-    Edit { tool: Tool, file_path: PathBuf },
+    Edit {
+        tool: Tool,
+        file_path: PathBuf,
+        input: EditInput,
+    },
 }
 
 /// A decisão da trava e os avisos que a acompanham: os avisos vão ao stderr sem mudar a decisão.
@@ -307,15 +315,21 @@ pub struct SpecLockOutcome {
 /// lexical e pelo físico (links resolvidos), e a negação de qualquer um vence; se o físico não se
 /// resolve, vale o lexical. A ordem importa: o git só é consultado para o caminho em que algum
 /// componente tem a forma da pasta de work item.
+/// As chamadas de git de uma execução dividem o prazo `SPEC_LOCK_GIT_BUDGET`.
 pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
-    let SpecLockEvent::Edit { tool, file_path } = event else {
+    let SpecLockEvent::Edit {
+        tool,
+        file_path,
+        input,
+    } = event
+    else {
         return Ok(SpecLockOutcome {
             verdict: Verdict::Allow,
             notices: Vec::new(),
         });
     };
     let physical = resolve_physical(&file_path);
-    let mut notices: Vec<AppError> = (physical.is_err() && has_spec_folder_component(&file_path))
+    let mut notices: Vec<AppError> = (physical.is_err() && is_lock_candidate(&file_path))
         .then(AppError::path_unresolvable)
         .into_iter()
         .collect();
@@ -326,9 +340,10 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
         paths.push(physical);
     }
 
+    let deadline = Instant::now() + SPEC_LOCK_GIT_BUDGET;
     let mut failure = None;
-    for path in paths.iter().filter(|path| has_spec_folder_component(path)) {
-        match decide_path(tool, path) {
+    for path in paths.iter().filter(|path| is_lock_candidate(path)) {
+        match decide_path(tool, &input, path, deadline) {
             Ok((verdict, healed)) => {
                 // Os dois caminhos curam o mesmo projeto: o aviso do mesmo work item sai uma vez.
                 for notice in healed {
@@ -353,54 +368,264 @@ pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
     }
 }
 
-/// O veredito para um caminho já filtrado pelo texto, mais os avisos da cura das marcas; sem
-/// `.omhl.toml` acima do arquivo, libera.
-fn decide_path(tool: Tool, file_path: &Path) -> Result<(Verdict, Vec<AppError>), AppError> {
-    let Some(located) = find_marker(nearest_existing_dir(file_path))? else {
-        return Ok((Verdict::Allow, Vec::new()));
-    };
-    // Arquivo inválido cai nos padrões: liberar aqui deixaria a spec congelada editável por um typo.
-    let config = read_policy(&located.root).unwrap_or_default();
-    let Some(spec) = parse_spec_path(&config.specs.dir, file_path) else {
-        return Ok((Verdict::Allow, Vec::new()));
-    };
+/// O filtro barato pelo texto: só estes caminhos passam pelas regras. O `.git` conta em qualquer
+/// posição aqui; a posição abaixo da raiz do marcador só se sabe depois de achá-lo.
+fn is_lock_candidate(file_path: &Path) -> bool {
+    needs_git(file_path)
+        || has_git_component(file_path, Path::new("/"))
+        || is_marker_candidate(file_path)
+}
 
-    let git_failed = |error: ProbeError| AppError::probe_failed(&error.message);
-    let probe = GitProbe::new(&located.root);
-    let main_dir = probe.main_dir().map_err(git_failed)?;
+/// Só estes caminhos gastam o git.
+fn needs_git(file_path: &Path) -> bool {
+    has_spec_folder_component(file_path) || is_workflow_candidate(file_path)
+}
+
+/// O veredito para um caminho já filtrado pelo texto, mais os avisos da cura das marcas; sem
+/// marcador válido acima do arquivo, libera. A primeira negação vence, nesta ordem: `.git` (puro,
+/// sem git), specs, `workflow.toml` e marcador (puro, sem git).
+fn decide_path(
+    tool: Tool,
+    input: &EditInput,
+    file_path: &Path,
+    deadline: Instant,
+) -> Result<(Verdict, Vec<AppError>), AppError> {
+    let Some(located) = find_valid_marker(nearest_existing_dir(file_path))? else {
+        return Ok((Verdict::Allow, Vec::new()));
+    };
+    if has_git_component(file_path, &located.root) {
+        return Ok((git_dir_protected(file_path), Vec::new()));
+    }
+    let (verdict, healed) = if needs_git(file_path) {
+        decide_with_git(tool, input, file_path, &located.root, deadline)
+    } else {
+        (Verdict::Allow, Vec::new())
+    };
+    if matches!(verdict, Verdict::Deny { .. }) || !is_marker_candidate(file_path) {
+        return Ok((verdict, healed));
+    }
+
+    Ok((decide_marker(input, file_path), healed))
+}
+
+/// As regras das specs e do `workflow.toml`, as que consultam o git. Antes de `parse_spec_path`
+/// reconhecer a spec, o erro do git cai na política padrão; depois dele, qualquer falha nega com
+/// `spec-lock-unavailable`.
+fn decide_with_git(
+    tool: Tool,
+    input: &EditInput,
+    file_path: &Path,
+    root: &Path,
+    deadline: Instant,
+) -> (Verdict, Vec<AppError>) {
+    // Um `main_dir` só, com prazo: ele também diz de onde vem a política. Com o git falhando, da pasta do marcador.
+    let probe = GitProbe::new(root).with_deadline(deadline);
+    let main_dir = probe
+        .main_dir()
+        .map_err(git_step("checking the main directory"));
+    let policy_dir = main_dir.as_ref().map_or(root, |dir| dir);
+    // Arquivo inválido cai nos padrões: liberar aqui deixaria a spec congelada editável por um typo.
+    let config = read_workflow(policy_dir).unwrap_or_default();
+    let (verdict, healed) = match parse_spec_path(&config.specs.dir, file_path) {
+        Some(spec) => decide_recognized(tool, &spec, &config.specs.dir, &probe, &main_dir)
+            .unwrap_or_else(|failure| {
+                let subject = format!("{FOLDER_PREFIX}{}", spec.work_item);
+
+                (
+                    unavailable(&subject, failure.step, &failure.cause),
+                    Vec::new(),
+                )
+            }),
+        None => (Verdict::Allow, Vec::new()),
+    };
+    if matches!(verdict, Verdict::Deny { .. }) || !is_workflow_candidate(file_path) {
+        return (verdict, healed);
+    }
+
+    (decide_workflow(input, file_path, &probe, &main_dir), healed)
+}
+
+/// Só um `.omhl.toml` que hoje é marcador válido entra, e só nega se o resultado deixar de ser; pura sobre bytes, sem git.
+fn decide_marker(input: &EditInput, file_path: &Path) -> Verdict {
+    decide_marker_change(input, file_path).unwrap_or_else(|failure| {
+        unavailable(
+            &file_path.display().to_string(),
+            failure.step,
+            &failure.cause,
+        )
+    })
+}
+
+fn decide_marker_change(input: &EditInput, file_path: &Path) -> Result<Verdict, Unavailable> {
+    let Ok(current) = read_regular_utf8(file_path, EXT_FILE_MAX_BYTES) else {
+        return Ok(Verdict::Allow);
+    };
+    if !is_valid_marker(file_path, current.as_bytes()) {
+        return Ok(Verdict::Allow);
+    }
+    let texts = resulting_texts(input, Some(&current)).ok_or(Unavailable {
+        step: "reading the new content of .omhl.toml",
+        cause: Cause::Read("the new content cannot be computed"),
+    })?;
+
+    Ok(
+        if texts
+            .iter()
+            .any(|text| !is_valid_marker(file_path, text.as_bytes()))
+        {
+            marker_protected(file_path)
+        } else {
+            Verdict::Allow
+        },
+    )
+}
+
+/// Falha de leitura depois do reconhecimento da spec: o passo que falhou e a causa.
+#[derive(Clone)]
+struct Unavailable {
+    step: &'static str,
+    cause: Cause,
+}
+
+fn git_step(step: &'static str) -> impl Fn(ProbeError) -> Unavailable {
+    move |error| Unavailable {
+        step,
+        cause: if error.message == GIT_TIMED_OUT {
+            Cause::GitTimedOut
+        } else {
+            Cause::Git(error.message)
+        },
+    }
+}
+
+fn read_step(step: &'static str) -> impl Fn(SpecStoreError) -> Unavailable {
+    move |error| Unavailable {
+        step,
+        cause: Cause::Read(match error {
+            SpecStoreError::Exists => "the spec folder already exists",
+            SpecStoreError::Unusable(reason) => reason,
+        }),
+    }
+}
+
+fn decide_recognized(
+    tool: Tool,
+    spec: &SpecPath,
+    specs_dir: &str,
+    probe: &GitProbe,
+    main_dir: &Result<PathBuf, Unavailable>,
+) -> Result<(Verdict, Vec<AppError>), Unavailable> {
+    let main_dir = main_dir.as_ref().map_err(Clone::clone)?;
     let work_item = format!("{WORK_ITEM_ID_PREFIX}{}", spec.work_item);
-    let branches = probe.local_branches().map_err(git_failed)?;
+    let branches = probe
+        .local_branches()
+        .map_err(git_step("listing the local branches"))?;
     let has_branch = branches
         .iter()
         .any(|branch| work_item_id(branch).is_some_and(|id| id.as_str() == work_item));
     // Do marcador, não da pasta do arquivo: com `specs.dir` link para fora do repositório, o git a partir da pasta do arquivo não acha repositório.
-    let checkout = probe.checkout_dir().map_err(git_failed)?;
-    let specs_dir = main_dir.join(&config.specs.dir);
+    let checkout = probe
+        .checkout_dir()
+        .map_err(git_step("checking the checkout"))?;
+    let specs_dir = main_dir.join(specs_dir);
     let store = SpecStore::new(specs_dir.clone());
     let folder_files = store
         .folder_files(&spec.folder)
-        .map_err(spec_store_refusal)?;
+        .map_err(read_step("listing the files of the spec folder"))?;
     let file_exists = store
         .file_exists(&spec.folder, &spec.file)
-        .map_err(spec_store_refusal)?;
+        .map_err(read_step("checking the spec file"))?;
     let folder_exists = store
         .folder_exists(&spec.folder)
-        .map_err(spec_store_refusal)?;
+        .map_err(read_step("checking the spec folder"))?;
     let marked = store.has_freeze_mark(&spec.work_item);
     let facts = Facts {
         has_branch,
         marked,
         folder_exists,
-        linked_worktree: checkout != main_dir,
+        linked_worktree: checkout != *main_dir,
         file_exists,
         folder_files: &folder_files,
         main_folder: &specs_dir.join(&spec.folder),
     };
 
     Ok((
-        decide(tool, &spec, &facts),
+        decide(tool, spec, &facts),
         heal_freeze_marks(&store, &branches),
     ))
+}
+
+/// Só o `workflow.toml` principal conta: o de uma worktree ligada ou de outro projeto não é a política do hook.
+fn decide_workflow(
+    input: &EditInput,
+    file_path: &Path,
+    probe: &GitProbe,
+    main_dir: &Result<PathBuf, Unavailable>,
+) -> Verdict {
+    decide_specs_dir_change(input, file_path, probe, main_dir).unwrap_or_else(|failure| {
+        unavailable(
+            &file_path.display().to_string(),
+            failure.step,
+            &failure.cause,
+        )
+    })
+}
+
+fn decide_specs_dir_change(
+    input: &EditInput,
+    file_path: &Path,
+    probe: &GitProbe,
+    main_dir: &Result<PathBuf, Unavailable>,
+) -> Result<Verdict, Unavailable> {
+    let main_dir = main_dir.as_ref().map_err(Clone::clone)?;
+    let workflow = main_dir.join(OMHL_DIR).join(WORKFLOW_FILE);
+    if !is_same_path(file_path, &workflow) {
+        return Ok(Verdict::Allow);
+    }
+    // Os dois lados passam por `specs_dir_of`: ausente, ilegível, link ou grande demais vale o padrão.
+    let current = read_regular_utf8(&workflow, EXT_FILE_MAX_BYTES).ok();
+    let old_dir = specs_dir_of(current.as_deref().map(str::as_bytes));
+    let texts = resulting_texts(input, current.as_deref()).ok_or(Unavailable {
+        step: "reading the new content of workflow.toml",
+        cause: Cause::Read("the new content cannot be computed"),
+    })?;
+    let Some(new_dir) = texts
+        .iter()
+        .map(|text| specs_dir_of(Some(text.as_bytes())))
+        .find(|dir| !is_same_path(Path::new(dir), Path::new(&old_dir)))
+    else {
+        return Ok(Verdict::Allow);
+    };
+    let frozen = frozen_work_item(probe, main_dir.join(&old_dir))?;
+
+    Ok(frozen.map_or(Verdict::Allow, |work_item| {
+        spec_dir_frozen(
+            file_path,
+            &old_dir,
+            &new_dir,
+            &format!("{FOLDER_PREFIX}{work_item}"),
+        )
+    }))
+}
+
+/// O primeiro work item congelado: a marca em alguma pasta da pasta de specs antiga (a branch pode ter sido apagada) ou, sem marca, uma branch local dele.
+fn frozen_work_item(probe: &GitProbe, specs_dir: PathBuf) -> Result<Option<String>, Unavailable> {
+    const STEP: &str = "looking for frozen work items";
+    if let Some(work_item) = SpecStore::new(specs_dir)
+        .frozen_work_item()
+        .map_err(read_step(STEP))?
+    {
+        return Ok(Some(work_item));
+    }
+    let branches = probe.local_branches().map_err(git_step(STEP))?;
+
+    Ok(branches.iter().find_map(|branch| {
+        let id = work_item_id(branch)?;
+
+        id.as_str()
+            .strip_prefix(WORK_ITEM_ID_PREFIX)
+            .map(str::to_owned)
+    }))
 }
 
 /// Grava a marca nas pastas dos work items que têm branch local: é a rede para a branch apagada

@@ -6,7 +6,7 @@ use omhl::adapters::text::{AgentVocabulary, HumanVocabulary, SYMBOL_OK, State, V
 use serde_json::{Value, json};
 use support::child::{Cmd, omhl};
 use support::ext::ExtTree;
-use support::git::git_in;
+use support::git::git_ok;
 use support::project::Project;
 
 const WORK_ITEM_APPEND: &str = r#"{"items":[{"body":{"kind":"node","id":"work-items.w1","type":"work-item","data":{"title":"t","status":"open"}}}]}"#;
@@ -75,15 +75,6 @@ expect = [{ exit = 0, outcome = "passed" }]
 event = "before-pr"
 "#;
 
-fn git(p: &Project, args: &[&str]) {
-    let output = git_in(p.dir(), args);
-    assert!(
-        output.status.success(),
-        "git {args:?} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
 fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
     omhl(args).cwd(p.dir()).xdg(p.xdg())
 }
@@ -91,16 +82,16 @@ fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
 /// Repositório git limpo na branch `feat/wi-w1__x`, com o work item `w1` e os checks carregados.
 fn cli_repo(checks: &[(&str, &str)]) -> Project {
     let p = Project::new("acme");
-    git(&p, &["init", "-q", "-b", "main"]);
-    git(&p, &["config", "user.name", "Test Author"]);
-    git(&p, &["config", "user.email", "author@example.com"]);
+    git_ok(p.dir(), &["init", "-q", "-b", "main"]);
+    git_ok(p.dir(), &["config", "user.name", "Test Author"]);
+    git_ok(p.dir(), &["config", "user.email", "author@example.com"]);
     let tree = ExtTree::at(p.dir());
     for (slug, toml) in checks {
         tree.check(slug, toml);
     }
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "base"]);
-    git(&p, &["switch", "-q", "-c", "feat/wi-w1__x"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "base"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "feat/wi-w1__x"]);
 
     let appended = omhl_in(&p, &["append"]).stdin(WORK_ITEM_APPEND).run();
     assert_eq!(appended.code, Some(0), "append stderr: {}", appended.stderr);
@@ -153,8 +144,8 @@ fn it_should_keep_the_success_json_line_unchanged_with_format_json() {
 fn drop_check(p: &Project, slug: &str) {
     fs::remove_file(p.dir().join(format!(".omhl/checks/{slug}.toml")))
         .expect("the check file is deleted");
-    git(p, &["add", "-A"]);
-    git(p, &["commit", "-q", "-m", "drop check"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "drop check"]);
 }
 
 /// O `error` da linha JSON de falha.
@@ -303,7 +294,7 @@ fn it_should_count_an_orphaned_check_as_not_run_in_the_failure_summary() {
 #[test]
 fn it_should_leave_work_item_out_of_the_failure_json_on_develop() {
     let p = cli_repo(&[("suite", SUITE_RED)]);
-    git(&p, &["switch", "-q", "-c", "develop"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
 
     let output = run_pr(&p, "json");
 
@@ -331,7 +322,7 @@ fn it_should_open_the_failure_text_with_event_work_item_and_summary() {
 #[test]
 fn it_should_open_the_failure_text_without_a_work_item_on_develop() {
     let p = cli_repo(&[("suite", SUITE_RED)]);
-    git(&p, &["switch", "-q", "-c", "develop"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
 
     let output = run_pr(&p, "agent");
 
@@ -518,7 +509,7 @@ fn it_should_print_the_failure_text_on_stderr_without_the_check_output() {
 #[test]
 fn it_should_print_the_output_tail_of_a_failed_check_on_develop() {
     let p = cli_repo(&[("red", NOISY_RED)]);
-    git(&p, &["switch", "-q", "-c", "develop"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
 
     let output = run_pr(&p, "agent");
 
@@ -681,8 +672,8 @@ fn it_should_print_spec_stale_as_text_when_the_committed_file_differs_from_the_s
         "green",
         &GREEN.replace(r#"run = ["true"]"#, r#"run = ["false"]"#),
     );
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "edit green"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "edit green"]);
 
     let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
 
@@ -727,7 +718,7 @@ fn it_should_print_worktree_dirty_as_text_for_an_untracked_file() {
 #[test]
 fn it_should_print_branch_protected_as_text_on_main() {
     let p = cli_repo(&[("green", GREEN)]);
-    git(&p, &["switch", "-q", "main"]);
+    git_ok(p.dir(), &["switch", "-q", "main"]);
 
     let output = run_pr(&p, "agent");
 
@@ -770,7 +761,7 @@ event = "before-pr"
 #[test]
 fn it_should_keep_the_interior_spaces_of_the_command_output_in_the_agent_text() {
     let p = cli_repo(&[("spaced", SPACED_RED)]);
-    git(&p, &["switch", "-q", "-c", "develop"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
 
     let output = run_pr(&p, "agent");
 
@@ -785,7 +776,7 @@ fn it_should_keep_the_interior_spaces_of_the_command_output_in_the_agent_text() 
 #[test]
 fn it_should_trim_only_the_end_of_the_command_output_line_in_the_agent_text() {
     let p = cli_repo(&[("spaced", SPACED_RED)]);
-    git(&p, &["switch", "-q", "-c", "develop"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
 
     let output = run_pr(&p, "agent");
 
@@ -799,7 +790,7 @@ fn it_should_trim_only_the_end_of_the_command_output_line_in_the_agent_text() {
 #[test]
 fn it_should_keep_the_command_output_line_untouched_in_the_human_text() {
     let p = cli_repo(&[("spaced", SPACED_RED)]);
-    git(&p, &["switch", "-q", "-c", "develop"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
 
     let output = run_pr(&p, "human");
 
@@ -848,4 +839,90 @@ fn it_should_open_the_failure_text_of_both_layouts_with_the_error_symbol_of_the_
 
     assert!(agent.stderr.starts_with(&format!("{symbol} BLOCKED")));
     assert!(human.stderr.starts_with(&format!("{symbol} BLOCKED")));
+}
+
+const OUTPUT_STORED_HINT: &str = "a check that passed with a warning keeps its output stored; read it with `omhl byproduct <check> <work-item> --tail 40`";
+const READ_COMMAND: &str = "omhl byproduct checks.warn work-items.w1 --tail 40";
+
+#[test]
+fn it_should_point_to_the_stored_output_of_a_recorded_passed_with_warning_check_in_the_json() {
+    let p = cli_repo(&[("warn", WARNING)]);
+
+    let output = run_pr(&p, "json");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    let result: Value = serde_json::from_str(output.stdout.trim_end()).expect("stdout is JSON");
+    assert_eq!(
+        result["warnings"],
+        json!([{
+            "code": "output-stored",
+            "check": "checks.warn",
+            "work_item": "work-items.w1",
+            "hint": OUTPUT_STORED_HINT,
+        }])
+    );
+}
+
+#[test]
+fn it_should_print_the_stored_output_warning_with_the_read_command_in_the_text() {
+    let p = cli_repo(&[("warn", WARNING)]);
+
+    let output = run_pr(&p, "agent");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    let warning = output
+        .stdout
+        .lines()
+        .find(|line| line.contains("output-stored"))
+        .expect("the warning is printed");
+    assert!(warning.contains("checks.warn"), "{warning}");
+    assert!(warning.contains(READ_COMMAND), "{warning}");
+}
+
+#[test]
+fn it_should_leave_the_stored_output_warning_out_when_every_check_passed_plainly() {
+    let p = cli_repo(&[("green", GREEN)]);
+
+    let output = run_pr(&p, "json");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(
+        !output.stdout.contains("output-stored"),
+        "{}",
+        output.stdout
+    );
+}
+
+#[test]
+fn it_should_leave_the_stored_output_warning_out_of_a_failed_run() {
+    let p = cli_repo(&[("suite", SUITE_RED), ("warn", WARNING)]);
+
+    let output = run_pr(&p, "json");
+
+    assert_eq!(output.code, Some(1), "stdout: {}", output.stdout);
+    assert!(
+        !output.stderr.contains("output-stored"),
+        "{}",
+        output.stderr
+    );
+    assert!(
+        !output.stdout.contains("output-stored"),
+        "{}",
+        output.stdout
+    );
+}
+
+#[test]
+fn it_should_leave_the_stored_output_warning_out_on_develop_where_nothing_is_recorded() {
+    let p = cli_repo(&[("warn", WARNING)]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
+
+    let output = run_pr(&p, "json");
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(
+        !output.stdout.contains("output-stored"),
+        "{}",
+        output.stdout
+    );
 }

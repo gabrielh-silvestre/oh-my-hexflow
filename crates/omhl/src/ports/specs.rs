@@ -6,6 +6,7 @@ use crate::ports::files::{FILE_TOO_LARGE, list_sorted_capped, read_regular_utf8}
 use crate::project::layout::{EXT_FILE_MAX_BYTES, GITIGNORE_CONTENT, GITIGNORE_NAME};
 use crate::workflow::names::{
     AMENDMENT_PREFIX, FILE_SUFFIX, FIRST_PART_FILE, FREEZE_MARK, PART_PREFIX, folder_prefix,
+    work_item_of_folder,
 };
 
 /// Teto próprio da busca por prefixo.
@@ -149,14 +150,24 @@ impl SpecStore {
             return true;
         };
 
-        folders.iter().any(|folder| {
-            match fs::symlink_metadata(self.dir.join(folder).join(FREEZE_MARK)) {
-                Ok(_) => true,
-                Err(error) => {
-                    !matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory)
-                }
-            }
-        })
+        folders.iter().any(|folder| self.is_marked(folder))
+    }
+
+    /// O primeiro work item com a marca em alguma pasta `wi-*` da pasta de specs (que pode não existir); a regra de
+    /// `has_freeze_mark` vale por pasta. Listar a pasta com erro devolve `Err`: quem pergunta nega, não congela por palpite.
+    pub fn frozen_work_item(&self) -> Result<Option<String>, SpecStoreError> {
+        Ok(list_names(&self.dir)?.into_iter().find_map(|folder| {
+            let work_item = work_item_of_folder(&folder)?.to_owned();
+
+            self.is_marked(&folder).then_some(work_item)
+        }))
+    }
+
+    fn is_marked(&self, folder: &str) -> bool {
+        match fs::symlink_metadata(self.dir.join(folder).join(FREEZE_MARK)) {
+            Ok(_) => true,
+            Err(error) => !matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory),
+        }
     }
 
     /// A única gravação da marca. Pasta que é link é recusada (o link é a própria pasta); `create_new`

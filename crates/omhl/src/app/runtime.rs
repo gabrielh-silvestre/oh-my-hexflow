@@ -15,12 +15,18 @@ use crate::ports::blob::BlobStore;
 use crate::ports::clock::SystemClock;
 use crate::ports::git::GitProbe;
 use crate::ports::ids::V7Ids;
+use crate::ports::paths::resolve_physical;
 use crate::ports::process::{
     ProcessRunner, SweepReport, SweptProcess, sweep_project_strays, sweep_strays,
 };
-use crate::project::Env;
 use crate::project::marker::find_marker;
 use crate::project::paths::{data_root, default_db_path, prepare_db_file};
+use crate::project::{Env, ProjectError};
+
+const SWEEP_LOG: &str = "sweep.jsonl";
+const SWEEP_LOG_ROTATED: &str = "sweep.jsonl.1";
+/// Acima disto o log gira para `sweep.jsonl.1` antes da próxima linha.
+const SWEEP_LOG_MAX_BYTES: u64 = 1024 * 1024;
 
 pub struct Runtime {
     tenant: TenantId,
@@ -45,14 +51,16 @@ impl Runtime {
             Some(path) => path.to_path_buf(),
             None => default_db_path(env)?,
         };
-        if is_inside(&db_path, &located.root) {
+        if is_inside(&db_path, &located.root)? {
             return Err(AppError::db_inside_project());
         }
         prepare_db_file(&db_path)?;
 
+        let byproducts = BlobStore::new(&db_path, &located.marker.tenant);
+
         Ok(Runtime {
             tenant: located.marker.tenant,
-            byproducts: BlobStore::new(db_path.parent().unwrap_or(Path::new(""))),
+            byproducts,
             db_path,
             clock: SystemClock,
             ids: V7Ids,
@@ -80,6 +88,7 @@ impl Runtime {
         Ok(App::open(&self.db_path, &self.tenant, deps, &self.retry)?
             .with_project_root(&self.root)
             .with_exec(&self.runner, &self.byproducts)
+            .with_retention(&self.byproducts)
             .with_develop_mark(&self.probe)
             .with_hooks_dir(hooks_dir))
     }
@@ -115,23 +124,36 @@ impl Runtime {
             "swept": swept_json(&report.swept),
             "ts": self.clock.now(),
         });
+        let log_path = dir.join(SWEEP_LOG);
         let _ = std::fs::create_dir_all(&dir).and_then(|()| {
+            // Uma só geração antiga: duas rotações simultâneas podem perder uma geração (aceito).
+            if std::fs::metadata(&log_path).is_ok_and(|meta| meta.len() > SWEEP_LOG_MAX_BYTES) {
+                std::fs::rename(&log_path, dir.join(SWEEP_LOG_ROTATED))?;
+            }
             let mut log = OpenOptions::new()
                 .append(true)
                 .create(true)
-                .open(dir.join("sweep.jsonl"))?;
+                .open(&log_path)?;
             writeln!(log, "{line}")
         });
     }
 }
 
-// shortcut: pasta que ainda não existe é comparada só pelo texto (`..` não é resolvido); canonicalizar o ancestral existente se aparecer.
-fn is_inside(db_path: &Path, root: &Path) -> bool {
-    let absolute = std::path::absolute(db_path).unwrap_or_else(|_| db_path.to_path_buf());
-    let resolved = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let dir = absolute.parent().unwrap_or(&absolute);
+fn unresolved_db_path() -> ProjectError {
+    ProjectError {
+        code: "database-file",
+        message: "the database path cannot be resolved".to_owned(),
+    }
+}
 
-    resolved(dir).starts_with(resolved(root))
+/// Resolve os links do caminho inteiro do banco e da raiz (o `..` e o link para dentro do projeto também contam).
+/// O `absolute` vem antes porque `resolve_physical` perde o `..` inicial de um caminho relativo.
+fn is_inside(db_path: &Path, root: &Path) -> Result<bool, ProjectError> {
+    let absolute = std::path::absolute(db_path).map_err(|_| unresolved_db_path())?;
+    let db = resolve_physical(&absolute).map_err(|_| unresolved_db_path())?;
+    let root = resolve_physical(root).map_err(|_| unresolved_db_path())?;
+
+    Ok(db.starts_with(root))
 }
 
 fn swept_json(swept: &[SweptProcess]) -> Value {

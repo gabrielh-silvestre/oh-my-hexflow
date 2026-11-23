@@ -32,7 +32,7 @@ use serde_json::Value;
 
 use crate::skills::coverage::{leaf_commands, read_docs, skills_dir, starts_with_path};
 use crate::support::child::omhl;
-use crate::support::git::git_command_with_env;
+use crate::support::git::{expect_git_success, git_command_with_env};
 use crate::support::project::Project;
 use crate::support::repo_checks::repo_root;
 use crate::support::sweep_lock::serialize_sweeps;
@@ -382,11 +382,7 @@ impl Fixture {
             .env("GIT_COMMITTER_DATE", GIT_DATE)
             .output()
             .expect("git runs");
-        assert!(
-            output.status.success(),
-            "fixture git {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        expect_git_success(&output, args);
     }
 
     fn write(&self, rel: &str, content: &str) {

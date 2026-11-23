@@ -104,6 +104,17 @@ pub static BYPRODUCT_PROFILE: Profile = Profile {
     failure: &error::ENTRIES,
 };
 
+pub static BYPRODUCT_PRUNE_PROFILE: Profile = Profile {
+    label: "byproduct prune",
+    nodes: None,
+    success: &[
+        Entry::new(Region::Root, "removed", Shape::Derived),
+        Entry::new(Region::Root, "kept_live", Shape::Derived),
+        Entry::new(Region::Root, "freed_bytes", Shape::Derived),
+    ],
+    failure: &error::ENTRIES,
+};
+
 pub static APPEND_PROFILE: Profile = Profile {
     label: "append",
     nodes: None,
@@ -367,6 +378,23 @@ impl Specialization for Byproduct {
                 text: SECRET_WARNING.to_owned(),
             }])
             .collect()
+    }
+}
+
+pub struct ByproductPrune;
+
+impl Specialization for ByproductPrune {
+    fn profile(&self) -> &'static Profile {
+        &BYPRODUCT_PRUNE_PROFILE
+    }
+
+    /// Formato fixo (`N removed`, `N kept live`, `N bytes freed`): o runner de exemplos normaliza os números.
+    fn summary(&self, value: &Value) -> Vec<String> {
+        vec![
+            format!("{} removed", value["removed"]),
+            format!("{} kept live", value["kept_live"]),
+            format!("{} bytes freed", value["freed_bytes"]),
+        ]
     }
 }
 

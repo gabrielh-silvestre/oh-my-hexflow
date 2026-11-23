@@ -31,11 +31,11 @@ fn it_should_defer_exactly_the_six_machine_read_commands() {
 }
 
 #[test]
-fn it_should_give_a_renderer_to_twenty_one_of_the_twenty_seven_commands() {
+fn it_should_give_a_renderer_to_twenty_two_of_the_twenty_eight_commands() {
     let with_renderer = CommandKey::ALL
         .into_iter()
         .filter(|key| renderer_for(*key).is_some())
         .count();
 
-    assert_eq!((with_renderer, CommandKey::ALL.len()), (21, 27));
+    assert_eq!((with_renderer, CommandKey::ALL.len()), (22, 28));
 }

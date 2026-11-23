@@ -1,5 +1,6 @@
 mod agent_role;
 mod attest;
+mod byproduct_prune;
 mod byproduct_tail;
 mod check_retire;
 mod check_run;
@@ -24,10 +25,12 @@ pub mod output;
 pub mod retry;
 pub mod runtime;
 
+pub use crate::byproduct::read_command as byproduct_read_command;
 pub use crate::extensions::model::ExtensionKind;
 pub use crate::mechanical::RUNNABLE_EVENTS;
 pub use crate::workflow::config::INVALID_WORKFLOW_CONFIG;
-pub use crate::workflow::lock::{Tool, Verdict};
+pub use crate::workflow::lock::{EditInput, Replacement, Tool, Verdict};
+pub use crate::workflow::omhl_leaf::Group;
 
 pub use self::agent_role::{AgentRoleEnv, RoleVerdict, agent_role};
 pub use self::spec::{SpecLockEvent, SpecLockOutcome, spec_lock, wt_post_start};
@@ -38,10 +41,10 @@ use hexlog::{Config, ErrorCode, SemanticId, TenantId};
 use serde_json::Value;
 
 use self::action::{Action, Caller};
-use self::engine::Engine;
+use self::engine::{Engine, Exec};
 use self::error::AppError;
 use self::retry::{RetryPolicy, with_retry};
-use crate::byproduct::ByproductStore;
+use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::{Omhl, OmhlDeps};
 use crate::probe::DevelopMark;
@@ -73,8 +76,8 @@ impl<'d> App<'d> {
                 tenant: tenant.clone(),
                 probe: deps.probe,
                 project_root: None,
-                runner: None,
-                byproducts: None,
+                exec: None,
+                retention: None,
                 mark: None,
                 retry: retry.clone(),
                 retry_after_run: RetryPolicy::after_run(),
@@ -94,8 +97,13 @@ impl<'d> App<'d> {
         runner: &'d dyn CommandRunner,
         byproducts: &'d dyn ByproductStore,
     ) -> App<'d> {
-        self.engine.runner = Some(runner);
-        self.engine.byproducts = Some(byproducts);
+        self.engine.exec = Some(Exec { runner, byproducts });
+        self
+    }
+
+    /// Só o `Runtime` a liga: sem ela o `check run` não poda e não cria o carimbo.
+    pub fn with_retention(mut self, retention: &'d dyn ByproductRetention) -> App<'d> {
+        self.engine.retention = Some(retention);
         self
     }
 

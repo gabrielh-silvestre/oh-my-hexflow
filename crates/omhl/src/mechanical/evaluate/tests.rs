@@ -38,7 +38,6 @@ fn observed(exit_code: Option<i32>) -> Observation<'static> {
         stdout: "",
         stderr: "",
         timed_out: false,
-        tree_changed: false,
         truncated: false,
     }
 }
@@ -124,19 +123,6 @@ fn it_should_fail_when_the_process_was_killed_by_a_signal_and_has_no_exit_code()
         {"exit": 137, "outcome": "passed"},
     ]));
     let observation = observed(None);
-
-    let outcome = evaluate(&spec, &observation);
-
-    assert_eq!(outcome, Outcome::Failed);
-}
-
-#[test]
-fn it_should_fail_when_the_tree_changed() {
-    let spec = spec(passed_on_zero());
-    let observation = Observation {
-        tree_changed: true,
-        ..observed(Some(0))
-    };
 
     let outcome = evaluate(&spec, &observation);
 

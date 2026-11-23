@@ -1,4 +1,6 @@
 use crate::mechanical::sweep::{Candidate, RunMarker, root_hash, select_strays, start_from_stat};
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
 /// Namespace de pid do varredor nos testes.
@@ -223,4 +225,18 @@ fn it_should_derive_the_project_root_hash_from_the_path() {
     assert_ne!(first, other);
     assert_eq!(first.len(), 16);
     assert!(RunMarker::parse(&format!("v1:1:1:1:{first}")).is_some());
+}
+
+#[test]
+fn it_should_keep_the_root_hash_of_a_utf8_path_at_its_previous_value() {
+    // sha256 de `/home/me/proj`, 16 primeiros hex: o mesmo valor de antes da mudança.
+    assert_eq!(root_hash(Path::new("/home/me/proj")), "4c3b4937ddaa21c3");
+}
+
+#[test]
+fn it_should_hash_two_non_utf8_paths_differently() {
+    let first = root_hash(Path::new(OsStr::from_bytes(b"/work/\xff")));
+    let second = root_hash(Path::new(OsStr::from_bytes(b"/work/\xfe")));
+
+    assert_ne!(first, second);
 }

@@ -51,6 +51,7 @@ pub enum CommandKey {
     CheckRetire,
     GuidelineRetire,
     Byproduct,
+    ByproductPrune,
     HooksInstall,
     HooksPostCommit,
     SpecInit,
@@ -65,7 +66,7 @@ pub enum CommandKey {
 }
 
 impl CommandKey {
-    pub const ALL: [CommandKey; 27] = [
+    pub const ALL: [CommandKey; 28] = [
         Self::List,
         Self::Get,
         Self::Append,
@@ -82,6 +83,7 @@ impl CommandKey {
         Self::CheckRetire,
         Self::GuidelineRetire,
         Self::Byproduct,
+        Self::ByproductPrune,
         Self::HooksInstall,
         Self::HooksPostCommit,
         Self::SpecInit,
@@ -120,6 +122,7 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::HooksInstall => Some(&BaseRenderer(simple::HooksInstall)),
         CommandKey::SpecInit => Some(&BaseRenderer(simple::SpecInit)),
         CommandKey::Byproduct => Some(&BaseRenderer(simple::Byproduct)),
+        CommandKey::ByproductPrune => Some(&BaseRenderer(simple::ByproductPrune)),
         CommandKey::Append => Some(&BaseRenderer(simple::Append)),
         CommandKey::Attest => Some(&BaseRenderer(simple::Attest)),
         CommandKey::Load => Some(&BaseRenderer(load::Load)),
@@ -152,6 +155,7 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::HooksInstall => &simple::HOOKS_INSTALL_PROFILE,
         CommandKey::SpecInit => &simple::SPEC_INIT_PROFILE,
         CommandKey::Byproduct => &simple::BYPRODUCT_PROFILE,
+        CommandKey::ByproductPrune => &simple::BYPRODUCT_PRUNE_PROFILE,
         CommandKey::Append => &simple::APPEND_PROFILE,
         CommandKey::Attest => &simple::ATTEST_PROFILE,
         CommandKey::GatePr => &gate::GATE_PR_PROFILE,
@@ -218,6 +222,7 @@ pub fn deferred(key: CommandKey) -> bool {
         | CommandKey::CheckRetire
         | CommandKey::GuidelineRetire
         | CommandKey::Byproduct
+        | CommandKey::ByproductPrune
         | CommandKey::HooksInstall
         | CommandKey::SpecInit
         | CommandKey::SpecValidate

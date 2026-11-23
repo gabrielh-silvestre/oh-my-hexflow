@@ -2,6 +2,8 @@
 
 use serde_json::Value;
 
+use crate::app::byproduct_read_command;
+
 use super::base::{Entry, Profile, Region, Shape, Specialization};
 use super::doc::{Closing, Join, Line, Marker, field, items, one_line, opt_text, text};
 use super::error::{self, ErrorFacts};
@@ -68,6 +70,9 @@ pub static PROFILE: Profile = Profile {
             .under("warnings")
             .optional(),
         Entry::new(Region::Data, "check", Shape::Literal)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "work_item", Shape::Literal)
             .under("warnings")
             .optional(),
         Entry::new(Region::Data, "hint", Shape::Closed)
@@ -414,6 +419,11 @@ fn warning_line(warning: &Value, event: &str) -> Line {
             "{code}: {} did not run. {}",
             text(warning, "check"),
             text(warning, "hint")
+        ),
+        "output-stored" => format!(
+            "{code}: the output of {} is stored. {NEXT_LABEL} {}",
+            text(warning, "check"),
+            byproduct_read_command(&text(warning, "check"), &text(warning, "work_item"))
         ),
         _ => code,
     };

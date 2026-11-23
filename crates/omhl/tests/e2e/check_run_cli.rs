@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use support::assert_resolved_command;
 use support::child::{Cmd, omhl, omhl_json};
 use support::ext::ExtTree;
-use support::git::git_in;
+use support::git::{git_in, git_ok};
 use support::project::Project;
 use tempfile::TempDir;
 
@@ -98,18 +98,8 @@ fn touch(path: &Path) -> String {
     )
 }
 
-fn git(p: &Project, args: &[&str]) -> String {
-    let output = git_in(p.dir(), args);
-    assert!(
-        output.status.success(),
-        "git {args:?} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
 fn head(p: &Project) -> String {
-    git(p, &["rev-parse", "HEAD"]).trim().to_owned()
+    git_ok(p.dir(), &["rev-parse", "HEAD"]).trim().to_owned()
 }
 
 fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
@@ -124,16 +114,16 @@ fn omhl_json_in(p: &Project, args: &[&str]) -> Cmd {
 /// Repositório git limpo na branch `feat/wi-w1__x`, com o work item `w1` e os checks carregados.
 fn cli_repo(checks: &[(&str, &str)]) -> Project {
     let p = Project::new("acme");
-    git(&p, &["init", "-q", "-b", "main"]);
-    git(&p, &["config", "user.name", "Test Author"]);
-    git(&p, &["config", "user.email", "author@example.com"]);
+    git_ok(p.dir(), &["init", "-q", "-b", "main"]);
+    git_ok(p.dir(), &["config", "user.name", "Test Author"]);
+    git_ok(p.dir(), &["config", "user.email", "author@example.com"]);
     let tree = ExtTree::at(p.dir());
     for (slug, toml) in checks {
         tree.check(slug, toml);
     }
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "base"]);
-    git(&p, &["switch", "-q", "-c", "feat/wi-w1__x"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "base"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "feat/wi-w1__x"]);
 
     let appended = omhl_in(&p, &["append"]).stdin(WORK_ITEM_APPEND).run();
     assert_eq!(appended.code, Some(0), "append stderr: {}", appended.stderr);
@@ -517,8 +507,8 @@ fn it_should_exit_two_when_both_event_and_check_are_given() {
 fn it_should_refuse_a_before_pr_run_when_the_committed_file_differs_from_the_stored_definition() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     ExtTree::at(p.dir()).check("gate", GATE_V2);
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "edit gate"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "edit gate"]);
 
     let output = omhl_in(
         &p,
@@ -545,8 +535,8 @@ fn it_should_ignore_and_warn_an_orphaned_check_when_its_file_was_deleted() {
     let marker = out.path().join("ran");
     let p = cli_repo(&[("gate", &touch(&marker))]);
     fs::remove_file(p.dir().join(".omhl/checks/gate.toml")).expect("the check file is deleted");
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "drop gate"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "drop gate"]);
 
     let output = omhl_in(
         &p,
@@ -574,8 +564,8 @@ fn it_should_ignore_and_warn_an_orphaned_check_when_its_file_was_deleted() {
 fn it_should_run_the_live_checks_and_warn_the_orphaned_one_in_the_same_run() {
     let p = cli_repo(&[("gone", RED), ("live", GREEN)]);
     fs::remove_file(p.dir().join(".omhl/checks/gone.toml")).expect("the check file is deleted");
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "drop gone"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "drop gone"]);
 
     let output = omhl_in(
         &p,
@@ -595,8 +585,8 @@ fn it_should_run_the_live_checks_and_warn_the_orphaned_one_in_the_same_run() {
 fn it_should_refuse_with_spec_stale_when_the_check_file_no_longer_parses() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     ExtTree::at(p.dir()).check("gate", "run = [");
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "break gate"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "break gate"]);
 
     let output = omhl_in(
         &p,
@@ -617,7 +607,7 @@ fn it_should_refuse_a_before_commit_run_when_the_file_differs_from_the_stored_de
     let v2 = GATE_V2.replace("before-pr", "before-commit");
     let p = cli_repo(&[("gate", &v1)]);
     ExtTree::at(p.dir()).check("gate", &v2);
-    git(&p, &["add", "-A"]);
+    git_ok(p.dir(), &["add", "-A"]);
 
     let output = omhl_in(
         &p,
@@ -641,11 +631,68 @@ fn it_should_refuse_a_before_commit_run_when_the_file_differs_from_the_stored_de
 }
 
 #[test]
+fn it_should_refuse_a_before_commit_run_when_a_submodule_has_an_untracked_file() {
+    let gate = GATE_V1.replace("before-pr", "before-commit");
+    let p = cli_repo(&[("gate", &gate)]);
+    let upstream = TempDir::new().expect("the upstream dir is created");
+    git_in(upstream.path(), &["init", "-q", "-b", "main"]);
+    fs::write(upstream.path().join("lib.txt"), "lib\n").expect("the upstream file is written");
+    git_in(upstream.path(), &["add", "-A"]);
+    git_in(
+        upstream.path(),
+        &[
+            "-c",
+            "user.name=Test Author",
+            "-c",
+            "user.email=author@example.com",
+            "commit",
+            "-q",
+            "-m",
+            "lib",
+        ],
+    );
+    let upstream_path = upstream.path().to_str().expect("the path is UTF-8");
+    git_ok(
+        p.dir(),
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            upstream_path,
+            "vendor",
+        ],
+    );
+    git_ok(p.dir(), &["commit", "-q", "-m", "add submodule"]);
+    fs::write(p.dir().join("vendor/untracked.txt"), "new\n").expect("the file is written");
+
+    let output = omhl_in(
+        &p,
+        &[
+            "check",
+            "run",
+            "--format",
+            "json",
+            "--event",
+            "before-commit",
+        ],
+    )
+    .run();
+
+    assert_eq!(output.code, Some(1), "stderr: {}", output.stderr);
+    assert_eq!(
+        error_of(&output.stderr)["code"],
+        json!("worktree-differs-from-index")
+    );
+    assert_eq!(attestations(&p), Vec::<Value>::new());
+}
+
+#[test]
 fn it_should_run_the_new_command_after_load() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     ExtTree::at(p.dir()).check("gate", GATE_V2);
-    git(&p, &["add", "-A"]);
-    git(&p, &["commit", "-q", "-m", "edit gate"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "edit gate"]);
     let loaded = omhl_json_in(&p, &["load"]).run();
     assert_eq!(loaded.code, Some(0), "load stderr: {}", loaded.stderr);
     assert_eq!(json_line(&loaded.stdout)["revised"], json!(["checks.gate"]));
@@ -712,9 +759,9 @@ fn it_should_not_let_a_git_index_file_in_the_environment_change_a_before_pr_snap
     let tmp = TempDir::new().expect("temp dir");
     let alt_index = tmp.path().join("alt-index");
     fs::write(p.dir().join("extra.txt"), "e\n").expect("extra.txt is written");
-    git(&p, &["add", "extra.txt"]);
+    git_ok(p.dir(), &["add", "extra.txt"]);
     fs::copy(p.dir().join(".git").join("index"), &alt_index).expect("the index is copied");
-    git(&p, &["rm", "-q", "--cached", "extra.txt"]);
+    git_ok(p.dir(), &["rm", "-q", "--cached", "extra.txt"]);
     fs::remove_file(p.dir().join("extra.txt")).expect("extra.txt is removed");
 
     let output = omhl_in(
@@ -754,7 +801,7 @@ fn it_should_answer_branch_name_invalid_for_a_branch_outside_the_pattern_through
     let tmp = TempDir::new().expect("temp dir");
     let ran = tmp.path().join("ran");
     let p = cli_repo(&[("touch", &touch(&ran))]);
-    git(&p, &["switch", "-q", "-c", "topic"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "topic"]);
 
     let output = omhl_in(
         &p,
@@ -911,7 +958,7 @@ fn it_should_exit_two_when_the_pre_push_flag_comes_without_the_before_pr_event()
 #[test]
 fn it_should_consume_the_develop_mark_through_the_post_commit_command() {
     let p = cli_repo(&[]);
-    git(&p, &["switch", "-q", "-c", "develop"]);
+    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
     let mark = p.dir().join(".git").join("omhl-develop-mark");
     fs::write(&mark, "omhl-develop-mark v1\n").expect("the mark is written");
 
@@ -986,7 +1033,7 @@ fn load_then_restore_tree(p: &Project, toml: &str) {
     ExtTree::at(p.dir()).check("gate", toml);
     let loaded = omhl_json_in(p, &["load"]).run();
     assert_eq!(loaded.code, Some(0), "load stderr: {}", loaded.stderr);
-    git(p, &["checkout", "--", ".omhl/checks"]);
+    git_ok(p.dir(), &["checkout", "--", ".omhl/checks"]);
 }
 
 #[test]
@@ -1050,8 +1097,8 @@ fn it_should_refuse_in_the_gate_a_hand_made_attestation_after_a_load_gives_the_r
 fn drop_check_file(p: &Project, slug: &str) {
     fs::remove_file(p.dir().join(format!(".omhl/checks/{slug}.toml")))
         .expect("the check file is deleted");
-    git(p, &["add", "-A"]);
-    git(p, &["commit", "-q", "-m", "drop check"]);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "drop check"]);
 }
 
 #[test]

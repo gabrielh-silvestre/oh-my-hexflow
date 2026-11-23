@@ -31,6 +31,10 @@ const PURE_LAYER_DIRS: &[&str] = &["extensions", "projection", "mechanical", "wo
 const PURE_LAYER_FORBIDDEN_MODULES: &[&str] = &["adapters", "app", "facade"];
 const PURE_LAYER_FORBIDDEN_PATHS: &[&str] = &["adapters::", "app::", "facade::"];
 const TEMPFILE_ALLOWED_FILE: &str = "projection/write.rs";
+/// Tipos e relação que só o módulo `graphs` declara como `const`; o literal em perfil de texto ou de
+/// projeção não é declaração e não entra.
+const GRAPHS_CONST_VALUES: &[&str] = &["attestation", "after", "work-item"];
+const GRAPHS_DIR: &str = "graphs";
 const EXPECTED_DEPENDENCIES: &[&str] = &[
     "clap",
     "hexlog",
@@ -1026,6 +1030,67 @@ fn it_should_use_tempfile_only_in_projection_write() {
             Ok(0) => {}
             Ok(found) => failures.push(format!(
                 "{name}: {found} `tempfile` reference(s) outside {TEMPFILE_ALLOWED_FILE}"
+            )),
+            Err(error) => failures.push(format!("{name}: {error}")),
+        }
+    }
+
+    assert_no_failures(&failures);
+}
+
+/// Número de declarações `const NOME: &str = "<valor>";` cujo valor é um dos `banned`.
+fn const_declarations_of(source: &str, banned: &[&str]) -> Result<usize, String> {
+    let lexed = lex(source)?;
+    let mut next_literal = 0;
+    let mut found = 0;
+    for statement in lexed.code.split(';') {
+        // o léxico troca cada literal por `""`, na ordem de `literals`
+        let literals_here = statement.matches("\"\"").count();
+        let literals = &lexed.literals[next_literal..next_literal + literals_here];
+        next_literal += literals_here;
+        let words: Vec<&str> = statement.split_whitespace().collect();
+        let Some(at) = words.iter().position(|word| *word == "const") else {
+            continue;
+        };
+        let is_str_const = words[at..].join(" ").ends_with(": &str = \"\"");
+        let banned_value = literals
+            .last()
+            .is_some_and(|value| banned.contains(&value.as_str()));
+        if is_str_const && banned_value {
+            found += 1;
+        }
+    }
+
+    Ok(found)
+}
+
+#[test]
+fn it_should_declare_the_attestation_after_and_work_item_consts_only_in_graphs() {
+    let count = |source: &str| const_declarations_of(source, GRAPHS_CONST_VALUES);
+    let mut failures = prove_both_sides(
+        count,
+        &[
+            "const ATTESTATION: &str = \"attestation\";",
+            "pub const AFTER: &str = \"after\";",
+            "pub(crate) const WORK_ITEM_TYPE: &str =\n    \"work-item\";",
+            "fn f() {}\nconst ATTESTATION: &str = \"attestation\";",
+        ],
+        &[
+            "const OTHER: &str = \"checks\";",
+            "// const ATTESTATION: &str = \"attestation\";",
+            "let kind = \"work-item\";",
+            "const TYPES: [&str; 2] = [\"work-item\", \"pull-request\"];",
+        ],
+    );
+    for file in rust_files(&src_dir()) {
+        let name = relative_to_src(&file);
+        if name.starts_with(&format!("{GRAPHS_DIR}/")) {
+            continue;
+        }
+        match count(&read(&file)) {
+            Ok(0) => {}
+            Ok(found) => failures.push(format!(
+                "{name}: {found} `const` declaration(s) of a graphs value outside {GRAPHS_DIR}"
             )),
             Err(error) => failures.push(format!("{name}: {error}")),
         }

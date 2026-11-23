@@ -5,10 +5,10 @@ use super::engine::Engine;
 use super::error::AppError;
 use super::retry::with_retry;
 use crate::error::{OmhlError, RuleCode};
+use crate::graphs;
 use crate::mechanical::branch::{BranchKind, HeadFacts, classify, current_branch};
 use crate::probe::{DevelopMark, ProbeError};
 
-const WORK_ITEM_TYPE: &str = "work-item";
 const MARK_EVENT: &str = "before-commit";
 const BRANCH_NAME_HINT: &str = "rename the branch to type/wi-<id>__<slug> with git branch -m";
 const HEAD_AMBIGUOUS_HINT: &str = "HEAD is detached and zero or several local branches contain it; switch to your branch with git switch";
@@ -119,7 +119,7 @@ pub(super) fn work_item_refusal(
     let view = with_retry(&engine.retry, || Ok(engine.omhl.get(&engine.tenant, id)?))?;
 
     Ok(match view {
-        Some(view) if view.type_name.as_str() == WORK_ITEM_TYPE => {
+        Some(view) if view.type_name.as_str() == graphs::WORK_ITEM_TYPE => {
             (view.data["status"] == "closed").then_some(RuleCode::WorkItemClosed)
         }
         _ => Some(RuleCode::WorkItemNotFound),

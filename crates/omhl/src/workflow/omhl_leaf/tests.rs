@@ -1,11 +1,26 @@
-use crate::workflow::omhl_leaf::{Leaf, resolve_leaf};
+use crate::workflow::omhl_leaf::{Group, Leaf, resolve_leaf};
 
-const GROUPS: [&str; 2] = ["spec", "report"];
+fn group(name: &str, subcommands: &[&str], takes_positionals: bool) -> Group {
+    Group {
+        name: name.to_owned(),
+        subcommands: subcommands.iter().map(|sub| (*sub).to_owned()).collect(),
+        takes_positionals,
+    }
+}
+
+/// `spec` e `report` só têm subcomandos; `byproduct` é híbrido (argumentos próprios e o subcomando `prune`).
+fn groups() -> Vec<Group> {
+    vec![
+        group("spec", &["init", "validate"], false),
+        group("report", &["answers", "recurrences", "retro"], false),
+        group("byproduct", &["prune"], true),
+    ]
+}
 
 fn leaf_of(args: &[&str]) -> Option<Leaf> {
     let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
 
-    resolve_leaf(&args, &GROUPS)
+    resolve_leaf(&args, &groups())
 }
 
 fn named(leaf: &str) -> Option<Leaf> {
@@ -68,4 +83,60 @@ fn it_should_leave_unresolved_what_names_no_leaf() {
     assert_eq!(leaf_of(&[]), None);
     assert_eq!(leaf_of(&["spec"]), None);
     assert_eq!(leaf_of(&["--verbose", "list"]), None);
+}
+
+#[test]
+fn it_should_resolve_the_reading_of_a_hybrid_group_to_the_group_leaf() {
+    assert_eq!(
+        leaf_of(&["byproduct", "checks.x", "work-items.y"]),
+        named("byproduct")
+    );
+    assert_eq!(
+        leaf_of(&["byproduct", "--tail", "40", "checks.x", "work-items.y"]),
+        named("byproduct")
+    );
+}
+
+#[test]
+fn it_should_resolve_the_subcommand_of_a_hybrid_group_in_every_spelling() {
+    let expected = named("byproduct prune");
+
+    assert_eq!(leaf_of(&["byproduct", "prune"]), expected);
+    assert_eq!(
+        leaf_of(&["--format", "json", "byproduct", "prune"]),
+        expected
+    );
+    assert_eq!(
+        leaf_of(&["byproduct", "prune", "--format", "json"]),
+        expected
+    );
+}
+
+#[test]
+fn it_should_resolve_a_subcommand_that_follows_an_option_of_a_hybrid_group_to_the_subcommand() {
+    assert_eq!(
+        leaf_of(&["byproduct", "--tail", "3", "prune"]),
+        named("byproduct prune")
+    );
+}
+
+#[test]
+fn it_should_resolve_a_hybrid_group_without_a_following_word_to_the_group_leaf() {
+    assert_eq!(leaf_of(&["byproduct"]), named("byproduct"));
+    assert_eq!(leaf_of(&["--db", "x", "byproduct"]), named("byproduct"));
+}
+
+#[test]
+fn it_should_resolve_the_help_of_a_hybrid_group_as_read_only() {
+    let read_only = Some(Leaf::ReadOnly);
+
+    assert_eq!(leaf_of(&["byproduct", "--help"]), read_only);
+    assert_eq!(leaf_of(&["byproduct", "help", "prune"]), read_only);
+}
+
+#[test]
+fn it_should_keep_resolving_a_group_that_is_not_hybrid_as_before() {
+    assert_eq!(leaf_of(&["spec", "init"]), named("spec init"));
+    assert_eq!(leaf_of(&["spec", "init", "--help"]), named("spec init"));
+    assert_eq!(leaf_of(&["spec", "--tail", "3", "init"]), None);
 }

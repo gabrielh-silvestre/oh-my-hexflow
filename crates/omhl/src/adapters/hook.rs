@@ -10,10 +10,10 @@ use crate::app::error::AppError;
 use crate::app::input::{absolute_path, read_json_input};
 use crate::app::runtime::Runtime;
 use crate::app::{
-    AgentRoleEnv, RoleVerdict, SpecLockEvent, Tool, Verdict, agent_role as check_agent_role,
-    spec_lock as check_spec_lock,
+    AgentRoleEnv, EditInput, Replacement, RoleVerdict, SpecLockEvent, Tool, Verdict,
+    agent_role as check_agent_role, spec_lock as check_spec_lock,
 };
-use crate::app::{ExtensionKind, INVALID_WORKFLOW_CONFIG};
+use crate::app::{ExtensionKind, Group, INVALID_WORKFLOW_CONFIG};
 use crate::project::Env;
 
 pub fn session_start(
@@ -41,7 +41,7 @@ pub fn session_start(
     }
 }
 
-/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON e qualquer erro interno libera a escrita, com a linha de erro no stderr (exceção: a falha ao listar `specs.dir` ou ao ler a marca congela).
+/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON, e um erro interno antes de reconhecer a spec libera a escrita, com a linha de erro no stderr; depois do reconhecimento, a falha de git ou de leitura nega com `spec-lock-unavailable` (e o `|| exit 2` do `hooks.json` bloqueia com o `omhl` ausente ou falho). Além das specs, nega a mudança do `specs.dir` no `workflow.toml` principal com spec congelada (`spec-dir-frozen`), qualquer edição sob um `.git` de projeto omhl (`git-dir-protected`) e a edição que deixaria o marcador do projeto inválido (`marker-protected`).
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
     let mut notices = Vec::new();
     let code = pre_tool_use(stdin, out, err, |input| {
@@ -72,6 +72,38 @@ fn spec_lock_event(input: &Value) -> Result<SpecLockEvent, AppError> {
     Ok(SpecLockEvent::Edit {
         tool,
         file_path: absolute_path(&input["tool_input"]["file_path"])?,
+        input: edit_input(tool, &input["tool_input"]),
+    })
+}
+
+/// O que a ferramenta vai gravar; campo ausente ou com tipo errado vira `Unreadable`, e quem decide vê o que fazer.
+fn edit_input(tool: Tool, tool_input: &Value) -> EditInput {
+    match tool {
+        Tool::Write => tool_input["content"]
+            .as_str()
+            .map(|content| EditInput::Write {
+                content: content.to_owned(),
+            }),
+        Tool::Edit => replacement(tool_input).map(EditInput::Edit),
+        Tool::MultiEdit => tool_input["edits"]
+            .as_array()
+            .and_then(|edits| edits.iter().map(replacement).collect())
+            .map(EditInput::MultiEdit),
+    }
+    .unwrap_or(EditInput::Unreadable)
+}
+
+fn replacement(value: &Value) -> Option<Replacement> {
+    let replace_all = match &value["replace_all"] {
+        Value::Null => false,
+        Value::Bool(flag) => *flag,
+        _ => return None,
+    };
+
+    Some(Replacement {
+        old: value["old_string"].as_str()?.to_owned(),
+        new: value["new_string"].as_str()?.to_owned(),
+        replace_all,
     })
 }
 
@@ -81,7 +113,7 @@ pub fn agent_role(
     out: &mut impl Write,
     err: &mut impl Write,
     env: &Env<'_>,
-    groups: &[&str],
+    groups: &[Group],
 ) -> ExitCode {
     let role_env = AgentRoleEnv {
         plugin_root: env.plugin_root.map(Path::new),
