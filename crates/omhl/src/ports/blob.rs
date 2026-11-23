@@ -133,7 +133,12 @@ impl ByproductRetention for BlobStore {
             }
             for entry in fs::read_dir(shard.path()).map_err(|error| io_error(&error))? {
                 let entry = entry.map_err(|error| io_error(&error))?;
-                let metadata = entry.metadata().map_err(|error| io_error(&error))?;
+                let metadata = match entry.metadata() {
+                    Ok(metadata) => metadata,
+                    // Um `prune` concorrente já removeu o arquivo.
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(io_error(&error)),
+                };
                 let name = entry.file_name().to_string_lossy().into_owned();
                 let hash = blob_file_hash(&name);
                 if let Some(hash) =
