@@ -121,7 +121,7 @@ const RULES: &[RuleSpec] = &[
         mask: Mask::KeepPrefix,
     },
     RuleSpec {
-        pattern: r"(?i-u)\b([a-z][a-z0-9+.-]*://[^\s/:@]+:)[^\s/@]+(@)",
+        pattern: r"(?i-u)\b([a-z][a-z0-9+.-]*://[^\s/:@]*:)[^\s/@]+(@)",
         triggers: &["://"],
         ignore_case: false,
         mask: Mask::UrlPassword,

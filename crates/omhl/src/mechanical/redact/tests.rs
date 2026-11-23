@@ -43,6 +43,7 @@ fn corpus() -> Vec<String> {
             "password=hunter22;",
             "password=hunter22 token=abcdefgh",
             "postgres://app:hunter22@db:5432/x",
+            "redis://:hunter22@cache:6379/0",
             "Authorization: Bearer abcdefgh12345678",
             "Authorization:",
             "Bearer abcdefghijklmnopqrstuvwxyz",
@@ -161,6 +162,14 @@ fn it_should_keep_the_user_and_the_host_of_a_url_password() {
     assert_eq!(
         redacted("postgres://app:hunter22@db:5432/x"),
         "postgres://app:[REDACTED]@db:5432/x"
+    );
+}
+
+#[test]
+fn it_should_mask_the_password_of_a_url_with_an_empty_user() {
+    assert_eq!(
+        redacted("redis://:hunter22@cache:6379/0"),
+        "redis://:[REDACTED]@cache:6379/0"
     );
 }
 
