@@ -1,7 +1,10 @@
 use hexlog::{Catalog, Detail, ErrorCode, HexlogError, RelationTypeDef, TypeDef};
 use serde_json::Value;
 
-pub const WORK_ITEM_TYPES: [&str; 2] = ["work-item", "pull-request"];
+pub const WORK_ITEM_TYPE: &str = "work-item";
+pub const WORK_ITEM_TYPES: [&str; 2] = [WORK_ITEM_TYPE, "pull-request"];
+pub const ATTESTATION_TYPE: &str = "attestation";
+pub const AFTER_RELATION: &str = "after";
 
 pub const PREMISE_NAMESPACE: &str = "premises";
 pub const GUIDELINE_NAMESPACE: &str = "guidelines";

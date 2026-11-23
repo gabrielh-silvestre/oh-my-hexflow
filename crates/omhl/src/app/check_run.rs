@@ -18,6 +18,7 @@ use crate::byproduct::{self, ByproductHash};
 use crate::error::{OmhlError, RuleCode};
 use crate::extensions::collect::{collect, extension_file_exists};
 use crate::extensions::model::ExtensionKind;
+use crate::graphs;
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
 use crate::mechanical::evaluate::{Observation, evaluate_with_reason};
 use crate::mechanical::plan::{CheckResult, PlannedCheck, plan_run, summarize};
@@ -26,7 +27,6 @@ use crate::mechanical::spec::{CheckSpec, Outcome, spec_digest};
 use crate::probe::{ProbeError, ProbeOutcome, TreeSource};
 use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
 
-const ATTESTATION: &str = "attestation";
 const MAX_STREAM_BYTES: u64 = 4_194_304;
 const CUT_OUTPUT_NOTE: &str = "output was cut at 4 MiB; the rule could not be checked; ";
 const TAIL_LINES: usize = 20;
@@ -530,7 +530,7 @@ impl Engine<'_> {
             let item = AppendItem {
                 body: ItemBody::Node {
                     id: id.clone(),
-                    type_name: TypeName::parse(ATTESTATION)?,
+                    type_name: TypeName::parse(graphs::ATTESTATION_TYPE)?,
                     data: data.clone(),
                 },
                 base: self.current_base(&id)?,

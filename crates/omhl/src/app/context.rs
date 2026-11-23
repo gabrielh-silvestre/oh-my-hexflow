@@ -4,10 +4,9 @@ use serde_json::{Value, json};
 use super::error::AppError;
 use super::read::all_nodes;
 use crate::facade::Omhl;
+use crate::graphs;
 use crate::native::NativeBase;
 use crate::render::{CONTEXT_BUDGET, RenderInput, render};
-
-const AFTER: &str = "after";
 
 pub(super) fn render_context(omhl: &mut Omhl<'_>, tenant: &TenantId) -> Result<Value, AppError> {
     let checks = all_nodes(omhl, tenant, "check")?;
@@ -51,7 +50,7 @@ fn after_pairs(
     omhl: &mut Omhl<'_>,
     tenant: &TenantId,
 ) -> Result<Vec<(SemanticId, SemanticId)>, AppError> {
-    let relation_type = RelationTypeName::parse(AFTER)?;
+    let relation_type = RelationTypeName::parse(graphs::AFTER_RELATION)?;
     let query = RelationQuery {
         relation_type: Some(relation_type.clone()),
         from: None,

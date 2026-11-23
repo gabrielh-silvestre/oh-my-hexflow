@@ -29,7 +29,6 @@ const PROJECTED_NODE_TYPES: [&str; 7] = [
     "attestation",
 ];
 const PROJECTED_RELATIONS: [&str; 3] = ["supports", "contradicts", "answers"];
-const AFTER_RELATION: &str = "after";
 
 #[derive(Clone, Copy)]
 pub struct OmhlDeps<'d> {
@@ -199,7 +198,8 @@ impl<'d> Omhl<'d> {
         tenant: &TenantId,
     ) -> Result<Vec<(SemanticId, SemanticId)>, OmhlError> {
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
-        let relations = source.relations(tenant, &RelationTypeName::parse(AFTER_RELATION)?)?;
+        let relations =
+            source.relations(tenant, &RelationTypeName::parse(graphs::AFTER_RELATION)?)?;
 
         Ok(relations
             .into_iter()

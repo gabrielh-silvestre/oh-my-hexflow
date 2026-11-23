@@ -15,10 +15,10 @@ use crate::extensions::plan::{
     ExistingNode, ExistingRelation, Plan, PlanInput, PlannedChange, plan,
 };
 use crate::facade::Omhl;
+use crate::graphs;
 use crate::native::NativeBase;
 
 const BATCH_SIZE: usize = 50;
-const AFTER: &str = "after";
 const KEY_PREFIX: &str = "omhl-load-";
 
 impl Engine<'_> {
@@ -136,7 +136,7 @@ fn existing_relations(
     tenant: &TenantId,
 ) -> Result<Vec<ExistingRelation>, AppError> {
     let query = RelationQuery {
-        relation_type: Some(RelationTypeName::parse(AFTER)?),
+        relation_type: Some(RelationTypeName::parse(graphs::AFTER_RELATION)?),
         from: None,
         to: None,
         include_retired: true,
@@ -287,7 +287,7 @@ fn into_item(change: PlannedChange) -> Result<(AppendItem, String), AppError> {
 
 fn relation_body(from: &str, to: &str) -> Result<ItemBody, AppError> {
     Ok(ItemBody::Relation {
-        relation_type: RelationTypeName::parse(AFTER)?,
+        relation_type: RelationTypeName::parse(graphs::AFTER_RELATION)?,
         from: SemanticId::parse(from)?,
         to: SemanticId::parse(to)?,
     })
