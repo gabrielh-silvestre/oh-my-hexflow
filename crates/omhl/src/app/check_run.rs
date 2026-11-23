@@ -20,7 +20,7 @@ use crate::extensions::collect::{collect, extension_file_exists};
 use crate::extensions::model::ExtensionKind;
 use crate::graphs;
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
-use crate::mechanical::evaluate::{Observation, evaluate_with_reason};
+use crate::mechanical::evaluate::{Evaluation, Observation, evaluate_with_reason};
 use crate::mechanical::plan::{CheckResult, PlannedCheck, plan_run, summarize};
 use crate::mechanical::redact::Redactor;
 use crate::mechanical::spec::{CheckSpec, Outcome, spec_digest};
@@ -193,20 +193,7 @@ impl Engine<'_> {
     ) -> Result<Tally, AppError> {
         let mut tally = Tally::default();
         for (index, check) in planned.iter().enumerate() {
-            let step = match ready_spec(scope, check) {
-                Err(miss) => Step::Miss(miss),
-                Ok(_) if scope.stale(check) => Step::Miss(spec_stale_miss(scope, check)),
-                Ok(spec) => {
-                    match self.snapshot_before(scope, check, spec, tally.snapshot.as_ref())? {
-                        Err(miss) => Step::Miss(miss),
-                        Ok(snapshot) => {
-                            let step = self.execute(runner, scope, check, spec, &snapshot)?;
-                            tally.snapshot = Some(snapshot);
-                            step
-                        }
-                    }
-                }
-            };
+            let step = self.run_check(runner, scope, check, &mut tally.snapshot)?;
             match step {
                 Step::Verdict {
                     result,
@@ -232,6 +219,31 @@ impl Engine<'_> {
         }
 
         Ok(tally)
+    }
+
+    /// `taken` é o snapshot do check anterior; o deste só o substitui se o comando chegou a rodar.
+    fn run_check(
+        &mut self,
+        runner: &dyn CommandRunner,
+        scope: &Scope<'_>,
+        check: &PlannedCheck,
+        taken: &mut Option<Snapshot>,
+    ) -> Result<Step, AppError> {
+        let spec = match ready_spec(scope, check) {
+            Ok(spec) => spec,
+            Err(miss) => return Ok(Step::Miss(miss)),
+        };
+        if scope.stale(check) {
+            return Ok(Step::Miss(spec_stale_miss(scope, check)));
+        }
+        let snapshot = match self.snapshot_before(scope, check, spec, taken.as_ref())? {
+            Ok(snapshot) => snapshot,
+            Err(miss) => return Ok(Step::Miss(miss)),
+        };
+        let step = self.execute(runner, scope, check, spec, &snapshot)?;
+        *taken = Some(snapshot);
+
+        Ok(step)
     }
 
     fn snapshot_before(
@@ -320,86 +332,14 @@ impl Engine<'_> {
         spec: &CheckSpec,
         snapshot: &Snapshot,
     ) -> Result<Step, AppError> {
-        let request = RunSpec {
-            argv: spec.run.clone(),
-            cwd: scope.cwd.to_path_buf(),
-            project_root: scope.project_root.to_path_buf(),
-            timeout: Duration::from_secs(u64::from(spec.timeout_secs)),
-            env_set: Vec::new(),
-            env_remove: HOOK_GIT_ENV
-                .iter()
-                .chain(&TOOLCHAIN_ENV)
-                .map(|name| (*name).to_owned())
-                .collect(),
-            max_stream_bytes: MAX_STREAM_BYTES,
-        };
-        let program = runner.resolve_program(&request);
-        let report = match runner.run(&request) {
-            Ok(report) => report,
-            Err(error) => return Ok(Step::Miss(run_error(scope, check, spec, snapshot, &error))),
+        let (program, report) = match run_command(runner, scope, check, spec, snapshot) {
+            Ok(ran) => ran,
+            Err(miss) => return Ok(Step::Miss(miss)),
         };
         if let Some(miss) = self.tree_change(scope, check, spec, snapshot, &report) {
             return Ok(Step::Miss(miss));
         }
-        let stdout = String::from_utf8_lossy(&report.stdout);
-        let stderr = String::from_utf8_lossy(&report.stderr);
-        let evaluation = evaluate_with_reason(
-            spec,
-            &Observation {
-                exit_code: report.exit_code,
-                stdout: &stdout,
-                stderr: &stderr,
-                timed_out: report.timed_out,
-                truncated: report.truncated,
-            },
-        );
-        let outcome = evaluation.outcome;
-        let cut_note = if evaluation.pattern_unchecked {
-            CUT_OUTPUT_NOTE
-        } else {
-            ""
-        };
-        let failed = |message: String, context: Option<Value>| {
-            let prefix = if check.blocking {
-                ""
-            } else {
-                NON_BLOCKING_PREFIX
-            };
-            (outcome == Outcome::Failed).then(|| CheckDetail {
-                check: check.id.as_str().to_owned(),
-                code: "failed",
-                message: format!("{prefix}{cut_note}{message}"),
-                context,
-            })
-        };
-        let verdict = |failed: Option<CheckDetail>| {
-            let mut output = with_run_fields(
-                json!({
-                    "check": check.id,
-                    "outcome": outcome_name(outcome),
-                    "ok": outcome != Outcome::Failed,
-                    "blocking": check.blocking,
-                }),
-                &report,
-            );
-            // `concern` e `variant` só entram quando o check os declara.
-            for (key, field) in [("concern", &check.concern), ("variant", &check.variant)] {
-                if let Some(field) = field {
-                    output[key] = json!(field);
-                }
-            }
-
-            Step::Verdict {
-                result: CheckResult {
-                    id: check.id.clone(),
-                    outcome,
-                    blocking: check.blocking,
-                },
-                output,
-                failed,
-            }
-        };
-
+        let judged = evaluate_run(check, spec, &report);
         let Some(work_item) = scope.work_item else {
             // Na `develop` nada é gravado: a saída só existe no `context`.
             let mut context = scope.ran_context("failed", &check.id, &spec.run, snapshot);
@@ -411,8 +351,22 @@ impl Engine<'_> {
                 context.extend(fields);
             }
             let message = "output in context.output_tail".to_owned();
-            return Ok(verdict(failed(message, Some(context))));
+            return Ok(judged.verdict(judged.failed(&message, Some(context))));
         };
+
+        self.store_and_record(scope, &judged, program, work_item, snapshot)
+    }
+
+    fn store_and_record(
+        &mut self,
+        scope: &Scope<'_>,
+        judged: &Judged<'_>,
+        program: Option<PathBuf>,
+        work_item: &SemanticId,
+        snapshot: &Snapshot,
+    ) -> Result<Step, AppError> {
+        let (check, spec, report) = (judged.check, judged.spec, judged.report);
+        let outcome = judged.evaluation.outcome;
         let store = self
             .exec
             .ok_or_else(AppError::byproducts_unavailable)?
@@ -420,12 +374,12 @@ impl Engine<'_> {
         let mut context = scope.ran_context("guard-refused", &check.id, &spec.run, snapshot);
         context["expected"] = json!(outcome_name(outcome));
         // O blob vai para o store antes do `append`: a attestation nunca aponta para um blob ausente.
-        let byproduct = match store.put(&byproduct_blob(&report, &scope.redactor)) {
+        let byproduct = match store.put(&byproduct_blob(report, &scope.redactor)) {
             Ok(hash) => hash,
             Err(error) => {
                 context["kind"] = json!("blob-failed");
                 context["os_error"] = json!(error.message);
-                context["output_tail"] = output_tail(&report);
+                context["output_tail"] = output_tail(report);
                 context["hint"] = json!(BLOB_FAILED_HINT);
                 return Ok(Step::Miss(Miss {
                     error: AppError::check_not_run,
@@ -440,71 +394,13 @@ impl Engine<'_> {
             }
         };
         context["byproduct"] = json!(byproduct.as_str());
-        let data = run_attestation_data(
-            check, spec, program, work_item, outcome, &report, &byproduct,
-        );
+        let data =
+            run_attestation_data(check, spec, program, work_item, outcome, report, &byproduct);
         let recording = self.record(check, work_item, snapshot, &data)?;
-        let miss = match recording {
-            Recording::Recorded => {
-                let message = byproduct::read_command(check.id.as_str(), work_item.as_str());
-                return Ok(verdict(failed(
-                    message,
-                    Some(failure_fields(check, spec, &report)),
-                )));
-            }
-            Recording::Busy => {
-                context["kind"] = json!("busy-exhausted");
-                context["output_tail"] = output_tail(&report);
-                context["hint"] = json!(BUSY_HINT);
-                Miss {
-                    error: AppError::attestation_not_recorded,
-                    detail: check_detail(
-                        check,
-                        "attestation-not-recorded",
-                        "the attestation was not recorded",
-                        context,
-                    ),
-                    stops: false,
-                }
-            }
-            Recording::Failed(error) => {
-                context["kind"] = json!("attestation-not-recorded");
-                context["output_tail"] = output_tail(&report);
-                Miss {
-                    error: AppError::attestation_not_recorded,
-                    detail: check_detail(
-                        check,
-                        "attestation-not-recorded",
-                        &format!("the attestation was not recorded: {}", error.code()),
-                        context,
-                    ),
-                    stops: false,
-                }
-            }
-            Recording::Refused { code, stored } => {
-                if let Some(stored) = stored {
-                    context["stored"] = json!(stored);
-                }
-                if let Some(hint) = refusal_hint(code) {
-                    context["hint"] = json!(hint);
-                }
-                Miss {
-                    error: AppError::attestation_refused,
-                    detail: check_detail(
-                        check,
-                        code.as_str(),
-                        "the guard refused the attestation",
-                        context,
-                    ),
-                    // A árvore mudou durante o comando: os checks seguintes rodariam sobre outra.
-                    stops: matches!(
-                        code,
-                        RuleCode::SnapshotTreeMismatch
-                            | RuleCode::SnapshotDirty
-                            | RuleCode::SnapshotNotHead
-                    ),
-                }
-            }
+        let Some(miss) = miss_from_recording(check, report, recording, context) else {
+            let message = byproduct::read_command(check.id.as_str(), work_item.as_str());
+            let fields = failure_fields(check, spec, report);
+            return Ok(judged.verdict(judged.failed(&message, Some(fields))));
         };
 
         Ok(Step::Miss(miss))
@@ -691,6 +587,186 @@ fn ready_spec<'p>(scope: &Scope<'_>, check: &'p PlannedCheck) -> Result<&'p Chec
         ),
         stops: false,
     })
+}
+
+/// O comando já avaliado: o que o resumo do check e o detalhe da falha precisam de uma só leitura.
+struct Judged<'a> {
+    check: &'a PlannedCheck,
+    spec: &'a CheckSpec,
+    report: &'a RunReport,
+    evaluation: Evaluation,
+}
+
+impl Judged<'_> {
+    fn failed(&self, message: &str, context: Option<Value>) -> Option<CheckDetail> {
+        let prefix = if self.check.blocking {
+            ""
+        } else {
+            NON_BLOCKING_PREFIX
+        };
+        let cut_note = if self.evaluation.pattern_unchecked {
+            CUT_OUTPUT_NOTE
+        } else {
+            ""
+        };
+
+        (self.evaluation.outcome == Outcome::Failed).then(|| CheckDetail {
+            check: self.check.id.as_str().to_owned(),
+            code: "failed",
+            message: format!("{prefix}{cut_note}{message}"),
+            context,
+        })
+    }
+
+    fn verdict(&self, failed: Option<CheckDetail>) -> Step {
+        let (check, outcome) = (self.check, self.evaluation.outcome);
+        let mut output = with_run_fields(
+            json!({
+                "check": check.id,
+                "outcome": outcome_name(outcome),
+                "ok": outcome != Outcome::Failed,
+                "blocking": check.blocking,
+            }),
+            self.report,
+        );
+        // `concern` e `variant` só entram quando o check os declara.
+        for (key, field) in [("concern", &check.concern), ("variant", &check.variant)] {
+            if let Some(field) = field {
+                output[key] = json!(field);
+            }
+        }
+
+        Step::Verdict {
+            result: CheckResult {
+                id: check.id.clone(),
+                outcome,
+                blocking: check.blocking,
+            },
+            output,
+            failed,
+        }
+    }
+}
+
+fn run_command(
+    runner: &dyn CommandRunner,
+    scope: &Scope<'_>,
+    check: &PlannedCheck,
+    spec: &CheckSpec,
+    snapshot: &Snapshot,
+) -> Result<(Option<PathBuf>, RunReport), Miss> {
+    let request = RunSpec {
+        argv: spec.run.clone(),
+        cwd: scope.cwd.to_path_buf(),
+        project_root: scope.project_root.to_path_buf(),
+        timeout: Duration::from_secs(u64::from(spec.timeout_secs)),
+        env_set: Vec::new(),
+        env_remove: HOOK_GIT_ENV
+            .iter()
+            .chain(&TOOLCHAIN_ENV)
+            .map(|name| (*name).to_owned())
+            .collect(),
+        max_stream_bytes: MAX_STREAM_BYTES,
+    };
+    let program = runner.resolve_program(&request);
+
+    runner
+        .run(&request)
+        .map(|report| (program, report))
+        .map_err(|error| run_error(scope, check, spec, snapshot, &error))
+}
+
+fn evaluate_run<'a>(
+    check: &'a PlannedCheck,
+    spec: &'a CheckSpec,
+    report: &'a RunReport,
+) -> Judged<'a> {
+    let stdout = String::from_utf8_lossy(&report.stdout);
+    let stderr = String::from_utf8_lossy(&report.stderr);
+    let evaluation = evaluate_with_reason(
+        spec,
+        &Observation {
+            exit_code: report.exit_code,
+            stdout: &stdout,
+            stderr: &stderr,
+            timed_out: report.timed_out,
+            truncated: report.truncated,
+        },
+    );
+
+    Judged {
+        check,
+        spec,
+        report,
+        evaluation,
+    }
+}
+
+/// `None` quando a attestation foi gravada: aí o veredito sai, não uma falta.
+fn miss_from_recording(
+    check: &PlannedCheck,
+    report: &RunReport,
+    recording: Recording,
+    mut context: Value,
+) -> Option<Miss> {
+    let miss = match recording {
+        Recording::Recorded => return None,
+        Recording::Busy => {
+            context["kind"] = json!("busy-exhausted");
+            context["output_tail"] = output_tail(report);
+            context["hint"] = json!(BUSY_HINT);
+            Miss {
+                error: AppError::attestation_not_recorded,
+                detail: check_detail(
+                    check,
+                    "attestation-not-recorded",
+                    "the attestation was not recorded",
+                    context,
+                ),
+                stops: false,
+            }
+        }
+        Recording::Failed(error) => {
+            context["kind"] = json!("attestation-not-recorded");
+            context["output_tail"] = output_tail(report);
+            Miss {
+                error: AppError::attestation_not_recorded,
+                detail: check_detail(
+                    check,
+                    "attestation-not-recorded",
+                    &format!("the attestation was not recorded: {}", error.code()),
+                    context,
+                ),
+                stops: false,
+            }
+        }
+        Recording::Refused { code, stored } => {
+            if let Some(stored) = stored {
+                context["stored"] = json!(stored);
+            }
+            if let Some(hint) = refusal_hint(code) {
+                context["hint"] = json!(hint);
+            }
+            Miss {
+                error: AppError::attestation_refused,
+                detail: check_detail(
+                    check,
+                    code.as_str(),
+                    "the guard refused the attestation",
+                    context,
+                ),
+                // A árvore mudou durante o comando: os checks seguintes rodariam sobre outra.
+                stops: matches!(
+                    code,
+                    RuleCode::SnapshotTreeMismatch
+                        | RuleCode::SnapshotDirty
+                        | RuleCode::SnapshotNotHead
+                ),
+            }
+        }
+    };
+
+    Some(miss)
 }
 
 fn run_error(

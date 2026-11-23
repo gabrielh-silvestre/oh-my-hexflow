@@ -29,14 +29,7 @@ fn install(git: &GitHooks, hooks_dir: Option<&Path>, force: bool) -> Result<Valu
     let current = git.resolved_hooks_dir().map_err(probe_failed)?;
     let hooks_text = hooks_dir.map(Path::to_string_lossy);
     if !force {
-        let configured = git.configured_hooks_path().map_err(probe_failed)?;
-        match configured {
-            Some(path) if Some(path.as_str()) != hooks_text.as_deref() => {
-                return Err(AppError::hooks_path_conflict(""));
-            }
-            None if git.has_foreign_hooks(&current) => return Err(AppError::hooks_existing("")),
-            _ => {}
-        }
+        refuse_conflict(git, &current, hooks_text.as_deref())?;
     }
     let unwritable =
         || AppError::hooks_dir_unwritable("").with_context(json!({ "hint": UNWRITABLE_HINT }));
@@ -70,6 +63,21 @@ fn install(git: &GitHooks, hooks_dir: Option<&Path>, force: bool) -> Result<Valu
     }
 
     Ok(installed)
+}
+
+fn refuse_conflict(
+    git: &GitHooks,
+    current: &Path,
+    hooks_text: Option<&str>,
+) -> Result<(), AppError> {
+    let configured = git
+        .configured_hooks_path()
+        .map_err(|reason| AppError::probe_failed(&reason))?;
+    match configured {
+        Some(path) if Some(path.as_str()) != hooks_text => Err(AppError::hooks_path_conflict("")),
+        None if git.has_foreign_hooks(current) => Err(AppError::hooks_existing("")),
+        _ => Ok(()),
+    }
 }
 
 fn script(binary: &str, command: &str) -> String {
