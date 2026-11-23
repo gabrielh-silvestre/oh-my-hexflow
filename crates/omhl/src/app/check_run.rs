@@ -350,7 +350,6 @@ impl Engine<'_> {
                 stdout: &stdout,
                 stderr: &stderr,
                 timed_out: report.timed_out,
-                tree_changed: false,
                 truncated: report.truncated,
             },
         );

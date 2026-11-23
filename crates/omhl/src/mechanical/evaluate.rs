@@ -6,7 +6,6 @@ pub struct Observation<'a> {
     pub stdout: &'a str,
     pub stderr: &'a str,
     pub timed_out: bool,
-    pub tree_changed: bool,
     pub truncated: bool,
 }
 
@@ -26,7 +25,7 @@ pub fn evaluate_with_reason(spec: &CheckSpec, observed: &Observation<'_>) -> Eva
         outcome,
         pattern_unchecked: false,
     };
-    if observed.timed_out || observed.tree_changed {
+    if observed.timed_out {
         return decided(Outcome::Failed);
     }
     let Some(code) = observed.exit_code else {
