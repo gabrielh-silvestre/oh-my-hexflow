@@ -3,14 +3,14 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  # A execução da main nunca é cancelada: é ela que semeia o cache.
+  # A execução da main e da develop nunca é cancelada: elas semeiam o cache.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
