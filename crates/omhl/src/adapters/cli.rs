@@ -355,6 +355,9 @@ fn pre_push_misuse(cli: &Cli) -> Option<clap::Error> {
     })
 }
 
+const BYPRODUCT_NEEDS_TARGET: &str =
+    "byproduct needs <CHECK> and <WORK_ITEM>, or the `prune` subcommand";
+
 /// `check` e `work_item` são `Option` por causa do subcomando `prune`; o clap já os exige sem ele, e o `None` que sobra sai pelo erro de uso (código `2`).
 fn byproduct_misuse(cli: &Cli) -> Option<clap::Error> {
     let Command::Action(ActionCommand::Byproduct {
@@ -367,12 +370,8 @@ fn byproduct_misuse(cli: &Cli) -> Option<clap::Error> {
         return None;
     };
 
-    (check.is_none() || work_item.is_none()).then(|| {
-        Cli::command().error(
-            ErrorKind::MissingRequiredArgument,
-            "byproduct needs <CHECK> and <WORK_ITEM>, or the `prune` subcommand",
-        )
-    })
+    (check.is_none() || work_item.is_none())
+        .then(|| Cli::command().error(ErrorKind::MissingRequiredArgument, BYPRODUCT_NEEDS_TARGET))
 }
 
 /// Os comandos de primeiro nível com subcomando (o `help` implícito do clap não conta).
@@ -734,7 +733,7 @@ fn to_action(
             tail,
         },
         ActionCommand::Byproduct { command: None, .. } => {
-            unreachable!("byproduct_misuse refuses a missing check or work item")
+            return Err(AppError::invalid_arguments("", BYPRODUCT_NEEDS_TARGET));
         }
         ActionCommand::Hooks {
             command: HooksCommand::Install { force },
