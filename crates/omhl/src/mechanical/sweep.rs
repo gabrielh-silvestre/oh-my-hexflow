@@ -64,6 +64,13 @@ pub struct Candidate {
     pub marker: String,
 }
 
+struct OwnProcess<'a> {
+    pid: u32,
+    marker: Option<&'a str>,
+    pidns: u64,
+    root: Option<&'a str>,
+}
+
 pub fn select_strays(
     own_pid: u32,
     own_marker: Option<&str>,
@@ -73,43 +80,37 @@ pub fn select_strays(
     owner_start: &dyn Fn(u32) -> Option<u64>,
     unmarked_leader_alive: &dyn Fn(u32) -> bool,
 ) -> Vec<Candidate> {
+    let own = OwnProcess {
+        pid: own_pid,
+        marker: own_marker,
+        pidns: own_pidns,
+        root: own_root,
+    };
+
     candidates
         .iter()
-        .filter(|candidate| {
-            is_stray(
-                own_pid,
-                own_marker,
-                own_pidns,
-                own_root,
-                candidate,
-                owner_start,
-                unmarked_leader_alive,
-            )
-        })
+        .filter(|candidate| is_stray(&own, candidate, owner_start, unmarked_leader_alive))
         .cloned()
         .collect()
 }
 
 fn is_stray(
-    own_pid: u32,
-    own_marker: Option<&str>,
-    own_pidns: u64,
-    own_root: Option<&str>,
+    own: &OwnProcess<'_>,
     candidate: &Candidate,
     owner_start: &dyn Fn(u32) -> Option<u64>,
     unmarked_leader_alive: &dyn Fn(u32) -> bool,
 ) -> bool {
-    if candidate.pid == own_pid {
+    if candidate.pid == own.pid {
         return false;
     }
     let Some(marker) = RunMarker::parse(&candidate.marker) else {
         return false;
     };
-    if own_marker == Some(candidate.marker.as_str()) || marker.pidns != own_pidns {
+    if own.marker == Some(candidate.marker.as_str()) || marker.pidns != own.pidns {
         return false;
     }
     // `None` varre qualquer raiz (`omhl check sweep`); `Some` só a do projeto que está rodando
-    if own_root.is_some_and(|root| marker.root != root) {
+    if own.root.is_some_and(|root| marker.root != root) {
         return false;
     }
     if candidate.pgrp != candidate.pid && unmarked_leader_alive(candidate.pgrp) {
