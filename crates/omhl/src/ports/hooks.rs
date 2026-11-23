@@ -9,17 +9,6 @@ const SAMPLE_SUFFIX: &str = ".sample";
 const SCRIPT_MODE: u32 = 0o755;
 const HOOKS_DIR_MODE: u32 = 0o700;
 
-pub trait HookInstaller {
-    fn resolved_hooks_dir(&self) -> Result<PathBuf, String>;
-    fn configured_hooks_path(&self) -> Result<Option<String>, String>;
-    fn has_foreign_hooks(&self, dir: &Path) -> bool;
-    fn linked_worktree_roots(&self) -> Result<Vec<PathBuf>, String>;
-    fn binary(&self) -> io::Result<PathBuf>;
-    fn write_scripts(&self, dir: &Path, scripts: &[(&str, String)]) -> io::Result<()>;
-    fn set_local_hooks_path(&self, dir: &Path) -> Result<(), String>;
-    fn canonical(&self, dir: &Path) -> io::Result<PathBuf>;
-}
-
 /// Grava num temporário `create_new` (não segue um link plantado) e troca por `rename`, que também
 /// substitui um link no lugar do script em vez de escrever através dele.
 fn write_script(dir: &Path, name: &str, content: &str) -> io::Result<()> {
@@ -82,14 +71,14 @@ fn stderr_text(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).trim().to_owned()
 }
 
-impl HookInstaller for GitHooks {
-    fn resolved_hooks_dir(&self) -> Result<PathBuf, String> {
+impl GitHooks {
+    pub fn resolved_hooks_dir(&self) -> Result<PathBuf, String> {
         let args = ["rev-parse", "--path-format=absolute", "--git-path", "hooks"];
 
         self.git_line(&args.map(OsStr::new)).map(PathBuf::from)
     }
 
-    fn configured_hooks_path(&self) -> Result<Option<String>, String> {
+    pub fn configured_hooks_path(&self) -> Result<Option<String>, String> {
         let output = self.git(&["config", "--get", "core.hooksPath"].map(OsStr::new))?;
 
         match output.status.code() {
@@ -99,7 +88,7 @@ impl HookInstaller for GitHooks {
         }
     }
 
-    fn has_foreign_hooks(&self, dir: &Path) -> bool {
+    pub fn has_foreign_hooks(&self, dir: &Path) -> bool {
         match fs::read_dir(dir) {
             Ok(entries) => entries
                 .flatten()
@@ -110,7 +99,7 @@ impl HookInstaller for GitHooks {
         }
     }
 
-    fn linked_worktree_roots(&self) -> Result<Vec<PathBuf>, String> {
+    pub fn linked_worktree_roots(&self) -> Result<Vec<PathBuf>, String> {
         let listing = self.git_line(&["worktree", "list", "--porcelain"].map(OsStr::new))?;
 
         Ok(listing
@@ -121,11 +110,11 @@ impl HookInstaller for GitHooks {
             .collect())
     }
 
-    fn binary(&self) -> io::Result<PathBuf> {
+    pub fn binary(&self) -> io::Result<PathBuf> {
         std::env::current_exe()
     }
 
-    fn write_scripts(&self, dir: &Path, scripts: &[(&str, String)]) -> io::Result<()> {
+    pub fn write_scripts(&self, dir: &Path, scripts: &[(&str, String)]) -> io::Result<()> {
         // Pasta que já existe fica com o modo que tinha.
         DirBuilder::new()
             .recursive(true)
@@ -138,14 +127,14 @@ impl HookInstaller for GitHooks {
         Ok(())
     }
 
-    fn set_local_hooks_path(&self, dir: &Path) -> Result<(), String> {
+    pub fn set_local_hooks_path(&self, dir: &Path) -> Result<(), String> {
         let args = ["config", "--local", "core.hooksPath"].map(OsStr::new);
 
         self.git_line(&[&args[..], &[dir.as_os_str()]].concat())
             .map(drop)
     }
 
-    fn canonical(&self, dir: &Path) -> io::Result<PathBuf> {
+    pub fn canonical(&self, dir: &Path) -> io::Result<PathBuf> {
         fs::canonicalize(dir)
     }
 }

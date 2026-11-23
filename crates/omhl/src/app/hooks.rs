@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use super::engine::{Engine, require_project_root};
 use super::error::AppError;
-use crate::ports::hooks::{GitHooks, HookInstaller};
+use crate::ports::hooks::GitHooks;
 
 const SCRIPTS: [(&str, &str); 4] = [
     ("pre-commit", "check run --event before-commit"),
@@ -24,11 +24,7 @@ impl Engine<'_> {
     }
 }
 
-fn install(
-    git: &dyn HookInstaller,
-    hooks_dir: Option<&Path>,
-    force: bool,
-) -> Result<Value, AppError> {
+fn install(git: &GitHooks, hooks_dir: Option<&Path>, force: bool) -> Result<Value, AppError> {
     let probe_failed = |reason: String| AppError::probe_failed(&reason);
     let current = git.resolved_hooks_dir().map_err(probe_failed)?;
     let hooks_text = hooks_dir.map(Path::to_string_lossy);
