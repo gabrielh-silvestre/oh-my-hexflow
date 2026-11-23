@@ -841,6 +841,7 @@ fn it_should_open_the_failure_text_of_both_layouts_with_the_error_symbol_of_the_
     assert!(human.stderr.starts_with(&format!("{symbol} BLOCKED")));
 }
 
+const OUTPUT_STORED_HINT: &str = "a check that passed with a warning keeps its output stored; read it with `omhl byproduct <check> <work-item> --tail 40`";
 const READ_COMMAND: &str = "omhl byproduct checks.warn work-items.w1 --tail 40";
 
 #[test]
@@ -857,7 +858,7 @@ fn it_should_point_to_the_stored_output_of_a_recorded_passed_with_warning_check_
             "code": "output-stored",
             "check": "checks.warn",
             "work_item": "work-items.w1",
-            "hint": READ_COMMAND,
+            "hint": OUTPUT_STORED_HINT,
         }])
     );
 }

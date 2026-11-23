@@ -43,6 +43,7 @@ const BLOB_FAILED_HINT: &str =
     "the output store is not writable; fix its permissions or free disk space";
 const PARENT_GONE_HINT: &str = "the process that started omhl exited before the checks ran; nothing ran; run the same command again";
 const SPEC_STALE_HINT: &str = "the check file on disk is invalid or differs from the stored definition; fix the file and run omhl load, then run the same command again";
+const OUTPUT_STORED_HINT: &str = "a check that passed with a warning keeps its output stored; read it with `omhl byproduct <check> <work-item> --tail 40`";
 const ORPHANED_HINT: &str = "the check file is missing in this working tree; if this branch or worktree predates the check, rebase it onto main (or restore the file); omhl check retire <check-id> is permanent for every clone and branch (the id never comes back), so run it only after the file removal is merged";
 const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
 const PUSH_INPUT_HINT: &str = "the pre-push input needs four fields per line; run git push again";
@@ -924,7 +925,7 @@ fn output_stored_warning(check: &str, work_item: &str) -> Value {
         "code": "output-stored",
         "check": check,
         "work_item": work_item,
-        "hint": byproduct::read_command(check, work_item),
+        "hint": OUTPUT_STORED_HINT,
     })
 }
 

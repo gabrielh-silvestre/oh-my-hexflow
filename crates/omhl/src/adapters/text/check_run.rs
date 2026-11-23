@@ -2,6 +2,8 @@
 
 use serde_json::Value;
 
+use crate::app::byproduct_read_command;
+
 use super::base::{Entry, Profile, Region, Shape, Specialization};
 use super::doc::{Closing, Join, Line, Marker, field, items, one_line, opt_text, text};
 use super::error::{self, ErrorFacts};
@@ -421,7 +423,7 @@ fn warning_line(warning: &Value, event: &str) -> Line {
         "output-stored" => format!(
             "{code}: the output of {} is stored. {NEXT_LABEL} {}",
             text(warning, "check"),
-            text(warning, "hint")
+            byproduct_read_command(&text(warning, "check"), &text(warning, "work_item"))
         ),
         _ => code,
     };

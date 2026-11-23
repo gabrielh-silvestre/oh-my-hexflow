@@ -25,6 +25,7 @@ pub mod output;
 pub mod retry;
 pub mod runtime;
 
+pub use crate::byproduct::read_command as byproduct_read_command;
 pub use crate::extensions::model::ExtensionKind;
 pub use crate::mechanical::RUNNABLE_EVENTS;
 pub use crate::workflow::config::INVALID_WORKFLOW_CONFIG;
