@@ -22,12 +22,27 @@ fn write_script(dir: &Path, name: &str, content: &str) -> io::Result<()> {
         .create_new(true)
         .mode(SCRIPT_MODE)
         .open(&temp)?;
+    let written = fill_and_rename(&mut file, &temp, &dir.join(name), content);
+    if written.is_err() {
+        // O erro da gravação é o que importa; falhar ao limpar o temporário não o muda.
+        let _ = fs::remove_file(&temp);
+    }
+
+    written
+}
+
+fn fill_and_rename(
+    file: &mut fs::File,
+    temp: &Path,
+    target: &Path,
+    content: &str,
+) -> io::Result<()> {
     // O modo do `open` passa pelo `umask`; o `fchmod` garante o 0755 mesmo com `umask 077`.
     file.set_permissions(fs::Permissions::from_mode(SCRIPT_MODE))?;
     file.write_all(content.as_bytes())?;
     file.sync_all()?;
 
-    fs::rename(&temp, dir.join(name))
+    fs::rename(temp, target)
 }
 
 pub struct GitHooks {
