@@ -267,6 +267,8 @@ pub struct Redactor {
     // Um passe sobre o fluxo inteiro acha onde começa qualquer palavra-chave; a de cada posição é lida pelo primeiro byte.
     trigger_scan: Regex,
     triggers_by_first_byte: Vec<Vec<Trigger>>,
+    // Só o teste de equivalência desliga o pré-filtro.
+    #[cfg(test)]
     prefilter: bool,
 }
 
@@ -321,6 +323,7 @@ impl Redactor {
                 })
                 .collect(),
             triggers_by_first_byte,
+            #[cfg(test)]
             prefilter: true,
         }
     }
@@ -352,8 +355,18 @@ impl Redactor {
         masked
     }
 
+    #[cfg(test)]
+    fn prefilter(&self) -> bool {
+        self.prefilter
+    }
+
+    #[cfg(not(test))]
+    fn prefilter(&self) -> bool {
+        true
+    }
+
     fn mask_private_keys<'s>(&self, stream: &'s [u8]) -> Cow<'s, [u8]> {
-        if self.prefilter && !self.pem_begin.is_match(stream) {
+        if self.prefilter() && !self.pem_begin.is_match(stream) {
             return Cow::Borrowed(stream);
         }
 
@@ -361,7 +374,7 @@ impl Redactor {
     }
 
     fn mask_line<'l>(&self, line: &'l [u8], hits: u32) -> Cow<'l, [u8]> {
-        let hits = if self.prefilter { hits } else { u32::MAX };
+        let hits = if self.prefilter() { hits } else { u32::MAX };
         let mut masked = Cow::Borrowed(line);
         for (index, rule) in (0u32..).zip(&self.rules) {
             if hits & (1 << index) == 0 {
