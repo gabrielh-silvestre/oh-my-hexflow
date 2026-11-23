@@ -421,6 +421,25 @@ fn it_should_refuse_a_tenant_key_in_the_request() {
 }
 
 #[test]
+fn it_should_refuse_the_actions_the_runtime_runs_outside_the_engine() {
+    let fixture = Fixture::clean();
+    let mut app = fixture.open();
+    let actions = [
+        Action::CheckSweep,
+        Action::GateWorktree {
+            branch: "feat/wi-x__y".to_owned(),
+        },
+    ];
+
+    let codes: Vec<String> = actions
+        .iter()
+        .map(|action| refuse(&mut app, action).code().to_owned())
+        .collect();
+
+    assert_eq!(codes, vec!["action-outside-engine"; 2]);
+}
+
+#[test]
 fn it_should_set_the_author_from_the_caller() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();

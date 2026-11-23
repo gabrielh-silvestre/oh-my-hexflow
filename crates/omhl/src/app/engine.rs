@@ -103,9 +103,8 @@ impl Engine<'_> {
             Action::ReportRecurrences { min } => self.report_recurrences(*min),
             Action::ReportRetro { work_item } => self.report_retro(work_item),
             Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
-            Action::CheckSweep => unreachable!("check sweep is dispatched by the runtime"),
-            Action::GateWorktree { .. } => {
-                unreachable!("gate worktree is dispatched by the runtime")
+            Action::CheckSweep | Action::GateWorktree { .. } => {
+                Err(AppError::action_outside_engine())
             }
         }
     }

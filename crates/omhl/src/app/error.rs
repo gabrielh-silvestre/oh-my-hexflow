@@ -242,6 +242,13 @@ impl AppError {
         )
     }
 
+    pub(crate) fn action_outside_engine() -> AppError {
+        AppError::plain(
+            "action-outside-engine",
+            "this action runs in the runtime, not in the engine",
+        )
+    }
+
     pub(crate) fn process_table_unreadable() -> AppError {
         AppError::plain(
             "unsupported-platform",
