@@ -282,3 +282,267 @@ fn it_should_keep_the_closing_order_in_review_step_8() {
         "step 8 must keep the closing order {CLOSING_ORDER:?}, found at {positions:?}"
     );
 }
+
+fn read_agent(name: &str) -> String {
+    fs::read_to_string(repo_root().join(format!("plugin/agents/{name}.md")))
+        .unwrap_or_else(|error| panic!("{name}.md must exist and be readable: {error}"))
+}
+
+#[test]
+fn it_should_open_the_interview_with_round_zero_parts_locked_in_the_note_and_ask_the_owner_name() {
+    let text = read("interview/SKILL.md");
+
+    assert!(
+        line_with(
+            &text,
+            &[
+                "Rodada 0",
+                "confirme, junte, divida ou adie",
+                "seção `Partes`",
+                "não a altera"
+            ]
+        )
+        .is_some(),
+        "round 0 lists the parts and locks them in the Partes section of the note"
+    );
+    assert!(
+        line_with(&text, &["`person:<nome>`", "Rodada 0 ou na rodada 1"]).is_some(),
+        "the owner name is asked in round 0 or round 1"
+    );
+}
+
+#[test]
+fn it_should_draft_and_confirm_one_premise_per_round_with_the_proof_in_the_confirmed_by() {
+    let text = read("interview/SKILL.md");
+
+    assert!(
+        line_with(
+            &text,
+            &[
+                "redija a premissa de negócio",
+                "confirme ou corrija",
+                "na mesma rodada"
+            ]
+        )
+        .is_some(),
+        "each round drafts the premise and the owner confirms or corrects it"
+    );
+    assert!(
+        line_with(
+            &text,
+            &[
+                "`confirmed_by`",
+                "premissa como você a redigiu",
+                "confirmação ou a correção literal",
+                "2000 caracteres"
+            ]
+        )
+        .is_some(),
+        "the confirmed_by carries the drafted premise and the owner's literal answer, up to 2000 characters"
+    );
+    assert!(
+        line_with(
+            &text,
+            &["pergunta e a resposta literais da rodada, inteiras"]
+        )
+        .is_some(),
+        "the note keeps the whole literal question and answer of the round"
+    );
+}
+
+#[test]
+fn it_should_close_the_interview_only_with_low_ambiguity_and_every_active_part_covered() {
+    let text = read("interview/SKILL.md");
+
+    assert!(
+        line_with(
+            &text,
+            &[
+                "20% ou menos",
+                "cada parte ativa da Rodada 0",
+                "premissa de negócio confirmada"
+            ]
+        )
+        .is_some(),
+        "the stop rule needs the ambiguity and the coverage"
+    );
+    assert!(
+        line_with(
+            &text,
+            &[
+                "Cobertura",
+                "registre na nota",
+                "retomada depois de compactação"
+            ]
+        )
+        .is_some(),
+        "the coverage is recorded per round in the note"
+    );
+}
+
+#[test]
+fn it_should_write_both_interview_batches_at_the_end_without_a_batch_confirmation() {
+    let text = read("interview/SKILL.md");
+
+    let step = step_with(
+        &text,
+        &[
+            "lote 2",
+            "`key` de idempotência",
+            "**sem** nova rodada de confirmação em lote",
+        ],
+    )
+    .expect("a step that writes batch 2 without a new confirmation");
+    let line = &numbered_steps(&text)[step];
+
+    assert!(
+        line.contains("regrave só ele"),
+        "a failed batch 2 is rewritten alone"
+    );
+    assert!(
+        line_with(&text, &["lote 1", "`key` de idempotência"]).is_some(),
+        "batch 1 carries a key too"
+    );
+}
+
+#[test]
+fn it_should_mark_every_business_suggestion_after_the_interview_as_late_in_plan_consensus_and_the_agents()
+ {
+    let text = read("plan-consensus/SKILL.md");
+
+    let analyst_step = step_with(
+        &text,
+        &[
+            "oh-my-hexflow:analyst",
+            "tardia (`origin: late`, `assumed`)",
+        ],
+    )
+    .expect("an analyst step that marks the business suggestion as late");
+    assert!(
+        !numbered_steps(&text)[analyst_step].contains("vai ao dono depois"),
+        "the analyst step no longer sends the business premise to the owner afterwards"
+    );
+    assert!(
+        line_with(
+            &text,
+            &["O planner não cita na spec premissa tardia ainda `assumed`"]
+        )
+        .is_some(),
+        "the planner does not cite a late premise that is still assumed"
+    );
+    for agent in ["analyst", "planner", "critic"] {
+        assert!(
+            read_agent(agent).contains("origin"),
+            "{agent}.md says the business suggestion is late"
+        );
+    }
+    assert!(
+        line_with(
+            &read_agent("planner"),
+            &["Never cite in the spec a late premise that is still `assumed`"]
+        )
+        .is_some(),
+        "planner.md forbids citing a late premise that is still assumed"
+    );
+}
+
+#[test]
+fn it_should_give_the_confirmed_late_premise_two_destinations_around_the_spec_freeze() {
+    for file in [
+        "plan-consensus/SKILL.md",
+        "directives-flow/SKILL.md",
+        "directives-flow/references/cycle.md",
+    ] {
+        let text = read(file);
+
+        assert!(
+            line_with(
+                &text,
+                &[
+                    "até o congelamento",
+                    "reabre o plano",
+                    "a volta conta nas 3",
+                    "o impasse vai ao dono",
+                    "depois do congelamento",
+                    "`divergence`",
+                    "`emenda-NN`"
+                ]
+            )
+            .is_some(),
+            "{file} must say both destinations of the confirmed late premise"
+        );
+    }
+}
+
+#[test]
+fn it_should_ask_review_and_verifier_for_one_line_per_confirmed_premise_with_evidence() {
+    let review = read("review/SKILL.md");
+    let verifier = read_agent("verifier");
+    let view = read("role-verifier/SKILL.md");
+    let command =
+        "omhl list --type premise --where work_item=work-items.<id> --where status=confirmed";
+
+    assert!(
+        line_with(
+            &review,
+            &[
+                command,
+                "`next_after_seq`",
+                "uma linha por premissa",
+                "evidência na entrega"
+            ]
+        )
+        .is_some(),
+        "review step 4 asks for one line per confirmed premise, read to the last page"
+    );
+    assert!(
+        line_with(
+            &verifier,
+            &[
+                "--where status=confirmed",
+                "`next_after_seq`",
+                "one row per premise",
+                "evidence in the delivery"
+            ]
+        )
+        .is_some(),
+        "verifier.md asks for one row per confirmed premise with evidence"
+    );
+    assert!(
+        view.contains(command),
+        "the role-verifier view lists the read command"
+    );
+}
+
+#[test]
+fn it_should_fail_a_premise_without_evidence_and_open_a_missing_divergence_on_its_id() {
+    let review = read("review/SKILL.md");
+    let verifier = read_agent("verifier");
+
+    assert!(
+        line_with(
+            &review,
+            &[
+                "Premissa confirmada sem evidência",
+                "`FAIL`",
+                "`divergence` `open`",
+                "`source_ref` igual ao id da premissa",
+                "`kind` `missing`"
+            ]
+        )
+        .is_some(),
+        "review says a premise without evidence fails and opens a missing divergence"
+    );
+    assert!(
+        line_with(
+            &verifier,
+            &[
+                "A premise without evidence is a FAIL",
+                "`source_ref` equal to the id of the premise",
+                "`kind` `missing`"
+            ]
+        )
+        .is_some(),
+        "verifier.md says a premise without evidence fails and opens a missing divergence"
+    );
+}

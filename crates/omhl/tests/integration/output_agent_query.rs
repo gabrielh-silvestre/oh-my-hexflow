@@ -105,6 +105,53 @@ fn it_should_print_kind_work_item_and_text_for_a_premise_in_the_agent_list() {
     );
 }
 
+const LATE_PREMISE: &str = "premises.late-rounding";
+
+fn late_premise_project() -> Project {
+    let project = Project::new("acme");
+    let items = vec![
+        node_item(WORK_ITEM, "work-item", work_item_data("Payroll rollout")),
+        node_item(
+            LATE_PREMISE,
+            "premise",
+            json!({
+                "text": "Rounding is half-up.",
+                "status": "assumed",
+                "kind": "business",
+                "origin": "late",
+                "work_item": WORK_ITEM,
+            }),
+        ),
+    ];
+    forge(&project, agent_author(), items);
+
+    project
+}
+
+#[test]
+fn it_should_print_the_origin_of_a_late_premise_in_the_agent_list() {
+    let project = late_premise_project();
+
+    let line = list_line(&project, LATE_PREMISE);
+
+    assert_eq!(
+        line,
+        "premises.late-rounding · premise · seq 2 · assumed · business · late · work-items.payroll · Rounding is half-up."
+    );
+}
+
+#[test]
+fn it_should_print_the_origin_of_a_late_premise_in_the_agent_get() {
+    let project = late_premise_project();
+
+    let stdout = stdout_of(&project, &["get", LATE_PREMISE]);
+
+    assert!(
+        stdout.lines().any(|line| line == "  origin: late"),
+        "{stdout}"
+    );
+}
+
 #[test]
 fn it_should_print_kind_and_text_for_a_guideline_in_the_agent_list() {
     let project = query_project();

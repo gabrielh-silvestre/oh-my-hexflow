@@ -8,7 +8,11 @@ const TECHNICAL_PREFIXES: [&str; 2] = ["refactor", "tests"];
 const NOTHING_PREFIXES: [&str; 2] = ["chore", "docs"];
 
 fn fact(kind: Option<PremiseKind>, confirmed: bool) -> PremiseFact {
-    PremiseFact { kind, confirmed }
+    PremiseFact {
+        kind,
+        confirmed,
+        late: false,
+    }
 }
 
 fn pending_business() -> PremiseFact {
@@ -414,4 +418,27 @@ fn it_should_require_in_every_cell_exactly_what_the_matrix_says_when_the_spec_is
         computed_cells(false),
         expected_cells(&TABLE_WITHOUT_A_VALID_SPEC)
     );
+}
+
+fn late_confirmed_business() -> PremiseFact {
+    PremiseFact {
+        late: true,
+        ..confirmed_business()
+    }
+}
+
+#[test]
+fn it_should_not_satisfy_the_business_premise_atom_with_only_a_late_confirmed_premise() {
+    assert_missing_for(
+        &BUSINESS_PREFIXES,
+        &[late_confirmed_business()],
+        &[RequireAtom::BusinessPremise],
+    );
+}
+
+#[test]
+fn it_should_satisfy_the_business_premise_atom_with_a_main_premise_next_to_a_late_one() {
+    let premises = [late_confirmed_business(), confirmed_business()];
+
+    assert_missing_for(&BUSINESS_PREFIXES, &premises, &[]);
 }

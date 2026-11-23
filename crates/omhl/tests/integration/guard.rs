@@ -2177,3 +2177,238 @@ fn appended_record(omhl: &mut Omhl<'_>, author: Author, items: Vec<AppendItem>) 
 
     outcome.records[0].id.clone()
 }
+
+const ORIGIN_POINTER: &str = "/items/0/body/data/origin";
+const ORIGIN_SECOND_ITEM_POINTER: &str = "/items/1/body/data/origin";
+const LATE_ID: &str = "premises.late-1";
+const DECISION_ID: &str = "decisions.d-1";
+
+fn kinded_premise_data(kind: &str, late: bool) -> Value {
+    let data = with_field(
+        premise_data("users pay monthly", Some(PR_7)),
+        "kind",
+        json!(kind),
+    );
+
+    if late {
+        with_field(data, "origin", json!("late"))
+    } else {
+        data
+    }
+}
+
+fn decision_item() -> AppendItem {
+    node_item(
+        DECISION_ID,
+        "decision",
+        decision_data("use a queue", Some(PR_7)),
+    )
+}
+
+fn open_omhl_after_a_decision(harness: &OmhlHarness) -> Omhl<'_> {
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    append_ok(&mut omhl, vec![decision_item()]);
+
+    omhl
+}
+
+fn session_premise(omhl: &mut Omhl<'_>, id: &str, data: Value) -> Result<usize, OmhlError> {
+    appended_by_agent(omhl, id, "premise", data)
+}
+
+fn session_revision(omhl: &mut Omhl<'_>, base: &RecordId, data: Value) -> Result<usize, OmhlError> {
+    let item = revision_item(LATE_ID, "premise", data, base);
+
+    appended(omhl, agent_author(), vec![item])
+}
+
+fn seeded_premise(omhl: &mut Omhl<'_>, data: Value) -> RecordId {
+    appended_record(
+        omhl,
+        agent_author(),
+        vec![node_item(LATE_ID, "premise", data)],
+    )
+}
+
+#[test]
+fn it_should_accept_origin_late_on_a_business_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+
+    let result = session_premise(&mut omhl, LATE_ID, kinded_premise_data("business", true));
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_origin_late_on_a_technical_premise() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+
+    let result = session_premise(&mut omhl, LATE_ID, kinded_premise_data("technical", true));
+
+    assert_eq!(result, Err(rule(RuleCode::OriginInvalid, ORIGIN_POINTER)));
+}
+
+#[test]
+fn it_should_refuse_origin_late_on_a_premise_without_kind() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let data = with_field(
+        premise_data("users pay monthly", None),
+        "origin",
+        json!("late"),
+    );
+
+    let result = session_premise(&mut omhl, LATE_ID, data);
+
+    assert_eq!(result, Err(rule(RuleCode::OriginInvalid, ORIGIN_POINTER)));
+}
+
+#[test]
+fn it_should_accept_a_late_premise_recorded_already_confirmed() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(
+        with_field(
+            kinded_premise_data("business", true),
+            "status",
+            json!("confirmed"),
+        ),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = session_premise(&mut omhl, LATE_ID, data);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_an_unmarked_business_premise_after_a_decision() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = open_omhl_after_a_decision(&harness);
+
+    let result = session_premise(&mut omhl, LATE_ID, kinded_premise_data("business", false));
+
+    assert_eq!(result, Err(rule(RuleCode::OriginRequired, ORIGIN_POINTER)));
+}
+
+#[test]
+fn it_should_accept_a_late_business_premise_after_a_decision() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = open_omhl_after_a_decision(&harness);
+
+    let result = session_premise(&mut omhl, LATE_ID, kinded_premise_data("business", true));
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_count_a_decision_recorded_earlier_in_the_same_batch() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let premise = node_item(LATE_ID, "premise", kinded_premise_data("business", false));
+
+    let result = appended(&mut omhl, agent_author(), vec![decision_item(), premise]);
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::OriginRequired, ORIGIN_SECOND_ITEM_POINTER))
+    );
+}
+
+#[test]
+fn it_should_accept_an_unmarked_business_premise_before_any_decision() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+
+    let result = session_premise(&mut omhl, LATE_ID, kinded_premise_data("business", false));
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_a_revision_that_drops_the_origin() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let base = seeded_premise(&mut omhl, kinded_premise_data("business", true));
+
+    let result = session_revision(&mut omhl, &base, kinded_premise_data("business", false));
+
+    assert_eq!(result, Err(rule(RuleCode::OriginImmutable, ORIGIN_POINTER)));
+}
+
+#[test]
+fn it_should_refuse_a_revision_that_adds_the_origin() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let base = seeded_premise(&mut omhl, kinded_premise_data("business", false));
+
+    let result = session_revision(&mut omhl, &base, kinded_premise_data("business", true));
+
+    assert_eq!(result, Err(rule(RuleCode::OriginImmutable, ORIGIN_POINTER)));
+}
+
+#[test]
+fn it_should_accept_a_confirmation_revision_that_keeps_the_origin() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let base = seeded_premise(&mut omhl, kinded_premise_data("business", true));
+    let confirmed = with_field(
+        with_field(
+            kinded_premise_data("business", true),
+            "status",
+            json!("confirmed"),
+        ),
+        "confirmed_by",
+        confirmation("person:gabriel"),
+    );
+
+    let result = session_revision(&mut omhl, &base, confirmed);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_turning_a_premise_into_an_unmarked_business_one_after_a_decision() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = open_omhl_after_a_decision(&harness);
+    let base = seeded_premise(&mut omhl, kinded_premise_data("technical", false));
+
+    let result = session_revision(&mut omhl, &base, kinded_premise_data("business", false));
+
+    assert_eq!(result, Err(rule(RuleCode::OriginRequired, ORIGIN_POINTER)));
+}
+
+#[test]
+fn it_should_refuse_turning_a_premise_into_a_late_business_one_by_revision() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = open_omhl_after_a_decision(&harness);
+    let base = seeded_premise(&mut omhl, kinded_premise_data("technical", false));
+
+    let result = session_revision(&mut omhl, &base, kinded_premise_data("business", true));
+
+    assert_eq!(result, Err(rule(RuleCode::OriginImmutable, ORIGIN_POINTER)));
+}
+
+#[test]
+fn it_should_accept_turning_a_premise_into_a_business_one_before_any_decision() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let base = seeded_premise(&mut omhl, kinded_premise_data("technical", false));
+
+    let result = session_revision(&mut omhl, &base, kinded_premise_data("business", false));
+
+    assert_eq!(result, Ok(1));
+}

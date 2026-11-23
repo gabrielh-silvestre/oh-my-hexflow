@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
+use super::phrase_markers::{MARKERS, Marker, phrase_markers};
 use super::who_uses::{BASE_LEAVES, WHO_USES_ANCHOR, WhoUsesClass, anchor_findings, who_uses};
 use super::{
     Cycle, agent_skills, check, cli_leaves, cycle_prose, parse_cycle, prove_both_sides,
@@ -666,4 +667,97 @@ fn it_should_keep_the_who_uses_classes_equal_to_the_anchor() {
     );
 
     assert_eq!(found, Vec::<String>::new());
+}
+
+fn marker_files() -> Vec<(String, String)> {
+    let mut paths: Vec<&str> = MARKERS.iter().map(|marker| marker.file).collect();
+    paths.sort_unstable();
+    paths.dedup();
+
+    paths
+        .into_iter()
+        .map(|path| (path.to_owned(), read_plugin(path)))
+        .collect()
+}
+
+fn marker_item(marker: &Marker) -> String {
+    format!(
+        "{} em {}: {}",
+        marker.rule, marker.file, marker.fragments[0]
+    )
+}
+
+#[test]
+fn it_should_accept_the_shipped_phrase_markers() {
+    let files = marker_files();
+
+    let found = phrase_markers(&MARKERS, &borrowed(&files));
+
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_reject_each_shipped_marker_whose_line_leaves_the_text() {
+    for marker in &MARKERS {
+        let files: Vec<(String, String)> = marker_files()
+            .into_iter()
+            .map(|(path, text)| {
+                let kept: Vec<&str> = text
+                    .lines()
+                    .filter(|line| {
+                        path != marker.file
+                            || !marker
+                                .fragments
+                                .iter()
+                                .all(|fragment| line.contains(fragment))
+                    })
+                    .collect();
+                (path, kept.join("\n"))
+            })
+            .collect();
+
+        let found = phrase_markers(&MARKERS, &borrowed(&files));
+
+        let expected = marker_item(marker);
+        assert!(
+            found.iter().any(|item| item.contains(&expected)),
+            "{expected}: {found:?}"
+        );
+    }
+}
+
+#[test]
+fn it_should_require_the_marker_fragments_on_one_line() {
+    let marker = Marker {
+        rule: "AC-X",
+        file: "skills/x/SKILL.md",
+        fragments: &["alpha", "beta"],
+    };
+    let together = [("skills/x/SKILL.md", "um alpha e beta juntos\n")];
+    let apart = [("skills/x/SKILL.md", "so alpha\nso beta\n")];
+
+    let accepted = phrase_markers(std::slice::from_ref(&marker), &together);
+    let rejected = phrase_markers(std::slice::from_ref(&marker), &apart);
+
+    assert_eq!(accepted, Vec::<String>::new());
+    assert_eq!(
+        rejected,
+        ["frases marcadoras ausentes: [AC-X em skills/x/SKILL.md: alpha]"]
+    );
+}
+
+#[test]
+fn it_should_reject_a_marker_whose_file_is_not_given() {
+    let marker = Marker {
+        rule: "AC-X",
+        file: "skills/x/SKILL.md",
+        fragments: &["alpha"],
+    };
+
+    let found = phrase_markers(std::slice::from_ref(&marker), &[]);
+
+    assert_eq!(
+        found,
+        ["frases marcadoras ausentes: [AC-X em skills/x/SKILL.md: alpha]"]
+    );
 }

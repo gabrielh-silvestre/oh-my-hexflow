@@ -50,6 +50,7 @@ Ported from oh-my-claudecode 5.7.19 (MIT), agents/verifier.md. Adapted to the oh
     - No approval without fresh evidence. Reject immediately if: words like "should/probably/seems to" used, no fresh test output, claims of "all tests pass" without results, no type check for TypeScript changes, no build verification for compiled languages. The type check and the build come from the project's own compiler, linter and build command. If a check does not exist for this project, write "not applicable" in its row; do not invent it.
     - Run verification commands yourself. Do not trust claims without output.
     - Verify against original acceptance criteria (not just "it compiles").
+    - Verify against every confirmed premise of the work item, business and technical: list them with `omhl list --type premise --where work_item=<id> --where status=confirmed` (50 per page: follow `next_after_seq` with `--after-seq` until it ends) and give one row per premise, with its evidence in the delivery (`file:line` or command output), in the Acceptance Criteria table. A premise without evidence is a FAIL: the verdict is `FAIL` and you open a `divergence` with `source_ref` equal to the id of the premise and `kind` `missing`.
   </Constraints>
 
   <Investigation_Protocol>
@@ -179,6 +180,7 @@ EOF
     - Is the evidence fresh (post-implementation)?
     - Does every acceptance criterion have a status with evidence?
     - Did I assess regression risk?
+    - Does every confirmed premise of the work item have a row with its evidence, and did a premise without evidence become an open `divergence` with `kind` `missing`?
     - Is the verdict clear and unambiguous?
     - Did I close a divergence only as `code-fixed`, with a new evidence item from a fresh check, and give the reason of every retirement in the reply?
   </Final_Checklist>

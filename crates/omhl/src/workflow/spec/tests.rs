@@ -853,6 +853,7 @@ struct FakeNode {
     confirmed: bool,
     kind: Option<&'static str>,
     work_item: Option<&'static str>,
+    late: bool,
 }
 
 #[derive(Default)]
@@ -875,8 +876,18 @@ impl FakeFacts {
             confirmed,
             kind: Some(kind),
             work_item: Some(work_item),
+            late: false,
         };
         self.nodes.insert(id.to_owned(), node);
+
+        self
+    }
+
+    fn late(mut self, id: &str) -> FakeFacts {
+        self.nodes
+            .get_mut(id)
+            .expect("the premise was added before")
+            .late = true;
 
         self
     }
@@ -886,6 +897,7 @@ impl FakeFacts {
             confirmed,
             kind: None,
             work_item: None,
+            late: false,
         };
         self.nodes.insert(id.to_owned(), node);
 
@@ -928,6 +940,10 @@ impl SpecFacts for FakeFacts {
 
     fn kind(&self, id: &str) -> Option<String> {
         self.nodes.get(id)?.kind.map(str::to_owned)
+    }
+
+    fn late(&self, id: &str) -> bool {
+        self.nodes.get(id).is_some_and(|node| node.late)
     }
 
     fn work_item(&self, id: &str) -> Option<String> {
@@ -1075,6 +1091,34 @@ fn it_should_accept_a_spec_without_a_business_premise_when_the_rule_is_off() {
     };
 
     let violations = graph_violations(&directive_only_part(), None, &config, &base_facts());
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_reject_a_spec_whose_only_cited_business_premise_is_late() {
+    let facts = base_facts().late(BUSINESS_PREMISE);
+
+    let violations = part_violations(&valid_part(), &facts);
+
+    assert_eq!(
+        violations,
+        vec!["parte-01.md:5 main-business-premise-missing"]
+    );
+}
+
+#[test]
+fn it_should_accept_a_spec_that_cites_a_late_premise_next_to_a_main_one() {
+    let facts = base_facts()
+        .premise("premises.late-rule", "business", W1, true)
+        .late("premises.late-rule");
+    let lines = with_line(
+        valid_part(),
+        PART_SECOND_CITATION_LINE,
+        "- premises.late-rule",
+    );
+
+    let violations = part_violations(&lines, &facts);
 
     assert_eq!(violations, Vec::<String>::new());
 }

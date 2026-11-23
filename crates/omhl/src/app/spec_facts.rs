@@ -53,7 +53,12 @@ fn premise_fact(data: &Value) -> PremiseFact {
     PremiseFact {
         kind,
         confirmed: is_confirmed_premise(data),
+        late: is_late(data),
     }
+}
+
+fn is_late(data: &Value) -> bool {
+    text(data, "origin") == Some("late")
 }
 
 fn is_native(id: &str) -> bool {
@@ -90,6 +95,14 @@ impl SpecFacts for GraphFacts {
         let fact = self.gap.nodes.iter().find(|fact| fact.id == id)?;
 
         text(&fact.data, "kind").map(str::to_owned)
+    }
+
+    fn late(&self, id: &str) -> bool {
+        self.gap
+            .nodes
+            .iter()
+            .find(|fact| fact.id == id)
+            .is_some_and(|fact| is_late(&fact.data))
     }
 
     fn work_item(&self, id: &str) -> Option<String> {
