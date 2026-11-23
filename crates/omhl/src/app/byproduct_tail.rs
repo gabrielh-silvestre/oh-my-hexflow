@@ -43,8 +43,9 @@ impl Engine<'_> {
             .and_then(|text| ByproductHash::parse(text).ok())
             .ok_or_else(missing)?;
         let store = self
-            .byproducts
-            .ok_or_else(AppError::byproducts_unavailable)?;
+            .exec
+            .ok_or_else(AppError::byproducts_unavailable)?
+            .byproducts;
         let blob = store
             .get(&hash)
             .map_err(|_| AppError::byproduct_corrupt("/work_item"))?

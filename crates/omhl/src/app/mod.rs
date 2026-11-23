@@ -40,7 +40,7 @@ use hexlog::{Config, ErrorCode, SemanticId, TenantId};
 use serde_json::Value;
 
 use self::action::{Action, Caller};
-use self::engine::Engine;
+use self::engine::{Engine, Exec};
 use self::error::AppError;
 use self::retry::{RetryPolicy, with_retry};
 use crate::byproduct::{ByproductRetention, ByproductStore};
@@ -75,8 +75,7 @@ impl<'d> App<'d> {
                 tenant: tenant.clone(),
                 probe: deps.probe,
                 project_root: None,
-                runner: None,
-                byproducts: None,
+                exec: None,
                 retention: None,
                 mark: None,
                 retry: retry.clone(),
@@ -97,8 +96,7 @@ impl<'d> App<'d> {
         runner: &'d dyn CommandRunner,
         byproducts: &'d dyn ByproductStore,
     ) -> App<'d> {
-        self.engine.runner = Some(runner);
-        self.engine.byproducts = Some(byproducts);
+        self.engine.exec = Some(Exec { runner, byproducts });
         self
     }
 

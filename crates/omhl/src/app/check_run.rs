@@ -118,7 +118,7 @@ impl Engine<'_> {
         pre_push: Option<&str>,
     ) -> Result<Value, AppError> {
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
-        let runner = self.runner.ok_or_else(AppError::runner_unavailable)?;
+        let runner = self.exec.ok_or_else(AppError::runner_unavailable)?.runner;
         self.prune_quietly();
         let (event, planned) = self.plan_target(target)?;
         let checks_planned = planned.len();
@@ -415,8 +415,9 @@ impl Engine<'_> {
             return Ok(verdict(failed(message, Some(context))));
         };
         let store = self
-            .byproducts
-            .ok_or_else(AppError::byproducts_unavailable)?;
+            .exec
+            .ok_or_else(AppError::byproducts_unavailable)?
+            .byproducts;
         let mut context = scope.ran_context("guard-refused", &check.id, &spec.run, snapshot);
         context["expected"] = json!(outcome_name(outcome));
         // O blob vai para o store antes do `append`: a attestation nunca aponta para um blob ausente.

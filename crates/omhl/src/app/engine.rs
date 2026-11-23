@@ -21,13 +21,18 @@ use crate::workflow::retro::retro;
 
 const DEFAULT_PAGE_LIMIT: u32 = 50;
 
+#[derive(Clone, Copy)]
+pub(super) struct Exec<'d> {
+    pub(super) runner: &'d dyn CommandRunner,
+    pub(super) byproducts: &'d dyn ByproductStore,
+}
+
 pub(super) struct Engine<'d> {
     pub(super) omhl: Omhl<'d>,
     pub(super) tenant: TenantId,
     pub(super) probe: &'d dyn SnapshotProbe,
     pub(super) project_root: Option<PathBuf>,
-    pub(super) runner: Option<&'d dyn CommandRunner>,
-    pub(super) byproducts: Option<&'d dyn ByproductStore>,
+    pub(super) exec: Option<Exec<'d>>,
     pub(super) retention: Option<&'d dyn ByproductRetention>,
     pub(super) mark: Option<&'d dyn DevelopMark>,
     pub(super) retry: RetryPolicy,
