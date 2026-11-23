@@ -2413,7 +2413,7 @@ fn it_should_residual_release_a_frozen_spec_when_a_planted_marker_sits_in_the_cu
     assert_allowed(&output);
 }
 
-// `.git` protegido (b9): negado com `git-dir-protected`, sem chamar git
+// `.git` protegido: negado com `git-dir-protected`, sem chamar git
 
 /// A negação `git-dir-protected`: uma linha, com o caminho, pedindo ao dono e sem sugerir o `Bash`.
 fn git_dir_reason(output: &Child, path: &Path) -> String {
@@ -2569,7 +2569,7 @@ fn it_should_allow_a_path_with_dot_git_with_the_marker_error_when_the_only_marke
     assert_released_with_error(&output);
 }
 
-// Marcador protegido (b10): negado com `marker-protected` quando o resultado deixa de ser marcador válido
+// Marcador protegido: negado com `marker-protected` quando o resultado deixa de ser marcador válido
 
 const BROKEN_MARKER: &str = "[core";
 const MARKER_STEP: &str = "reading the new content of .omhl.toml";

@@ -545,7 +545,7 @@ mod lock {
         assert_eq!(verdict, Verdict::Allow);
     }
 
-    // Marcador do projeto dentro da pasta congelada (b5)
+    // Marcador do projeto dentro da pasta congelada
 
     #[test]
     fn it_should_deny_a_marker_file_written_in_a_frozen_folder_with_its_own_reason() {

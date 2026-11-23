@@ -265,7 +265,7 @@ fn it_should_not_let_two_databases_in_the_same_folder_read_each_others_blobs() {
     assert!(scratch.join(&ABC_SHA256[..2]).join(ABC_SHA256).is_file());
 }
 
-// CA-021: renovação, poda e carimbo
+// Renovação, poda e carimbo
 
 const WEEK: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const DAY: Duration = Duration::from_secs(24 * 60 * 60);

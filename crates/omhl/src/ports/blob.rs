@@ -46,7 +46,7 @@ impl ByproductStore for BlobStore {
     fn put(&self, bytes: &[u8]) -> Result<ByproductHash, ByproductError> {
         let hash = sha256_hash(bytes)?;
         let dir = blob_dir(&self.root, &hash);
-        // Modo 0700 em `blobs/`, `blobs/by-db/<banco>/<tenant>` e `<xx>`: a saída pode ter segredos (R8).
+        // Modo 0700 em `blobs/`, `blobs/by-db/<banco>/<tenant>` e `<xx>`: a saída pode ter segredos.
         DirBuilder::new()
             .recursive(true)
             .mode(0o700)

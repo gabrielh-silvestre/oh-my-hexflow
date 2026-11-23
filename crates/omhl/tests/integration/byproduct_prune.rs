@@ -210,7 +210,7 @@ fn modified_ago(path: &Path) -> Duration {
         .unwrap_or_default()
 }
 
-// CA-018: a poda no `check run`
+// A poda no `check run`
 
 #[test]
 fn it_should_delete_a_stale_blob_that_is_not_live_and_a_stale_temporary_file_on_check_run() {
@@ -410,7 +410,7 @@ fn it_should_not_touch_the_blobs_of_another_database_in_the_same_folder() {
     );
 }
 
-// CA-019: o que a poda nunca apaga
+// O que a poda nunca apaga
 
 #[test]
 fn it_should_keep_the_output_of_a_live_attestation_readable_after_the_next_check_run() {
@@ -476,7 +476,7 @@ fn it_should_delete_the_blob_of_a_previous_tree_of_the_same_pair() {
     );
 }
 
-// CA-018: 2 000 attestations em 200 pares
+// 2 000 attestations em 200 pares
 
 fn seed_bulk_attestations(fx: &Fixture) {
     for check in 0..BULK_CHECKS {
