@@ -10,6 +10,7 @@ pub const INPUT_MAX_BYTES: usize = 1_048_576;
 /// Texto do `serde_json` quando passa do limite de profundidade de contêiner (versão fixada no `Cargo.toml`).
 const DEPTH_LIMIT_MESSAGE: &str = "recursion limit exceeded";
 
+/// Limita bytes e profundidade antes de montar o `Value`: o trabalho proporcional à entrada vem antes do teto de `data`.
 pub fn parse_json_text(bytes: &[u8]) -> Result<Value, AppError> {
     if bytes.len() > INPUT_MAX_BYTES {
         return Err(AppError::input_too_large(INPUT_MAX_BYTES));

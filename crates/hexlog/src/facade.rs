@@ -171,9 +171,9 @@ impl<'d> Hexlog<'d> {
         })
     }
 
-    /// O adaptador limita bytes e profundidade antes de montar o `Value`: o trabalho proporcional à entrada vem antes do teto.
     /// Entre escritores concorrentes `at` pode sair fora da ordem de `seq`.
-    /// O `acyclic` só é conferido na escrita da relation: reativar nó retirado ou nativo de catálogo novo não revalida.
+    /// O `acyclic` relê os pares vivos do tipo a cada `append`, então o custo cresce com o grafo gravado, e só é conferido
+    /// na escrita da relation: reativar nó retirado ou nativo de catálogo novo não revalida.
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, HexlogError> {
         if self.verify_policy == VerifyPolicy::Full {
             // Fora da transação de escrita: a verificação não disputa corrida, um concorrente só acrescenta.

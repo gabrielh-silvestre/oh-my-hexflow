@@ -81,7 +81,6 @@ impl fmt::Display for Finding {
     }
 }
 
-/// Linhas `///` (ou `//!`) contíguas, com o número da linha e o texto depois do marcador.
 struct DocBlock {
     lines: Vec<(usize, String)>,
 }
@@ -153,7 +152,6 @@ pub struct Scanner {
 }
 
 impl Scanner {
-    /// `defined`: identificadores que o código define; `backed`: números de código ou configuração;
     /// `test_literals`: strings dos arquivos de teste, que guardam a seção de markdown cuja linha de título igualam.
     pub fn new(defined: HashSet<String>, backed: Backing, test_literals: Vec<String>) -> Self {
         let enumeration = format!("{IDENTIFIER}(?:{LIST_SEPARATOR}{IDENTIFIER})+");
@@ -199,7 +197,6 @@ impl Scanner {
             .collect()
     }
 
-    /// Linhas sob um título (e as seções filhas) cuja linha inteira, com `#`, é um literal de string de teste.
     fn guarded_lines(&self, lines: &[(usize, String)]) -> HashSet<usize> {
         let mut open_headings: Vec<(usize, bool)> = Vec::new();
         let mut guarded = HashSet::new();
@@ -261,7 +258,6 @@ impl Scanner {
         })
     }
 
-    /// Enumeração de identificadores que a varredura bloqueia, na linha ou em bullets seguidos de um identificador cada.
     fn copied_list_starts(&self, lines: &[(usize, String)]) -> Vec<usize> {
         let enumerated = lines
             .iter()
@@ -336,7 +332,6 @@ fn heading_level(text: &str) -> Option<usize> {
     ((1..=6).contains(&level) && !title.trim().is_empty()).then_some(level)
 }
 
-/// Conteúdo entre aspas das linhas de código; comentário (`//`, `///`) não conta.
 pub fn string_literals(source: &str) -> Vec<String> {
     source
         .lines()
@@ -356,7 +351,7 @@ fn finding(file: &str, line: usize, rule: Rule) -> Finding {
     }
 }
 
-/// Fatores pelos quais o número escrito vira outro literal que o código pode ter (ms, s, bytes).
+/// O texto escreve segundos e o código pode ter milissegundos: cada fator é um literal que o mesmo número pode ter lá.
 fn unit_factors(unit: &str) -> &'static [f64] {
     match unit {
         "ms" | "milissegundo" | "milissegundos" => &[1.0, 0.001],
@@ -382,7 +377,6 @@ enum LexState {
     BlockComment(usize),
 }
 
-/// Para cada linha, se ela começa em código (e não dentro de string ou de comentário de bloco).
 fn lines_starting_in_code(source: &str) -> Vec<bool> {
     let chars: Vec<char> = source.chars().collect();
     let mut starts = vec![true];
@@ -465,7 +459,6 @@ fn lines_starting_in_code(source: &str) -> Vec<bool> {
     starts
 }
 
-/// Quantos `#` abrem a string crua que começa em `r` (`r"`, `r#"`), ou `None` se não é um começo.
 fn raw_string_hashes(chars: &[char], at: usize) -> Option<usize> {
     let after_identifier = at > 0 && (chars[at - 1].is_alphanumeric() || chars[at - 1] == '_');
     if after_identifier && chars[at - 1] != 'b' {
@@ -477,7 +470,7 @@ fn raw_string_hashes(chars: &[char], at: usize) -> Option<usize> {
     (chars.get(at + 1 + hashes) == Some(&'"')).then_some(hashes)
 }
 
-/// `'\n'`, `'\''`, `'\u{..}'`: pula o escape e vai até a aspa que fecha.
+/// `'\n'`, `'\''`, `'\u{..}'`.
 fn skip_escaped_char_literal(chars: &[char], at: usize) -> usize {
     chars
         .get(at + 3..)
@@ -548,7 +541,6 @@ fn rust_doc_blocks(source: &str) -> Vec<DocBlock> {
     blocks
 }
 
-/// Abertura de cerca (crases ou til): o caractere e o tamanho, que a cerca de fechamento iguala ou passa.
 fn fence_opening(line: &str) -> Option<(char, usize)> {
     let trimmed = line.trim_start();
     let marker = trimmed.chars().next().filter(|c| matches!(c, '`' | '~'))?;
@@ -557,7 +549,6 @@ fn fence_opening(line: &str) -> Option<(char, usize)> {
     (length >= 3).then_some((marker, length))
 }
 
-/// Linhas de markdown fora de blocos de código cercados.
 fn markdown_lines(source: &str) -> Vec<(usize, String)> {
     let mut open_fence: Option<(char, usize)> = None;
     let mut lines = Vec::new();
@@ -580,7 +571,6 @@ fn markdown_lines(source: &str) -> Vec<(usize, String)> {
     lines
 }
 
-/// Nomes definidos em código: definições Rust e variantes de enum.
 pub fn defined_identifiers(source: &str) -> HashSet<String> {
     let definition = Regex::new(
         r"\b(?:fn|struct|enum|trait|const|static|type|mod)\s+(?:(?:fn|mut|dyn|unsafe|extern)\s+)?([A-Za-z_]\w*)",
