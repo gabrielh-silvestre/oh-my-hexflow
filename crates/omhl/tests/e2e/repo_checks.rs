@@ -11,9 +11,10 @@ use support::repo_checks::repo_root;
 use support::sid;
 use tempfile::TempDir;
 
-const REPO_CHECKS: [&str; 5] = [
+const REPO_CHECKS: [&str; 6] = [
     "checks.compile-build",
     "checks.compile-validate",
+    "checks.doc-review",
     "checks.fmt",
     "checks.lint",
     "checks.test-suite",
@@ -141,13 +142,14 @@ fn it_should_order_lint_after_fmt_in_the_repository_plan() {
 }
 
 #[test]
-fn it_should_declare_a_timeout_for_every_repository_check() {
+fn it_should_declare_a_timeout_for_every_repository_check_that_runs_a_command() {
     let (_, items) = loaded_repo();
 
     let mut ids: Vec<&str> = items.iter().map(item_id).collect();
     ids.sort_unstable();
     let below_floor: Vec<&str> = items
         .iter()
+        .filter(|item| item["data"].get("run").is_some())
         .filter(|item| {
             !item["data"]["timeout_secs"]
                 .as_u64()
@@ -175,6 +177,7 @@ fn it_should_derive_git_tree_only_for_the_before_commit_checks() {
         vec![
             ("checks.compile-build", SnapshotKind::GitCommit),
             ("checks.compile-validate", SnapshotKind::GitCommit),
+            ("checks.doc-review", SnapshotKind::GitCommit),
             ("checks.fmt", SnapshotKind::GitTree),
             ("checks.lint", SnapshotKind::GitTree),
             ("checks.test-suite", SnapshotKind::GitCommit),
