@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 
 /// Substantivos que, depois de um número, contam coisas que o código já define.
-const COUNTED_NOUNS: [&str; 22] = [
+const COUNTED_NOUNS: &[&str] = &[
     "códigos",
     "variantes",
     "campos",
@@ -410,11 +410,13 @@ fn lines_starting_in_code(source: &str) -> Vec<bool> {
                     state = LexState::Str;
                     i += 1;
                 }
-                ('r', _) if raw_string_hashes(&chars, i).is_some() => {
-                    let hashes = raw_string_hashes(&chars, i).unwrap_or(0);
-                    state = LexState::RawStr(hashes);
-                    i += 2 + hashes;
-                }
+                ('r', _) => match raw_string_hashes(&chars, i) {
+                    Some(hashes) => {
+                        state = LexState::RawStr(hashes);
+                        i += 2 + hashes;
+                    }
+                    None => i += 1,
+                },
                 ('\'', Some('\\')) => i = skip_escaped_char_literal(&chars, i),
                 ('\'', _) if chars.get(i + 2) == Some(&'\'') => i += 3,
                 _ => i += 1,
