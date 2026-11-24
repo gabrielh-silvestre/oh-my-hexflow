@@ -125,9 +125,9 @@ pub fn find_marker(start: &Path) -> Result<Option<Located>, ProjectError> {
     Ok(None)
 }
 
-/// Só para o hook `spec-lock`: um marcador que `find_marker` recusaria, ou válido mas sob `.omhl/`
-/// (que não é raiz de projeto), é pulado e a subida continua até o primeiro válido. Sem nenhum válido,
-/// devolve o erro do primeiro pulado.
+/// Só para o hook `spec-lock`: pula o marcador que `find_marker` recusaria ou o válido sob `.omhl/` (não é raiz de projeto).
+///
+/// Sem nenhum válido, devolve o erro do primeiro pulado.
 pub fn find_valid_marker(start: &Path) -> Result<Option<Located>, ProjectError> {
     let mut first_skipped = None;
     for dir in start.ancestors() {

@@ -311,11 +311,9 @@ pub struct SpecLockOutcome {
     pub notices: Vec<AppError>,
 }
 
-/// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco. Decide pelo caminho
-/// lexical e pelo físico (links resolvidos), e a negação de qualquer um vence; se o físico não se
-/// resolve, vale o lexical. A ordem importa: o git só é consultado para o caminho em que algum
-/// componente tem a forma da pasta de work item.
-/// As chamadas de git de uma execução dividem o prazo `SPEC_LOCK_GIT_BUDGET`.
+/// A trava da spec para o evento `PreToolUse` do Claude Code; não abre o banco.
+///
+/// Decide pelo caminho lexical e pelo físico (links resolvidos): a negação de qualquer um vence, e o físico irresolvível cai no lexical.
 pub fn spec_lock(event: SpecLockEvent) -> Result<SpecLockOutcome, AppError> {
     let SpecLockEvent::Edit {
         tool,
@@ -670,9 +668,9 @@ fn mark_folders(
     first_error.map_or(Ok((marked, already)), Err)
 }
 
-/// O nascimento de uma branch de work item (o `post-start` do `wt`): grava a marca em cada pasta
-/// do work item, pela mesma gravação da cura. Não abre o banco e não exige o work item nele;
-/// branch que não é de work item não tem efeito.
+/// O nascimento de uma branch de work item (o `post-start` do `wt`): grava a marca em cada pasta do work item.
+///
+/// Não abre o banco nem exige o work item nele; branch que não é de work item não tem efeito.
 pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
     let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
     let Some(work_item) = work_item_id(branch).and_then(|id| {

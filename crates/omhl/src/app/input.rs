@@ -7,7 +7,7 @@ use super::error::AppError;
 
 pub const INPUT_MAX_BYTES: usize = 1_048_576;
 
-/// Texto do `serde_json` quando passa do limite de 128 níveis de contêiner (versão fixada no `Cargo.toml`).
+/// Texto do `serde_json` quando passa do limite de profundidade de contêiner (versão fixada no `Cargo.toml`).
 const DEPTH_LIMIT_MESSAGE: &str = "recursion limit exceeded";
 
 pub fn parse_json_text(bytes: &[u8]) -> Result<Value, AppError> {

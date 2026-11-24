@@ -171,13 +171,9 @@ impl<'d> Hexlog<'d> {
         })
     }
 
-    /// - O adaptador limita bytes e profundidade antes de montar o `Value`, porque o trabalho
-    ///   proporcional à entrada vem antes do teto de `data_max_chars`.
-    /// - `at` é o instante do pedido, e `seq` é a ordem: entre escritores concorrentes `at` pode
-    ///   sair fora da ordem de `seq`.
-    /// - O custo do `acyclic` cresce com o número de pares de cada `append`.
-    /// - O invariante `acyclic` só é conferido na escrita da relation: reativar um nó retirado, ou
-    ///   um nativo que volta numa versão nova do catálogo, não revalida.
+    /// O adaptador limita bytes e profundidade antes de montar o `Value`: o trabalho proporcional à entrada vem antes do teto.
+    /// Entre escritores concorrentes `at` pode sair fora da ordem de `seq`.
+    /// O `acyclic` só é conferido na escrita da relation: reativar nó retirado ou nativo de catálogo novo não revalida.
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, HexlogError> {
         if self.verify_policy == VerifyPolicy::Full {
             // Fora da transação de escrita: a verificação não disputa corrida, um concorrente só acrescenta.
