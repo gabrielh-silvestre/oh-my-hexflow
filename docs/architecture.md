@@ -59,7 +59,7 @@ Segue a decisão de projeto sobre caixas cinzas: caixa cinza é um módulo profu
 
 ### 3.16 Suporte: `omhl::ports` e `omhl::project`
 
-- `ports`: adapters de produção. Adapters finos de seam real. Os adapters dos gates mecânicos (`process`, `pipes`, `blob`, `hooks`) estão na seção 3.22.
+- `ports`: adapters de produção. Adapters finos de seam real. Os adapters dos gates mecânicos estão na seção 3.22.
 - `project`: descoberta do projeto. Rasa: metade é lista de constantes e helpers compartilhados por `extensions` e `projection` (item 7 da seção 5).
 
 ### 3.19 Aninhada: `omhl::mechanical::sweep`
@@ -108,7 +108,7 @@ Nove itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 
 3. **Paginação e constantes duplicadas (corte).** Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade, em troca de um só laço.
 
-4. **A sonda do git vive em duas camadas (dívida).** Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito. Vira corte se aparecer um caso em que as duas leituras discordem.
+4. **A sonda do git vive em mais de uma camada (dívida).** Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito. Vira corte se aparecer um caso em que as duas leituras discordem.
 
 5. **Nome e formato de porta dentro de `app` (corte).** Corte: o adapter traduz o payload para um struct neutro e passa o `Caller` pronto; `app` deixa de nomear a porta. Trade-off: não medido além de mover os nomes de `Caller` e o parse do payload.
 

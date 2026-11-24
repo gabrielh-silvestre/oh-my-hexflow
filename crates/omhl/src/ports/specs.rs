@@ -12,7 +12,7 @@ use crate::workflow::names::{
 /// Teto próprio da busca por prefixo.
 const SPEC_ENTRIES_MAX: usize = 10_000;
 
-/// Teto agregado de uma pasta de spec; 198 arquivos de `EXT_FILE_MAX_BYTES` (cerca de 12,4 MiB) cabem.
+/// Teto agregado: a leitura carrega todos os arquivos da pasta de spec em memória.
 const SPEC_FOLDER_BYTES_MAX: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,9 +142,8 @@ impl SpecStore {
     }
 
     /// A marca em qualquer pasta do work item; não segue link: uma marca que é link também congela.
-    /// Na dúvida congela: quem chega aqui já tem um caminho reconhecido como spec do work item, então
-    /// falha ao listar `specs/` ou ao ler a marca nunca libera a escrita. Só entrada que não é pasta
-    /// (`NotADirectory`) ou sem marca (`NotFound`) conta como sem marca.
+    /// Na dúvida congela: quem chega aqui já tem um caminho reconhecido como spec do work item, então falha ao listar
+    /// ou ao ler a marca nunca libera a escrita.
     pub fn has_freeze_mark(&self, work_item: &str) -> bool {
         let Ok(folders) = self.folders_of(work_item) else {
             return true;
