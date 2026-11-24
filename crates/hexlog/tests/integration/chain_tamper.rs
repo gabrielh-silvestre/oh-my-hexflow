@@ -5,15 +5,15 @@ use std::collections::HashSet;
 use hexlog::{
     BreakReason, CHECKED_FIELDS, ChainReport, Config, ErrorCode, HexlogError, VerifyPolicy,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use support::catalog::reference_catalog;
 use support::mutations::{
-    Reference, mutations, reference_chain, rewrite_body, rewrite_json, set_column,
+    Reference, mutations, reference_chain, rewrite_body, rewrite_json, rewrite_json_at, set_column,
 };
 use support::tamper::Tamper;
 use support::{
     DEFAULT_INSTANT, Harness, all, assert_refusal, node, node_lineage, on_small_stack, page,
-    relation_query, request, sid, tenant, unused_record_id,
+    relation_query, request, session, sid, tenant, unused_record_id,
 };
 
 const DELETE_RC: &str = "DELETE FROM records WHERE tenant = ? AND seq = ?";
@@ -389,4 +389,75 @@ fn it_should_cap_the_reported_breaks_at_100_and_keep_counting() {
     assert_eq!(changed, 120);
     assert_eq!(report.breaks.len(), 100);
     assert_eq!(report.total_breaks, 120);
+}
+
+/// Grava o nó `z.new` depois da cadeia de referência, de modo que a cauda seja o record corrente de um nó vivo.
+fn append_live_tail(harness: &Harness, label: Option<&str>) -> u64 {
+    let req = request("acme", None, vec![node("z.new", "note", json!({}))]);
+    let mut hexlog = harness.open();
+    let outcome = match label {
+        Some(text) => hexlog.append_with_session(&req, &session(text)),
+        None => hexlog.append(&req),
+    };
+
+    outcome.expect("the live tail is appended").chain_head.seq
+}
+
+fn assert_unreadable_tail(harness: &Harness, tail_seq: u64) {
+    let mut hexlog = harness.open();
+
+    let error = hexlog.get(&tenant("acme"), &sid("z.new")).unwrap_err();
+
+    assert_refusal(&error, ErrorCode::Internal, "invalid-body", "");
+    drop(hexlog);
+    assert_eq!(
+        breaks_of(&verify(harness)),
+        [(Some(tail_seq), BreakReason::InvalidBody)]
+    );
+}
+
+#[test]
+fn it_should_read_a_body_with_an_unknown_top_level_field_as_invalid_body() {
+    let (harness, reference) = reference_db();
+    let tail_seq = append_live_tail(&harness, None);
+    let rewritten = rewrite_json_at(
+        &mut Tamper::open(&reference.path),
+        &reference.tenant,
+        tail_seq,
+        |body| body["unknown"] = json!("x"),
+    );
+
+    assert_eq!(rewritten, 1);
+    assert_unreadable_tail(&harness, tail_seq);
+}
+
+#[test]
+fn it_should_store_the_session_at_the_top_level_of_the_body_and_not_inside_author() {
+    let (harness, reference) = reference_db();
+    let tail_seq = append_live_tail(&harness, Some("sess-1"));
+
+    let stored = Tamper::open(&reference.path).read_body(&reference.tenant, tail_seq);
+
+    let body: Value = serde_json::from_str(&stored).expect("the stored body is JSON");
+    assert_eq!(body["session"], "sess-1");
+    assert!(body["author"].get("session").is_none());
+}
+
+#[test]
+fn it_should_read_a_body_with_a_session_outside_one_to_100_utf16_units_as_invalid_body() {
+    let invalid = [String::new(), "a".repeat(101), "😀".repeat(51)];
+
+    for label in invalid {
+        let (harness, reference) = reference_db();
+        let tail_seq = append_live_tail(&harness, Some("sess-1"));
+        let rewritten = rewrite_json_at(
+            &mut Tamper::open(&reference.path),
+            &reference.tenant,
+            tail_seq,
+            |body| body["session"] = json!(label),
+        );
+
+        assert_eq!(rewritten, 1);
+        assert_unreadable_tail(&harness, tail_seq);
+    }
 }

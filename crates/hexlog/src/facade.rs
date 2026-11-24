@@ -15,10 +15,13 @@ use crate::engine::model::{
 use crate::engine::ports::{
     Clock, IdGenerator, NativeNodes, RecordRow, Store, StoreReader, WriteReads,
 };
+use crate::engine::scan::{ScannedRecord, scan_records};
 use crate::engine::snapshot::{Snapshot, SnapshotKind};
 use crate::engine::{DecideCtx, decide, instant_is_well_formed, verify_chain};
 use crate::error::{ErrorCode, HexlogError};
-use crate::ids::{ExternalId, Hash, RecordId, RelationTypeName, SemanticId, TenantId, TypeName};
+use crate::ids::{
+    ExternalId, Hash, RecordId, RelationTypeName, SemanticId, SessionLabel, TenantId, TypeName,
+};
 use crate::store::SqliteStore;
 
 /// Tetos que o esquema do banco impõe (`CHECK` de `item_count`) ou que a página aceita.
@@ -175,6 +178,23 @@ impl<'d> Hexlog<'d> {
     /// O `acyclic` relê os pares vivos do tipo a cada `append`, então o custo cresce com o grafo gravado, e só é conferido
     /// na escrita da relation: reativar nó retirado ou nativo de catálogo novo não revalida.
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, HexlogError> {
+        self.append_labeled(req, None)
+    }
+
+    /// O rótulo não entra na impressão digital do lote: o retry com outra sessão é replay.
+    pub fn append_with_session(
+        &mut self,
+        req: &AppendRequest,
+        session: &SessionLabel,
+    ) -> Result<AppendOutcome, HexlogError> {
+        self.append_labeled(req, Some(session))
+    }
+
+    fn append_labeled(
+        &mut self,
+        req: &AppendRequest,
+        session: Option<&SessionLabel>,
+    ) -> Result<AppendOutcome, HexlogError> {
         if self.verify_policy == VerifyPolicy::Full {
             // Fora da transação de escrita: a verificação não disputa corrida, um concorrente só acrescenta.
             // Tenant desconhecido segue para o `decide`, que recusa a forma antes do tenant, como em `Tail`.
@@ -194,6 +214,7 @@ impl<'d> Hexlog<'d> {
             ids: self.deps.ids,
             limits: &self.limits,
             now: &now,
+            session,
         };
         let plan = self
             .store
@@ -297,6 +318,15 @@ impl<'d> Hexlog<'d> {
                 .map(|row| relation_view(row, native, tenant, reader))
                 .collect()
         })
+    }
+
+    /// Todo record do tenant, em ordem de `seq`, numa só transação de leitura.
+    pub fn scan_records(
+        &mut self,
+        tenant: &TenantId,
+        mut visit: impl FnMut(ScannedRecord),
+    ) -> Result<(), HexlogError> {
+        self.read(tenant, |reader| scan_records(reader, tenant, &mut visit))
     }
 
     pub fn chain_head(&mut self, tenant: &TenantId) -> Result<ChainHead, HexlogError> {

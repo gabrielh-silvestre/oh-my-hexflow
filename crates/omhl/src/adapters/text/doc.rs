@@ -89,10 +89,13 @@ pub fn one_line(raw: &str) -> String {
     raw.chars()
         .filter_map(|c| match c {
             '\n' | '\r' | '\t' | '\u{85}' | '\u{2028}' | '\u{2029}' => Some(' '),
-            '\u{200B}'..='\u{200F}'
+            '\u{061C}'
+            | '\u{200B}'..='\u{200F}'
             | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}'
             | '\u{2066}'..='\u{2069}'
-            | '\u{FEFF}' => None,
+            | '\u{FEFF}'
+            | '\u{E0000}'..='\u{E007F}' => None,
             c if c.is_control() => None,
             c => Some(c),
         })

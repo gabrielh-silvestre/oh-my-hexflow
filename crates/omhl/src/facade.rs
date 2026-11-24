@@ -1,7 +1,10 @@
+use std::ffi::OsString;
+
 use hexlog::{
     AppendOutcome, AppendRequest, Author, Catalog, ChainHead, ChainReport, Clock, Config, Deps,
     Hash, Hexlog, IdGenerator, Lineage, ListFilter, NodeView, Page, PageRequest, RelationQuery,
-    RelationTypeName, RelationView, RevisionView, SemanticId, TenantId, TenantInfo, TypeName,
+    RelationTypeName, RelationView, RevisionView, ScannedRecord, SemanticId, SessionLabel,
+    TenantId, TenantInfo, TypeName,
 };
 
 use crate::error::{OmhlError, RuleCode};
@@ -30,11 +33,44 @@ const PROJECTED_NODE_TYPES: [&str; 7] = [
 ];
 const PROJECTED_RELATIONS: [&str; 3] = ["supports", "contradicts", "answers"];
 
+/// Carimbo gravado quando a variável de sessão está ausente; nenhum id real de sessão é igual a ele.
+pub const OUTSIDE_CLAUDE_CODE: &str = "outside-claude-code";
+
+/// Valor cru de `CLAUDE_CODE_SESSION_ID`: só é validado ao gravar, para a leitura nunca falhar por ele.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionSource {
+    Absent,
+    Raw(OsString),
+}
+
+impl From<Option<OsString>> for SessionSource {
+    fn from(value: Option<OsString>) -> Self {
+        value.map_or(SessionSource::Absent, SessionSource::Raw)
+    }
+}
+
+impl SessionSource {
+    /// O erro nunca carrega o valor: ele vem do ambiente e não é um campo do pedido.
+    fn resolve(&self) -> Result<SessionLabel, OmhlError> {
+        let invalid = || OmhlError::rule(RuleCode::InvalidSessionId, "");
+        let text = match self {
+            SessionSource::Absent => OUTSIDE_CLAUDE_CODE,
+            SessionSource::Raw(raw) => match raw.to_str() {
+                Some(text) if text != OUTSIDE_CLAUDE_CODE => text,
+                _ => return Err(invalid()),
+            },
+        };
+
+        SessionLabel::parse(text).map_err(|_| invalid())
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct OmhlDeps<'d> {
     pub clock: &'d dyn Clock,
     pub ids: &'d dyn IdGenerator,
     pub probe: &'d dyn SnapshotProbe,
+    pub session: &'d SessionSource,
 }
 
 /// Work item fechado: o que foi gravado e o gate avaliado no fechamento.
@@ -46,6 +82,7 @@ pub struct ClosedWorkItem {
 pub struct Omhl<'d> {
     hexlog: Hexlog<'d>,
     probe: &'d dyn SnapshotProbe,
+    session: &'d SessionSource,
     page_size: u32,
 }
 
@@ -61,6 +98,7 @@ impl<'d> Omhl<'d> {
         Ok(Omhl {
             hexlog: Hexlog::open(config, hexlog_deps)?,
             probe: deps.probe,
+            session: deps.session,
             page_size: config.limits.page_default,
         })
     }
@@ -74,9 +112,10 @@ impl<'d> Omhl<'d> {
     }
 
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, OmhlError> {
+        let session = self.session.resolve()?;
         guard::check_append(&mut self.hexlog, self.probe, req)?;
 
-        Ok(self.hexlog.append(req)?)
+        Ok(self.hexlog.append_with_session(req, &session)?)
     }
 
     pub fn get(
@@ -85,6 +124,14 @@ impl<'d> Omhl<'d> {
         id: &SemanticId,
     ) -> Result<Option<NodeView>, OmhlError> {
         Ok(self.hexlog.get(tenant, id)?)
+    }
+
+    pub fn scan_records(
+        &mut self,
+        tenant: &TenantId,
+        visit: impl FnMut(ScannedRecord),
+    ) -> Result<(), OmhlError> {
+        Ok(self.hexlog.scan_records(tenant, visit)?)
     }
 
     pub fn lineage_records(
@@ -235,6 +282,7 @@ impl<'d> Omhl<'d> {
         snapshots: &GateSnapshots,
         author: &Author,
     ) -> Result<ClosedWorkItem, OmhlError> {
+        let session = self.session.resolve()?;
         let current = self.find_work_item(tenant, work_item)?;
         if current.data["status"] == "closed" {
             return Err(OmhlError::rule(RuleCode::InvalidTransition, "/work_item"));
@@ -249,7 +297,7 @@ impl<'d> Omhl<'d> {
         }
         let report = self.gate_report(tenant, work_item, snapshots)?;
         let request = closing_request(tenant, author, current, &report, &snapshots.head_commit);
-        let outcome = self.hexlog.append(&request)?;
+        let outcome = self.hexlog.append_with_session(&request, &session)?;
 
         Ok(ClosedWorkItem { outcome, report })
     }

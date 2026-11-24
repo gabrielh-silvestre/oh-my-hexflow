@@ -8,7 +8,8 @@ use crate::engine::chain::canonical;
 use crate::engine::snapshot::Snapshot;
 use crate::error::{ErrorCode, HexlogError};
 use crate::ids::{
-    ExternalId, Hash, IdempotencyKey, RecordId, RelationTypeName, SemanticId, TenantId, TypeName,
+    ExternalId, Hash, IdempotencyKey, RecordId, RelationTypeName, SemanticId, SessionLabel,
+    TenantId, TypeName,
 };
 
 #[cfg(test)]
@@ -429,6 +430,8 @@ pub(crate) struct RecordBody<'a> {
     pub(crate) def_hash: Cow<'a, str>,
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub(crate) batch: Option<BodyBatch<'a>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) session: Option<SessionLabel>,
 }
 
 impl RecordBody<'_> {

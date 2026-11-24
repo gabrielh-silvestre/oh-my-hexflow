@@ -79,6 +79,7 @@ pub enum RuleCode {
     RoleRevisionForbidden,
     RoleAnswerForbidden,
     RoleRetirementForbidden,
+    InvalidSessionId,
 }
 
 impl RuleCode {
@@ -118,6 +119,7 @@ impl RuleCode {
             RuleCode::RoleRevisionForbidden => "role-revision-forbidden",
             RuleCode::RoleAnswerForbidden => "role-answer-forbidden",
             RuleCode::RoleRetirementForbidden => "role-retirement-forbidden",
+            RuleCode::InvalidSessionId => "invalid-session-id",
         }
     }
 
@@ -174,6 +176,10 @@ impl RuleCode {
             RuleCode::RoleRetirementForbidden => Some(Guidance {
                 cause: "this caller may not retire this node or relation",
                 next_step: "ask the verifier or the owner to retire the contradicts relation; nobody retires what they recorded",
+            }),
+            RuleCode::InvalidSessionId => Some(Guidance {
+                cause: "CLAUDE_CODE_SESSION_ID is set but empty, is not UTF-8, is longer than 100 UTF-16 units or equals outside-claude-code",
+                next_step: "unset CLAUDE_CODE_SESSION_ID, or run omhl inside a Claude Code session",
             }),
             _ => None,
         }

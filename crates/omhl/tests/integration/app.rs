@@ -64,6 +64,7 @@ impl Fixture {
             clock: &self.raw.clock,
             ids: &self.raw.ids,
             probe: &self.probe,
+            session: &crate::support::NO_SESSION,
         }
     }
 
@@ -1706,6 +1707,7 @@ fn it_should_report_no_marker_when_discovering_outside_a_project() {
         claude_code: false,
         role: None,
         plugin_root: None,
+        session: None,
     };
 
     let error = match Runtime::discover(dir.path(), None, &env) {
@@ -1729,6 +1731,7 @@ fn it_should_open_the_database_from_the_environment_default() {
         claude_code: false,
         role: None,
         plugin_root: None,
+        session: None,
     };
     let runtime = match Runtime::discover(project.dir(), None, &env) {
         Ok(runtime) => runtime,

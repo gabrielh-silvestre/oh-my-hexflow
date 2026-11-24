@@ -59,6 +59,7 @@ const bodies = {
   relation_native: { ...common(4), type: 'after', lineage: relLineage, native_catalog: 'v1', retirement: false },
   retirement_node: { ...common(5), type: 'note', lineage: { kind: 'node', id: 'a.two' }, revises: R(2), retirement: true },
   retirement_relation: { ...common(6), type: 'after', lineage: relLineage, native_catalog: 'v1', revises: R(4), retirement: true },
+  node_with_session: { ...common(7), type: 'note', lineage: { kind: 'node', id: 'a.one' }, retirement: false, data: {}, session: 'c0ffee00-1111-2222-3333-444455556666' },
   node_keyless_batch_first: { ...common(1), type: 'note', lineage: { kind: 'node', id: 'a.one' }, retirement: false, data: {}, batch: { fingerprint: FP, count: 1 } },
 };
 const gb = {};

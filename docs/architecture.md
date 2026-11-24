@@ -100,7 +100,7 @@ O `skill_examples` executa `check sweep`, que varre o `/proc` inteiro e vale par
 
 ## 5. Pontos rasos ou com vazamento
 
-Nove itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o que aceito até haver motivo.
+"Corte" é o que recomendo fazer; "dívida" é o que aceito até haver motivo.
 
 1. **Vocabulário de tipos espalhado (corte).** Trade-off: `graphs` ganha interface; em troca vira o único dono do vocabulário, que o `gate` já prova que dá para isolar.
 
@@ -119,3 +119,5 @@ Nove itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 8. **Superfície pública do `hexlog` maior que o consumo (dívida consciente).** A causa é a regra de que os testes de integração usem só a API pública (`it_should_keep_integration_tests_on_the_public_api`): o que os testes de adulteração precisam vira público. Cortar exige uma feature de cargo para test support.
 
 9. **Helpers de teste copiados entre `src/test_support` e `tests/support` (dívida aceita).** O teste unitário de `src/**/tests.rs` não alcança `tests/support`, então os helpers existem nas duas pastas. Feature de cargo e `#[path]` foram descartados no plano da `perf3` (D4; decisão `perf3-test-support-copiado`). Custo: mudar um helper vale em dois arquivos, e nenhum teste confere que as cópias não derivam. Gatilho do corte: a primeira deriva de corpo achada, ou o fluxo de entrevista de fluxos que o plano reserva para deduplicar. Corte: um arquivo único de helper, junto com o corte do item 8.
+
+10. **Binário anterior sobre banco com sessão não é suportado (limite aceito).** O corpo do registro recusa campo desconhecido: um `omhl` que não conhece `session` falha `get` e `list` nesses registros com o detalhe `invalid-body`, e `verify` acusa cada um. Reverter a mudança não devolve a leitura: o caminho de volta é instalar um binário que conhece o campo, nunca apagar nem reescrever registros. Regra: depois do merge, instale o binário novo em `~/.cargo/bin/omhl` (`cargo install --path crates/omhl`), o caminho que os hooks de git executam, antes de qualquer gravação no banco real; nunca rode o `target/debug` ou o `target/release` de uma worktree contra o banco real.

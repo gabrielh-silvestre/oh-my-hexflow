@@ -1,4 +1,5 @@
 use std::ffi::OsString;
+use std::process::ExitCode;
 
 use ::omhl::adapters::cli;
 use ::omhl::project::Env;
@@ -19,6 +20,18 @@ pub fn run_omhl(
     claude_code: bool,
     role: Option<&str>,
 ) -> Run {
+    run_omhl_with_session(project, args, stdin, claude_code, role, None).1
+}
+
+/// Como `run_omhl`, com o valor cru de `CLAUDE_CODE_SESSION_ID` (`None` é a variável ausente) e o código de saída.
+pub fn run_omhl_with_session(
+    project: &Project,
+    args: &[&str],
+    stdin: &str,
+    claude_code: bool,
+    role: Option<&str>,
+    session: Option<OsString>,
+) -> (ExitCode, Run) {
     let env = Env {
         xdg_data_home: Some(project.xdg().as_os_str()),
         home: None,
@@ -27,6 +40,7 @@ pub fn run_omhl(
         claude_code,
         role: role.map(str::to_owned),
         plugin_root: None,
+        session,
     };
     let argv = ["omhl", "--project-dir"]
         .into_iter()
@@ -35,10 +49,12 @@ pub fn run_omhl(
         .chain(args.iter().map(OsString::from));
     let (mut out, mut err) = (Vec::new(), Vec::new());
 
-    cli::run(argv, &mut stdin.as_bytes(), &mut out, &mut err, &env);
+    let exit = cli::run(argv, &mut stdin.as_bytes(), &mut out, &mut err, &env);
 
-    Run {
+    let run = Run {
         stdout: String::from_utf8_lossy(&out).into_owned(),
         stderr: String::from_utf8_lossy(&err).into_owned(),
-    }
+    };
+
+    (exit, run)
 }

@@ -11,7 +11,7 @@ use hexlog::{
     AppendItem, AppendRequest, Author, Catalog, Clock, Config, Deps, ErrorCode, ExternalId,
     FieldName, Hexlog, HexlogError, IdGenerator, IdempotencyKey, ItemBody, Lineage, ListFilter,
     NativeNode, NativeNodes, PageRequest, RecordId, RelationQuery, RelationTypeName, SemanticId,
-    Snapshot, SnapshotKind, TenantId, TypeName,
+    SessionLabel, Snapshot, SnapshotKind, TenantId, TypeName,
 };
 use serde_json::Value;
 use tempfile::TempDir;
@@ -213,6 +213,10 @@ pub fn tenant(text: &str) -> TenantId {
 
 pub fn sid(text: &str) -> SemanticId {
     SemanticId::parse(text).expect("valid semantic id")
+}
+
+pub fn session(text: &str) -> SessionLabel {
+    SessionLabel::parse(text).expect("valid session label")
 }
 
 pub fn ty(text: &str) -> TypeName {

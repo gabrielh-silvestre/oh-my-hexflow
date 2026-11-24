@@ -51,6 +51,8 @@ const MANUAL_CHECK: &str =
     "blocking = false\nhow = \"Review it by hand.\"\n\n[when]\nevent = \"before-merge\"\n";
 const GUIDELINE: &str = "kind = \"business\"\ntext = \"Be brief.\"\n";
 const SPEC_PART: &str = "## Objetivo\n\nGuardar o dinheiro em centavos.\n\n## Diretivas e premissas aplicáveis\n\n- premises.p1\n\n## Comportamentos\n\n- CMP-001: o sistema guarda o valor em centavos.\n\n## Critérios de aceitação\n\n- CA-001: o valor 1,50 vira 150.\n\n## Fora de escopo\n\nMoedas.\n";
+const SESSION_DECISION: &str = r#"{"items":[{"body":{"kind":"node","id":"decisions.d1","type":"decision","data":{"text":"Use integers.","evidence":[{"source":"docs","summary":"Cents are integers."}]}}},{"body":{"kind":"relation","relation_type":"supports","from":"premises.p1","to":"decisions.d1"}}]}"#;
+const SESSION_GAP: &str = r#"{"items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}}]}"#;
 const DEVELOP_MARK: &str = "omhl-develop-mark v1\n";
 
 // Parser dos blocos
@@ -366,6 +368,18 @@ impl Fixture {
         assert_eq!(output.code, Some(0), "fixture append: {}", output.stderr);
     }
 
+    /// O filho roda com o ambiente limpo: só assim um exemplo tem uma sessão gravada.
+    fn append_in_session(&self, session: &str, request: &str) {
+        let output = omhl(&["append"])
+            .cwd(self.dir())
+            .xdg(self.xdg())
+            .env("CLAUDECODE", "1")
+            .env("CLAUDE_CODE_SESSION_ID", session)
+            .stdin(request)
+            .run();
+        assert_eq!(output.code, Some(0), "fixture append: {}", output.stderr);
+    }
+
     fn omhl_ok(&self, args: &[&str]) {
         let output = omhl(args)
             .cwd(self.dir())
@@ -411,6 +425,11 @@ impl Fixture {
         };
         match name {
             "project" => fixture.seed(),
+            "sessions" => {
+                fixture.seed();
+                fixture.append_in_session("5b1c0f3e-77a2-4c1e-9d0b-2f6a8e41c9aa", SESSION_DECISION);
+                fixture.append_in_session("0e4d2a96-3c58-4f0b-8a17-d6b9c1e75f02", SESSION_GAP);
+            }
             "git" => {
                 fixture.seed();
                 fixture.init_git();

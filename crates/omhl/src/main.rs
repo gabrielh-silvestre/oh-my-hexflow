@@ -18,6 +18,7 @@ fn main() -> ExitCode {
         claude_code: std::env::var_os("CLAUDECODE").is_some_and(|value| value == "1"),
         role: std::env::var_os(ROLE_VARIABLE).map(|value| value.to_string_lossy().into_owned()),
         plugin_root: plugin_root.as_deref(),
+        session: std::env::var_os("CLAUDE_CODE_SESSION_ID"),
     };
     cli::run(
         std::env::args_os(),

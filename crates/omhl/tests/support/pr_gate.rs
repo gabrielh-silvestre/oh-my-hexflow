@@ -65,15 +65,19 @@ pub fn project_check(id: &str, event: &str, blocking: bool, shadowed: bool) -> N
     }
 }
 
-/// Como `project_check`, mas com `run`, `timeout_secs` e `expect` e gravado pelo `loader`.
-pub fn mechanical_project_check(id: &str, event: &str, blocking: bool, shadowed: bool) -> NodeView {
-    let mut data = check_data(event, "run it", blocking);
+pub fn mechanical_check_data(event: &str, how: &str, blocking: bool) -> Value {
+    let mut data = check_data(event, how, blocking);
     data["run"] = json!(["true"]);
     data["timeout_secs"] = json!(60);
     data["expect"] = json!([{"exit": 0, "outcome": "passed"}]);
 
+    data
+}
+
+/// Como `project_check`, mas com `run`, `timeout_secs` e `expect` e gravado pelo `loader`.
+pub fn mechanical_project_check(id: &str, event: &str, blocking: bool, shadowed: bool) -> NodeView {
     NodeView {
-        data,
+        data: mechanical_check_data(event, "run it", blocking),
         author: loader_author(),
         ..project_check(id, event, blocking, shadowed)
     }

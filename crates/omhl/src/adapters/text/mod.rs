@@ -9,6 +9,7 @@ mod list;
 mod load;
 mod render;
 mod report;
+mod sessions;
 mod simple;
 mod spec_validate;
 #[cfg(test)]
@@ -59,6 +60,7 @@ pub enum CommandKey {
     ReportAnswers,
     ReportRecurrences,
     ReportRetro,
+    ReportSessions,
     HookSessionStart,
     HookSpecLock,
     HookAgentRole,
@@ -66,7 +68,7 @@ pub enum CommandKey {
 }
 
 impl CommandKey {
-    pub const ALL: [CommandKey; 28] = [
+    pub const ALL: [CommandKey; 29] = [
         Self::List,
         Self::Get,
         Self::Append,
@@ -91,6 +93,7 @@ impl CommandKey {
         Self::ReportAnswers,
         Self::ReportRecurrences,
         Self::ReportRetro,
+        Self::ReportSessions,
         Self::HookSessionStart,
         Self::HookSpecLock,
         Self::HookAgentRole,
@@ -115,6 +118,7 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::ReportAnswers => Some(&BaseRenderer(report::Answers)),
         CommandKey::ReportRecurrences => Some(&BaseRenderer(report::Recurrences)),
         CommandKey::ReportRetro => Some(&BaseRenderer(report::Retro)),
+        CommandKey::ReportSessions => Some(&BaseRenderer(sessions::Sessions)),
         CommandKey::Project => Some(&BaseRenderer(simple::Project)),
         CommandKey::CheckSweep => Some(&BaseRenderer(simple::CheckSweep)),
         CommandKey::CheckRetire => Some(&BaseRenderer(simple::CheckRetire)),
@@ -148,6 +152,7 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::ReportAnswers => &report::ANSWERS_PROFILE,
         CommandKey::ReportRecurrences => &report::RECURRENCES_PROFILE,
         CommandKey::ReportRetro => &report::RETRO_PROFILE,
+        CommandKey::ReportSessions => &sessions::PROFILE,
         CommandKey::Project => &simple::PROJECT_PROFILE,
         CommandKey::CheckSweep => &simple::CHECK_SWEEP_PROFILE,
         CommandKey::CheckRetire => &simple::CHECK_RETIRE_PROFILE,
@@ -228,6 +233,7 @@ pub fn deferred(key: CommandKey) -> bool {
         | CommandKey::SpecValidate
         | CommandKey::ReportAnswers
         | CommandKey::ReportRecurrences
-        | CommandKey::ReportRetro => false,
+        | CommandKey::ReportRetro
+        | CommandKey::ReportSessions => false,
     }
 }

@@ -40,5 +40,7 @@ mod project;
 mod project_action;
 mod projection_write;
 mod repo_checks;
+mod report_sessions;
 mod rests_on;
+mod session;
 mod spec_store;

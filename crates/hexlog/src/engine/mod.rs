@@ -4,6 +4,7 @@ pub(crate) mod limits;
 pub(crate) mod model;
 pub(crate) mod ports;
 pub(in crate::engine) mod rules;
+pub(crate) mod scan;
 pub(crate) mod snapshot;
 pub(in crate::engine) mod verify;
 

@@ -69,6 +69,7 @@ Cada erro traz o código (`error.code` no JSON) e, nos detalhes, o `path` do cam
 - `rests-on-target-type` (saída 1): uma diretiva se apoia numa premissa. A relation `rests-on` de diretiva só aceita diretiva.
 - `guideline-retire-by-command` (saída 1): a retirada de diretiva veio pelo `append`. Use `omhl guideline retire`.
 - `role-unknown` (saída 1): o `OMHL_ROLE` tem um valor fora dos sete papéis, ou foi definido fora do Claude Code. Corrija ou remova a variável.
+- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor (`path` vazio). Remova a variável ou rode o `omhl` numa sessão do Claude Code.
 - `role-record-forbidden` (saída 1): o papel grava um tipo de node ou relação que não é dele, uma divergência criada fora de `open`, ou uma relação a partir de node de outro ou inexistente. Grave só o que a linha do papel permite.
 - `role-revision-forbidden` (saída 1): o papel revisa node de outro, premissa já confirmada ou divergência já resolvida, muda o `kind` de premissa ou gap, ou tira uma divergência de `open` fora do fechamento do verifier. Grave um node seu ou peça ao dono.
 - `role-answer-forbidden` (saída 1): o critic liga `answers` a um destino que não é gap `technical`. Deixe o gap ao dono.

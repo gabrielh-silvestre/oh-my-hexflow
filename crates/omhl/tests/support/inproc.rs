@@ -22,6 +22,7 @@ pub fn run_inproc_at(project_dir: &Path, xdg: &Path, args: &[&str], stdin: &str)
         claude_code: false,
         role: None,
         plugin_root: None,
+        session: None,
     };
     let argv = ["omhl", "--project-dir"]
         .into_iter()

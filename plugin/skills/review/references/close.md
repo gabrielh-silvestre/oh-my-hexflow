@@ -51,6 +51,7 @@ Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `-
 - `probe-failed` (saída 1): o git não respondeu (fora de um repositório, por exemplo). Rode dentro de um checkout.
 - `spec-store-unusable` (saída 1): há retro e a pasta da spec do work item não pôde ser lida, ou há mais de uma pasta `wi-<id>__*`. Corrija a pasta no diretório principal.
 - `invalid-workflow-config` (saída 1): há retro e o `.omhl/workflow.toml` é inválido. Corrija o arquivo. Sem retro, o `close` grava mesmo com o arquivo inválido.
+- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor (`path` vazio). Remova a variável ou rode o `omhl` numa sessão do Claude Code.
 - `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
 - `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
 - `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.

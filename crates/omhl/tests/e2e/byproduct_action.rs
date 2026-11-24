@@ -134,6 +134,7 @@ impl Fixture {
             clock: &self.clock,
             ids: &self.ids,
             probe: &probe,
+            session: &crate::support::NO_SESSION,
         };
         let mut db = Omhl::open(&Config::new(self.project.db_path()), deps).expect("omhl opens");
         db.ensure_tenant(&acme()).expect("the tenant is created");

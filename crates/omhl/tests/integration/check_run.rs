@@ -16,7 +16,7 @@ use omhl::app::App;
 use omhl::app::action::{Action, Caller, CheckTarget};
 use omhl::app::error::AppError;
 use omhl::app::retry::RetryPolicy;
-use omhl::facade::{Omhl, OmhlDeps};
+use omhl::facade::{Omhl, OmhlDeps, SessionSource};
 use omhl::mechanical::spec_digest;
 use omhl::ports::blob::BlobStore;
 use omhl::probe::{HeadFacts, ProbeOutcome, TreeSource};
@@ -31,6 +31,7 @@ use support::gate::relation_item;
 use support::omhl::{acme, check_data, node_item, with_snapshot, work_item_data};
 use support::raw::RawHarness;
 use support::runner::FakeRunner;
+use support::session::{Stamp, raw_session, stamps};
 use support::{
     FakeProbe, author, executor_attestation_data, executor_author, loader_author, snap,
     wi_head_facts,
@@ -78,6 +79,7 @@ impl Fixture {
             clock: &self.raw.clock,
             ids: &self.raw.ids,
             probe,
+            session: &crate::support::NO_SESSION,
         };
         let mut omhl = Omhl::open(&self.raw.config(), deps).expect("omhl opens");
         omhl.ensure_tenant(&acme()).expect("the tenant is created");
@@ -150,10 +152,22 @@ impl Fixture {
         retry: &RetryPolicy,
         clock: &'a dyn Clock,
     ) -> App<'a> {
+        self.app_on_session(probe, runner, retry, clock, &crate::support::NO_SESSION)
+    }
+
+    fn app_on_session<'a>(
+        &'a self,
+        probe: &'a FakeProbe,
+        runner: &'a dyn CommandRunner,
+        retry: &RetryPolicy,
+        clock: &'a dyn Clock,
+        session: &'a SessionSource,
+    ) -> App<'a> {
         let deps = OmhlDeps {
             clock,
             ids: &self.raw.ids,
             probe,
+            session,
         };
         let app = App::open(&self.raw.db_path(), &acme(), deps, retry)
             .unwrap_or_else(|error| panic!("the app opens: {error}"));
@@ -418,6 +432,96 @@ fn no_attestations() -> Vec<Value> {
 }
 
 // Testes
+
+#[test]
+fn it_should_record_the_environment_session_on_the_attestation_of_a_check_run() {
+    let fx = Fixture::new();
+    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    let (runner, _specs) = FakeRunner::new(vec![ok(LINT)]);
+    let probe = wi_probe();
+    let session = raw_session("5b1c0f3e-77a2-4c1e-9d0b-2f6a8e41c9aa");
+    let mut app = fx.app_on_session(
+        &probe,
+        &runner,
+        &RetryPolicy::default(),
+        &fx.raw.clock,
+        &session,
+    );
+
+    run_pr(&mut app).expect("the check run succeeds");
+
+    assert_eq!(
+        stamps(&fx.raw.db_path()).last(),
+        Some(&Stamp::new(
+            &att("lint"),
+            false,
+            "5b1c0f3e-77a2-4c1e-9d0b-2f6a8e41c9aa"
+        ))
+    );
+}
+
+#[test]
+fn it_should_run_the_first_check_then_refuse_the_attestation_and_stop_when_the_session_is_invalid()
+{
+    let fx = Fixture::new();
+    fx.seed_check("checks.docs", run_data("before-pr", true, DOCS));
+    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    let (runner, specs) = FakeRunner::new(vec![ok(DOCS), ok(LINT)]);
+    let probe = wi_probe();
+    let session = raw_session("");
+    let mut app = fx.app_on_session(
+        &probe,
+        &runner,
+        &RetryPolicy::default(),
+        &fx.raw.clock,
+        &session,
+    );
+
+    let error = run_pr(&mut app).expect_err("the invalid session refuses the attestation");
+
+    assert_eq!(
+        (
+            received(&specs),
+            error.code().to_owned(),
+            all_codes(&error).contains(&json!("invalid-session-id")),
+            list(&mut app, "attestation").len()
+        ),
+        (vec![argv(DOCS)], "attestation-refused".to_owned(), true, 0)
+    );
+}
+
+#[test]
+fn it_should_name_the_session_variable_and_not_its_value_in_the_hint_of_an_invalid_session_refusal()
+{
+    let fx = Fixture::new();
+    fx.seed_check("checks.docs", run_data("before-pr", true, DOCS));
+    let (runner, _specs) = FakeRunner::new(vec![ok(DOCS)]);
+    let probe = wi_probe();
+    let value = "q".repeat(101);
+    let session = raw_session(&value);
+    let mut app = fx.app_on_session(
+        &probe,
+        &runner,
+        &RetryPolicy::default(),
+        &fx.raw.clock,
+        &session,
+    );
+
+    let error = run_pr(&mut app).expect_err("the invalid session refuses the attestation");
+
+    let found = details(&error);
+    let hint = found[0]["context"]["hint"]
+        .as_str()
+        .expect("the refusal has a hint");
+    assert_eq!(
+        (
+            hint.contains("CLAUDE_CODE_SESSION_ID"),
+            hint.contains(omhl::facade::OUTSIDE_CLAUDE_CODE),
+            found.to_string().contains(&value)
+        ),
+        (true, true, false)
+    );
+}
 
 #[test]
 fn it_should_attest_a_passing_check_with_the_head_commit() {

@@ -107,6 +107,7 @@ impl Engine<'_> {
             Action::ReportAnswers { work_item } => self.report_answers(work_item.as_deref()),
             Action::ReportRecurrences { min } => self.report_recurrences(*min),
             Action::ReportRetro { work_item } => self.report_retro(work_item),
+            Action::ReportSessions { work_items } => self.report_sessions(work_items),
             Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
             Action::CheckSweep | Action::GateWorktree { .. } => {
                 Err(AppError::action_outside_engine())
