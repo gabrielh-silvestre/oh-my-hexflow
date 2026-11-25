@@ -8,7 +8,6 @@ use crate::engine::verify::for_each_stored_row;
 use crate::error::HexlogError;
 use crate::ids::{Name, RelationTypeName, SemanticId, SessionLabel, TenantId};
 
-/// Um record como foi gravado, sem a resolução de origem nem de status que as views fazem.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScannedRecord {
     pub seq: u64,

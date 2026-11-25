@@ -320,7 +320,7 @@ impl<'d> Hexlog<'d> {
         })
     }
 
-    /// Todo record do tenant, em ordem de `seq`, numa só transação de leitura.
+    /// Todo record do tenant, em ordem de `seq`.
     pub fn scan_records(
         &mut self,
         tenant: &TenantId,

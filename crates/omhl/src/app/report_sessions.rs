@@ -17,7 +17,7 @@ struct Tally {
     work_items: BTreeSet<String>,
 }
 
-/// Lê o banco numa só passada em ordem de `seq`: o work item de uma ponta vale o que ela tinha no `seq` da aresta.
+/// O work item de uma ponta é o que ela tinha no `seq` da aresta: entregue os registros ao `record` em ordem de `seq`.
 #[derive(Default)]
 struct Ledger {
     node_work_items: BTreeMap<String, String>,

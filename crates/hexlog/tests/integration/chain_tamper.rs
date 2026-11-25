@@ -429,6 +429,11 @@ fn it_should_read_a_body_with_an_unknown_top_level_field_as_invalid_body() {
 
     assert_eq!(rewritten, 1);
     assert_unreadable_tail(&harness, tail_seq);
+    let error = harness
+        .open()
+        .list(&tenant("acme"), &all(), &page(10))
+        .unwrap_err();
+    assert_refusal(&error, ErrorCode::Internal, "invalid-body", "");
 }
 
 #[test]

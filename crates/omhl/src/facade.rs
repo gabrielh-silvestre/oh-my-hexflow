@@ -33,10 +33,10 @@ const PROJECTED_NODE_TYPES: [&str; 7] = [
 ];
 const PROJECTED_RELATIONS: [&str; 3] = ["supports", "contradicts", "answers"];
 
-/// Carimbo gravado quando a variável de sessão está ausente; nenhum id real de sessão é igual a ele.
+/// Reservado: uma sessão real com este valor sumiria do `report sessions`.
 pub const OUTSIDE_CLAUDE_CODE: &str = "outside-claude-code";
 
-/// Valor cru de `CLAUDE_CODE_SESSION_ID`: só é validado ao gravar, para a leitura nunca falhar por ele.
+/// Resolva só ao gravar: um valor inválido de `CLAUDE_CODE_SESSION_ID` não pode derrubar uma leitura.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionSource {
     Absent,
