@@ -20,7 +20,9 @@ use crate::engine::rules::{
     Endpoint, endpoint_types_allowed, instant_is_well_formed, static_rules, validate_shape,
 };
 use crate::error::{ErrorCode, HexlogError};
-use crate::ids::{Hash, Name, RecordId, RelationTypeName, SemanticId, TenantId, TypeName};
+use crate::ids::{
+    Hash, Name, RecordId, RelationTypeName, SemanticId, SessionLabel, TenantId, TypeName,
+};
 
 pub struct DecideCtx<'a> {
     pub defs: &'a dyn Definitions,
@@ -28,6 +30,7 @@ pub struct DecideCtx<'a> {
     pub ids: &'a dyn IdGenerator,
     pub limits: &'a Limits,
     pub now: &'a str,
+    pub session: Option<&'a SessionLabel>,
 }
 
 pub fn decide(
@@ -660,6 +663,7 @@ fn build_record(
             .map(Cow::Borrowed),
         def_hash: Cow::Borrowed(subject.def_hash.as_str()),
         batch,
+        session: ctx.session.cloned(),
     };
     let text = body.canonical()?;
     let hash = hash_record(link.prev_hash.as_str(), &text);

@@ -16,6 +16,7 @@ pub use crate::engine::model::{
     RelationQuery, Scalar,
 };
 pub use crate::engine::ports::{Clock, DataViolation, IdGenerator, NativeNode, NativeNodes};
+pub use crate::engine::scan::ScannedRecord;
 pub use crate::engine::snapshot::{Snapshot, SnapshotKind};
 pub use crate::error::{Detail, ErrorCode, HexlogError, pointer_segment};
 pub use crate::facade::{
@@ -23,8 +24,8 @@ pub use crate::facade::{
     VerifyPolicy,
 };
 pub use crate::ids::{
-    ExternalId, Hash, IdempotencyKey, Name, RecordId, RelationTypeName, SemanticId, TenantId,
-    TypeName,
+    ExternalId, Hash, IdempotencyKey, Name, RecordId, RelationTypeName, SemanticId, SessionLabel,
+    TenantId, TypeName,
 };
 
 pub mod chain {

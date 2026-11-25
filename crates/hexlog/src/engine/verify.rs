@@ -136,24 +136,36 @@ fn scan_records(
         seq: 0,
         hash: anchor.as_str().to_owned(),
     };
+    for_each_stored_row(reads, tenant, |row| {
+        scan.total_records += 1;
+        scan.inspect_row(tenant, &previous, &row, expected);
+        previous = Previous {
+            seq: row.seq,
+            hash: row.hash,
+        };
+        Ok(())
+    })?;
+
+    Ok(scan)
+}
+
+pub(super) fn for_each_stored_row(
+    reads: &mut dyn VerifyReads,
+    tenant: &TenantId,
+    mut visit: impl FnMut(StoredRow) -> Result<(), HexlogError>,
+) -> Result<(), HexlogError> {
     let mut after_seq = None;
     loop {
         let page = reads.stored_records(tenant, after_seq, PAGE_SIZE)?;
         let Some(last_seq) = page.last().map(|row| row.seq) else {
-            return Ok(scan);
+            return Ok(());
         };
         let full_page = u32::try_from(page.len()) == Ok(PAGE_SIZE);
-        scan.total_records += u64::try_from(page.len())
-            .map_err(|_| HexlogError::internal("page length out of range"))?;
         for row in page {
-            scan.inspect_row(tenant, &previous, &row, expected);
-            previous = Previous {
-                seq: row.seq,
-                hash: row.hash,
-            };
+            visit(row)?;
         }
         if !full_page {
-            return Ok(scan);
+            return Ok(());
         }
         after_seq = Some(last_seq);
     }

@@ -136,9 +136,9 @@ fn refusals() -> Vec<Value> {
         ),
         error(
             "attestation-refused",
-            "the guard refused an attestation",
+            "an attestation was refused",
             vec![json!({
-                "code": "outcome-immutable", "message": "the guard refused the attestation", "path": "checks.ok",
+                "code": "outcome-immutable", "message": "the attestation was refused", "path": "checks.ok",
                 "context": { "kind": "guard-refused", "check": "checks.ok", "hint": "this snapshot already has the stored outcome for this check; change the tree to get a new verdict" }
             })],
         ),

@@ -361,11 +361,7 @@ impl AppError {
     }
 
     pub(crate) fn attestation_refused(details: Vec<CheckDetail>) -> AppError {
-        AppError::per_check(
-            "attestation-refused",
-            "the guard refused an attestation",
-            details,
-        )
+        AppError::per_check("attestation-refused", "an attestation was refused", details)
     }
 
     pub(crate) fn attestation_not_recorded(details: Vec<CheckDetail>) -> AppError {

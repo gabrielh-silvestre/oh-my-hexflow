@@ -150,6 +150,7 @@ fn open_app<'a>(raw: &'a RawHarness, probe: &'a FakeProbe) -> App<'a> {
         clock: &raw.clock,
         ids: &raw.ids,
         probe,
+        session: &crate::support::NO_SESSION,
     };
 
     App::open(&raw.db_path(), &acme(), deps, &RetryPolicy::default())
@@ -930,6 +931,7 @@ fn it_should_accept_a_git_tree_attestation_for_the_head_tree_when_the_index_equa
         clock: &raw.clock,
         ids: &raw.ids,
         probe: &git_probe,
+        session: &crate::support::NO_SESSION,
     };
     let mut omhl = Omhl::open(&raw.config(), deps).expect("omhl opens");
     omhl.ensure_tenant(&acme()).expect("the tenant is created");

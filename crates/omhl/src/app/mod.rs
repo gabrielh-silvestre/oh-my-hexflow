@@ -12,6 +12,7 @@ mod hooks;
 mod load;
 mod read;
 mod report;
+mod report_sessions;
 mod spec;
 mod spec_facts;
 mod wire;

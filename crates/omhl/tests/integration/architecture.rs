@@ -583,6 +583,28 @@ fn adapters_refs(source: &str) -> Result<usize, String> {
         + path_refs(source, &["adapters::"])?)
 }
 
+/// Escritas no `hexlog` sem sessão. O parêntese é parte do padrão: sem ele, `Hexlog::append` casaria com `Hexlog::append_with_session`.
+fn unlabeled_append_refs(source: &str) -> Result<usize, String> {
+    // O rustfmt pode levar o `.append(` para a linha de baixo.
+    let code = lex(source)?
+        .code
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(" .", ".");
+
+    Ok(occurrences(&code, "Hexlog::append(", false) + occurrences(&code, "hexlog.append(", false))
+}
+
+/// Escritas no `hexlog` com sessão.
+fn labeled_append_refs(source: &str) -> Result<usize, String> {
+    Ok(occurrences(
+        &lex(source)?.code,
+        "append_with_session(",
+        false,
+    ))
+}
+
 /// Macros que escrevem direto no stdout do processo, com ou sem espaço antes do `!`.
 fn stdout_macro_refs(source: &str) -> Result<usize, String> {
     let mut code = lex(source)?.code;
@@ -612,6 +634,49 @@ fn assert_no_failures(failures: &[String]) {
 }
 
 // ------------------------------------------------------------------- testes
+
+#[test]
+fn it_should_write_to_the_hexlog_only_with_a_session_and_only_from_the_two_facade_write_points() {
+    let mut failures = prove_both_sides(
+        unlabeled_append_refs,
+        &[
+            "fn f(h: &mut Hexlog) { Hexlog::append(h, &req); }",
+            "fn f(&mut self) { self.hexlog.append(req) }",
+            "fn f(&mut self) { self.hexlog\n        .append(req) }",
+        ],
+        &[
+            "fn f(&mut self) { self.hexlog.append_with_session(req, &session) }",
+            "fn f(&mut self) { self.omhl.append(req) }",
+            "// self.hexlog.append(req)",
+            "fn f(file: OpenOptions) { file.append(true); }",
+        ],
+    );
+    failures.extend(prove_both_sides(
+        labeled_append_refs,
+        &["fn f(&mut self) { self.hexlog.append_with_session(req, &s) }"],
+        &["// self.hexlog.append_with_session(req, &s)"],
+    ));
+    let src = src_dir();
+    let files = all_rust_files(&src);
+    failures.extend(scan_paths(&files, unlabeled_append_refs));
+    let mut labeled_calls: Vec<(String, usize)> = Vec::new();
+    for file in &files {
+        match labeled_append_refs(&read(file)) {
+            Ok(0) => {}
+            Ok(found) => labeled_calls.push((
+                file.strip_prefix(&src)
+                    .unwrap_or(file)
+                    .to_string_lossy()
+                    .into_owned(),
+                found,
+            )),
+            Err(error) => failures.push(format!("{}: {error}", file.display())),
+        }
+    }
+
+    assert_no_failures(&failures);
+    assert_eq!(labeled_calls, [("facade.rs".to_owned(), 2)]);
+}
 
 #[test]
 fn it_should_keep_main_free_of_domain_logic_and_hexlog_paths() {

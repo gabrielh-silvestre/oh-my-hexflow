@@ -223,6 +223,7 @@ fn current_relations(project: &Project, relation_type: &str) -> usize {
         clock: &clock,
         ids: &ids,
         probe: &probe,
+        session: &crate::support::NO_SESSION,
     };
     let mut omhl = Omhl::open(&Config::new(project.db_path()), deps).expect("omhl opens");
     let query = RelationQuery {

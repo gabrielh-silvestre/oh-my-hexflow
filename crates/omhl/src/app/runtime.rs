@@ -10,7 +10,7 @@ use super::action::{Action, Caller};
 use super::error::AppError;
 use super::gate_worktree::{self, Decision};
 use super::retry::RetryPolicy;
-use crate::facade::OmhlDeps;
+use crate::facade::{OmhlDeps, SessionSource};
 use crate::ports::blob::BlobStore;
 use crate::ports::clock::SystemClock;
 use crate::ports::git::GitProbe;
@@ -34,6 +34,7 @@ pub struct Runtime {
     clock: SystemClock,
     ids: V7Ids,
     probe: GitProbe,
+    session: SessionSource,
     root: PathBuf,
     retry: RetryPolicy,
     runner: ProcessRunner,
@@ -66,6 +67,7 @@ impl Runtime {
             ids: V7Ids,
             probe: GitProbe::new(&located.root)
                 .with_index_file(env.git_index_file.map(Path::new), &cwd),
+            session: env.session.clone().into(),
             root: located.root,
             retry: RetryPolicy::default(),
             runner: ProcessRunner::bound_to_parent(env.parent_pid),
@@ -79,6 +81,7 @@ impl Runtime {
             clock: &self.clock,
             ids: &self.ids,
             probe: &self.probe,
+            session: &self.session,
         };
         let hooks_dir = self
             .data_root

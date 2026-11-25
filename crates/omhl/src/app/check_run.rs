@@ -38,6 +38,7 @@ const SNAPSHOT_REFUSED_HINT: &str =
     "the index changed while the command ran; do not stage during a hook, then run again";
 const PROBE_FAILED_HINT: &str =
     "git could not read the tree; run git status and fix the repository state";
+const INVALID_SESSION_HINT: &str = "CLAUDE_CODE_SESSION_ID must be unset or hold 1 to 100 UTF-16 units of UTF-8 other than outside-claude-code; unset it, or run omhl inside a Claude Code session, then run the same command again";
 const TREE_CHANGED_HINT: &str = "the command changed the working tree; keep checks read-only, add generated files to .gitignore, or restore tracked files with git checkout -- <path>";
 const BLOB_FAILED_HINT: &str =
     "the output store is not writable; fix its permissions or free disk space";
@@ -750,18 +751,14 @@ fn miss_from_recording(
             }
             Miss {
                 error: AppError::attestation_refused,
-                detail: check_detail(
-                    check,
-                    code.as_str(),
-                    "the guard refused the attestation",
-                    context,
-                ),
-                // A árvore mudou durante o comando: os checks seguintes rodariam sobre outra.
+                detail: check_detail(check, code.as_str(), "the attestation was refused", context),
+                // A árvore mudou durante o comando, ou a sessão do ambiente é inválida e não muda: os checks seguintes não têm como gravar.
                 stops: matches!(
                     code,
                     RuleCode::SnapshotTreeMismatch
                         | RuleCode::SnapshotDirty
                         | RuleCode::SnapshotNotHead
+                        | RuleCode::InvalidSessionId
                 ),
             }
         }
@@ -864,6 +861,7 @@ fn refusal_hint(code: RuleCode) -> Option<&'static str> {
     match code {
         RuleCode::OutcomeImmutable => Some(OUTCOME_IMMUTABLE_HINT),
         RuleCode::ProbeFailed => Some(PROBE_FAILED_HINT),
+        RuleCode::InvalidSessionId => Some(INVALID_SESSION_HINT),
         _ if code.as_str().starts_with("snapshot-") => Some(SNAPSHOT_REFUSED_HINT),
         _ => None,
     }

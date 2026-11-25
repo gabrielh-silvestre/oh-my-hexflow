@@ -9,6 +9,7 @@ const SEGMENT_MAX: usize = 63;
 /// Formato do id (e não teto configurável): 1 a 200 unidades UTF-16.
 pub(crate) const IDEMPOTENCY_KEY_MAX: usize = 200;
 pub(crate) const EXTERNAL_ID_MAX: usize = 200;
+pub(crate) const SESSION_LABEL_MAX: usize = 100;
 const SEMANTIC_ID_MAX: usize = 200;
 const UUID_LEN: usize = 36;
 
@@ -140,6 +141,13 @@ string_id!(
     "external-id-format",
     "invalid external id"
 );
+string_id!(
+    SessionLabel,
+    |text| is_utf16_within(text, SESSION_LABEL_MAX),
+    ErrorCode::InvalidInput,
+    "session-label-format",
+    "invalid session label"
+);
 
 macro_rules! deserialize_name {
     ($name:ident) => {
@@ -167,6 +175,7 @@ macro_rules! deserialize_name {
 
 deserialize_name!(TypeName);
 deserialize_name!(RelationTypeName);
+deserialize_name!(SessionLabel);
 
 impl Hash {
     pub(crate) fn from_lower_hex(hex: String) -> Hash {

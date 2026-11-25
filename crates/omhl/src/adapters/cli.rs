@@ -127,7 +127,7 @@ pub enum ActionCommand {
         #[command(subcommand)]
         command: SpecCommand,
     },
-    /// Read-only reports: gap answers, premise recurrences and the retro of a work item.
+    /// Read-only reports over the records.
     Report {
         #[command(subcommand)]
         command: ReportCommand,
@@ -224,6 +224,12 @@ pub enum ReportCommand {
     Retro {
         /// Id of the work item, such as work-items.w1.
         work_item: String,
+    },
+    /// List the real Claude Code sessions that wrote records: first and last record, nodes, relations and work items touched.
+    Sessions {
+        /// Id of a work item, such as work-items.w1; repeatable. Keeps the sessions that wrote a record of any of them; without it, every session is listed.
+        #[arg(long)]
+        work_item: Vec<String>,
     },
 }
 
@@ -509,6 +515,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::ReportAnswers => "report answers",
         CommandKey::ReportRecurrences => "report recurrences",
         CommandKey::ReportRetro => "report retro",
+        CommandKey::ReportSessions => "report sessions",
         CommandKey::HookSessionStart => "hook session-start",
         CommandKey::HookSpecLock => "hook spec-lock",
         CommandKey::HookAgentRole => "hook agent-role",
@@ -580,6 +587,9 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Action(ActionCommand::Report {
             command: ReportCommand::Retro { .. },
         }) => CommandKey::ReportRetro,
+        Command::Action(ActionCommand::Report {
+            command: ReportCommand::Sessions { .. },
+        }) => CommandKey::ReportSessions,
     }
 }
 
@@ -756,6 +766,11 @@ fn to_action(
         ActionCommand::Report {
             command: ReportCommand::Retro { work_item },
         } => Action::ReportRetro { work_item },
+        ActionCommand::Report {
+            command: ReportCommand::Sessions { work_item },
+        } => Action::ReportSessions {
+            work_items: work_item,
+        },
     })
 }
 

@@ -78,6 +78,9 @@ pub enum Action {
     ReportRetro {
         work_item: String,
     },
+    ReportSessions {
+        work_items: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

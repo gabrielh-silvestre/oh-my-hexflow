@@ -10,6 +10,7 @@ mod idempotency;
 mod list_filters;
 mod node_lifecycle;
 mod relations;
+mod session;
 mod snapshot_rules;
 mod support;
 mod tenant_isolation;

@@ -370,6 +370,10 @@ const LEAF_SAMPLES: &[(&str, &str)] = &[
         "omhl report answers --work-item work-items.w1",
     ),
     ("report recurrences", "omhl report recurrences --min 2"),
+    (
+        "report sessions",
+        "omhl report sessions --work-item work-items.w1",
+    ),
     ("report retro", "omhl report retro work-items.w1"),
     ("help", "omhl help"),
     ("append", APPEND_HEREDOC),
@@ -590,6 +594,13 @@ fn it_should_deny_omhl_project_and_guideline_retire_to_every_role() {
 #[test]
 fn it_should_deny_omhl_check_run_sweep_and_retire_to_every_role() {
     let cases = cases_for(&samples_of(&["check run", "check sweep", "check retire"]));
+
+    cases.iter().for_each(assert_case);
+}
+
+#[test]
+fn it_should_deny_omhl_report_sessions_to_every_role() {
+    let cases = cases_for(&samples_of(&["report sessions"]));
 
     cases.iter().for_each(assert_case);
 }
