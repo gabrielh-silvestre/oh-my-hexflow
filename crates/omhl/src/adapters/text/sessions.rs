@@ -21,7 +21,7 @@ pub static PROFILE: Profile = Profile {
         Entry::new(Region::Data, "nodes", Shape::Derived)
             .under("sessions")
             .optional(),
-        Entry::new(Region::Data, "edges", Shape::Derived)
+        Entry::new(Region::Data, "relations", Shape::Derived)
             .under("sessions")
             .optional(),
         Entry::new(Region::Data, "work_items", Shape::Literal)
@@ -46,7 +46,8 @@ impl Specialization for Sessions {
         items(value, "sessions")
             .map(|session| Line::Node {
                 depth: 0,
-                id: text(session, "id"),
+                // O id é texto livre: o prefixo impede que ele abra uma linha como se fosse `Next:`.
+                id: format!("session {}", text(session, "id")),
                 facts: session_facts(session),
             })
             .collect()
@@ -64,7 +65,7 @@ fn session_facts(session: &Value) -> Vec<Fact> {
         at_fact(session, "first"),
         at_fact(session, "last"),
         count_fact(session, "nodes", "node"),
-        count_fact(session, "edges", "edge"),
+        count_fact(session, "relations", "relation"),
         Fact {
             label: "work items",
             agent: agent_work_items,

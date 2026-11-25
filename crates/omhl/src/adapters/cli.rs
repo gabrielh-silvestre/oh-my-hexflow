@@ -225,7 +225,7 @@ pub enum ReportCommand {
         /// Id of the work item, such as work-items.w1.
         work_item: String,
     },
-    /// List the real Claude Code sessions that wrote records: first and last record, nodes, edges and work items touched.
+    /// List the real Claude Code sessions that wrote records: first and last record, nodes, relations and work items touched.
     Sessions {
         /// Id of a work item, such as work-items.w1; repeatable. Keeps the sessions that wrote a record of any of them; without it, every session is listed.
         #[arg(long)]

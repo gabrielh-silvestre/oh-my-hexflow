@@ -307,7 +307,7 @@ fn it_should_list_a_session_that_only_retired_a_record() {
     let session = db.session(SESSION_E);
 
     assert_eq!(
-        (session["nodes"].clone(), session["edges"].clone()),
+        (session["nodes"].clone(), session["relations"].clone()),
         (json!(1), json!(0))
     );
 }
@@ -319,7 +319,7 @@ fn it_should_list_a_session_that_only_revised_a_record() {
     let session = db.session(SESSION_G);
 
     assert_eq!(
-        (session["nodes"].clone(), session["edges"].clone()),
+        (session["nodes"].clone(), session["relations"].clone()),
         (json!(1), json!(0))
     );
 }
@@ -334,26 +334,99 @@ fn it_should_count_every_node_record_of_a_session_including_revisions() {
 }
 
 #[test]
-fn it_should_count_every_edge_record_of_a_session() {
+fn it_should_total_the_records_of_each_session() {
     let db = seeded();
 
-    let session = db.session(SESSION_B);
+    let totals: Vec<Value> = db
+        .sessions(&[])
+        .iter()
+        .map(|session| json!([session["id"], session["nodes"], session["relations"]]))
+        .collect();
 
     assert_eq!(
-        (session["nodes"].clone(), session["edges"].clone()),
-        (json!(2), json!(2))
+        totals,
+        [
+            json!([SESSION_A, 4, 0]),
+            json!([SESSION_B, 2, 2]),
+            json!([SESSION_C, 0, 1]),
+            json!([SESSION_D, 0, 1]),
+            json!([SESSION_E, 1, 0]),
+            json!([SESSION_F, 0, 1]),
+            json!([SESSION_G, 1, 0]),
+        ]
     );
 }
 
 #[test]
-fn it_should_date_a_session_from_its_first_to_its_last_record() {
+fn it_should_date_each_session_from_its_first_to_its_last_record() {
     let db = seeded();
+
+    let dates: Vec<Value> = db
+        .sessions(&[])
+        .iter()
+        .map(|session| json!([session["id"], session["first"], session["last"]]))
+        .collect();
+
+    assert_eq!(
+        dates,
+        [
+            json!([SESSION_A, FIRST_RECORD_OF_A, LAST_RECORD_OF_A]),
+            json!([SESSION_B, on_day("11:00"), on_day("11:30")]),
+            json!([SESSION_C, on_day("12:00"), on_day("12:00")]),
+            json!([SESSION_D, on_day("13:00"), on_day("13:00")]),
+            json!([SESSION_E, on_day("14:00"), on_day("14:00")]),
+            json!([SESSION_F, on_day("15:00"), on_day("15:00")]),
+            json!([SESSION_G, on_day("16:00"), on_day("16:00")]),
+        ]
+    );
+}
+
+#[test]
+fn it_should_order_sessions_by_their_first_record_even_when_its_date_is_later() {
+    let db = Db::new();
+    db.write(
+        Some(SESSION_A),
+        &on_day("11:00"),
+        vec![node_item("premises.a", "premise", premise_data("A", None))],
+    );
+    db.write(
+        Some(SESSION_B),
+        &on_day("10:00"),
+        vec![node_item("premises.b", "premise", premise_data("B", None))],
+    );
+
+    let ids = db.session_ids(&[]);
+
+    assert_eq!(ids, [SESSION_A, SESSION_B]);
+}
+
+#[test]
+fn it_should_date_a_session_in_write_order_when_the_clock_goes_back() {
+    let db = Db::new();
+    db.write(
+        Some(SESSION_A),
+        &on_day("11:00"),
+        vec![node_item(
+            "premises.a1",
+            "premise",
+            premise_data("A1", None),
+        )],
+    );
+    db.write(
+        Some(SESSION_A),
+        &on_day("09:00"),
+        vec![node_item(
+            "premises.a2",
+            "premise",
+            premise_data("A2", None),
+        )],
+    );
 
     let session = db.session(SESSION_A);
 
     assert_eq!(
         (session["first"].clone(), session["last"].clone()),
-        (json!(FIRST_RECORD_OF_A), json!(LAST_RECORD_OF_A))
+        (json!(on_day("11:00")), json!(on_day("09:00")))
     );
 }
 
@@ -368,7 +441,7 @@ fn it_should_take_the_work_item_of_a_node_from_its_data_and_the_own_id_of_work_i
 }
 
 #[test]
-fn it_should_give_no_work_item_to_directive_check_native_and_unlinked_edges() {
+fn it_should_give_no_work_item_to_directive_check_native_and_unlinked_relations() {
     let db = seeded();
 
     let session = db.session(SESSION_B);
@@ -386,7 +459,7 @@ fn it_should_give_a_retirement_the_work_item_of_the_previous_record_of_its_linea
 }
 
 #[test]
-fn it_should_give_an_edge_the_work_item_of_the_endpoint_that_has_one() {
+fn it_should_give_a_relation_the_work_item_of_the_endpoint_that_has_one() {
     let db = seeded();
 
     let session = db.session(SESSION_C);
@@ -395,7 +468,7 @@ fn it_should_give_an_edge_the_work_item_of_the_endpoint_that_has_one() {
 }
 
 #[test]
-fn it_should_give_an_edge_between_two_work_items_both_of_them() {
+fn it_should_give_a_relation_between_two_work_items_both_of_them() {
     let db = seeded();
 
     let session = db.session(SESSION_D);
@@ -404,7 +477,7 @@ fn it_should_give_an_edge_between_two_work_items_both_of_them() {
 }
 
 #[test]
-fn it_should_keep_the_work_item_an_endpoint_had_when_the_edge_was_written() {
+fn it_should_keep_the_work_item_an_endpoint_had_when_the_relation_was_written() {
     let db = seeded();
 
     let session = db.session(SESSION_F);
@@ -427,8 +500,8 @@ fn with_work_items() -> Db {
     db
 }
 
-/// Aresta `premises.p` -> `decisions.d` gravada com as duas pontas em W1; as pontas listadas vão para W2 e só então SESSION_C a retira.
-fn retired_edge_after_moving_to_w2(moved: &[&str]) -> Db {
+/// Relation `premises.p` -> `decisions.d` gravada com as duas pontas em W1; as pontas listadas vão para W2 e só então SESSION_C a retira.
+fn retired_relation_after_moving_to_w2(moved: &[&str]) -> Db {
     let db = with_work_items();
     let seed = db.write(
         None,
@@ -438,7 +511,7 @@ fn retired_edge_after_moving_to_w2(moved: &[&str]) -> Db {
             node_item("decisions.d", "decision", decision_data("D", Some(W1))),
         ],
     );
-    let edge = db.write(
+    let relation = db.write(
         Some(SESSION_A),
         &on_day("10:00"),
         vec![relation_item("supports", "premises.p", "decisions.d")],
@@ -467,7 +540,7 @@ fn retired_edge_after_moving_to_w2(moved: &[&str]) -> Db {
             "supports",
             "premises.p",
             "decisions.d",
-            &edge.records[0].id,
+            &relation.records[0].id,
         )],
     );
 
@@ -475,8 +548,8 @@ fn retired_edge_after_moving_to_w2(moved: &[&str]) -> Db {
 }
 
 #[test]
-fn it_should_give_an_edge_retirement_the_work_items_of_the_previous_record_of_its_lineage() {
-    let db = retired_edge_after_moving_to_w2(&["premises.p"]);
+fn it_should_give_a_relation_retirement_the_work_items_of_the_previous_record_of_its_lineage() {
+    let db = retired_relation_after_moving_to_w2(&["premises.p"]);
 
     let session = db.session(SESSION_C);
 
@@ -484,8 +557,8 @@ fn it_should_give_an_edge_retirement_the_work_items_of_the_previous_record_of_it
 }
 
 #[test]
-fn it_should_not_list_an_edge_retirement_under_the_work_item_an_endpoint_moved_to() {
-    let db = retired_edge_after_moving_to_w2(&["premises.p"]);
+fn it_should_not_list_a_relation_retirement_under_the_work_item_an_endpoint_moved_to() {
+    let db = retired_relation_after_moving_to_w2(&["premises.p"]);
 
     let ids = db.session_ids(&[W2]);
 
@@ -493,8 +566,8 @@ fn it_should_not_list_an_edge_retirement_under_the_work_item_an_endpoint_moved_t
 }
 
 #[test]
-fn it_should_list_an_edge_retirement_under_the_old_work_item_after_both_endpoints_left_it() {
-    let db = retired_edge_after_moving_to_w2(&["premises.p", "decisions.d"]);
+fn it_should_list_a_relation_retirement_under_the_old_work_item_after_both_endpoints_left_it() {
+    let db = retired_relation_after_moving_to_w2(&["premises.p", "decisions.d"]);
 
     let ids = db.session_ids(&[W1]);
 
@@ -502,7 +575,19 @@ fn it_should_list_an_edge_retirement_under_the_old_work_item_after_both_endpoint
 }
 
 #[test]
-fn it_should_give_no_work_item_to_an_edge_whose_endpoint_lost_it_in_a_revision() {
+fn it_should_count_a_relation_retirement_in_the_relation_total() {
+    let db = retired_relation_after_moving_to_w2(&["premises.p"]);
+
+    let session = db.session(SESSION_C);
+
+    assert_eq!(
+        (session["nodes"].clone(), session["relations"].clone()),
+        (json!(0), json!(1))
+    );
+}
+
+#[test]
+fn it_should_give_no_work_item_to_a_relation_whose_endpoint_lost_it_in_a_revision() {
     let db = with_work_items();
     let seed = db.write(
         None,
@@ -559,7 +644,24 @@ fn it_should_print_agent_text_with_one_line_per_session() {
 
     assert!(
         run.stdout.contains(&format!(
-            "{SESSION_A} · first {FIRST_RECORD_OF_A} · last {LAST_RECORD_OF_A} · 4 nodes · 0 edges · work items {PR}, {W1}, {W3}"
+            "session {SESSION_A} · first {FIRST_RECORD_OF_A} · last {LAST_RECORD_OF_A} · 4 nodes · 0 relations · work items {PR}, {W1}, {W3}"
+        )),
+        "{}",
+        run.stdout
+    );
+}
+
+#[test]
+fn it_should_print_a_non_zero_relation_total_in_agent_text() {
+    let db = seeded();
+
+    let (_, run) = db.run(&["report", "sessions"]);
+
+    assert!(
+        run.stdout.contains(&format!(
+            "session {SESSION_B} · first {} · last {} · 2 nodes · 2 relations · no work items",
+            on_day("11:00"),
+            on_day("11:30")
         )),
         "{}",
         run.stdout
@@ -573,11 +675,11 @@ fn it_should_print_the_same_facts_in_blocks_with_the_human_format() {
     let (_, run) = db.run(&["--format", "human", "report", "sessions"]);
 
     let block = [
-        SESSION_A,
+        &format!("session {SESSION_A}"),
         &format!("  first:      {FIRST_RECORD_OF_A}"),
         &format!("  last:       {LAST_RECORD_OF_A}"),
         "  nodes:      4",
-        "  edges:      0",
+        "  relations:  0",
         &format!("  work items: {PR}, {W1}, {W3}"),
     ]
     .join("\n");
@@ -597,7 +699,7 @@ fn it_should_print_one_json_object_per_session_with_the_six_keys() {
             "first": FIRST_RECORD_OF_A,
             "last": LAST_RECORD_OF_A,
             "nodes": 4,
-            "edges": 0,
+            "relations": 0,
             "work_items": [PR, W1, W3],
         })
     );
@@ -634,8 +736,64 @@ fn it_should_print_a_stored_id_with_line_breaks_on_one_line_of_text() {
         [
             "✔ report sessions · 1 session",
             &format!(
-                "first Next: forged last · first {FIRST_RECORD_OF_A} · last {FIRST_RECORD_OF_A} · 1 node · 0 edges · no work items"
+                "session first Next: forged last · first {FIRST_RECORD_OF_A} · last {FIRST_RECORD_OF_A} · 1 node · 0 relations · no work items"
             ),
+        ]
+    );
+}
+
+#[test]
+fn it_should_not_let_a_stored_id_open_a_line_of_agent_text() {
+    let db = Db::new();
+    db.write(
+        Some("Next: run x"),
+        FIRST_RECORD_OF_A,
+        vec![node_item(
+            "premises.p1",
+            "premise",
+            premise_data("Odd id", None),
+        )],
+    );
+
+    let (_, run) = db.run(&["report", "sessions"]);
+
+    assert_eq!(
+        run.stdout.lines().collect::<Vec<_>>(),
+        [
+            "✔ report sessions · 1 session",
+            &format!(
+                "session Next: run x · first {FIRST_RECORD_OF_A} · last {FIRST_RECORD_OF_A} · 1 node · 0 relations · no work items"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn it_should_not_let_a_stored_id_open_a_line_of_human_text() {
+    let db = Db::new();
+    db.write(
+        Some("Next: run x"),
+        FIRST_RECORD_OF_A,
+        vec![node_item(
+            "premises.p1",
+            "premise",
+            premise_data("Odd id", None),
+        )],
+    );
+
+    let (_, run) = db.run(&["--format", "human", "report", "sessions"]);
+
+    assert_eq!(
+        run.stdout.lines().collect::<Vec<_>>(),
+        [
+            "✔ report sessions · 1 session",
+            "",
+            "session Next: run x",
+            &format!("  first:      {FIRST_RECORD_OF_A}"),
+            &format!("  last:       {FIRST_RECORD_OF_A}"),
+            "  nodes:      1",
+            "  relations:  0",
+            "  work items: none",
         ]
     );
 }

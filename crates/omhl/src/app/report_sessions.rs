@@ -13,15 +13,15 @@ struct Tally {
     first_at: String,
     last_at: String,
     nodes: usize,
-    edges: usize,
+    relations: usize,
     work_items: BTreeSet<String>,
 }
 
-/// O work item de uma ponta é o que ela tinha no `seq` da aresta: entregue os registros ao `record` em ordem de `seq`.
+/// O work item de uma ponta é o que ela tinha no `seq` da relation: entregue os registros ao `record` em ordem de `seq`.
 #[derive(Default)]
 struct Ledger {
     node_work_items: BTreeMap<String, String>,
-    edge_work_items: BTreeMap<[String; 3], Vec<String>>,
+    relation_work_items: BTreeMap<[String; 3], Vec<String>>,
     sessions: BTreeMap<String, Tally>,
 }
 
@@ -42,13 +42,13 @@ impl Ledger {
                 first_at: record.at.clone(),
                 last_at: record.at.clone(),
                 nodes: 0,
-                edges: 0,
+                relations: 0,
                 work_items: BTreeSet::new(),
             });
         tally.last_at = record.at;
         match record.lineage {
             Lineage::Node(_) => tally.nodes += 1,
-            Lineage::Relation { .. } => tally.edges += 1,
+            Lineage::Relation { .. } => tally.relations += 1,
         }
         tally.work_items.extend(work_items);
     }
@@ -77,16 +77,20 @@ impl Ledger {
                 from,
                 to,
             } => {
-                let edge = [relation_type.as_str(), from.as_str(), to.as_str()].map(str::to_owned);
-                // A retirada não relê as pontas: elas podem ter mudado de work item desde a aresta.
+                let relation =
+                    [relation_type.as_str(), from.as_str(), to.as_str()].map(str::to_owned);
+                // A retirada não relê as pontas: elas podem ter mudado de work item desde a relation.
                 if !record.retired {
                     let of_ends = [from, to]
                         .into_iter()
                         .filter_map(|end| self.node_work_items.get(end.as_str()).cloned())
                         .collect();
-                    self.edge_work_items.insert(edge.clone(), of_ends);
+                    self.relation_work_items.insert(relation.clone(), of_ends);
                 }
-                self.edge_work_items.get(&edge).cloned().unwrap_or_default()
+                self.relation_work_items
+                    .get(&relation)
+                    .cloned()
+                    .unwrap_or_default()
             }
         }
     }
@@ -104,7 +108,7 @@ impl Ledger {
                     "first": tally.first_at,
                     "last": tally.last_at,
                     "nodes": tally.nodes,
-                    "edges": tally.edges,
+                    "relations": tally.relations,
                     "work_items": tally.work_items,
                 })
             })
