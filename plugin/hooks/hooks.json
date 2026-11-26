@@ -2,13 +2,19 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           {
             "type": "command",
-            "command": "omhl",
-            "args": ["hook", "session-start"],
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/omhl-hook.sh", "session-start"],
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/omhl-hook.sh", "version-check"],
+            "timeout": 5
           }
         ]
       }
@@ -19,7 +25,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "omhl hook spec-lock || exit 2",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/omhl-hook.sh", "spec-lock"],
             "timeout": 10
           }
         ]
@@ -29,7 +36,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "omhl hook agent-role || exit 1",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/omhl-hook.sh", "agent-role"],
             "timeout": 10
           }
         ]
