@@ -37,7 +37,6 @@ pub fn is_amendment_name(name: &str) -> bool {
     strip_amendment_prefix(name).is_some()
 }
 
-/// O que sobra depois de `amendment-` ou `emenda-`; as duas famílias são aceitas.
 pub fn strip_amendment_prefix(name: &str) -> Option<&str> {
     AMENDMENT_PREFIXES
         .iter()

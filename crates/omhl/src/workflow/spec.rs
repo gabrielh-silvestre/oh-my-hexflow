@@ -85,7 +85,6 @@ impl Vocab {
         self.amendment_sections()[1]
     }
 
-    /// O início do marcador, sem os dois-pontos.
     fn pending_marker(self) -> &'static str {
         match self {
             Vocab::Portuguese => "[PENDENTE",
@@ -609,7 +608,7 @@ fn pending_prefix(vocab: Vocab) -> String {
     format!("{}: {}", vocab.pending_marker(), id_prefix(GAP_NAMESPACE))
 }
 
-/// Marcador do outro vocabulário (bem formado ou não) ou marcador malformado do próprio.
+/// Um arquivo é inteiro de um vocabulário, então o marcador do outro é inválido mesmo bem formado.
 fn has_invalid_pending_marker(line: &str, vocab: Vocab) -> bool {
     let pending_prefix = pending_prefix(vocab);
 

@@ -17,7 +17,7 @@ pub struct Env<'e> {
     pub claude: ClaudeEnv,
 }
 
-/// O que o hook `subagent-start` lê para achar o idioma da pessoa.
+/// O ambiente do processo é lido uma vez, na borda (`from_process`); os hooks nunca leem as variáveis.
 #[derive(Default)]
 pub struct ClaudeEnv {
     pub plugin_option_language: Option<std::ffi::OsString>,

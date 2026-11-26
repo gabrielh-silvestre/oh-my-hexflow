@@ -7,7 +7,6 @@ use crate::ports::files::{read_followed_regular_utf8, read_regular_utf8};
 const LANGUAGE_MAX_CHARS: usize = 64;
 const SETTINGS_MAX_BYTES: u64 = 64 * 1024;
 
-/// Os cinco valores já lidos; a ordem dos campos é a ordem de precedência.
 #[derive(Default)]
 pub struct LanguageRungs<'a> {
     pub plugin_option: Option<&'a str>,
@@ -17,7 +16,7 @@ pub struct LanguageRungs<'a> {
     pub user: Option<&'a str>,
 }
 
-/// O primeiro valor válido; um valor inválido conta como ausente e cai no degrau seguinte.
+/// Segue a ordem do próprio Claude Code, com só a opção do plugin acima das configurações; um valor inválido conta como ausente e cai no degrau seguinte.
 pub fn resolve_language(rungs: &LanguageRungs<'_>) -> Option<String> {
     [
         rungs.plugin_option,
@@ -32,7 +31,7 @@ pub fn resolve_language(rungs: &LanguageRungs<'_>) -> Option<String> {
     .map(str::to_owned)
 }
 
-/// Valor aparado, não vazio, de até 64 caracteres e sem caractere de controle (a quebra de linha inclusa).
+/// Só um valor seguro de colar em uma linha de prompt: limitado e sem quebra de linha nem caractere de controle.
 pub fn valid_language(raw: &str) -> Option<&str> {
     let value = raw.trim();
     let valid = !value.is_empty()
@@ -42,7 +41,7 @@ pub fn valid_language(raw: &str) -> Option<&str> {
     valid.then_some(value)
 }
 
-/// Uma linha só, para o valor nunca abrir uma segunda instrução.
+/// `language` precisa vir de `valid_language`: a linha só é segura se o valor não tiver quebra de linha.
 pub fn language_line(language: &str) -> String {
     format!(
         "The language of the person's conversation is \"{language}\"; write any text addressed to the person in that language."

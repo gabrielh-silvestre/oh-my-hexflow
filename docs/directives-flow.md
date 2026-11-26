@@ -115,7 +115,7 @@ omhl spec init work-items.w1 export-reports
 
 ### O formato
 
-Spec nova nasce em inglês: o `omhl spec init` cria `part-01.md` com os títulos `Objective`, `Applicable directives and premises`, `Behaviors`, `Acceptance criteria` e `Out of scope`, e a emenda nova se chama `amendment-NN.md`, com `Divergence`, `Corrections` e `Reason`. Os nomes `parte-NN.md` e `emenda-NN.md` e os títulos em português seguem aceitos, e as specs antigas continuam válidas sem mudar uma linha. O validador escolhe o vocabulário de cada arquivo pelo primeiro título `## `, então um arquivo é todo de um vocabulário. Numa pasta antiga, só em português, o arquivo novo leva o nome `parte-` ou `emenda-` e os títulos em inglês.
+Spec nova nasce em inglês: o `omhl spec init` cria `part-01.md`, e a emenda nova se chama `amendment-NN.md`. Os nomes `parte-NN.md` e `emenda-NN.md` e os títulos em português seguem aceitos, e as specs antigas continuam válidas sem mudar uma linha. O validador escolhe o vocabulário de cada arquivo pelo primeiro título `## `, então um arquivo é todo de um vocabulário. Numa pasta antiga, só em português, o arquivo novo leva o nome `parte-` ou `emenda-` e os títulos em inglês.
 
 Se uma parte passar do limite de tamanho, divida o trabalho em mais partes completas, todas no mesmo work item.
 
@@ -333,7 +333,7 @@ flowchart TD
 
 ### O idioma dos agentes
 
-O texto que o agente lê (agentes, skills, spec e registros) é inglês; o idioma da pessoa vale só no texto dirigido a ela. Os agentes do plugin recebem esse idioma pelo hook `SubagentStart` (`omhl hook subagent-start`, com `matcher` `^oh-my-hexflow:`), que nunca bloqueia e fica mudo quando não acha idioma. O valor vem da opção `language` do plugin, que o Claude Code pergunta na instalação e mostra em `/config`; sem ela, da chave `language` dos settings, na precedência do Claude Code: gerenciados, depois `.claude/settings.local.json` e `.claude/settings.json` do projeto, depois o `settings.json` do usuário. Um repositório que versiona `language` define o idioma dos agentes de quem trabalha nele, e só a opção do plugin o sobrepõe. Num projeto com `.omhl.toml`, o `session-start` também leva a opção do plugin à sessão principal. O pedido de delegação nomeia o idioma da conversa como reserva do hook.
+O texto que o agente lê (agentes, skills, spec e registros) é inglês; o idioma da pessoa vale só no texto dirigido a ela. Os agentes do plugin recebem esse idioma pelo hook `SubagentStart` (`omhl hook subagent-start`, com `matcher` `^oh-my-hexflow:`). O valor vem da opção `language` do plugin, que o Claude Code pergunta na instalação e mostra em `/config`; sem ela, da chave `language` dos settings, na precedência do Claude Code: gerenciados, depois `.claude/settings.local.json` e `.claude/settings.json` do projeto, depois o `settings.json` do usuário. Um repositório que versiona `language` define o idioma dos agentes de quem trabalha nele, e só a opção do plugin o sobrepõe. Num projeto com `.omhl.toml`, o `session-start` também leva a opção do plugin à sessão principal. O pedido de delegação nomeia o idioma da conversa como reserva do hook.
 
 ### O hook `agent-role`
 

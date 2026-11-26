@@ -109,7 +109,7 @@ fn it_should_refuse_a_followed_symlink_to_a_fifo_without_blocking() {
     mkfifo(&fifo, Mode::from_bits_truncate(0o600)).unwrap();
     symlink(&fifo, &link).unwrap();
     let (sender, receiver) = mpsc::channel();
-    // Mesmo motivo do teste do FIFO acima: a thread presa não recebe `join`.
+    // A thread pode travar ao abrir o FIFO; fica solta de propósito, um `join` penduraria o teste.
     thread::spawn(move || {
         let _ = sender.send(read_followed_regular_utf8(&link, 4));
     });

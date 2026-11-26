@@ -313,7 +313,7 @@ pub fn next_amendment(folder_files: &[String]) -> String {
     format!("{prefix}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
-/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe e qualquer arquivo de marcador do projeto; congelada só admite `Write` de arquivo novo que não seja `part-*`, `parte-*`, `amendment-*` nem `emenda-*` fora de ordem.
+/// Congelada, só passa o `Write` de arquivo novo, fora da família da spec ou exatamente a próxima emenda; o resto é negado para a spec aprovada nunca ser editada.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {

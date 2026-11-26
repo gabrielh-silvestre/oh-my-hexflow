@@ -1480,7 +1480,6 @@ fn with_repeated_heading(mut lines: Vec<&'static str>, section: usize) -> Vec<&'
     lines
 }
 
-/// Um teste por título e por defeito: título ausente, trocado de lugar com o vizinho e repetido.
 macro_rules! heading_tests {
     (
         $fixture:ident, $validate:ident, $file:literal, $count:literal;
