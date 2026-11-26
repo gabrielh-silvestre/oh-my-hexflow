@@ -122,6 +122,10 @@ A interface do agente é a CLI.
 
 O formato dos arquivos e as regras estão em
 [docs/extensions-and-projection.md](docs/extensions-and-projection.md).
+Arquivos prontos para copiar para o `.omhl/` do projeto estão em
+[plugin/examples/README.md](plugin/examples/README.md); o que o plugin impõe, o
+que é opcional e o que é só deste repositório está em
+[docs/plugin-and-project-boundary.md](docs/plugin-and-project-boundary.md).
 
 ## Fluxo por diretivas e premissas
 

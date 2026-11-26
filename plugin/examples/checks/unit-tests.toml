@@ -1,0 +1,7 @@
+concern = "test"
+variant = "suite"
+blocking = true
+run = ["make", "test"]
+timeout_secs = 120
+expect = [{ exit = 0, outcome = "passed" }]
+when = { event = "before-pr" }

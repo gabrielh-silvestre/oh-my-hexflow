@@ -4,7 +4,7 @@ Vocabulário em [GLOSSARY.md](../GLOSSARY.md).
 
 ## Extensions (arquivo para banco)
 
-Uma extension é escrita à mão e versionada com o repositório.
+Uma extension é escrita à mão e versionada com o repositório. Exemplos de arquivo de check e de diretiva, prontos para copiar, estão em [plugin/examples/README.md](../plugin/examples/README.md).
 
 ```bash
 omhl load --dry-run

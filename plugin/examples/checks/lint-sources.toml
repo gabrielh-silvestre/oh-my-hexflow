@@ -1,0 +1,8 @@
+concern = "style"
+variant = "lint"
+blocking = true
+after = ["checks.format-sources"]
+run = ["make", "lint"]
+timeout_secs = 90
+expect = [{ exit = 0, outcome = "passed" }]
+when = { event = "before-commit" }

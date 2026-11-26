@@ -5,7 +5,7 @@ use std::path::Path;
 use super::specs::write_new;
 use crate::project::layout::{GITIGNORE_NAME, NOTES_DIR, NOTES_GITIGNORE_CONTENT, OMHL_DIR};
 
-/// Quem cria `.omhl/notes` é quem grava o `.gitignore`: sem um "existe?" antes, dois eventos simultâneos não o recriam.
+/// Quem cria `.omhl/notes` é quem grava o `.gitignore`: sem um "existe?" antes, um evento concorrente não o recria.
 pub fn birth_notes_folder(root: &Path) -> Result<()> {
     let omhl_dir = root.join(OMHL_DIR);
     fs::create_dir_all(&omhl_dir)?;

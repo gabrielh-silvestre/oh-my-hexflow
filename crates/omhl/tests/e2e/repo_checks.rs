@@ -80,7 +80,8 @@ fn it_should_load_the_repository_checks_without_errors() {
 
 #[test]
 fn it_should_list_the_checks_and_the_guidelines_in_the_dry_run() {
-    const REPO_GUIDELINES: [&str; 4] = [
+    const REPO_GUIDELINES: [&str; 5] = [
+        "guidelines.boundary-classification",
         "guidelines.code-in-english-no-emoji",
         "guidelines.diferencial",
         "guidelines.premissa-so-vale-confirmada",
