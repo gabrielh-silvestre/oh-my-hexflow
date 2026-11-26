@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sobe a versão semver do [workspace.package] e atualiza o Cargo.lock.
+# Sobe a versão semver do [workspace.package], do plugin.json e atualiza o Cargo.lock.
 # Uso: bash scripts/bump-version.sh major|minor|patch
 # Só reescreve arquivos: não faz commit, tag nem PR.
 set -euo pipefail
@@ -27,6 +27,9 @@ esac
 
 awk -v new="$new" '/^\[/ { s = ($0 == "[workspace.package]") } s && /^version = "/ { print "version = \"" new "\""; next } { print }' Cargo.toml > Cargo.toml.tmp
 mv Cargo.toml.tmp Cargo.toml
+
+# A version do plugin.json fixa a instalação do plugin: anda junto com o Cargo.
+sed -i "s/^\(  \"version\": \"\)[^\"]*\(\".*\)$/\1$new\2/" plugin/.claude-plugin/plugin.json
 
 # Só reescreve a versão dos membros no lock: sem rede e sem compilar.
 cargo update --workspace --offline --quiet

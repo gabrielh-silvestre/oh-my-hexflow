@@ -73,5 +73,5 @@ Abra a referência do comando antes de usá-lo: ela traz as entradas, a saída, 
 | `omhl spec validate` | [references/spec-validate.md](references/spec-validate.md) |
 | `omhl gate-worktree` | [references/gate-worktree.md](references/gate-worktree.md) |
 | `omhl guideline retire` | [references/guideline-retire.md](references/guideline-retire.md) |
-| `omhl list`, `omhl get`, `omhl render`, `omhl verify`, `omhl project`, `omhl report answers`, `omhl report recurrences` | [references/consulta.md](references/consulta.md) |
+| `omhl list`, `omhl get`, `omhl render`, `omhl verify`, `omhl project`, `omhl report answers`, `omhl report recurrences`, `omhl report sessions` | [references/consulta.md](references/consulta.md) |
 | Erros comuns | [references/errors.md](references/errors.md) |

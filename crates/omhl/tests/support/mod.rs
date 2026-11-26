@@ -29,6 +29,7 @@ pub mod report;
 pub mod run;
 pub mod runner;
 pub mod scan;
+pub mod session;
 #[cfg(target_os = "linux")]
 pub mod sweep_lock;
 pub mod views;
@@ -36,6 +37,7 @@ pub mod views;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 
+use ::omhl::facade::SessionSource;
 use ::omhl::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 use hexlog::{
     Author, Clock, IdGenerator, NativeNode, NativeNodes, RelationTypeName, SemanticId, Snapshot,
@@ -43,6 +45,9 @@ use hexlog::{
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
+
+/// Sem `CLAUDE_CODE_SESSION_ID`: o registro leva o marcador `outside-claude-code`.
+pub static NO_SESSION: SessionSource = SessionSource::Absent;
 
 pub const DEFAULT_INSTANT: &str = "2026-11-07T12:00:00.000Z";
 const UUID_V7_BASE: u128 = 0x0192_a000_0000_7000_8000_0000_0000_0000;

@@ -71,6 +71,7 @@ impl Fixture {
             clock: &self.raw.clock,
             ids: &self.raw.ids,
             probe,
+            session: &crate::support::NO_SESSION,
         };
         let app = App::open(&self.raw.db_path(), &acme(), deps, &RetryPolicy::default())
             .unwrap_or_else(|error| panic!("the app opens: {error}"));
@@ -679,6 +680,7 @@ fn it_should_fail_closed_when_the_database_is_busy_before_running() {
         clock: &raw.clock,
         ids: &raw.ids,
         probe: &probe,
+        session: &crate::support::NO_SESSION,
     };
     drop(
         App::open(&raw.db_path(), &acme(), deps(), &RetryPolicy::default())

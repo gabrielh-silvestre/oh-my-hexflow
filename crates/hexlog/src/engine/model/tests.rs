@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use super::{BodyAuthor, BodyBatch, BodyLineage, BodySnapshot, RecordBody};
 use crate::chain::hash_record;
-use crate::{ErrorCode, FieldName};
+use crate::{ErrorCode, FieldName, SessionLabel};
 
 const BODIES: &str = include_str!("../../../tests/fixtures/golden_bodies.json");
 
@@ -75,6 +75,9 @@ fn body_of(fields: &Value) -> RecordBody<'_> {
             key: optional_text(batch, "key"),
             count: integer(&batch["count"]),
         }),
+        session: fields
+            .get("session")
+            .map(|s| SessionLabel::parse(s.as_str().unwrap()).unwrap()),
     }
 }
 
@@ -128,6 +131,30 @@ fn it_should_refuse_a_body_with_an_unknown_field() {
     let parsed = serde_json::from_str::<RecordBody>(&tampered);
 
     assert!(parsed.is_err());
+}
+
+#[test]
+fn it_should_refuse_a_body_whose_session_is_not_a_valid_label() {
+    let golden = fixture();
+    let jcs = golden["shapes"]["node_with_session"]["jcs"]
+        .as_str()
+        .unwrap();
+    let invalid = ["", &"a".repeat(101), &"😀".repeat(51)];
+
+    for session in invalid {
+        let mut value: Value = serde_json::from_str(jcs).unwrap();
+        value["session"] = json!(session);
+
+        let tampered = value.to_string();
+
+        let parsed = serde_json::from_str::<RecordBody>(&tampered);
+
+        assert!(
+            parsed.is_err(),
+            "session of {} units",
+            session.encode_utf16().count()
+        );
+    }
 }
 
 #[test]

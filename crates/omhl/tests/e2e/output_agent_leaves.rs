@@ -621,6 +621,10 @@ fn recurrences_empty_facts(_value: &Value) -> Vec<String> {
     vec!["✔ report recurrences · min 3 · none".to_owned()]
 }
 
+fn sessions_empty_facts(_value: &Value) -> Vec<String> {
+    vec!["✔ report sessions · none".to_owned()]
+}
+
 fn retro_facts(_value: &Value) -> Vec<String> {
     vec![
         "✔ report retro · 3 divergences · 1 approved amendment · 1 pending amendment · 1 no-criterion gap · 1 open gap"
@@ -1473,7 +1477,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 82] = [
+const CASES: [Case; 84] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -1802,6 +1806,31 @@ const CASES: [Case; 82] = [
         error_code: Some("no-marker"),
         fixture: verify_no_marker,
         derived: error_header_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report sessions empty",
+        key: CommandKey::ReportSessions,
+        args: &["report", "sessions"],
+        outcome: Outcome::Success,
+        error_code: None,
+        fixture: report_bare,
+        derived: sessions_empty_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "report sessions unknown work item",
+        key: CommandKey::ReportSessions,
+        args: &[
+            "report",
+            "sessions",
+            "--work-item",
+            report::ABSENT_WORK_ITEM,
+        ],
+        outcome: Outcome::Failure,
+        error_code: Some("work-item-not-found"),
+        fixture: report_bare,
+        derived: generic_error_facts,
         absent: no_facts,
     },
     Case {

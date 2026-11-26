@@ -74,6 +74,7 @@ fn it_should_create_the_wal_files_as_0600_after_a_write() {
         clock: &clock,
         ids: &ids,
         probe: &probe,
+        session: &crate::support::NO_SESSION,
     };
     let mut omhl = Omhl::open(&Config::new(db.clone()), deps).expect("omhl opens");
     omhl.ensure_tenant(&acme()).expect("the tenant is created");
@@ -107,6 +108,7 @@ fn discover_error(project: &Project, db: &Path) -> Option<(String, String)> {
         claude_code: false,
         role: None,
         plugin_root: None,
+        session: None,
     };
 
     Runtime::discover(project.dir(), Some(db), &env)

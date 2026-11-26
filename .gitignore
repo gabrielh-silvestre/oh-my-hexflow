@@ -77,6 +77,8 @@ graphify-out/
 .claude/scheduled_tasks.lock
 .claude/skills/gitnexus/
 CLAUDE.local.md
+# Floorplan: mapa gerado do código
+floorplan/
 
 # OMC: local working state and documents; only project skills are tracked
 .omc/*

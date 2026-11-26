@@ -230,6 +230,7 @@ fn it_should_accept_a_guideline_resting_on_a_legacy_guideline_without_kind() {
         clock: &raw.clock,
         ids: &raw.ids,
         probe: &probe,
+        session: &crate::support::NO_SESSION,
     };
     let mut omhl = Omhl::open(&raw.config(), deps).expect("omhl opens");
     seed(&mut omhl, vec![guideline(SOURCE, "business")]);
@@ -471,6 +472,7 @@ fn open_app<'a>(raw: &'a RawHarness, probe: &'a FakeProbe) -> App<'a> {
         clock: &raw.clock,
         ids: &raw.ids,
         probe,
+        session: &crate::support::NO_SESSION,
     };
 
     App::open(&raw.db_path(), &acme(), deps, &RetryPolicy::default())

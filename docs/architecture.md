@@ -59,7 +59,7 @@ Segue a decisão de projeto sobre caixas cinzas: caixa cinza é um módulo profu
 
 ### 3.16 Suporte: `omhl::ports` e `omhl::project`
 
-- `ports`: adapters de produção. Adapters finos de seam real. Os adapters dos gates mecânicos (`process`, `pipes`, `blob`, `hooks`) estão na seção 3.22.
+- `ports`: adapters de produção. Adapters finos de seam real. Os adapters dos gates mecânicos estão na seção 3.22.
 - `project`: descoberta do projeto. Rasa: metade é lista de constantes e helpers compartilhados por `extensions` e `projection` (item 7 da seção 5).
 
 ### 3.19 Aninhada: `omhl::mechanical::sweep`
@@ -100,7 +100,7 @@ O `skill_examples` executa `check sweep`, que varre o `/proc` inteiro e vale par
 
 ## 5. Pontos rasos ou com vazamento
 
-Nove itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o que aceito até haver motivo.
+"Corte" é o que recomendo fazer; "dívida" é o que aceito até haver motivo.
 
 1. **Vocabulário de tipos espalhado (corte).** Trade-off: `graphs` ganha interface; em troca vira o único dono do vocabulário, que o `gate` já prova que dá para isolar.
 
@@ -108,7 +108,7 @@ Nove itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 
 3. **Paginação e constantes duplicadas (corte).** Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade, em troca de um só laço.
 
-4. **A sonda do git vive em duas camadas (dívida).** Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito. Vira corte se aparecer um caso em que as duas leituras discordem.
+4. **A sonda do git vive em mais de uma camada (dívida).** Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito. Vira corte se aparecer um caso em que as duas leituras discordem.
 
 5. **Nome e formato de porta dentro de `app` (corte).** Corte: o adapter traduz o payload para um struct neutro e passa o `Caller` pronto; `app` deixa de nomear a porta. Trade-off: não medido além de mover os nomes de `Caller` e o parse do payload.
 
@@ -119,3 +119,5 @@ Nove itens, em ordem de valor. "Corte" é o que recomendo fazer; "dívida" é o 
 8. **Superfície pública do `hexlog` maior que o consumo (dívida consciente).** A causa é a regra de que os testes de integração usem só a API pública (`it_should_keep_integration_tests_on_the_public_api`): o que os testes de adulteração precisam vira público. Cortar exige uma feature de cargo para test support.
 
 9. **Helpers de teste copiados entre `src/test_support` e `tests/support` (dívida aceita).** O teste unitário de `src/**/tests.rs` não alcança `tests/support`, então os helpers existem nas duas pastas. Feature de cargo e `#[path]` foram descartados no plano da `perf3` (D4; decisão `perf3-test-support-copiado`). Custo: mudar um helper vale em dois arquivos, e nenhum teste confere que as cópias não derivam. Gatilho do corte: a primeira deriva de corpo achada, ou o fluxo de entrevista de fluxos que o plano reserva para deduplicar. Corte: um arquivo único de helper, junto com o corte do item 8.
+
+10. **Binário anterior sobre banco com sessão não é suportado (limite aceito).** O corpo do registro recusa campo desconhecido: um `omhl` que não conhece `session` falha `get` e `list` nesses registros com o detalhe `invalid-body`, e `verify` acusa cada um (`it_should_read_a_body_with_an_unknown_top_level_field_as_invalid_body`). Reverter a mudança não devolve a leitura: o caminho de volta é instalar um binário que conhece o campo, nunca apagar nem reescrever registros. Regra: depois do merge e antes de qualquer gravação no banco real, instale o binário novo em `~/.cargo/bin/omhl` (`cargo install --path crates/omhl`); se os hooks de git apontam para outro caminho, rode `omhl hooks install` com o binário novo. Nunca rode o `target/debug` ou o `target/release` de uma worktree contra o banco real.

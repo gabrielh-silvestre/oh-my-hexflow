@@ -29,6 +29,14 @@ pub enum ProbeOutcome {
     Dirty,
 }
 
+/// O que o `git --version` deixa ler; só o `NotFound` do spawn é falta de `git`, o resto que falha é `Unreadable`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GitVersion {
+    NotFound,
+    Reported(String),
+    Unreadable,
+}
+
 /// A mensagem do estouro de prazo do git: quem decide por ela compara com esta constante.
 pub const GIT_TIMED_OUT: &str = "git timed out";
 

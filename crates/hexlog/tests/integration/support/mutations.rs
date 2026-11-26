@@ -175,16 +175,11 @@ pub fn set_column(
     tamper.execute(&sql, &[value, &reference.tenant, &reference.seq_text(rc)])
 }
 
-fn stored_text(
-    tamper: &mut Tamper,
-    reference: &Reference,
-    rc: usize,
-    column: &'static str,
-) -> String {
+fn stored_text_at(tamper: &mut Tamper, tenant: &str, seq: u64, column: &'static str) -> String {
     let sql = format!("SELECT CAST({column} AS TEXT) FROM records WHERE tenant = ? AND seq = ?");
 
     tamper
-        .read_text(&sql, &[&reference.tenant, &reference.seq_text(rc)])
+        .read_text(&sql, &[tenant, &seq.to_string()])
         .remove(0)
 }
 
@@ -193,20 +188,34 @@ pub fn replace_body(tamper: &mut Tamper, reference: &Reference, rc: usize, body:
     set_column(tamper, reference, rc, "body", body)
 }
 
-/// Troca o `body` do RC`rc` e grava o `hash` recalculado com `hexlog::chain::hash_record`, num só `UPDATE`.
-pub fn rewrite_body(tamper: &mut Tamper, reference: &Reference, rc: usize, body: &str) -> u64 {
-    let prev_hash = stored_text(tamper, reference, rc, "prev_hash");
+/// Troca o `body` do record de `seq` e grava o `hash` recalculado com `hexlog::chain::hash_record`, num só `UPDATE`.
+pub fn rewrite_body_at(tamper: &mut Tamper, tenant: &str, seq: u64, body: &str) -> u64 {
+    let prev_hash = stored_text_at(tamper, tenant, seq, "prev_hash");
     let hash = hash_record(&prev_hash, body);
 
     tamper.execute(
         "UPDATE records SET body = ?, hash = ? WHERE tenant = ? AND seq = ?",
-        &[
-            body,
-            hash.as_str(),
-            &reference.tenant,
-            &reference.seq_text(rc),
-        ],
+        &[body, hash.as_str(), tenant, &seq.to_string()],
     )
+}
+
+/// Como `rewrite_body_at`, para o RC`rc`.
+pub fn rewrite_body(tamper: &mut Tamper, reference: &Reference, rc: usize, body: &str) -> u64 {
+    rewrite_body_at(tamper, &reference.tenant, reference.rc(rc).seq, body)
+}
+
+/// O corpo do record de `seq` lido como JSON, com `edit` aplicado e de volta em JCS.
+fn edited_body_at(
+    tamper: &mut Tamper,
+    tenant: &str,
+    seq: u64,
+    edit: impl FnOnce(&mut Value),
+) -> String {
+    let stored = tamper.read_body(tenant, seq);
+    let mut body: Value = serde_json::from_str(&stored).expect("the stored body is JSON");
+    edit(&mut body);
+
+    canonical(&body).expect("the edited body has a canonical form")
 }
 
 /// O corpo do RC`rc` lido como JSON, com `edit` aplicado e de volta em JCS.
@@ -216,23 +225,29 @@ fn edited_body(
     rc: usize,
     edit: impl FnOnce(&mut Value),
 ) -> String {
-    let stored = tamper.read_body(&reference.tenant, reference.rc(rc).seq);
-    let mut body: Value = serde_json::from_str(&stored).expect("the stored body is JSON");
-    edit(&mut body);
-
-    canonical(&body).expect("the edited body has a canonical form")
+    edited_body_at(tamper, &reference.tenant, reference.rc(rc).seq, edit)
 }
 
-/// Edita o corpo do RC`rc` mantendo-o canônico e recalcula o `hash`.
+/// Edita o corpo do record de `seq` mantendo-o canônico e recalcula o `hash`.
+pub fn rewrite_json_at(
+    tamper: &mut Tamper,
+    tenant: &str,
+    seq: u64,
+    edit: impl FnOnce(&mut Value),
+) -> u64 {
+    let body = edited_body_at(tamper, tenant, seq, edit);
+
+    rewrite_body_at(tamper, tenant, seq, &body)
+}
+
+/// Como `rewrite_json_at`, para o RC`rc`.
 pub fn rewrite_json(
     tamper: &mut Tamper,
     reference: &Reference,
     rc: usize,
     edit: impl FnOnce(&mut Value),
 ) -> u64 {
-    let body = edited_body(tamper, reference, rc, edit);
-
-    rewrite_body(tamper, reference, rc, &body)
+    rewrite_json_at(tamper, &reference.tenant, reference.rc(rc).seq, edit)
 }
 
 /// Troca de lugar os dois primeiros membros de um objeto JSON, no texto, e deixa o resto como está.

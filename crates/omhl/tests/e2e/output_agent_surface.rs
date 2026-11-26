@@ -5,8 +5,8 @@ use support::cycle::WORK_ITEM;
 use support::project::Project;
 use tempfile::TempDir;
 
-/// Os 22 comandos ativos (padrão `agent`): o caminho na CLI e uma chamada válida de cada um.
-const ACTIVE: [(&str, &[&str]); 22] = [
+/// Os 23 comandos ativos (padrão `agent`): o caminho na CLI e uma chamada válida de cada um.
+const ACTIVE: [(&str, &[&str]); 23] = [
     ("list", &["list"]),
     ("get", &["get", "work-items.payroll"]),
     ("append", &["append"]),
@@ -44,6 +44,7 @@ const ACTIVE: [(&str, &[&str]); 22] = [
     ("report answers", &["report", "answers"]),
     ("report recurrences", &["report", "recurrences"]),
     ("report retro", &["report", "retro", WORK_ITEM]),
+    ("report sessions", &["report", "sessions"]),
 ];
 
 /// Os 6 comandos adiados (padrão `json`, só JSON).
@@ -313,7 +314,7 @@ fn it_should_print_the_session_context_with_format_json_as_without_the_flag() {
 // ---------------------------------------------------------------- help (CA-8)
 
 #[test]
-fn it_should_list_the_twenty_two_agent_commands_in_the_root_help() {
+fn it_should_list_the_twenty_three_agent_commands_in_the_root_help() {
     let help = omhl(&["--help"]).run().stdout;
 
     assert_eq!(listed_under(&help, "agent"), sorted_paths(&ACTIVE));

@@ -47,6 +47,7 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
             "role-retirement-forbidden",
         ),
         (RuleCode::RoleAnswerForbidden, "role-answer-forbidden"),
+        (RuleCode::InvalidSessionId, "invalid-session-id"),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected
@@ -95,6 +96,7 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
         RuleCode::RestsOnTargetType,
         RuleCode::GuidelineRetireByCommand,
         RuleCode::RoleUnknown,
+        RuleCode::InvalidSessionId,
     ];
 
     let incomplete: Vec<&str> = new_codes
@@ -107,6 +109,19 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
         .collect();
 
     assert_eq!(incomplete, Vec::<&str>::new());
+}
+
+#[test]
+fn it_should_name_the_outside_claude_code_marker_in_the_cause_of_invalid_session_id() {
+    let cause = RuleCode::InvalidSessionId
+        .guidance()
+        .expect("invalid-session-id has guidance")
+        .cause;
+
+    assert!(
+        cause.contains(crate::facade::OUTSIDE_CLAUDE_CODE),
+        "{cause}"
+    );
 }
 
 #[test]

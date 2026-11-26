@@ -15,4 +15,5 @@
 | Regenerar a projeção | [project.md](project.md) |
 | Ler o relatório dos gaps | [report-answers.md](report-answers.md) |
 | Ler o relatório das premissas repetidas | [report-recurrences.md](report-recurrences.md) |
+| Listar as sessões que gravaram (`omhl report sessions`) | [report-sessions.md](report-sessions.md) |
 | Erros comuns | [errors.md](errors.md) |

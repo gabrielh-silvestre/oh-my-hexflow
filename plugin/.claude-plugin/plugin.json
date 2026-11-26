@@ -1,5 +1,5 @@
 {
   "name": "oh-my-hexflow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Injects the project decisions and work items from hexlog into the Claude Code session and guards the work item flow through hooks and the omhl CLI."
 }

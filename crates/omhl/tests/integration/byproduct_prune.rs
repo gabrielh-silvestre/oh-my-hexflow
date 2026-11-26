@@ -77,6 +77,7 @@ impl Fixture {
             clock: &self.raw.clock,
             ids: &self.raw.ids,
             probe: &probe,
+            session: &crate::support::NO_SESSION,
         };
         let mut omhl = Omhl::open(&self.raw.config(), deps).expect("omhl opens");
         omhl.ensure_tenant(&acme()).expect("the tenant is created");
@@ -113,6 +114,7 @@ impl Fixture {
             clock: &self.raw.clock,
             ids: &self.raw.ids,
             probe,
+            session: &crate::support::NO_SESSION,
         };
 
         App::open(&self.raw.db_path(), &acme(), deps, &RetryPolicy::default())

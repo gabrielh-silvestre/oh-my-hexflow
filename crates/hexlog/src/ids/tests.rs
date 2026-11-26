@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crate::test_support::{SeqIds, assert_refusal};
 use crate::{
     ErrorCode, ExternalId, Hash, HexlogError, IdGenerator, IdempotencyKey, Name, RecordId,
-    RelationTypeName, SemanticId, TenantId, TypeName,
+    RelationTypeName, SemanticId, SessionLabel, TenantId, TypeName,
 };
 
 fn assert_accepts<T: Debug>(parse: fn(&str) -> Result<T, HexlogError>, cases: &[String]) {
@@ -149,6 +149,25 @@ fn it_should_validate_external_ids_in_utf16_units() {
         &rejected,
         ErrorCode::InvalidRecord,
         "external-id-format",
+    );
+}
+
+#[test]
+fn it_should_validate_session_labels_in_utf16_units() {
+    let accepted = vec![
+        "s".to_owned(),
+        "a".repeat(100),
+        "😀".repeat(50),
+        "é".repeat(100),
+    ];
+    let rejected = vec![String::new(), "a".repeat(101), "😀".repeat(51)];
+
+    assert_accepts(SessionLabel::parse, &accepted);
+    assert_rejects(
+        SessionLabel::parse,
+        &rejected,
+        ErrorCode::InvalidInput,
+        "session-label-format",
     );
 }
 

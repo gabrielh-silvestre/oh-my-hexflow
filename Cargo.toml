@@ -4,7 +4,7 @@ members = ["crates/hexlog", "crates/omhl"]
 
 [workspace.package]
 edition = "2024"
-version = "0.1.0"
+version = "0.2.0"
 publish = false
 
 [workspace.lints.rust]
@@ -20,6 +20,7 @@ implicit_clone = "deny"
 needless_pass_by_value = "deny"
 needless_pass_by_ref_mut = "deny"
 large_types_passed_by_value = "deny"
+too_long_first_doc_paragraph = "deny"
 
 [profile.dev.package.regex-automata]
 opt-level = 3

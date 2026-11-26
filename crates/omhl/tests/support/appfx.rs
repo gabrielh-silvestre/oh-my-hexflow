@@ -264,6 +264,7 @@ impl AppFixture {
             clock: &self.raw.clock,
             ids: &self.raw.ids,
             probe: &self.probe,
+            session: &crate::support::NO_SESSION,
         }
     }
 

@@ -10,7 +10,8 @@ use std::time::{Duration, Instant};
 use hexlog::{Snapshot, SnapshotKind};
 
 use crate::probe::{
-    DevelopMark, GIT_TIMED_OUT, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
+    DevelopMark, GIT_TIMED_OUT, GitVersion, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe,
+    TreeSource,
 };
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -122,22 +123,26 @@ impl GitProbe {
 
     fn run(&self, mut command: Command) -> Result<GitOutput, ProbeError> {
         let deadline = self.call_deadline()?;
-        let mut child = command.spawn().map_err(|error| ProbeError {
+        let child = command.spawn().map_err(|error| ProbeError {
             message: error.to_string(),
         })?;
-        let (stdout, stderr) = match (child.stdout.take(), child.stderr.take()) {
-            (Some(stdout), Some(stderr)) => (stdout, stderr),
-            _ => return Err(error("git pipes are unavailable")),
-        };
-        // Duas threads leem os canos para o filho não travar com saída maior que o buffer.
-        let (stdout, stderr) = (spawn_reader(stdout), spawn_reader(stderr));
-        let status = wait_until(&mut child, deadline)?;
+        finish(child, deadline)
+    }
 
-        Ok(GitOutput {
-            status,
-            stdout: collect(&stdout, deadline)?,
-            stderr: collect(&stderr, deadline)?,
-        })
+    pub fn version(&self) -> GitVersion {
+        let Ok(deadline) = self.call_deadline() else {
+            return GitVersion::Unreadable;
+        };
+        match self.git(&["--version"]).spawn() {
+            Err(error) if error.kind() == ErrorKind::NotFound => GitVersion::NotFound,
+            Err(_) => GitVersion::Unreadable,
+            Ok(child) => match finish(child, deadline) {
+                Ok(output) if output.status.success() => {
+                    GitVersion::Reported(String::from_utf8_lossy(&output.stdout).into_owned())
+                }
+                _ => GitVersion::Unreadable,
+            },
+        }
     }
 
     fn run_ok(&self, command: Command) -> Result<Vec<u8>, ProbeError> {
@@ -352,6 +357,22 @@ impl GitProbe {
         branches.sort();
         Ok(branches)
     }
+}
+
+fn finish(mut child: Child, deadline: Instant) -> Result<GitOutput, ProbeError> {
+    let (stdout, stderr) = match (child.stdout.take(), child.stderr.take()) {
+        (Some(stdout), Some(stderr)) => (stdout, stderr),
+        _ => return Err(error("git pipes are unavailable")),
+    };
+    // Duas threads leem os canos para o filho não travar com saída maior que o buffer.
+    let (stdout, stderr) = (spawn_reader(stdout), spawn_reader(stderr));
+    let status = wait_until(&mut child, deadline)?;
+
+    Ok(GitOutput {
+        status,
+        stdout: collect(&stdout, deadline)?,
+        stderr: collect(&stderr, deadline)?,
+    })
 }
 
 fn error(message: impl Into<String>) -> ProbeError {

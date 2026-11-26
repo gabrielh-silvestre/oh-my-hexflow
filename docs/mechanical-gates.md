@@ -28,7 +28,7 @@ O arquivo de saída (`byproduct`) fica em `blobs/by-db/<arquivo do banco>/<proje
 
 ## 2. Um comando por check
 
-Não junte dois comandos num `run` (`sh -c "a && b"`, `;`, `2>&1`). Crie um check por comando e ordene com o campo `after`. Assim cada desfecho, `exit_code` e `byproduct` pertencem a um comando só.
+Não junte comandos num `run` (`sh -c "a && b"`, `;`, `2>&1`). Crie um check por comando e ordene com o campo `after`. Assim cada desfecho, `exit_code` e `byproduct` pertencem a um comando só.
 
 A boa prática trata de juntar comandos, não de usar `sh -c`.
 
@@ -145,11 +145,11 @@ cargo build --workspace --locked
 cargo test --workspace --lib --locked --no-run
 ```
 
-O `cargo test --no-run` sozinho não aquece os outros três comandos.
+O `cargo test --no-run` sozinho não aquece os outros comandos.
 
 ### Testes unitários no gate, integração no CI
 
-O `checks.test-suite` roda `cargo test --workspace --lib --locked -- --test-threads=4`, no máximo 4 ao mesmo tempo. Sem o limite, o gate morno ocupava 5,7 núcleos, acima da meta de 4 do pre-push.
+O `checks.test-suite` (`.omhl/checks/test-suite.toml`) limita os testes simultâneos: sem o limite, o gate morno usava mais núcleos do que o pre-push comporta.
 
 Três perguntas e um critério de módulo, de cima para baixo, decidem o grupo de um teste; a primeira resposta "sim" vale:
 
@@ -165,7 +165,7 @@ Para rodar um módulo, use `cargo test -p <crate> --test integration <modulo>::`
 
 O `support/` tem lugar diferente em cada crate. No `hexlog` fica dentro de `integration/`, porque a regra de API pública (`it_should_keep_integration_tests_on_the_public_api`) recusa `#[path]` em `tests/`. Se o `hexlog` ganhar um e2e, o `support/` muda de lugar ou a regra relaxa.
 
-O merge é bloqueado em duas camadas (decisão `perf2-bloqueio-camada-dupla`):
+O merge é bloqueado em camadas (decisão `perf2-bloqueio-camada-dupla`):
 
 1. O ruleset `main` do GitHub exige o check `ci` do app do GitHub Actions (`integration_id` 15368) e proíbe deletar a `main` ou reescrevê-la com force-push. O papel admin só contorna as regras no merge de um PR, marcando o bypass de forma explícita (`bypass_mode: pull_request`); um push direto na `main` fica bloqueado para todos.
 2. A attestation manual de `checks.ci-green-before-merge` cita a execução do CI do mesmo commit. Selecione a execução com `gh run list --workflow ci.yml --branch <branch> --event pull_request --limit 1 --json databaseId,headSha,conclusion,url`. Exija `conclusion` igual a `success` e `headSha` igual a `git rev-parse HEAD`, e grave os dois na nota: `omhl attest checks.ci-green-before-merge work-items.<id> --outcome passed --note "<url> <headSha>"`. Depois de um rebase (por exemplo, no merge de pilha do `gh stack`), o SHA muda: espere o CI novo e ateste de novo.

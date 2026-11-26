@@ -119,9 +119,9 @@ pub fn specs_dir_of(bytes: Option<&[u8]>) -> String {
         .dir
 }
 
-/// Os textos que o arquivo pode ter depois da edição, um por versão em que todas as trocas se aplicam;
-/// `None` quando o payload não diz o que gravar ou nenhuma versão aceita a lista. A ferramenta pode
-/// normalizar CRLF para LF antes de aplicar as trocas, então o hook testa as três combinações.
+/// Os textos que o arquivo pode ter depois da edição, um por versão em que todas as trocas se aplicam.
+///
+/// `None` sem payload gravável ou sem versão que aceite a lista; testa com e sem a normalização de CRLF da ferramenta.
 pub fn resulting_texts(input: &EditInput, current: Option<&str>) -> Option<Vec<String>> {
     let replacements = match input {
         EditInput::Write { content } => return Some(vec![content.clone()]),

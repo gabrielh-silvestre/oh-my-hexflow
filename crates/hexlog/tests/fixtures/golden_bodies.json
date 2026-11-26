@@ -126,6 +126,31 @@
    "jcs": "{\"at\":\"2026-11-07T12:00:00.000Z\",\"author\":{\"agent\":\"ag\",\"client\":\"cli\",\"model\":\"m\"},\"def_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"id\":\"acme:0192a000-0000-7000-8000-000000000006\",\"lineage\":{\"from\":\"a.one\",\"from_origin\":\"tenant\",\"kind\":\"relation\",\"relation_type\":\"after\",\"to\":\"n.other\",\"to_origin\":\"native\"},\"native_catalog\":\"v1\",\"retirement\":true,\"revises\":\"acme:0192a000-0000-7000-8000-000000000004\",\"seq\":6,\"tenant\":\"acme\",\"type\":\"after\",\"v\":1}",
    "hash": "af0ae36fc2dc743244e7c0969bc4f68557236cf8a184fcbd405df917a408effd"
   },
+  "node_with_session": {
+   "fields": {
+    "v": 1,
+    "tenant": "acme",
+    "seq": 7,
+    "id": "acme:0192a000-0000-7000-8000-000000000007",
+    "at": "2026-11-07T12:00:00.000Z",
+    "author": {
+     "agent": "ag",
+     "model": "m",
+     "client": "cli"
+    },
+    "def_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "type": "note",
+    "lineage": {
+     "kind": "node",
+     "id": "a.one"
+    },
+    "retirement": false,
+    "data": {},
+    "session": "c0ffee00-1111-2222-3333-444455556666"
+   },
+   "jcs": "{\"at\":\"2026-11-07T12:00:00.000Z\",\"author\":{\"agent\":\"ag\",\"client\":\"cli\",\"model\":\"m\"},\"data\":{},\"def_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"id\":\"acme:0192a000-0000-7000-8000-000000000007\",\"lineage\":{\"id\":\"a.one\",\"kind\":\"node\"},\"retirement\":false,\"seq\":7,\"session\":\"c0ffee00-1111-2222-3333-444455556666\",\"tenant\":\"acme\",\"type\":\"note\",\"v\":1}",
+   "hash": "be0721ddfa9dd9f11bf0a073f342f8cb235a02952157c7fad8ff93b2ede47575"
+  },
   "node_keyless_batch_first": {
    "fields": {
     "v": 1,

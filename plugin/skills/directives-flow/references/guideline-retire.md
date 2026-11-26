@@ -26,6 +26,7 @@ Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `-
 - `supersedes-cycle` (saída 1): a sucessora já é superada pela retirada, direto ou por outras. Escolha outra sucessora.
 - `guideline-retire-by-command` (saída 1): a retirada veio pelo `omhl append`. Só este comando a grava.
 - `INVALID_INPUT` (saída 1): um id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
+- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor (`path` vazio). Remova a variável ou rode o `omhl` numa sessão do Claude Code.
 - `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
 
 ## Exemplos

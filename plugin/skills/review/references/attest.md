@@ -36,6 +36,7 @@ Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `-
 - `outcome-immutable` (saída 1): o commit já tem outro desfecho gravado para o par. Faça um commit novo, ou aceite o desfecho gravado.
 - `snapshot-dirty` (saída 1): a árvore tem mudança não commitada. Commite e repita.
 - `probe-failed` (saída 1): o git não respondeu (fora de um repositório, por exemplo). Rode dentro de um checkout.
+- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor (`path` vazio). Remova a variável ou rode o `omhl` numa sessão do Claude Code.
 - `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
 - `INVALID_INPUT` (saída 1): um id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
 

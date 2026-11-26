@@ -45,6 +45,7 @@ impl OmhlHarness {
             clock: &self.raw.clock,
             ids: &self.raw.ids,
             probe: &self.probe,
+            session: &crate::support::NO_SESSION,
         };
         let mut omhl = Omhl::open(&self.raw.config(), deps).expect("omhl opens");
         omhl.ensure_tenant(&acme()).expect("the tenant is created");

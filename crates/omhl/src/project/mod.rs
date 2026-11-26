@@ -13,6 +13,7 @@ pub struct Env<'e> {
     /// Valor cru do `OMHL_ROLE`: vazio é um valor (recusado), não ausência.
     pub role: Option<String>,
     pub plugin_root: Option<&'e std::ffi::OsStr>,
+    pub session: Option<std::ffi::OsString>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

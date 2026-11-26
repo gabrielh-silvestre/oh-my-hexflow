@@ -727,6 +727,7 @@ fn it_should_enumerate_the_action_leaves_of_the_cli() {
         "report answers",
         "report recurrences",
         "report retro",
+        "report sessions",
         "spec init",
         "spec validate",
         "verify",
@@ -753,6 +754,7 @@ fn it_should_enumerate_the_options_of_the_cli() {
         ("load", vec!["--dry-run"]),
         ("report answers", vec!["--work-item"]),
         ("report recurrences", vec!["--min"]),
+        ("report sessions", vec!["--work-item"]),
     ];
 
     let with_options: Vec<(String, Vec<String>)> = leaf_options()

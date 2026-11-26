@@ -4,7 +4,7 @@ use serde_json::{Number, Value};
 
 use crate::error::push_pointer_segment;
 
-/// Contêineres (array ou objeto) que `data` aceita: o corpo do record gasta um dos 127 níveis do `from_str`.
+/// Contêineres (array ou objeto) que `data` aceita: o corpo do record gasta um nível do limite de recursão do `from_str`.
 pub(crate) const JSON_NESTING_MAX: usize = 126;
 /// Maior inteiro que um double representa sem arredondar vizinhos: 2^53 - 1.
 const SAFE_INTEGER_MAX: u64 = (1 << 53) - 1;

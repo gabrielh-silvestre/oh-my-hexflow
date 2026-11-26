@@ -62,6 +62,7 @@ const ENGINE_CHILDREN: &[(&str, &str)] = &[
     ("chain", "pub(crate)"),
     ("decide", "pub(in crate::engine)"),
     ("rules", "pub(in crate::engine)"),
+    ("scan", "pub(crate)"),
     ("verify", "pub(in crate::engine)"),
 ];
 const LIB_MODULES: &[(&str, &str)] = &[("engine", ""), ("catalog", ""), ("store", "")];
@@ -1479,7 +1480,7 @@ fn it_should_declare_every_engine_child_module_with_restricted_visibility() {
         "pub(crate) mod extra;",
     ];
     let engine_accepted = [
-        "pub(crate) mod ports; pub(crate) mod model; pub(crate) mod snapshot; pub(crate) mod limits; pub(crate) mod chain; pub(in crate::engine) mod decide; pub(in crate::engine) mod rules; pub(in crate::engine) mod verify;",
+        "pub(crate) mod ports; pub(crate) mod model; pub(crate) mod snapshot; pub(crate) mod limits; pub(crate) mod chain; pub(in crate::engine) mod decide; pub(in crate::engine) mod rules; pub(crate) mod scan; pub(in crate::engine) mod verify;",
     ];
     let lib_flagged = [
         "pub mod engine;",

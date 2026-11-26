@@ -837,6 +837,7 @@ fn it_should_fail_a_decision_resting_on_a_guideline_without_confirmation_written
         clock: &raw.clock,
         ids: &raw.ids,
         probe: &probe,
+        session: &crate::support::NO_SESSION,
     };
     let mut omhl = Omhl::open(&raw.config(), deps).expect("omhl opens");
     seed_pull_request(&mut omhl);

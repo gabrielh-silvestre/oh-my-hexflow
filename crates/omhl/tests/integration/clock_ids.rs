@@ -17,6 +17,7 @@ fn it_should_produce_an_instant_the_engine_accepts_from_the_system_clock() {
         clock: &SystemClock,
         ids: &V7Ids,
         probe: &probe,
+        session: &crate::support::NO_SESSION,
     };
     let mut omhl = Omhl::open(&raw.config(), deps).expect("omhl opens");
 
@@ -37,6 +38,7 @@ fn it_should_generate_ids_the_engine_accepts_as_record_ids() {
         clock: &SystemClock,
         ids: &V7Ids,
         probe: &probe,
+        session: &crate::support::NO_SESSION,
     };
     let mut omhl = Omhl::open(&raw.config(), deps).expect("omhl opens");
     omhl.ensure_tenant(&acme()).expect("the tenant is created");
