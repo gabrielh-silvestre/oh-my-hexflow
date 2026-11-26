@@ -12,6 +12,7 @@
 | Papel | Etapa | Comando |
 |---|---|---|
 | analyst | 2 | `omhl list --type gap --where work_item=work-items.<id>` |
+| analyst | 2 | `omhl list --type guideline` |
 | analyst | 2 | `omhl list --type premise --where work_item=work-items.<id>` |
 | architect | 5, 7 | `omhl list --type decision --where work_item=work-items.<id>` |
 | architect | 5, 7 | `omhl list --type guideline` |
@@ -41,6 +42,7 @@
 | sessao | review 6 | `omhl list --type premise --where work_item=work-items.<id> --format json` |
 | sessao | interview 3, plan-consensus 2, review 4 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
 | verifier | 9 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
+| verifier | 8, 9 | `omhl list --type guideline` |
 | verifier | 9 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
 
 ## Quando usar

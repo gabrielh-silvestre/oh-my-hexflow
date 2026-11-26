@@ -12,6 +12,7 @@ role: verifier
 etapas:
   - etapa: 8
     comandos:
+      - "omhl list --type guideline"
       - "omhl get decisions.<nome>"
       - "omhl append"
     grava: {nodes: [], relations: [], retire: [contradicts]}
@@ -19,6 +20,7 @@ etapas:
     comandos:
       - "omhl list --type divergence --where work_item=work-items.<id> --where resolution=open"
       - "omhl list --type premise --where work_item=work-items.<id> --where status=confirmed"
+      - "omhl list --type guideline"
       - "omhl get divergences.<nome>"
       - "omhl get decisions.<nome>"
       - "omhl spec validate work-items.<id>"

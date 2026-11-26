@@ -454,34 +454,41 @@ fn it_should_set_omit_claude_md_true_in_every_ported_agent() {
 }
 
 #[test]
-fn it_should_declare_pt_br_for_human_output_in_every_agent_prompt() {
+fn it_should_send_human_output_to_the_hook_announced_language_in_every_agent_prompt() {
     for agent in agents() {
+        let body = squash(&agent.body);
+
         assert!(
-            squash(&agent.body).contains("All output addressed to humans is written in pt-BR."),
-            "{}: pt-BR phrase",
+            body.contains("is written in the language the `SubagentStart` hook line announces"),
+            "{}: language sentence",
+            agent.role
+        );
+        assert!(
+            !body.contains("All output addressed to humans is written in pt-BR."),
+            "{}: old pt-BR sentence",
             agent.role
         );
     }
 }
 
 #[test]
-fn it_should_declare_english_for_code_identifiers_in_every_agent_prompt() {
+fn it_should_not_repeat_the_english_code_convention_in_any_agent_prompt() {
     for agent in agents() {
         assert!(
-            squash(&agent.body)
+            !squash(&agent.body)
                 .contains("Code identifiers, error messages and tests are written in English."),
-            "{}: English phrase",
+            "{}: the convention lives in the guideline",
             agent.role
         );
     }
 }
 
 #[test]
-fn it_should_declare_no_emoji_in_every_agent_prompt() {
+fn it_should_not_repeat_the_no_emoji_rule_in_any_agent_prompt() {
     for agent in agents() {
         assert!(
-            squash(&agent.body).contains("Use no emoji."),
-            "{}",
+            !squash(&agent.body).contains("Use no emoji."),
+            "{}: the convention lives in the guideline",
             agent.role
         );
     }

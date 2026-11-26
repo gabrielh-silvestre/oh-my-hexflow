@@ -186,6 +186,21 @@ fn it_should_accept_the_shipped_role_views() {
 }
 
 #[test]
+fn it_should_list_the_guidelines_in_every_shipped_role_view_and_allow_list() {
+    for role in ROLES {
+        let view = read_plugin(&format!("skills/role-{role}/SKILL.md"));
+        let allow = parse_role_allow(&read_plugin(&format!("agents/{role}.md")))
+            .expect("the shipped omhl-allow");
+
+        assert!(view.contains("omhl list --type guideline"), "{role}: view");
+        assert!(
+            allow.commands.iter().any(|command| command == "list"),
+            "{role}: allow"
+        );
+    }
+}
+
+#[test]
 fn it_should_accept_the_shipped_cycle_prose() {
     let cycle_md = read_plugin("skills/directives-flow/references/cycle.md");
     let cycle = parse_cycle(&cycle_md).expect("the shipped cycle block");

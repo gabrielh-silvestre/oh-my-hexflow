@@ -14,6 +14,7 @@ etapas:
     comandos:
       - "omhl list --type gap --where work_item=work-items.<id>"
       - "omhl list --type premise --where work_item=work-items.<id>"
+      - "omhl list --type guideline"
       - "omhl get premises.<nome>"
       - "omhl get gaps.<nome>"
       - "omhl get work-items.<id>"
