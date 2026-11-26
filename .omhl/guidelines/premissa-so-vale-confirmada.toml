@@ -1,2 +1,2 @@
 kind = "business"
-text = "Nenhuma premissa sustenta uma decisão, uma spec ou uma entrega enquanto um humano não a confirmar, com a pergunta e a resposta literais registradas. O código recusa o que depende de premissa não confirmada; diante da recusa, o agente pede a confirmação ao humano e só então segue."
+text = "No premise supports a decision, a spec or a delivery until a human confirms it, with the literal question and answer recorded. The code refuses what depends on an unconfirmed premise; faced with the refusal, the agent asks the human for confirmation and only then proceeds."

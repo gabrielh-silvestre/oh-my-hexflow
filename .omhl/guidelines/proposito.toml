@@ -1,2 +1,2 @@
 kind = "business"
-text = "O oh-my-hexflow é um fluxo de desenvolvimento agêntico opinativo e multiagente, construído sobre grafos. O motor HexCore (hoje o crate `hexlog`) é o coração da integração. O projeto é inspirado no oh-my-claudecode."
+text = "oh-my-hexflow is an opinionated, multi-agent agentic development workflow built on graphs. The HexCore engine (today the `hexlog` crate) is the heart of the integration. The project is inspired by oh-my-claudecode."
