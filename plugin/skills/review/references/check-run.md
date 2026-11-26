@@ -1,11 +1,11 @@
 # omhl check run
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review regras | `omhl check run` |
-| sessao | review 8 | `omhl check run --event before-merge` |
+| session | review rules | `omhl check run` |
+| session | review 8 | `omhl check run --event before-merge` |
 
 ## Quando usar
 

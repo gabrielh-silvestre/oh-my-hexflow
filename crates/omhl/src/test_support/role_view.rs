@@ -45,12 +45,12 @@ pub const CHANNEL: Channel = Channel::SkillsField;
 
 const PLUGIN_PREFIX: &str = "oh-my-hexflow:";
 const OMHL_PREFIX: &str = "omhl ";
-const SESSION_ROLE: &str = "sessao";
-const SESSION_CHECK: &str = "A sessão confere";
+const SESSION_ROLE: &str = "session";
+const SESSION_CHECK: &str = "The session checks";
 const FRONTMATTER_FENCE: &str = "---";
-const ALLOWED_PLACEHOLDERS: [&str; 3] = ["<id>", "<nome>", "<slug>"];
+const ALLOWED_PLACEHOLDERS: [&str; 3] = ["<id>", "<name>", "<slug>"];
 const FORBIDDEN_OPERATORS: [&str; 3] = ["|", "&&", ";"];
-const FORM_LABEL: &str = "forma do bloco";
+const FORM_LABEL: &str = "block shape";
 /// O mesmo padrão de `coverage.rs` (`citations`): a folha acaba na primeira opção.
 const CITATION_PATTERN: &str = r"(?:^\s*\$ |`)omhl((?: [a-z][a-z0-9-]*)+)";
 
@@ -58,31 +58,31 @@ const CITATION_PATTERN: &str = r"(?:^\s*\$ |`)omhl((?: [a-z][a-z0-9-]*)+)";
 #[serde(deny_unknown_fields)]
 struct RoleView {
     role: String,
-    etapas: Vec<ViewStep>,
-    nao_usados: Vec<String>,
+    stages: Vec<ViewStep>,
+    unused: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ViewStep {
-    etapa: u32,
-    repete: Option<u32>,
-    comandos: Option<Vec<String>>,
-    grava: Option<AppendAllow>,
+    stage: u32,
+    repeats: Option<u32>,
+    commands: Option<Vec<String>>,
+    records: Option<AppendAllow>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cycle {
-    etapas: Vec<CycleStep>,
+    stages: Vec<CycleStep>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CycleStep {
     n: u32,
-    nome: String,
-    papeis: Vec<String>,
+    name: String,
+    roles: Vec<String>,
 }
 
 /// Só o `skills:` do frontmatter do agente; o `omhl-allow` é do `role_allow`.
@@ -152,10 +152,7 @@ fn parse_yaml<T: DeserializeOwned>(yaml: &str) -> Result<T, String> {
 fn single_block(text: &str, tag: &str) -> Result<String, String> {
     let mut blocks = extract_block(text, tag);
     if blocks.len() != 1 {
-        return Err(format!(
-            "cercas {tag}: esperada 1, achadas {}",
-            blocks.len()
-        ));
+        return Err(format!("{tag} fences: expected 1, found {}", blocks.len()));
     }
 
     Ok(blocks.remove(0))
@@ -248,7 +245,7 @@ fn collect_findings<const N: usize>(items: [Option<String>; N]) -> Vec<String> {
 }
 
 fn view_commands(step: &ViewStep) -> &[String] {
-    step.comandos.as_deref().unwrap_or_default()
+    step.commands.as_deref().unwrap_or_default()
 }
 
 fn runs_append(step: &ViewStep, groups: &[Group]) -> bool {
@@ -270,47 +267,51 @@ fn form_violations(
     if view.role != role {
         violations.push((0, format!("role {} ≠ {role}", view.role)));
     }
-    for step in &view.etapas {
-        let n = step.etapa;
+    for step in &view.stages {
+        let n = step.stage;
         let mut push = |text: String| violations.push((n, text));
         if !seen.insert(n) {
-            push(format!("etapa {n}: etapa repetida"));
+            push(format!("stage {n}: stage repeated"));
         }
-        match (step.repete, &step.comandos) {
-            (Some(_), Some(_)) => push(format!("etapa {n}: repete com comandos")),
-            (Some(_), None) if step.grava.is_some() => push(format!("etapa {n}: repete com grava")),
-            (None, None) => push(format!("etapa {n}: sem repete e sem comandos")),
+        match (step.repeats, &step.commands) {
+            (Some(_), Some(_)) => push(format!("stage {n}: repeats with commands")),
+            (Some(_), None) if step.records.is_some() => {
+                push(format!("stage {n}: repeats with records"))
+            }
+            (None, None) => push(format!("stage {n}: no repeats and no commands")),
             _ => {}
         }
-        if step.repete == Some(n) {
-            push(format!("etapa {n}: repete a própria etapa"));
-        } else if let Some(target) = step.repete
-            && !view.etapas.iter().any(|other| other.etapa == target)
+        if step.repeats == Some(n) {
+            push(format!("stage {n}: repeats its own stage"));
+        } else if let Some(target) = step.repeats
+            && !view.stages.iter().any(|other| other.stage == target)
         {
             push(format!(
-                "etapa {n}: repete a etapa {target}, que o papel não tem"
+                "stage {n}: repeats stage {target}, which the role does not have"
             ));
         }
         for command in view_commands(step) {
             if !command.starts_with(OMHL_PREFIX) {
-                push(format!("etapa {n}: comando sem o prefixo omhl: {command}"));
+                push(format!(
+                    "stage {n}: command without the omhl prefix: {command}"
+                ));
             }
             for found in placeholder.find_iter(command) {
                 if !ALLOWED_PLACEHOLDERS.contains(&found.as_str()) {
                     push(format!(
-                        "etapa {n}: placeholder {} fora de <id>, <nome> e <slug>",
+                        "stage {n}: placeholder {} outside <id>, <name> and <slug>",
                         found.as_str()
                     ));
                 }
             }
             for operator in FORBIDDEN_OPERATORS {
                 if command.contains(operator) {
-                    push(format!("etapa {n}: operador {operator} em {command}"));
+                    push(format!("stage {n}: operator {operator} in {command}"));
                 }
             }
         }
-        if step.comandos.is_some() {
-            violations.extend(grava_violation(n, step, allow, groups).map(|text| (n, text)));
+        if step.commands.is_some() {
+            violations.extend(records_violation(n, step, allow, groups).map(|text| (n, text)));
         }
     }
     violations.sort();
@@ -318,15 +319,24 @@ fn form_violations(
     violations.into_iter().map(|(_, text)| text).collect()
 }
 
-fn grava_violation(n: u32, step: &ViewStep, allow: &RoleAllow, groups: &[Group]) -> Option<String> {
+fn records_violation(
+    n: u32,
+    step: &ViewStep,
+    allow: &RoleAllow,
+    groups: &[Group],
+) -> Option<String> {
     match (
-        step.grava.is_some(),
+        step.records.is_some(),
         runs_append(step, groups),
         allow.append.is_some(),
     ) {
-        (true, false, _) => Some(format!("etapa {n}: grava sem omhl append nos comandos")),
-        (true, true, false) => Some(format!("etapa {n}: grava, mas o omhl-allow não tem append")),
-        (false, true, true) => Some(format!("etapa {n}: omhl append sem grava")),
+        (true, false, _) => Some(format!(
+            "stage {n}: records without omhl append in the commands"
+        )),
+        (true, true, false) => Some(format!(
+            "stage {n}: records, but the omhl-allow has no append"
+        )),
+        (false, true, true) => Some(format!("stage {n}: omhl append without records")),
         _ => None,
     }
 }
@@ -365,20 +375,20 @@ pub fn check(
 /// A regra 1.
 fn stage_findings(role: &str, view: &RoleView, cycle: &Cycle) -> Vec<String> {
     let acts_in: BTreeSet<u32> = cycle
-        .etapas
+        .stages
         .iter()
-        .filter(|step| step.papeis.iter().any(|papel| papel == role))
+        .filter(|step| step.roles.iter().any(|candidate| candidate == role))
         .map(|step| step.n)
         .collect();
-    let declared: BTreeSet<u32> = view.etapas.iter().map(|step| step.etapa).collect();
+    let declared: BTreeSet<u32> = view.stages.iter().map(|step| step.stage).collect();
 
     collect_findings([
         finding(
-            "etapas sem linha",
+            "stages without a line",
             acts_in.difference(&declared).map(u32::to_string),
         ),
         finding(
-            "etapas fora do papel",
+            "stages outside the role",
             declared.difference(&acts_in).map(u32::to_string),
         ),
     ])
@@ -388,14 +398,14 @@ fn stage_findings(role: &str, view: &RoleView, cycle: &Cycle) -> Vec<String> {
 fn command_findings(view: &RoleView, allow: &RoleAllow, groups: &[Group]) -> Vec<String> {
     let mut used = BTreeSet::new();
     let mut unresolved = BTreeSet::new();
-    for command in view.etapas.iter().flat_map(view_commands) {
+    for command in view.stages.iter().flat_map(view_commands) {
         match command_leaf(command, groups) {
             Some(leaf) => used.insert(leaf),
             None => unresolved.insert(command.clone()),
         };
     }
     let allowed: BTreeSet<String> = allow.commands.iter().cloned().collect();
-    let unused: BTreeSet<String> = view.nao_usados.iter().cloned().collect();
+    let unused: BTreeSet<String> = view.unused.iter().cloned().collect();
     let outside_allow: BTreeSet<String> = used
         .difference(&allowed)
         .cloned()
@@ -407,25 +417,25 @@ fn command_findings(view: &RoleView, allow: &RoleAllow, groups: &[Group]) -> Vec
         .cloned();
 
     collect_findings([
-        finding("comandos fora do omhl-allow", outside_allow),
+        finding("commands outside the omhl-allow", outside_allow),
         finding(
-            "nao_usados fora do omhl-allow",
+            "unused outside the omhl-allow",
             unused.difference(&allowed).cloned(),
         ),
-        finding("comandos do omhl-allow sem linha", without_line),
+        finding("omhl-allow commands without a line", without_line),
     ])
 }
 
-/// Os nós, as relações e as retiradas que uma lista `grava` declara, como `nó:decision`.
+/// Os nós, as relações e as retiradas que uma lista `records` declara, como `node:decision`.
 fn recorded(append: &AppendAllow) -> BTreeSet<String> {
     let tagged = |kind: &str, items: &[String]| -> Vec<String> {
         items.iter().map(|item| format!("{kind}:{item}")).collect()
     };
 
     [
-        tagged("nó", &append.nodes),
-        tagged("relação", &append.relations),
-        tagged("retirada", &append.retire),
+        tagged("node", &append.nodes),
+        tagged("relation", &append.relations),
+        tagged("retire", &append.retire),
     ]
     .concat()
     .into_iter()
@@ -435,17 +445,20 @@ fn recorded(append: &AppendAllow) -> BTreeSet<String> {
 /// A regra 4.
 fn record_findings(view: &RoleView, allow: &RoleAllow) -> Vec<String> {
     let declared: BTreeSet<String> = view
-        .etapas
+        .stages
         .iter()
-        .filter_map(|step| step.grava.as_ref())
+        .filter_map(|step| step.records.as_ref())
         .flat_map(recorded)
         .collect();
     let allowed = allow.append.as_ref().map(recorded).unwrap_or_default();
 
     collect_findings([
-        finding("grava sem linha", allowed.difference(&declared).cloned()),
         finding(
-            "grava fora do omhl-allow",
+            "records without a line",
+            allowed.difference(&declared).cloned(),
+        ),
+        finding(
+            "records outside the omhl-allow",
             declared.difference(&allowed).cloned(),
         ),
     ])
@@ -470,9 +483,9 @@ fn skill_findings(
         (None, None) => None,
         (Some(name), Some([only])) if only == name => None,
         _ => Some(format!(
-            "esperado {}, achado {}",
-            expected.as_deref().unwrap_or("ausente"),
-            declared_skills.map_or_else(|| "ausente".to_owned(), |skills| format!("{skills:?}")),
+            "expected {}, found {}",
+            expected.as_deref().unwrap_or("absent"),
+            declared_skills.map_or_else(|| "absent".to_owned(), |skills| format!("{skills:?}")),
         )),
     };
     let without_file = found.iter().filter(|name| {
@@ -481,8 +494,8 @@ fn skill_findings(
     });
 
     collect_findings([
-        finding("skills do agente", mismatch),
-        finding("skill do agente sem SKILL.md", without_file.cloned()),
+        finding("agent skills", mismatch),
+        finding("agent skill without SKILL.md", without_file.cloned()),
     ])
 }
 
@@ -511,13 +524,13 @@ pub fn cycle_prose(cycle: &Cycle, cycle_md: &str) -> Vec<String> {
     let line = Regex::new(r"^(\d+)\. \*\*([^*]+)\*\*").expect("regex");
     let token = Regex::new(r"oh-my-hexflow:([a-z]+(?:-[a-z]+)*)").expect("regex");
     let mut items = Vec::new();
-    for step in &cycle.etapas {
+    for step in &cycle.stages {
         let n = step.n;
         let Some((text, title)) = cycle_md.lines().find_map(|candidate| {
             let captures = line.captures(candidate)?;
             (captures[1].parse::<u32>() == Ok(n)).then(|| (candidate, captures[2].to_owned()))
         }) else {
-            items.push((n, 0, format!("{n}: sem linha numerada")));
+            items.push((n, 0, format!("{n}: no numbered line")));
             continue;
         };
         let in_prose: BTreeSet<&str> = token
@@ -525,34 +538,31 @@ pub fn cycle_prose(cycle: &Cycle, cycle_md: &str) -> Vec<String> {
             .filter_map(|captures| captures.get(1).map(|found| found.as_str()))
             .collect();
         let in_data: BTreeSet<&str> = step
-            .papeis
+            .roles
             .iter()
             .map(String::as_str)
-            .filter(|papel| *papel != SESSION_ROLE)
+            .filter(|role| *role != SESSION_ROLE)
             .collect();
         if in_prose != in_data {
             items.push((
                 n,
                 1,
-                format!("{n}: papeis {} ≠ {}", list_of(&in_prose), list_of(&in_data)),
+                format!("{n}: roles {} ≠ {}", list_of(&in_prose), list_of(&in_data)),
             ));
         }
-        if normalize_title(&title) != step.nome {
+        if normalize_title(&title) != step.name {
             items.push((
                 n,
                 2,
-                format!("{n}: nome {} ≠ {}", normalize_title(&title), step.nome),
+                format!("{n}: name {} ≠ {}", normalize_title(&title), step.name),
             ));
         }
     }
     items.sort();
 
-    finding(
-        "papeis do ciclo",
-        items.into_iter().map(|(_, _, item)| item),
-    )
-    .into_iter()
-    .collect()
+    finding("cycle roles", items.into_iter().map(|(_, _, item)| item))
+        .into_iter()
+        .collect()
 }
 
 fn list_of(roles: &BTreeSet<&str>) -> String {
@@ -579,29 +589,29 @@ pub fn session_checks(skill_text: &str) -> Vec<String> {
         steps += 1;
         let n = &captures[1];
         if !line.contains(SESSION_CHECK) {
-            items.push(format!("{n}: sem a frase \"{SESSION_CHECK}\""));
+            items.push(format!("{n}: missing the phrase \"{SESSION_CHECK}\""));
         }
         let cited: Vec<Vec<String>> = citation
             .captures_iter(line)
             .map(|found| found[1].split_whitespace().map(str::to_owned).collect())
             .collect();
         if cited.is_empty() {
-            items.push(format!("{n}: sem comando omhl"));
+            items.push(format!("{n}: no omhl command"));
         }
         for words in &cited {
             match leaf_of(words, &groups) {
                 Some(leaf) if leaves.contains(&leaf) => {}
-                _ => items.push(format!("{n}: folha inexistente {}", words.join(" "))),
+                _ => items.push(format!("{n}: unknown leaf {}", words.join(" "))),
             }
         }
     }
 
     // Sem passo nenhum (frontmatter ausente ou com CRLF, lista renumerada) a regra passaria em falso.
     if steps == 0 {
-        items.push("sem passo numerado após o frontmatter".to_owned());
+        items.push("no numbered step after the frontmatter".to_owned());
     }
 
-    finding("passos sem conferência", items)
+    finding("steps without a session check", items)
         .into_iter()
         .collect()
 }

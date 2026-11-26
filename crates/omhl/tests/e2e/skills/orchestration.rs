@@ -281,7 +281,7 @@ fn it_should_tell_review_that_the_verifier_closes_a_reviewer_divergence_as_code_
     let text = read("review/SKILL.md");
 
     assert!(
-        line_with(&text, &["verifier", "code-fixed", "nunca", "accepted"]).is_some(),
+        line_with(&text, &["verifier", "code-fixed", "never", "accepted"]).is_some(),
         "one rule: code-fixed by the verifier, never accepted"
     );
 }
@@ -690,12 +690,12 @@ fn it_should_close_the_review_loop_when_the_verifier_fails_or_leaves_a_divergenc
     let steps = numbered_steps(&text);
     let loop_step = step_with(
         &text,
-        &["`FAIL`", "`INCOMPLETE`", "`open`", "volte ao passo 3"],
+        &["`FAIL`", "`INCOMPLETE`", "`open`", "go back to step 3"],
     )
     .expect("a step that loops back to step 3");
     let fix = step_with(&text, &["Corrija o código"]).expect("the fix step");
 
-    assert!(steps[loop_step].contains("chame-o de novo"));
+    assert!(steps[loop_step].contains("call it again"));
     assert!(
         steps[loop_step].contains("`PASS`"),
         "only a PASS verdict lets the review go on"

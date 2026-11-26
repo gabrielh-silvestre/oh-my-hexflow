@@ -15,41 +15,41 @@ pub const MARKERS: [Marker; 10] = [
         rule: "AC-1",
         file: INTERVIEW,
         fragments: &[
-            "**Premissa da rodada.**",
-            "confirme ou corrija na mesma rodada",
-            "nada vai ao banco antes",
+            "**Round premise.**",
+            "confirm or correct it in the same round",
+            "nothing goes to the database before then",
         ],
     },
     Marker {
         rule: "AC-1",
         file: INTERVIEW,
         fragments: &[
-            "**Prova da confirmação.**",
+            "**Proof of confirmation.**",
             "`confirmed_by`",
-            "2000 caracteres",
+            "2000 characters",
         ],
     },
     Marker {
         rule: "AC-3",
         file: INTERVIEW,
         fragments: &[
-            "**Parada.**",
-            "20% ou menos",
-            "cada parte ativa",
-            "premissa de negócio confirmada",
+            "**Stop.**",
+            "20% or less",
+            "each active part",
+            "confirmed business premise",
         ],
     },
     Marker {
         rule: "AC-3",
         file: INTERVIEW,
-        fragments: &["**Cobertura.**", "parte ativa", "premissa confirmada"],
+        fragments: &["**Coverage.**", "active part", "confirmed premise"],
     },
     Marker {
         rule: "AC-5",
         file: PLAN_CONSENSUS,
         fragments: &[
             "`oh-my-hexflow:analyst`",
-            "tardia (`origin: late`, `assumed`)",
+            "late (`origin: late`, `assumed`)",
         ],
     },
     Marker {
@@ -74,7 +74,7 @@ pub const MARKERS: [Marker; 10] = [
         rule: "AC-8",
         file: REVIEW,
         fragments: &[
-            "Premissa confirmada sem evidência",
+            "A confirmed premise without evidence",
             "`FAIL`",
             "`kind` `missing`",
         ],
@@ -105,13 +105,13 @@ pub fn phrase_markers(markers: &[Marker], files: &[(&str, &str)]) -> Vec<String>
 
         (!present).then(|| {
             format!(
-                "{} em {}: {}",
+                "{} in {}: {}",
                 marker.rule, marker.file, marker.fragments[0]
             )
         })
     });
 
-    finding("frases marcadoras ausentes", missing)
+    finding("marker phrases missing", missing)
         .into_iter()
         .collect()
 }

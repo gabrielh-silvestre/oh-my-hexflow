@@ -1,10 +1,10 @@
 # omhl byproduct prune
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review regras | `omhl byproduct prune` |
+| session | review rules | `omhl byproduct prune` |
 
 A matriz dos papéis não o tem: nenhum agente de papel o roda, e o hook `agent-role` o nega com `command-outside-matrix`. Só a sessão principal e os agentes sem papel portado o usam.
 

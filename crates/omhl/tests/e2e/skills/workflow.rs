@@ -34,7 +34,7 @@ const BASE_LEAVES: [&str; 5] = [
     "guideline retire",
 ];
 
-const WHO_USES_HEADING: &str = "## Quem usa, em qual etapa e com qual filtro";
+const WHO_USES_HEADING: &str = "## Who uses it, at which stage and with which filter";
 
 /// A ordem do fechamento no passo 8 da `review`: a parada do PR filho vem antes do primeiro `check run`.
 const CLOSING_ORDER: [&str; 7] = [
@@ -71,7 +71,7 @@ fn it_should_state_the_ambiguity_gate_and_the_pre_work_item_order_in_the_intervi
         "a scoreboard of ambiguity per dimension"
     );
     assert!(
-        line_with(&text, &["ambiguidade", "20%", "ou menos"]).is_some(),
+        line_with(&text, &["ambiguity", "20%", "or less"]).is_some(),
         "the interview stops at 20% ambiguity or less"
     );
     assert!(
@@ -133,7 +133,7 @@ fn it_should_tell_the_analyst_step_to_cover_only_the_technical_after_the_intervi
         &text,
         &[
             "oh-my-hexflow:analyst",
-            "negócio já confirmado na entrevista; cubra só o técnico",
+            "business already confirmed in the interview; cover only the technical",
         ],
     )
     .expect("an analyst step that hands over the confirmed business");
@@ -319,9 +319,9 @@ fn it_should_draft_and_confirm_one_premise_per_round_with_the_proof_in_the_confi
         line_with(
             &text,
             &[
-                "redija a premissa de negócio",
-                "confirme ou corrija",
-                "na mesma rodada"
+                "draft the business premise",
+                "confirm or correct it",
+                "in the same round"
             ]
         )
         .is_some(),
@@ -332,9 +332,9 @@ fn it_should_draft_and_confirm_one_premise_per_round_with_the_proof_in_the_confi
             &text,
             &[
                 "`confirmed_by`",
-                "premissa como você a redigiu",
-                "confirmação ou a correção literal",
-                "2000 caracteres"
+                "the premise as you drafted it",
+                "confirmation or correction",
+                "2000 characters"
             ]
         )
         .is_some(),
@@ -358,9 +358,9 @@ fn it_should_close_the_interview_only_with_low_ambiguity_and_every_active_part_c
         line_with(
             &text,
             &[
-                "20% ou menos",
-                "cada parte ativa da Rodada 0",
-                "premissa de negócio confirmada"
+                "20% or less",
+                "each active part of Round 0",
+                "confirmed business premise"
             ]
         )
         .is_some(),
@@ -370,9 +370,9 @@ fn it_should_close_the_interview_only_with_low_ambiguity_and_every_active_part_c
         line_with(
             &text,
             &[
-                "Cobertura",
-                "registre na nota",
-                "retomada depois de compactação"
+                "Coverage",
+                "record in the note",
+                "resuming after compaction"
             ]
         )
         .is_some(),
@@ -412,14 +412,11 @@ fn it_should_mark_every_business_suggestion_after_the_interview_as_late_in_plan_
 
     let analyst_step = step_with(
         &text,
-        &[
-            "oh-my-hexflow:analyst",
-            "tardia (`origin: late`, `assumed`)",
-        ],
+        &["oh-my-hexflow:analyst", "late (`origin: late`, `assumed`)"],
     )
     .expect("an analyst step that marks the business suggestion as late");
     assert!(
-        !numbered_steps(&text)[analyst_step].contains("vai ao dono depois"),
+        !numbered_steps(&text)[analyst_step].contains("goes to the owner afterwards"),
         "the analyst step no longer sends the business premise to the owner afterwards"
     );
     assert!(
@@ -523,10 +520,10 @@ fn it_should_fail_a_premise_without_evidence_and_open_a_missing_divergence_on_it
         line_with(
             &review,
             &[
-                "Premissa confirmada sem evidência",
+                "A confirmed premise without evidence",
                 "`FAIL`",
                 "`divergence` `open`",
-                "`source_ref` igual ao id da premissa",
+                "`source_ref` equal to the premise id",
                 "`kind` `missing`"
             ]
         )

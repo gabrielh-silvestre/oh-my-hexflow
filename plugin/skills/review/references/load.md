@@ -1,10 +1,10 @@
 # omhl load
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review regras | `omhl load` |
+| session | review rules | `omhl load` |
 
 ## Quando usar
 

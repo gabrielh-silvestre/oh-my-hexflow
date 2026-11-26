@@ -12,12 +12,12 @@ use super::{
     parse_view, skill_body, view_commands,
 };
 
-pub const WHO_USES_HEADING: &str = "## Quem usa, em qual etapa e com qual filtro";
-pub const NO_STAGE_SENTENCE: &str = "Nenhuma etapa do ciclo a roda.";
-const REFERENCE_TABLE_HEADING: &str = "## Comando para referência";
-const RULES_LABEL: &str = "regras";
+pub const WHO_USES_HEADING: &str = "## Who uses it, at which stage and with which filter";
+pub const NO_STAGE_SENTENCE: &str = "No stage of the cycle runs it.";
+const REFERENCE_TABLE_HEADING: &str = "## Command reference";
+const RULES_LABEL: &str = "rules";
 const STAGE_SEPARATOR: &str = ", ";
-const TABLE_HEADER_ROLE: &str = "Papel";
+const TABLE_HEADER_ROLE: &str = "Role";
 
 /// Cópia de `tests/e2e/skills/workflow.rs`: as folhas da base, que não levam o bloco "quem usa".
 pub const BASE_LEAVES: [&str; 5] = [
@@ -78,7 +78,7 @@ fn joined(items: impl Iterator<Item = String>) -> String {
     items.collect::<Vec<_>>().join(STAGE_SEPARATOR)
 }
 
-/// Os comandos dos papéis que a folha recebe, com as etapas em que cada papel os roda (`repete` entra na lista).
+/// Os comandos dos papéis que a folha recebe, com as etapas em que cada papel os roda (`repeats` entra na lista).
 fn role_rows(
     leaf: &str,
     views: &[(&str, &str)],
@@ -87,17 +87,17 @@ fn role_rows(
     let mut stages: BTreeMap<(String, String), BTreeSet<u32>> = BTreeMap::new();
     for (role, text) in views {
         let view = parse_view(text).map_err(|error| format!("{role}: {error}"))?;
-        for step in &view.etapas {
+        for step in &view.stages {
             let source = step
-                .repete
-                .and_then(|target| view.etapas.iter().find(|other| other.etapa == target))
+                .repeats
+                .and_then(|target| view.stages.iter().find(|other| other.stage == target))
                 .unwrap_or(step);
             for command in view_commands(source) {
                 if command_leaf(command, groups).as_deref() == Some(leaf) {
                     stages
                         .entry(((*role).to_owned(), command.clone()))
                         .or_default()
-                        .insert(step.etapa);
+                        .insert(step.stage);
                 }
             }
         }
@@ -223,7 +223,7 @@ fn page_row(line: &str) -> Option<Row> {
 /// As linhas da tabela da seção "quem usa" da página e se ela diz a frase da página vazia.
 fn page_block(page: &str) -> Result<(BTreeSet<Row>, bool), String> {
     if !page.lines().any(|line| line.trim_end() == WHO_USES_HEADING) {
-        return Err(format!("sem a seção \"{WHO_USES_HEADING}\""));
+        return Err(format!("missing the section \"{WHO_USES_HEADING}\""));
     }
     let section: Vec<&str> = page
         .lines()
@@ -236,7 +236,7 @@ fn page_block(page: &str) -> Result<(BTreeSet<Row>, bool), String> {
         .iter()
         .filter(|line| line.trim_start().starts_with('|'))
     {
-        let row = page_row(line).ok_or_else(|| format!("linha malformada: {line}"))?;
+        let row = page_row(line).ok_or_else(|| format!("malformed line: {line}"))?;
         if row.0 != TABLE_HEADER_ROLE && !row.0.starts_with('-') {
             rows.insert(row);
         }
@@ -253,7 +253,7 @@ pub fn who_uses(
     views: &[(&str, &str)],
     workflow: &[(&str, &str)],
 ) -> Vec<String> {
-    let label = format!("quem usa da página {leaf}");
+    let label = format!("who-uses of page {leaf}");
     let projected = match projection(leaf, views, workflow) {
         Ok(rows) => rows,
         Err(error) => return vec![format!("{label}: [{error}]")],
@@ -270,12 +270,12 @@ pub fn who_uses(
         .difference(&projected)
         .map(row_text)
         .chain(surplus_sentence)
-        .map(|text| format!("sobra: {text}"));
+        .map(|text| format!("extra: {text}"));
     let missing = projected
         .difference(&listed)
         .map(row_text)
         .chain(missing_sentence)
-        .map(|text| format!("falta: {text}"));
+        .map(|text| format!("missing: {text}"));
 
     finding(&label, surplus.chain(missing))
         .into_iter()
@@ -302,7 +302,7 @@ pub fn anchor_findings(
             match projection(leaf, views, workflow).map(|rows| class_of(&rows)) {
                 Ok(found) if found == *expected => None,
                 Ok(found) => Some(format!(
-                    "{leaf}: esperado {expected:?}, projetado {found:?}"
+                    "{leaf}: expected {expected:?}, projected {found:?}"
                 )),
                 Err(error) => Some(format!("{leaf}: {error}")),
             }
@@ -311,17 +311,17 @@ pub fn anchor_findings(
 
     collect_findings([
         finding(
-            "folhas fora da âncora",
+            "leaves outside the anchor",
             migrated
                 .difference(&anchored)
                 .map(|leaf| (*leaf).to_owned()),
         ),
         finding(
-            "âncora sem folha na CLI",
+            "anchor without a CLI leaf",
             anchored
                 .difference(&migrated)
                 .map(|leaf| (*leaf).to_owned()),
         ),
-        finding("classe divergente da âncora", divergent),
+        finding("class diverging from the anchor", divergent),
     ])
 }

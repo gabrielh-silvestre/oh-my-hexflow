@@ -1,15 +1,15 @@
 # omhl list
 
-- [Quem usa](#quem-usa-em-qual-etapa-e-com-qual-filtro)
+- [Who uses it](#who-uses-it-at-which-stage-and-with-which-filter)
 - [Quando usar](#quando-usar)
 - [Entradas](#entradas)
 - [Saída](#saída)
 - [Erros](#erros)
 - [Exemplos](#exemplos)
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
 | analyst | 2 | `omhl list --type gap --where work_item=work-items.<id>` |
 | analyst | 2 | `omhl list --type guideline` |
@@ -34,13 +34,13 @@
 | security-reviewer | 9 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
 | security-reviewer | 9 | `omhl list --type guideline` |
 | security-reviewer | 9 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
-| sessao | review 2 | `omhl list` |
-| sessao | plan-consensus 5, review 6 | `omhl list --type decision --where work_item=work-items.<id>` |
-| sessao | review 6 | `omhl list --type decision --where work_item=work-items.<id> --format json` |
-| sessao | review 1, review 2, review 3, review 5 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
-| sessao | plan-consensus 1 | `omhl list --type gap --where work_item=work-items.<id>` |
-| sessao | review 6 | `omhl list --type premise --where work_item=work-items.<id> --format json` |
-| sessao | interview 3, plan-consensus 2, review 4 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
+| session | review 2 | `omhl list` |
+| session | plan-consensus 5, review 6 | `omhl list --type decision --where work_item=work-items.<id>` |
+| session | review 6 | `omhl list --type decision --where work_item=work-items.<id> --format json` |
+| session | review 1, review 2, review 3, review 5 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
+| session | plan-consensus 1 | `omhl list --type gap --where work_item=work-items.<id>` |
+| session | review 6 | `omhl list --type premise --where work_item=work-items.<id> --format json` |
+| session | interview 3, plan-consensus 2, review 4 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
 | verifier | 9 | `omhl list --type divergence --where work_item=work-items.<id> --where resolution=open` |
 | verifier | 8, 9 | `omhl list --type guideline` |
 | verifier | 9 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |

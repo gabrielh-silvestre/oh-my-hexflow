@@ -1,10 +1,10 @@
 # omhl hooks install
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review regras | `omhl hooks install` |
+| session | review rules | `omhl hooks install` |
 
 ## Quando usar
 

@@ -1,11 +1,11 @@
 # omhl report answers
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
 | planner | 4 | `omhl report answers --work-item work-items.<id>` |
-| sessao | plan-consensus 3 | `omhl report answers --work-item work-items.<id>` |
+| session | plan-consensus 3 | `omhl report answers --work-item work-items.<id>` |
 
 ## Quando usar
 

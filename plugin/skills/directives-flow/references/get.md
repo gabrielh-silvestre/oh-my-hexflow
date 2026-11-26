@@ -1,23 +1,23 @@
 # omhl get
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| analyst | 2 | `omhl get gaps.<nome>` |
-| analyst | 2 | `omhl get premises.<nome>` |
+| analyst | 2 | `omhl get gaps.<name>` |
+| analyst | 2 | `omhl get premises.<name>` |
 | analyst | 2 | `omhl get work-items.<id>` |
-| architect | 5, 7 | `omhl get decisions.<nome>` |
-| code-reviewer | 9 | `omhl get guidelines.<nome>` |
-| code-reviewer | 9 | `omhl get premises.<nome>` |
-| critic | 3 | `omhl get premises.<nome>` |
+| architect | 5, 7 | `omhl get decisions.<name>` |
+| code-reviewer | 9 | `omhl get guidelines.<name>` |
+| code-reviewer | 9 | `omhl get premises.<name>` |
+| critic | 3 | `omhl get premises.<name>` |
 | planner | 4 | `omhl get work-items.<id>` |
-| security-reviewer | 9 | `omhl get guidelines.<nome>` |
-| security-reviewer | 9 | `omhl get premises.<nome>` |
-| sessao | review 2 | `omhl get` |
-| sessao | interview 1, interview 2 | `omhl get work-items.<id>` |
-| verifier | 8, 9 | `omhl get decisions.<nome>` |
-| verifier | 9 | `omhl get divergences.<nome>` |
+| security-reviewer | 9 | `omhl get guidelines.<name>` |
+| security-reviewer | 9 | `omhl get premises.<name>` |
+| session | review 2 | `omhl get` |
+| session | interview 1, interview 2 | `omhl get work-items.<id>` |
+| verifier | 8, 9 | `omhl get decisions.<name>` |
+| verifier | 9 | `omhl get divergences.<name>` |
 
 ## Quando usar
 

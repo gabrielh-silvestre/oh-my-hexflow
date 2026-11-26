@@ -1,10 +1,10 @@
 # omhl project
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | plan-consensus 6, plan-consensus 7, plan-consensus 8, review 4, review 7 | `omhl project` |
+| session | plan-consensus 6, plan-consensus 7, plan-consensus 8, review 4, review 7 | `omhl project` |
 
 ## Quando usar
 

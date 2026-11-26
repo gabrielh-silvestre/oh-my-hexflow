@@ -1,8 +1,8 @@
 # omhl verify
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-Nenhuma etapa do ciclo a roda.
+No stage of the cycle runs it.
 
 A leitura do símbolo do `verify` (sai 0 com a cadeia quebrada) é regra da base: [directives-flow](../SKILL.md), seção Consulta.
 

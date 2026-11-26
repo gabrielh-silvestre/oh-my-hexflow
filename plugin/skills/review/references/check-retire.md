@@ -1,10 +1,10 @@
 # omhl check retire
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review regras | `omhl check retire` |
+| session | review rules | `omhl check retire` |
 
 ## Quando usar
 

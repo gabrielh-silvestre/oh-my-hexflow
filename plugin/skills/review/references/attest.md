@@ -1,10 +1,10 @@
 # omhl attest
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review 8, review regras | `omhl attest` |
+| session | review 8, review rules | `omhl attest` |
 
 ## Quando usar
 

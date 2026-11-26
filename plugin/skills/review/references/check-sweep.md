@@ -1,8 +1,8 @@
 # omhl check sweep
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-Nenhuma etapa do ciclo a roda.
+No stage of the cycle runs it.
 
 A varredura global é do dono e só roda com a aprovação do humano: `SKILL.md` da `review`, seção Regras.
 

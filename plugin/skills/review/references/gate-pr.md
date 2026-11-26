@@ -1,10 +1,10 @@
 # omhl gate-pr
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review 8, review regras | `omhl gate-pr` |
+| session | review 8, review rules | `omhl gate-pr` |
 
 ## Quando usar
 
