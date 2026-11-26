@@ -9,7 +9,7 @@ const ORIGIN_PREFIX: &str = "Ported from oh-my-claudecode ";
 const OMC_LABELS: &str =
     r"(?i)oh-my-claudecode|\bomc\b|ralplan|\b(?:executor|test-engineer|quality-reviewer)\b";
 
-/// Arquivos de `plugin/`, fora de qualquer pasta `.omc/`, relativos a `root`.
+/// Pula as pastas `.omc/`: estado local do OMC, ignorado pelo git, não é texto do plugin.
 pub fn plugin_files(root: &Path) -> Vec<String> {
     // Percorre a pasta em vez de `git ls-files`: teste unitário não abre processo (regra de arquitetura).
     let mut found = Vec::new();
@@ -33,7 +33,7 @@ pub fn plugin_files(root: &Path) -> Vec<String> {
     found
 }
 
-/// `arquivo:linha` de cada linha com rótulo do OMC que não seja linha de origem.
+/// Formato `arquivo:linha`.
 pub fn scan_files(root: &Path, files: &[String]) -> Vec<String> {
     let labels = Regex::new(OMC_LABELS).expect("regex");
     let mut found = Vec::new();

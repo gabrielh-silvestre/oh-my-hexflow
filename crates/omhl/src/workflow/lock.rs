@@ -202,8 +202,7 @@ pub fn is_marker_candidate(file_path: &Path) -> bool {
     )
 }
 
-/// Um nome qualquer sob `.omhl/notes/` e nenhum `..` no caminho: o filtro barato, puro, sem git nem arquivo.
-/// Que a pasta seja a da raiz do marcador só se sabe depois de achá-lo (`is_notes_path_of`).
+/// Filtro barato e puro, que roda antes de achar o marcador; `is_notes_path_of` confirma depois que a pasta é a da raiz.
 pub fn is_notes_candidate(file_path: &Path) -> bool {
     !has_parent_dir(file_path)
         && normalized_names(file_path).is_some_and(|names| {
@@ -213,7 +212,7 @@ pub fn is_notes_candidate(file_path: &Path) -> bool {
         })
 }
 
-/// O caminho começa exatamente em `<root>/.omhl/notes/<nome>` e não tem `..`.
+/// Confirma o que `is_notes_candidate` só suspeita, com a raiz do marcador já conhecida: `src/.omhl/notes/a.md` passa o filtro e é recusado aqui.
 pub fn is_notes_path_of(file_path: &Path, root: &Path) -> bool {
     !has_parent_dir(file_path)
         && normalized_names(file_path)

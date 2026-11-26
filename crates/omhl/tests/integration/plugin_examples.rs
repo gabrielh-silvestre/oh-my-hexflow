@@ -25,7 +25,6 @@ const FORBIDDEN_KEYS: [&str; 7] = [
 const FORBIDDEN_PROGRAMS: [&str; 3] = ["gh", "wt", "git"];
 const LINT_CHECK: &str = "checks/lint-sources.toml";
 
-/// Os arquivos de `plugin/examples/` sem o `README.md`, por caminho relativo à pasta.
 type Tree = BTreeMap<String, String>;
 
 // Apoio
@@ -133,7 +132,6 @@ fn dangling_after(tree: &Tree) -> Vec<String> {
         .collect()
 }
 
-/// Copia a árvore para um projeto temporário marcado, roda `load --dry-run` e junta o que reprova.
 fn failures_of(tree: &Tree) -> Vec<String> {
     let project = Project::new("examples");
     for (path, text) in tree {

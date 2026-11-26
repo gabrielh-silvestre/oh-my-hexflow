@@ -83,7 +83,6 @@ fn cells(row: &str) -> Vec<String> {
         .collect()
 }
 
-/// A tabela da seção `Classification`: o cabeçalho e as linhas de dados.
 fn classification_table() -> (Vec<String>, Vec<Vec<String>>) {
     let page = read_repo_file(BOUNDARY_DOC);
     let rows: Vec<Vec<String>> = section(&page, "Classification")
@@ -100,7 +99,6 @@ fn guideline() -> toml::Table {
     toml::from_str(&read_repo_file(GUIDELINE_FILE)).expect("the guideline is valid TOML")
 }
 
-/// Os links relativos de Markdown quebrados (arquivo ou âncora) dos documentos que a regra do CMP-022 cobre.
 fn broken_links(root: &Path) -> Vec<String> {
     let mut pages: Vec<PathBuf> = ["README.md", CONTRIBUTING, "GLOSSARY.md", "AGENTS.md"]
         .iter()
@@ -193,7 +191,6 @@ fn github_slug(heading: &str) -> String {
         .collect()
 }
 
-/// Os filhos diretos de `docs/` que trazem texto só deste repositório.
 fn docs_with_repository_text(root: &Path) -> Vec<String> {
     let mut found: Vec<String> = fs::read_dir(root.join("docs"))
         .expect("docs exists")

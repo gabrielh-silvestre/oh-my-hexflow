@@ -173,7 +173,7 @@ O identificador técnico de um record específico, gerado na gravação. Cada re
 _Avoid_: id (sozinho), uuid
 
 **Boundary**:
-A divisão do que o plugin traz a um projeto em três classes: `Method` (o que o plugin impõe), `Optional default configuration` (desligado até o projeto escolher, com exemplo para copiar) e `Exclusive to this repository` (vive aqui e não no plugin). Quando a classe não está clara, o dono decide.
+A divisão do que o plugin traz a um projeto em três classes: `Method` (o que o plugin impõe), `Optional default configuration` (desligado até o projeto escolher, com exemplo para copiar) e `Exclusive to this repository` (vive aqui e não no plugin).
 _Avoid_: scope, limit, escopo
 
 **Output format**:

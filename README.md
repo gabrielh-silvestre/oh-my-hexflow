@@ -197,7 +197,7 @@ Uma entrada por mudança que exige ação de quem atualiza, a mais nova primeiro
 
 ### A pasta `.omhl/notes/` nasce com um `.gitignore` próprio
 
-O hook cria a pasta `.omhl/notes/` na primeira nota escrita por uma ferramenta de edição de arquivo do Claude Code (uma nota escrita pelo `Bash` passa sem o hook), agora com um `.gitignore` próprio, de uma linha `*`. O `omhl` nunca recria o arquivo se a pasta já existe. Para versionar as notas, edite ou apague esse `.gitignore`.
+O hook cria a pasta `.omhl/notes/` na primeira nota escrita por uma ferramenta de edição de arquivo do Claude Code (uma nota escrita pelo `Bash` passa sem o hook), agora com um `.gitignore` próprio que ignora tudo (`*`). O `omhl` nunca recria o arquivo se a pasta já existe. Para versionar as notas, edite ou apague esse `.gitignore`.
 
 Se a `.omhl/notes/` do seu projeto nasceu sem o arquivo, porque é anterior a esta mudança, porque um binário velho criou a pasta ou porque a criação falhou no meio, crie o `.omhl/notes/.gitignore` à mão com a linha `*`, se quiser. Não há migração, e o `omhl` não o recria.
 

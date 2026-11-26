@@ -25,13 +25,11 @@ Depois de puxar mudanças, recompile e copie o binário de novo, como no passo d
 
 O projeto não escreve mais ADRs. Os arquivos de `docs/adr/` são histórico congelado: nenhum é editado, renomeado ou movido. A decisão nova mora no grafo, como uma `decision` ancorada por `rests-on`. Onde um ADR deixou de valer, o README e o `docs/` dizem o comportamento atual, e o ADR fica como está.
 
-Um corte numérico mantido de `src/app` não vai para um ADR: ele ganha um comentário de uma linha junto da entrada de `NUMERIC_CUTS_IN_APP`.
-
 ## Gate local, CI e merge
 
 ### A `main` com proteção do GitHub
 
-O repositório é público desde 2026-11-17, e a `main` tem um ruleset do GitHub exigindo o check `ci` (configurado no work item `perf2`; ver [Testes unitários no gate, integração no CI](#testes-unitários-no-gate-integração-no-ci)). Os hooks locais (`pre-push`, `pre-commit` e `pre-merge-commit`) e o `gate-pr` seguem como a outra camada.
+As camadas que bloqueiam o merge estão na lista "O merge é bloqueado em camadas" de [Testes unitários no gate, integração no CI](#testes-unitários-no-gate-integração-no-ci).
 
 ### O custo do `pre-push`
 
@@ -60,8 +58,6 @@ Se as três respostas são não e o teste não atravessa dois módulos, ele é u
 
 Os meta-testes são a exceção. Meta-teste lê a árvore do repositório, os docs, `plugin/*.json` ou o `Cargo.lock`, ou testa um helper de teste (o oráculo que outros testes usam), e não tem módulo de fonte. Vai para o binário onde moram os helpers do seu arquivo; com o helper em `tests/support/`, ou sem helper comum, vai para a integração.
 
-Para rodar um módulo, use `cargo test -p <crate> --test integration <modulo>::`, `--test e2e <modulo>::` (só o `omhl`) ou `--lib <modulo>::`.
-
 O `support/` tem lugar diferente em cada crate. No `hexlog` fica dentro de `integration/`, porque a regra de API pública (`it_should_keep_integration_tests_on_the_public_api`) recusa `#[path]` em `tests/`. Se o `hexlog` ganhar um e2e, o `support/` muda de lugar ou a regra relaxa.
 
 O merge é bloqueado em camadas (decisão `perf2-bloqueio-camada-dupla`):
@@ -69,7 +65,7 @@ O merge é bloqueado em camadas (decisão `perf2-bloqueio-camada-dupla`):
 1. O ruleset `main` do GitHub exige o check `ci` do app do GitHub Actions (`integration_id` 15368) e proíbe deletar a `main` ou reescrevê-la com force-push. O papel admin só contorna as regras no merge de um PR, marcando o bypass de forma explícita (`bypass_mode: pull_request`); um push direto na `main` fica bloqueado para todos.
 2. A attestation manual de `checks.ci-green-before-merge` cita a execução do CI do mesmo commit. Selecione a execução com `gh run list --workflow ci.yml --branch <branch> --event pull_request --limit 1 --json databaseId,headSha,conclusion,url`. Exija `conclusion` igual a `success` e `headSha` igual a `git rev-parse HEAD`, e grave os dois na nota: `omhl attest checks.ci-green-before-merge work-items.<id> --outcome passed --note "<url> <headSha>"`. Depois de um rebase (por exemplo, no merge de pilha do `gh stack`), o SHA muda: espere o CI novo e ateste de novo.
 
-Ao mexer em área coberta por `tests/`, rode na máquina local só o módulo afetado (`cargo test -p <crate> --test integration <modulo>::`, `--test e2e` ou `--lib`, como descrito acima). Se o `proptest` gravar uma semente nova em `crates/hexlog/tests/proptest-regressions/chain_properties.txt` (arquivo rastreado) numa rodada local, restaure o arquivo antes do commit.
+Se o `proptest` gravar uma semente nova em `crates/hexlog/tests/proptest-regressions/chain_properties.txt` (arquivo rastreado) numa rodada local, restaure o arquivo antes do commit.
 
 ### Reajustar o `timeout_secs` do `test-suite`
 
@@ -77,7 +73,7 @@ O `test-suite` é exceção à regra fria (decisão `perf2-timeout-secs-incremen
 
 ### O programa gravado na attestation
 
-O `docs/mechanical-gates.md` descreve o [programa gravado na attestation](docs/mechanical-gates.md#o-programa-gravado-na-attestation). Aqui o nome engana: `cargo` é um link para `rustup`, e o `rustup` decide o que roda pelo nome com que foi chamado. A attestation grava `cargo`, não `rustup`, e não prova qual binário rodou. Gravar o destino do link e o sha256 juntos, como campo novo da attestation, é um follow-up.
+O `docs/mechanical-gates.md` descreve o [programa gravado na attestation](docs/mechanical-gates.md#o-programa-gravado-na-attestation). Aqui o nome engana: `cargo` é um link para `rustup`, e o `rustup` decide o que roda pelo nome com que foi chamado. Gravar o destino do link e o sha256 juntos, como campo novo da attestation, é um follow-up.
 
 ## Binário novo depois do merge
 
