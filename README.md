@@ -5,36 +5,61 @@ O vocabulário (record, tenant, node, gate, extension, projection) está em
 
 ## Requisitos
 
+### Obrigatório
+
 - `git` 2.31 ou mais novo no `PATH`, porque `attest`, `gate-pr` e `close` leem o commit atual. O `omhl` usa `git rev-parse --path-format=absolute`, que nasceu no 2.31.
-- Claude Code, se você for usar o plugin.
+- Um `sh` POSIX, que roda o script dos hooks do plugin.
+- `HOME` ou `XDG_DATA_HOME` definido, para o `omhl` achar o banco.
+- Linux, para os checks mecânicos.
+- Claude Code, para o plugin.
+
+### Só para compilar do fonte
+
+- Um compilador C.
+- A toolchain Rust fixada no `rust-toolchain.toml`.
+
+### Opcional
+
+- Worktrunk e GitHub: o binário nunca inicia nenhum dos dois.
 
 O plugin foi testado só no Linux e no WSL.
 
 ## Instalação
 
-1. Compile o binário de release:
+1. Instale o binário pronto (Linux x86_64) em `~/.local/bin`:
+
+   ```bash
+   [ "$(uname -sm)" = "Linux x86_64" ] && mkdir -p ~/.local/bin && (cd "$(mktemp -d)" && curl -fsSLO https://github.com/gabrielh-silvestre/oh-my-hexflow/releases/latest/download/omhl-x86_64-unknown-linux-musl.tar.gz && curl -fsSLO https://github.com/gabrielh-silvestre/oh-my-hexflow/releases/latest/download/omhl-x86_64-unknown-linux-musl.tar.gz.sha256 && sha256sum -c omhl-x86_64-unknown-linux-musl.tar.gz.sha256 && tar -xzf omhl-x86_64-unknown-linux-musl.tar.gz -C ~/.local/bin omhl)
+   ```
+
+   Em outra plataforma, compile do fonte e copie o binário, fora de qualquer worktree:
 
    ```bash
    cargo build --release
-   ```
-
-2. Instale esse binário no `PATH`, fora de qualquer worktree.
-
-   ```bash
    cp target/release/omhl ~/.local/bin/omhl
    ```
 
-   Depois de puxar mudanças, recompile e copie de novo.
+   Para atualizar, rode o mesmo comando de novo (ou recompile e copie, depois de puxar mudanças).
+   O `~/.local/bin` precisa estar no `PATH` do processo do Claude Code; reinicie a sessão depois de instalar.
 
-3. Instale o plugin pelo marketplace do GitHub, numa sessão do Claude Code:
+2. Instale o plugin pelo marketplace do GitHub, numa sessão do Claude Code:
 
    ```text
    /plugin marketplace add gabrielh-silvestre/oh-my-hexflow
    /plugin install oh-my-hexflow@oh-my-hexflow
    ```
 
-   O marketplace instala só o plugin, não o `omhl`: o plugin lê o `omhl` do `PATH` (passo 2).
+   O marketplace instala só o plugin, não o `omhl`: o plugin lê o `omhl` do `PATH` (passo 1).
    Para desenvolver o plugin, abra o Claude Code com `claude --plugin-dir plugin/`.
+
+### Avisos de início de sessão
+
+O plugin avisa no início da sessão, com o comando para corrigir, em quatro casos:
+
+- O `omhl` não está no `PATH`: os hooks ficam inativos. Num projeto marcado com `.omhl.toml`, a edição de arquivos é bloqueada até você instalar o binário.
+- O `omhl` é mais velho que a versão em `plugin/hooks/min-omhl-version`: atualize com o mesmo comando.
+- Num projeto marcado com `.omhl.toml`, o `git` não está instalado: instale o `git` 2.31 ou mais novo.
+- Num projeto marcado com `.omhl.toml`, o `git` é anterior ao 2.31: atualize o `git`.
 
 Skills de orquestração dos agentes, em `plugin/skills/`:
 

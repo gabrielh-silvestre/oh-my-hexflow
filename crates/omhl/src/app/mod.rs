@@ -7,6 +7,7 @@ mod check_run;
 mod context;
 mod engine;
 mod gate_worktree;
+mod git_version;
 mod guideline_retire;
 mod hooks;
 mod load;

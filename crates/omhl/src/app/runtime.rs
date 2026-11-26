@@ -9,6 +9,7 @@ use super::App;
 use super::action::{Action, Caller};
 use super::error::AppError;
 use super::gate_worktree::{self, Decision};
+use super::git_version;
 use super::retry::RetryPolicy;
 use crate::facade::{OmhlDeps, SessionSource};
 use crate::ports::blob::BlobStore;
@@ -94,6 +95,11 @@ impl Runtime {
             .with_retention(&self.byproducts)
             .with_develop_mark(&self.probe)
             .with_hooks_dir(hooks_dir))
+    }
+
+    /// A linha de aviso do `git` ausente ou antigo demais; sem aviso, `None`.
+    pub fn git_notice(&self) -> Option<String> {
+        git_version::notice(&self.probe.version())
     }
 
     fn check_sweep(&self) -> Result<Value, AppError> {

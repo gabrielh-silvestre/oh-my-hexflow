@@ -6,7 +6,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl, omhl_json};
 use support::ext::ExtTree;
-use support::git::git_in;
+use support::git::{git_in, write_executable};
 use support::hook::assert_released_with_code;
 use support::omhl::decision_data;
 use support::project::Project;
@@ -449,6 +449,155 @@ fn it_should_keep_the_warning_line_within_480_characters() {
     let context = context_of(&hook_for(&project));
 
     assert!(warning_line(&context).chars().count() <= 480);
+}
+
+// Aviso do git
+
+/// Roda o hook com um `PATH` que só tem a pasta dada: nenhum `git` real do sistema responde.
+fn hook_with_git_dir(project: &Project, git_dir: &Path) -> Child {
+    omhl(&["hook", "session-start"])
+        .xdg(project.xdg())
+        .env("PATH", git_dir)
+        .stdin(session_start(project.dir()).to_string())
+        .run()
+}
+
+/// Uma pasta com um `git` falso executável que roda o `script`.
+fn fake_git_dir(script: &str) -> TempDir {
+    let dir = TempDir::new().expect("fake git directory is created");
+    write_executable(&dir.path().join("git"), &format!("#!/bin/sh\n{script}\n"));
+
+    dir
+}
+
+fn git_printing(version: &str) -> TempDir {
+    fake_git_dir(&format!("echo '{version}'"))
+}
+
+/// O aviso aparece no contexto e no `systemMessage` do mesmo objeto, na mesma linha.
+fn assert_git_warning(output: &Child) {
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(output.stdout.matches('\n').count(), 1, "one JSON object");
+    let message = json_line(&output.stdout)["systemMessage"]
+        .as_str()
+        .expect("systemMessage is a string")
+        .to_owned();
+    assert!(!message.contains('\n'), "one line: {message}");
+    assert!(message.contains("2.31"), "{message}");
+    assert!(
+        context_of(output).lines().any(|line| line == message),
+        "the context carries the same line"
+    );
+}
+
+fn assert_no_git_warning(output: &Child) {
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(
+        json_line(&output.stdout).get("systemMessage").is_none(),
+        "no systemMessage"
+    );
+    assert!(
+        !context_of(output).contains("2.31"),
+        "no git line in the context"
+    );
+}
+
+#[test]
+fn it_should_warn_about_a_git_older_than_2_31() {
+    for version in ["git version 2.30.2", "git version 1.8.5"] {
+        let project = Project::new("acme");
+        let git = git_printing(version);
+
+        assert_git_warning(&hook_with_git_dir(&project, git.path()));
+    }
+}
+
+#[test]
+fn it_should_warn_when_the_git_is_not_found() {
+    let project = Project::new("acme");
+    let empty = TempDir::new().expect("empty directory is created");
+
+    assert_git_warning(&hook_with_git_dir(&project, empty.path()));
+}
+
+#[test]
+fn it_should_not_warn_about_a_git_from_2_31_on() {
+    for version in [
+        "git version 2.31.0",
+        "git version 2.39.2 (Apple Git-143)",
+        "git version 2.43.0.windows.1",
+        "git version 3.0.0",
+    ] {
+        let project = Project::new("acme");
+        let git = git_printing(version);
+
+        assert_no_git_warning(&hook_with_git_dir(&project, git.path()));
+    }
+}
+
+#[test]
+fn it_should_stay_silent_when_the_git_exits_non_zero() {
+    let project = Project::new("acme");
+    let git = fake_git_dir("echo 'git version 2.30.2'\nexit 1");
+
+    assert_no_git_warning(&hook_with_git_dir(&project, git.path()));
+}
+
+#[test]
+fn it_should_stay_silent_when_the_git_prints_an_unreadable_version() {
+    let project = Project::new("acme");
+    let git = git_printing("git version banana");
+
+    assert_no_git_warning(&hook_with_git_dir(&project, git.path()));
+}
+
+#[test]
+fn it_should_stay_silent_when_the_git_cannot_be_executed() {
+    let project = Project::new("acme");
+    let git = TempDir::new().expect("fake git directory is created");
+    fs::write(
+        git.path().join("git"),
+        "#!/bin/sh\necho 'git version 2.30.2'\n",
+    )
+    .expect("the non-executable git is written");
+
+    assert_no_git_warning(&hook_with_git_dir(&project, git.path()));
+}
+
+#[test]
+fn it_should_stay_silent_without_a_marker_even_with_an_old_git() {
+    let bare = TempDir::new().expect("bare directory is created");
+    let xdg = TempDir::new().expect("data directory is created");
+    let git = git_printing("git version 2.30.2");
+
+    let output = omhl(&["hook", "session-start"])
+        .xdg(xdg.path())
+        .env("PATH", git.path())
+        .stdin(session_start(bare.path()).to_string())
+        .run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+}
+
+#[test]
+fn it_should_keep_the_session_start_object_unchanged_with_a_good_git() {
+    let project = Project::new("acme");
+    let git = git_printing("git version 2.39.2");
+
+    let output = hook_with_git_dir(&project, git.path());
+
+    let value = json_line(&output.stdout);
+    let rendered = in_project(&project, &["render"]);
+    assert_eq!(
+        value.as_object().expect("the root is an object").len(),
+        1,
+        "hookSpecificOutput is the only root key"
+    );
+    assert_eq!(
+        json!(context_of(&output)),
+        json_line(&rendered.stdout)["text"]
+    );
 }
 
 // spec-lock: o que independe de repositório git

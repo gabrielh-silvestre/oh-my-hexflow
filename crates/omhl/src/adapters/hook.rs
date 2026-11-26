@@ -24,13 +24,17 @@ pub fn session_start(
 ) -> ExitCode {
     match context_for_session(stdin, env) {
         Ok(None) => ExitCode::SUCCESS,
-        Ok(Some(context)) => {
-            let output = json!({
+        Ok(Some((context, git_notice))) => {
+            let mut output = json!({
                 "hookSpecificOutput": {
                     "hookEventName": "SessionStart",
                     "additionalContext": context,
                 }
             });
+            // O `additionalContext` não aparece no chat, e quem corrige o git é a pessoa.
+            if let Some(notice) = git_notice {
+                output["systemMessage"] = json!(notice);
+            }
             let _ = writeln!(out, "{output}");
             ExitCode::SUCCESS
         }
@@ -41,7 +45,7 @@ pub fn session_start(
     }
 }
 
-/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON, e um erro interno antes de reconhecer a spec libera a escrita, com a linha de erro no stderr; depois do reconhecimento, a falha de git ou de leitura nega com `spec-lock-unavailable` (e o `|| exit 2` do `hooks.json` bloqueia com o `omhl` ausente ou falho). Além das specs, nega a mudança do `specs.dir` no `workflow.toml` principal com spec congelada (`spec-dir-frozen`), qualquer edição sob um `.git` de projeto omhl (`git-dir-protected`) e a edição que deixaria o marcador do projeto inválido (`marker-protected`).
+/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON, e um erro interno antes de reconhecer a spec libera a escrita, com a linha de erro no stderr; depois do reconhecimento, a falha de git ou de leitura nega com `spec-lock-unavailable` (o `|| exit 2` do `spec-lock` e o `|| exit 1` do `agent-role` no `omhl-hook.sh` valem só para o `omhl` presente e falho; sem o binário, o script bloqueia só num projeto marcado, e o `agent-role` e o `session-start` saem com `exit 0`). Além das specs, nega a mudança do `specs.dir` no `workflow.toml` principal com spec congelada (`spec-dir-frozen`), qualquer edição sob um `.git` de projeto omhl (`git-dir-protected`) e a edição que deixaria o marcador do projeto inválido (`marker-protected`).
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
     let mut notices = Vec::new();
     let code = pre_tool_use(stdin, out, err, |input| {
@@ -158,7 +162,11 @@ fn pre_tool_use(
     ExitCode::SUCCESS
 }
 
-fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<String>, AppError> {
+/// O contexto e, à parte, o aviso do `git`, que também já está dentro do contexto.
+fn context_for_session(
+    stdin: &mut impl Read,
+    env: &Env<'_>,
+) -> Result<Option<(String, Option<String>)>, AppError> {
     let cwd = absolute_path(&read_json_input(stdin)?["cwd"])?;
     let runtime = match Runtime::discover(&cwd, None, env) {
         Ok(runtime) => runtime,
@@ -176,8 +184,12 @@ fn context_for_session(stdin: &mut impl Read, env: &Env<'_>) -> Result<Option<St
     if let Some(line) = extension_notice(&checked) {
         text.push_str(&format!("\n{line}\n"));
     }
+    let git_notice = runtime.git_notice();
+    if let Some(line) = &git_notice {
+        text.push_str(&format!("\n{line}\n"));
+    }
 
-    Ok(Some(text))
+    Ok(Some((text, git_notice)))
 }
 
 fn extension_notice(checked: &Result<Value, AppError>) -> Option<String> {
