@@ -12,11 +12,10 @@ use crate::app::input::{absolute_path, read_json_input};
 use crate::app::runtime::Runtime;
 use crate::app::{
     AgentRoleEnv, EditInput, LanguageRungs, Replacement, RoleVerdict, SpecLockEvent, Tool, Verdict,
-    agent_role as check_agent_role, language_line, resolve_language, spec_lock as check_spec_lock,
-    valid_language,
+    agent_role as check_agent_role, language_line, resolve_language, settings_language,
+    spec_lock as check_spec_lock, user_settings_language, valid_language,
 };
 use crate::app::{ExtensionKind, Group, INVALID_WORKFLOW_CONFIG};
-use crate::ports::files::{read_followed_regular_utf8, read_regular_utf8};
 use crate::project::Env;
 
 pub fn session_start(
@@ -52,8 +51,6 @@ pub fn session_start(
 const MANAGED_SETTINGS: &str = "/Library/Application Support/ClaudeCode/managed-settings.json";
 #[cfg(not(target_os = "macos"))]
 const MANAGED_SETTINGS: &str = "/etc/claude-code/managed-settings.json";
-
-const SETTINGS_MAX_BYTES: u64 = 64 * 1024;
 
 /// Nunca bloqueia nem falha: sem idioma, ou com settings ilegíveis, sai mudo com 0.
 pub fn subagent_start(stdin: &mut impl Read, out: &mut impl Write, env: &Env<'_>) -> ExitCode {
@@ -92,23 +89,6 @@ pub fn subagent_start(stdin: &mut impl Read, out: &mut impl Write, env: &Env<'_>
 
 fn non_empty(value: Option<&OsStr>) -> Option<&OsStr> {
     value.filter(|text| !text.is_empty())
-}
-
-/// Arquivo ausente, ilegível, não regular, grande demais ou com JSON inválido conta como sem `language`.
-/// Link simbólico também é recusado: um repositório clonado pode trazer `/dev/zero` no lugar do arquivo.
-fn settings_language(path: Option<&Path>) -> Option<String> {
-    language_in(&read_regular_utf8(path?, SETTINGS_MAX_BYTES).ok()?)
-}
-
-/// O `settings.json` do usuário costuma ser link de gerenciador de dotfiles: segue o link, mas lê só arquivo regular.
-fn user_settings_language(path: Option<&Path>) -> Option<String> {
-    language_in(&read_followed_regular_utf8(path?, SETTINGS_MAX_BYTES).ok()?)
-}
-
-fn language_in(text: &str) -> Option<String> {
-    let settings: Value = serde_json::from_str(text).ok()?;
-
-    settings["language"].as_str().map(str::to_owned)
 }
 
 fn language_output(event: &str, language: &str) -> Value {
