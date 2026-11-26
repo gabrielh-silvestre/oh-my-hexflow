@@ -28,6 +28,8 @@ mod guideline_retire;
 mod load;
 mod mechanical_order;
 mod native;
+mod native_gate;
+mod native_resolver;
 mod output_agent_leaves;
 mod output_agent_query;
 mod output_agent_report;

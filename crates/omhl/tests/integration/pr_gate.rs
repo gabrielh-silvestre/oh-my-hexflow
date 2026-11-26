@@ -20,10 +20,11 @@ use support::omhl::{
 };
 use support::pr_gate::{
     ANCHOR, ANCHORS_CONFIRMED, CI_GREEN, CRITIC_DECISION, DECISION, DECISIONS_ANCHORED, FEATURE_1,
-    NO_OPEN_CONTRADICTION, PREMISE, anchor_decision, attest, attest_required, close, closed_data,
-    data_of, default_natives, expected_outcomes, gate_of, head_seq, mechanical_project_check,
-    outcomes, project_check, question, relation_item, relation_retirement_item, required_pairs,
-    seed_contradicted_decision, seed_critic_contradiction, sids, snapshots,
+    NO_OPEN_CONTRADICTION, PREMISE, all_native_enabled, anchor_decision, attest, attest_required,
+    close, closed_data, data_of, default_natives, expected_outcomes, gate_of, head_seq,
+    mechanical_project_check, outcomes, project_check, question, relation_item,
+    relation_retirement_item, required_pairs, seed_contradicted_decision,
+    seed_critic_contradiction, sids, snapshots,
 };
 use support::raw::RawHarness;
 use support::{
@@ -62,8 +63,8 @@ fn flow_probe() -> FakeProbe {
     head_probe().with_tree(TreeSource::Index, Ok(ProbeOutcome::Reproducible(tree('c'))))
 }
 
-/// `checks.fmt` (mecânico, `before-commit`) atestado em `tree('c')` pelo `executor`, e `ci-green` em
-/// `snap('a')`: o gate fecha verde cobrando só esses dois.
+/// `checks.fmt` (mecânico, `before-commit`) atestado em `tree('c')` pelo `executor`, e `run-tests` e
+/// `ci-green` em `snap('a')`: o gate fecha verde cobrando os três, porque o nativo ligado vale ao lado do mecânico.
 fn seed_per_check_flow(omhl: &mut Omhl<'_>) {
     seed_pull_request(omhl);
     let fmt = mechanical_project_check("checks.fmt", "before-commit", true, false);
@@ -81,6 +82,7 @@ fn seed_per_check_flow(omhl: &mut Omhl<'_>) {
         executor_author(),
         vec![with_snapshot(attestation, &tree('c'))],
     );
+    attest(omhl, &snap('a'), RUN_TESTS, "passed", true);
     attest(omhl, &snap('a'), CI_GREEN, "passed", true);
 }
 
@@ -298,7 +300,12 @@ fn it_should_refuse_evaluating_the_gate_for_an_unknown_work_item() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
 
-    let result = omhl.evaluate_pr_gate(&acme(), &sid("work-items.pr-9"), &at_head());
+    let result = omhl.evaluate_pr_gate(
+        &acme(),
+        &sid("work-items.pr-9"),
+        &at_head(),
+        &all_native_enabled(),
+    );
 
     assert_eq!(
         result.err(),
@@ -368,6 +375,7 @@ fn it_should_refuse_closing_an_unknown_work_item() {
         &acme(),
         &sid("work-items.pr-9"),
         &at_head(),
+        &all_native_enabled(),
         &support::author(),
     );
 
@@ -384,7 +392,13 @@ fn it_should_refuse_closing_a_work_item_already_closed() {
     seed_pull_request(&mut omhl);
     close(&mut omhl, PR_7, &at_head());
 
-    let result = omhl.close_work_item(&acme(), &sid(PR_7), &at_head(), &support::author());
+    let result = omhl.close_work_item(
+        &acme(),
+        &sid(PR_7),
+        &at_head(),
+        &all_native_enabled(),
+        &support::author(),
+    );
 
     assert_eq!(
         result.err(),
@@ -537,6 +551,7 @@ fn it_should_refuse_closing_when_the_snapshot_is_not_the_probe_head() {
         &acme(),
         &sid(PR_7),
         &snapshots(&snap('b'), &tree('c')),
+        &all_native_enabled(),
         &author(),
     );
     let head_after = omhl.chain_head(&acme()).expect("the head is read");
@@ -557,7 +572,13 @@ fn it_should_refuse_closing_when_the_tree_is_dirty() {
     seed_pull_request(&mut omhl);
     let head_before = omhl.chain_head(&acme()).expect("the head is read");
 
-    let result = omhl.close_work_item(&acme(), &sid(PR_7), &at_head(), &author());
+    let result = omhl.close_work_item(
+        &acme(),
+        &sid(PR_7),
+        &at_head(),
+        &all_native_enabled(),
+        &author(),
+    );
     let head_after = omhl.chain_head(&acme()).expect("the head is read");
 
     assert_eq!(
@@ -580,8 +601,14 @@ fn it_should_record_the_caller_author_on_the_closing_revision() {
         client: "closing-client".to_owned(),
     };
 
-    omhl.close_work_item(&acme(), &sid(PR_7), &at_head(), &closer)
-        .expect("the work item is closed");
+    omhl.close_work_item(
+        &acme(),
+        &sid(PR_7),
+        &at_head(),
+        &all_native_enabled(),
+        &closer,
+    )
+    .expect("the work item is closed");
     let stored = omhl
         .get(&acme(), &sid(PR_7))
         .expect("the node is read")
@@ -596,7 +623,7 @@ fn it_should_record_the_caller_author_on_the_closing_revision() {
 fn it_should_require_the_three_events_in_the_pull_request_gate() {
     let notes = project_check("checks.review-notes", "before-pr", true, false);
 
-    let required = required_checks(&default_natives(), &[notes]);
+    let required = required_checks(&default_natives(), &all_native_enabled(), &[notes]);
 
     assert_eq!(
         REQUIRED_EVENTS,
@@ -625,6 +652,7 @@ fn it_should_close_a_work_item_with_the_per_check_snapshots() {
     assert_eq!(
         outcomes(&closed.report),
         expected_outcomes(&[
+            (RUN_TESTS, true),
             (CI_GREEN, true),
             ("checks.fmt", true),
             ("spec-digest-match:checks.fmt", true),
@@ -642,7 +670,13 @@ fn it_should_refuse_to_close_when_the_head_tree_cannot_be_probed() {
     seed_pull_request(&mut omhl);
     let head_before = head_seq(&mut omhl);
 
-    let result = omhl.close_work_item(&acme(), &sid(PR_7), &at_head(), &author());
+    let result = omhl.close_work_item(
+        &acme(),
+        &sid(PR_7),
+        &at_head(),
+        &all_native_enabled(),
+        &author(),
+    );
 
     assert_eq!(result.err(), Some(rule(RuleCode::ProbeFailed, "/snapshot")));
     assert_eq!(data_of(&mut omhl, PR_7)["status"], json!("open"));

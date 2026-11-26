@@ -21,11 +21,11 @@ use support::busy::with_write_lock;
 use support::check_run_tree::{BRANCH, W1, copy_index, node_wire, tree_json};
 use support::ext::write_check_file;
 use support::git::GitRepo;
-use support::omhl::{acme, check_data, work_item_data};
+use support::omhl::{RUN_TESTS, acme, check_data, work_item_data};
 use support::pr_gate::CI_GREEN;
 use support::raw::RawHarness;
 use support::runner::FakeRunner;
-use support::{FakeProbe, snap, tenant, wi_head_facts};
+use support::{FakeNative, FakeProbe, snap, tenant, wi_head_facts};
 use tempfile::TempDir;
 
 const TREE_ID: &str = "cccccccccccccccccccccccccccccccccccccccc";
@@ -51,6 +51,7 @@ type Response = (Vec<String>, Result<RunReport, RunError>);
 struct Fixture {
     raw: RawHarness,
     blobs: BlobStore,
+    native: FakeNative,
 }
 
 impl Fixture {
@@ -58,7 +59,11 @@ impl Fixture {
         let raw = RawHarness::new();
         let blobs = BlobStore::new(&raw.db_path(), &acme());
 
-        Fixture { raw, blobs }
+        Fixture {
+            raw,
+            blobs,
+            native: FakeNative::all_enabled(),
+        }
     }
 
     fn app<'a>(
@@ -77,6 +82,7 @@ impl Fixture {
             .unwrap_or_else(|error| panic!("the app opens: {error}"));
 
         app.with_project_root(root)
+            .with_native_resolver(&self.native)
             .with_exec(runner, &self.blobs)
             .with_retry_after_run(RetryPolicy {
                 busy_timeout: Duration::from_millis(10),
@@ -797,14 +803,16 @@ fn it_should_pass_the_pull_request_gate_when_the_executor_attested_the_before_co
         )],
     );
     run_event(&mut app, "before-commit").expect("the executor attests checks.fmt");
-    let attest = Action::Attest {
-        check: CI_GREEN.to_owned(),
-        work_item: W1.to_owned(),
-        outcome: "passed".to_owned(),
-        note: None,
-    };
-    app.dispatch(&Caller::cli(), &attest)
-        .unwrap_or_else(|error| panic!("the native check is attested: {error}"));
+    for native in [RUN_TESTS, CI_GREEN] {
+        let attest = Action::Attest {
+            check: native.to_owned(),
+            work_item: W1.to_owned(),
+            outcome: "passed".to_owned(),
+            note: None,
+        };
+        app.dispatch(&Caller::cli(), &attest)
+            .unwrap_or_else(|error| panic!("the native check is attested: {error}"));
+    }
 
     let gate = app
         .dispatch(
@@ -826,6 +834,7 @@ fn it_should_pass_the_pull_request_gate_when_the_executor_attested_the_before_co
     assert_eq!(
         labels,
         vec![
+            json!("checks.run-tests"),
             json!("checks.ci-green-before-merge"),
             json!("checks.fmt"),
             json!("spec-digest-match:checks.fmt"),

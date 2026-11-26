@@ -94,6 +94,7 @@ impl Runtime {
             .with_exec(&self.runner, &self.byproducts)
             .with_retention(&self.byproducts)
             .with_develop_mark(&self.probe)
+            .with_native_resolver(&self.probe)
             .with_hooks_dir(hooks_dir))
     }
 

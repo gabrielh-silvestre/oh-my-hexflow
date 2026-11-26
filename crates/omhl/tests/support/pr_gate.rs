@@ -2,6 +2,7 @@ use ::omhl::facade::{ClosedWorkItem, Omhl};
 use ::omhl::gate::{GateReport, QuestionReport};
 use ::omhl::native::NativeCheck;
 use ::omhl::pr_gate::GateSnapshots;
+use ::omhl::workflow::config::NativeConfig;
 use hexlog::{
     AppendItem, AppendOutcome, ItemBody, Lineage, NodeView, RecordId, SemanticId, Snapshot,
     SnapshotKind,
@@ -39,6 +40,20 @@ pub fn native_check(id: &'static str, event: &'static str, blocking: bool) -> Na
         how: "run it",
         blocking,
     }
+}
+
+pub const VERIFY_ANCHORING: &str = "checks.verify-review-comment-anchoring";
+pub const ALL_NATIVE_CHECKS: [&str; 3] = [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING];
+
+pub fn native_enabled(ids: &[&'static str]) -> NativeConfig {
+    NativeConfig {
+        checks: ids.iter().copied().collect(),
+    }
+}
+
+/// O conjunto de ligados dos testes da facade que não escolhem: os 3 checks nativos.
+pub fn all_native_enabled() -> NativeConfig {
+    native_enabled(&ALL_NATIVE_CHECKS)
 }
 
 /// Os dois checks que o gate cobra por padrão, na ordem de `NativeBase::checks()`.
@@ -264,13 +279,27 @@ pub fn seed_critic_contradiction(omhl: &mut Omhl<'_>, critic_anchored: bool) -> 
 // Leitura
 
 pub fn gate_of(omhl: &mut Omhl<'_>, snapshots: &GateSnapshots) -> GateReport {
-    omhl.evaluate_pr_gate(&acme(), &sid(PR_7), snapshots)
+    gate_with(omhl, snapshots, &all_native_enabled())
+}
+
+pub fn gate_with(
+    omhl: &mut Omhl<'_>,
+    snapshots: &GateSnapshots,
+    enabled: &NativeConfig,
+) -> GateReport {
+    omhl.evaluate_pr_gate(&acme(), &sid(PR_7), snapshots, enabled)
         .expect("the gate is evaluated")
 }
 
 pub fn close(omhl: &mut Omhl<'_>, work_item: &str, snapshots: &GateSnapshots) -> ClosedWorkItem {
-    omhl.close_work_item(&acme(), &sid(work_item), snapshots, &author())
-        .expect("the work item is closed")
+    omhl.close_work_item(
+        &acme(),
+        &sid(work_item),
+        snapshots,
+        &all_native_enabled(),
+        &author(),
+    )
+    .expect("the work item is closed")
 }
 
 /// `data` corrente do node.

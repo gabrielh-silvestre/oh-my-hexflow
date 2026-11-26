@@ -9,14 +9,14 @@ use ::omhl::app::action::{Action, Caller};
 use ::omhl::app::error::AppError;
 use ::omhl::app::retry::RetryPolicy;
 use ::omhl::facade::{Omhl, OmhlDeps};
-use ::omhl::probe::{ProbeOutcome, TreeSource};
+use ::omhl::probe::{NativeResolver, ProbeOutcome, TreeSource};
 use hexlog::{RelationQuery, Snapshot, SnapshotKind};
 use serde_json::{Value, json};
 
 use super::ext::ExtTree;
 use super::omhl::acme;
 use super::raw::RawHarness;
-use super::{FakeProbe, rty, snap};
+use super::{FakeNative, FakeProbe, rty, snap};
 
 /// Prefixo dos slugs de `guideline_retire_refusals`: um teste que o ache numa recusa viu o slug ecoado.
 pub const RETIRE_SLUG_MARK: &str = "zq-";
@@ -31,6 +31,7 @@ pub struct AppFixture {
     probe: FakeProbe,
     tree: ExtTree,
     with_root: bool,
+    native: Option<Box<dyn NativeResolver>>,
 }
 
 impl AppFixture {
@@ -44,6 +45,7 @@ impl AppFixture {
             ),
             tree: ExtTree::new(),
             with_root: true,
+            native: Some(Box::new(FakeNative::all_enabled())),
         }
     }
 
@@ -53,6 +55,26 @@ impl AppFixture {
             with_root: false,
             ..AppFixture::new()
         }
+    }
+
+    /// Troca o resolvedor injetado, que por padrão liga os 3 checks nativos.
+    pub fn with_native(self, native: impl NativeResolver + 'static) -> AppFixture {
+        AppFixture {
+            native: Some(Box::new(native)),
+            ..self
+        }
+    }
+
+    /// Sem resolvedor injetado: o `gate-pr` e o `close` não têm de onde ler a ativação.
+    pub fn without_native(self) -> AppFixture {
+        AppFixture {
+            native: None,
+            ..self
+        }
+    }
+
+    pub fn with_probe(self, probe: FakeProbe) -> AppFixture {
+        AppFixture { probe, ..self }
     }
 
     pub fn ext(&self) -> &ExtTree {
@@ -181,6 +203,23 @@ impl AppFixture {
             .unwrap_or_else(|error| panic!("the gate is evaluated: {error}"))
     }
 
+    /// Como `gate_pr`, mas devolve a recusa em vez de falhar o teste.
+    pub fn try_gate_pr(&self, work_item: &str) -> Result<Value, Value> {
+        let action = Action::GatePr {
+            work_item: work_item.to_owned(),
+        };
+
+        self.run(&Caller::cli(), &action)
+    }
+
+    pub fn close(&self, work_item: &str) -> Result<Value, Value> {
+        let action = Action::Close {
+            work_item: work_item.to_owned(),
+        };
+
+        self.run(&Caller::cli(), &action)
+    }
+
     /// As relations do tipo, inclusive as de extremo aposentado, como pares `(from, to)`.
     pub fn relation_edges(&self, relation_type: &str) -> Vec<(String, String)> {
         let query = RelationQuery {
@@ -273,6 +312,10 @@ impl AppFixture {
         let opened: Result<App<'_>, AppError> =
             App::open(&self.raw.db_path(), &acme(), deps, &RetryPolicy::default());
         let app = opened.unwrap_or_else(|error| panic!("the app opens: {error}"));
+        let app = match &self.native {
+            Some(native) => app.with_native_resolver(native.as_ref()),
+            None => app,
+        };
 
         if self.with_root {
             app.with_project_root(self.tree.root())

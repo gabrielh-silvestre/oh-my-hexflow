@@ -1,6 +1,8 @@
 use hexlog::Snapshot;
 
 pub use crate::mechanical::branch::HeadFacts;
+use crate::project::ProjectError;
+use crate::workflow::config::NativeConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TreeSource {
@@ -21,6 +23,17 @@ pub trait DevelopMark: Send + Sync {
     fn present(&self) -> Result<bool, ProbeError>;
     /// Marca ausente também é `Ok`.
     fn consume(&self) -> Result<(), ProbeError>;
+}
+
+/// Lê a ativação dos checks nativos do `.omhl/workflow.toml` da árvore de trabalho do diretório principal, sem fallback.
+pub trait NativeResolver: Send + Sync {
+    fn resolve(&self) -> Result<NativeConfig, NativeRefusal>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NativeRefusal {
+    MainDirUnknown,
+    InvalidWorkflow(ProjectError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -18,6 +18,7 @@ mod guideline_retire;
 mod hook;
 mod hooks_install;
 mod mechanical_e2e;
+mod native_gate;
 mod output_agent_cycle_gate;
 mod output_agent_cycle_records;
 mod output_agent_cycle_simple;

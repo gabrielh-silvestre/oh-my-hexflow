@@ -67,6 +67,9 @@ impl Detail {
     }
 }
 
+const INVALID_WORKFLOW_NEXT_STEP: &str =
+    "fix the workflow file named in the message; `omhl load --dry-run` details the problem";
+
 /// O texto de erro nunca repete valor de entrada: só códigos, ponteiros e regras.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppError {
@@ -659,6 +662,18 @@ impl AppError {
             "main-dir-unknown",
             "the main directory of the repository cannot be resolved",
         )
+    }
+
+    pub(crate) fn invalid_workflow(error: ProjectError) -> AppError {
+        let mut detail = Detail::new("/workflow", error.code, &error.message);
+        detail.next_step = Some(INVALID_WORKFLOW_NEXT_STEP.to_owned());
+
+        AppError {
+            code: error.code.to_owned(),
+            context: None,
+            message: error.message,
+            details: vec![detail],
+        }
     }
 
     pub(crate) fn worktree_gate_refused(path: &str, context: Value) -> AppError {

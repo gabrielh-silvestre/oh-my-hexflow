@@ -10,6 +10,7 @@ use crate::extensions::plan::LOADER_CLIENT;
 use crate::gate::{GateQuestion, GateReport, Predicate, Question, TargetCheck, TargetFact};
 use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
 use crate::native::NativeCheck;
+use crate::workflow::config::NativeConfig;
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 
 pub const GATE_NAME: &str = "pull-request";
@@ -29,6 +30,7 @@ pub struct GateSnapshots {
 
 pub fn required_checks(
     native: &[NativeCheck],
+    enabled: &NativeConfig,
     tenant_checks: &[NodeView],
 ) -> Vec<(SemanticId, SnapshotKind)> {
     let projects: Vec<&NodeView> = tenant_checks
@@ -37,8 +39,8 @@ pub fn required_checks(
         .collect();
     let natives = native
         .iter()
+        .filter(|check| enabled.checks.contains(check.id))
         .filter(|check| check.blocking && REQUIRED_EVENTS.contains(&check.event))
-        .filter(|check| !is_replaced_by_mechanical_check(check, &projects))
         .filter_map(|check| SemanticId::parse(check.id).ok())
         .map(|id| (id, NATIVE_SNAPSHOT));
     let projects = projects
@@ -60,12 +62,6 @@ fn is_required_project_check(node: &NodeView) -> bool {
         .is_some_and(|event| REQUIRED_EVENTS.contains(&event));
 
     !node.shadowed && node.data["blocking"] == true && covered_event
-}
-
-fn is_replaced_by_mechanical_check(native: &NativeCheck, projects: &[&NodeView]) -> bool {
-    projects.iter().any(|node| {
-        is_mechanical(&node.data) && node.data["when"]["event"].as_str() == Some(native.event)
-    })
 }
 
 pub fn spec_digests(tenant_checks: &[NodeView]) -> Vec<(SemanticId, String)> {

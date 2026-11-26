@@ -1,11 +1,13 @@
 use crate::gate::{GateQuestion, Question};
+use crate::native::NativeBase;
 use crate::pr_gate::{
     GateSnapshots, NATIVE_SNAPSHOT, anchor_questions, pr_gate_questions, required_checks,
 };
 use crate::test_support::omhl::{PR_7, RUN_TESTS};
 use crate::test_support::pr_gate::{
-    ANCHORS_CONFIRMED, CI_GREEN, DECISIONS_ANCHORED, NO_OPEN_CONTRADICTION, default_natives,
-    mechanical_project_check, native_check, project_check, required_pairs, snapshots,
+    ALL_NATIVE_CHECKS, ANCHORS_CONFIRMED, CI_GREEN, DECISIONS_ANCHORED, NO_OPEN_CONTRADICTION,
+    all_enabled, default_natives, enabled, mechanical_project_check, native_check, project_check,
+    required_pairs, snapshots,
 };
 use crate::test_support::{rty, sid, snap, tname};
 use hexlog::SnapshotKind::{GitCommit, GitTree};
@@ -85,7 +87,7 @@ fn it_should_require_only_blocking_native_checks_with_before_commit_or_before_me
         native_check("checks.advisory", "before-commit", false),
     ];
 
-    let required = required_checks(&natives, &[]);
+    let required = required_checks(&natives, &all_enabled(), &[]);
 
     assert_eq!(
         required,
@@ -102,7 +104,7 @@ fn it_should_require_a_blocking_project_check_with_a_covered_event() {
         false,
     )];
 
-    let required = required_checks(&default_natives(), &project);
+    let required = required_checks(&default_natives(), &all_enabled(), &project);
 
     assert_eq!(
         required,
@@ -123,7 +125,7 @@ fn it_should_not_require_a_non_blocking_project_check() {
         false,
     )];
 
-    let required = required_checks(&default_natives(), &project);
+    let required = required_checks(&default_natives(), &all_enabled(), &project);
 
     assert_eq!(
         required,
@@ -140,7 +142,7 @@ fn it_should_not_require_a_project_check_whose_event_is_not_covered() {
         false,
     )];
 
-    let required = required_checks(&default_natives(), &project);
+    let required = required_checks(&default_natives(), &all_enabled(), &project);
 
     assert_eq!(
         required,
@@ -157,7 +159,7 @@ fn it_should_not_require_a_shadowed_project_check() {
     ];
     let shadow = [project_check(RUN_TESTS, "before-commit", true, true)];
 
-    let required = required_checks(&natives, &shadow);
+    let required = required_checks(&natives, &all_enabled(), &shadow);
 
     assert_eq!(required, required_pairs(&[(CI_GREEN, GitCommit)]));
 }
@@ -165,17 +167,22 @@ fn it_should_not_require_a_shadowed_project_check() {
 #[test]
 fn it_should_ask_for_the_before_commit_attestation_on_the_head_tree() {
     let fmt = mechanical_project_check("checks.fmt", "before-commit", true, false);
-    let required = required_checks(&default_natives(), &[fmt]);
+    let required = required_checks(&default_natives(), &all_enabled(), &[fmt]);
 
     let questions = pr_gate_questions(&required, &sid(PR_7), &at_head(), &[]);
 
     assert_eq!(
         required,
-        required_pairs(&[(CI_GREEN, GitCommit), ("checks.fmt", GitTree)])
+        required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
+            ("checks.fmt", GitTree)
+        ])
     );
     assert_eq!(
         questions,
         vec![
+            occurred_question(RUN_TESTS, &snap('a')),
             occurred_question(CI_GREEN, &snap('a')),
             occurred_question("checks.fmt", &tree('c')),
             no_open_contradiction_question(),
@@ -186,7 +193,7 @@ fn it_should_ask_for_the_before_commit_attestation_on_the_head_tree() {
 #[test]
 fn it_should_ask_for_the_before_pr_attestation_on_the_head_commit() {
     let lint = mechanical_project_check("checks.lint", "before-pr", true, false);
-    let required = required_checks(&default_natives(), &[lint]);
+    let required = required_checks(&default_natives(), &all_enabled(), &[lint]);
 
     let questions = pr_gate_questions(&required, &sid(PR_7), &at_head(), &[]);
 
@@ -204,13 +211,17 @@ fn it_should_ask_for_the_before_pr_attestation_on_the_head_commit() {
 #[test]
 fn it_should_ask_for_the_before_merge_attestation_on_the_head_commit() {
     let ci = mechanical_project_check("checks.ci", "before-merge", true, false);
-    let required = required_checks(&default_natives(), &[ci]);
+    let required = required_checks(&default_natives(), &all_enabled(), &[ci]);
 
     let questions = pr_gate_questions(&required, &sid(PR_7), &at_head(), &[]);
 
     assert_eq!(
         required,
-        required_pairs(&[(RUN_TESTS, GitCommit), ("checks.ci", GitCommit)])
+        required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
+            ("checks.ci", GitCommit)
+        ])
     );
     assert!(questions.contains(&occurred_question("checks.ci", &snap('a'))));
 }
@@ -224,11 +235,13 @@ fn it_should_derive_the_snapshot_kind_of_each_required_check_with_the_shared_dec
         mechanical_project_check("checks.d-ci", "before-merge", true, false),
     ];
 
-    let required = required_checks(&default_natives(), &project);
+    let required = required_checks(&default_natives(), &all_enabled(), &project);
 
     assert_eq!(
         required,
         required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
             ("checks.a-notes", GitCommit),
             ("checks.b-fmt", GitTree),
             ("checks.c-lint", GitCommit),
@@ -239,7 +252,7 @@ fn it_should_derive_the_snapshot_kind_of_each_required_check_with_the_shared_dec
 
 #[test]
 fn it_should_treat_a_native_check_as_a_git_commit_check_through_the_single_native_constant() {
-    let required = required_checks(&default_natives(), &[]);
+    let required = required_checks(&default_natives(), &all_enabled(), &[]);
 
     assert_eq!(NATIVE_SNAPSHOT, GitCommit);
     assert_eq!(
@@ -249,27 +262,115 @@ fn it_should_treat_a_native_check_as_a_git_commit_check_through_the_single_nativ
 }
 
 #[test]
-fn it_should_not_require_run_tests_when_a_mechanical_before_commit_check_exists() {
+fn it_should_require_run_tests_beside_a_mechanical_before_commit_check() {
     let fmt = mechanical_project_check("checks.fmt", "before-commit", true, false);
 
-    let required = required_checks(&default_natives(), &[fmt]);
+    let required = required_checks(&default_natives(), &all_enabled(), &[fmt]);
 
     assert_eq!(
         required,
-        required_pairs(&[(CI_GREEN, GitCommit), ("checks.fmt", GitTree)])
+        required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
+            ("checks.fmt", GitTree)
+        ])
     );
 }
 
 #[test]
-fn it_should_not_require_ci_green_before_merge_when_a_mechanical_before_merge_check_exists() {
+fn it_should_require_ci_green_beside_a_mechanical_before_merge_check() {
     let ci = mechanical_project_check("checks.ci", "before-merge", true, false);
 
-    let required = required_checks(&default_natives(), &[ci]);
+    let required = required_checks(&default_natives(), &all_enabled(), &[ci]);
 
     assert_eq!(
         required,
-        required_pairs(&[(RUN_TESTS, GitCommit), ("checks.ci", GitCommit)])
+        required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
+            ("checks.ci", GitCommit)
+        ])
     );
+}
+
+#[test]
+fn it_should_require_a_native_check_beside_a_project_check_of_its_event_mechanical_or_not() {
+    let project = [
+        project_check("checks.notes", "before-commit", true, false),
+        project_check("checks.deploy-notes", "before-merge", true, false),
+    ];
+
+    let required = required_checks(&default_natives(), &all_enabled(), &project);
+
+    assert_eq!(
+        required,
+        required_pairs(&[
+            (RUN_TESTS, GitCommit),
+            (CI_GREEN, GitCommit),
+            ("checks.notes", GitCommit),
+            ("checks.deploy-notes", GitCommit),
+        ])
+    );
+}
+
+#[test]
+fn it_should_require_a_non_blocking_project_check_never_and_the_native_beside_it() {
+    let project = [mechanical_project_check(
+        "checks.fmt",
+        "before-commit",
+        false,
+        false,
+    )];
+
+    let required = required_checks(&default_natives(), &all_enabled(), &project);
+
+    assert_eq!(
+        required,
+        required_pairs(&[(RUN_TESTS, GitCommit), (CI_GREEN, GitCommit)])
+    );
+}
+
+#[test]
+fn it_should_require_no_native_check_when_none_is_enabled() {
+    let required = required_checks(&default_natives(), &enabled(&[]), &[]);
+
+    assert!(required.is_empty());
+}
+
+#[test]
+fn it_should_require_only_the_enabled_native_check_when_each_one_is_enabled_alone() {
+    let run_tests = required_checks(&default_natives(), &enabled(&[RUN_TESTS]), &[]);
+    let ci_green = required_checks(&default_natives(), &enabled(&[CI_GREEN]), &[]);
+
+    assert_eq!(run_tests, required_pairs(&[(RUN_TESTS, GitCommit)]));
+    assert_eq!(ci_green, required_pairs(&[(CI_GREEN, GitCommit)]));
+}
+
+#[test]
+fn it_should_never_require_the_review_anchoring_check_even_when_it_is_enabled() {
+    let required = required_checks(NativeBase.checks(), &enabled(&ALL_NATIVE_CHECKS), &[]);
+
+    assert_eq!(
+        required,
+        required_pairs(&[(RUN_TESTS, GitCommit), (CI_GREEN, GitCommit)])
+    );
+}
+
+#[test]
+fn it_should_keep_the_project_checks_required_with_every_native_check_disabled() {
+    let project = [
+        project_check("checks.lint-docs", "before-merge", true, false),
+        mechanical_project_check("checks.fmt", "before-commit", true, false),
+    ];
+
+    let disabled = required_checks(&default_natives(), &enabled(&[]), &project);
+    let enabled_all = required_checks(&default_natives(), &all_enabled(), &project);
+
+    assert_eq!(
+        disabled,
+        required_pairs(&[("checks.lint-docs", GitCommit), ("checks.fmt", GitTree)])
+    );
+    assert_eq!(enabled_all[2..], disabled[..]);
 }
 
 #[test]
@@ -280,7 +381,7 @@ fn it_should_keep_requiring_the_native_checks_when_no_mechanical_check_covers_th
         mechanical_project_check(RUN_TESTS, "before-commit", true, true),
     ];
 
-    let required = required_checks(&default_natives(), &project);
+    let required = required_checks(&default_natives(), &all_enabled(), &project);
 
     assert_eq!(
         required,
@@ -298,7 +399,7 @@ fn it_should_keep_requiring_run_tests_when_the_only_mechanical_before_commit_che
 {
     let fmt = mechanical_project_check("checks.fmt", "before-commit", false, false);
 
-    let required = required_checks(&default_natives(), &[fmt]);
+    let required = required_checks(&default_natives(), &all_enabled(), &[fmt]);
 
     assert_eq!(
         required,

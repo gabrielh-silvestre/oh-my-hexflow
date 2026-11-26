@@ -13,10 +13,13 @@ use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::Omhl;
 use crate::pr_gate::GateSnapshots;
-use crate::probe::{DevelopMark, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
+use crate::probe::{
+    DevelopMark, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
+};
 use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
+use crate::workflow::config::NativeConfig;
 use crate::workflow::retro::retro;
 
 const DEFAULT_PAGE_LIMIT: u32 = 50;
@@ -35,6 +38,7 @@ pub(super) struct Engine<'d> {
     pub(super) exec: Option<Exec<'d>>,
     pub(super) retention: Option<&'d dyn ByproductRetention>,
     pub(super) mark: Option<&'d dyn DevelopMark>,
+    pub(super) native: Option<&'d dyn NativeResolver>,
     pub(super) retry: RetryPolicy,
     pub(super) retry_after_run: RetryPolicy,
     pub(super) hooks_dir: Option<PathBuf>,
@@ -162,9 +166,10 @@ impl Engine<'_> {
     fn gate_pr(&mut self, work_item: &str) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshots = self.probe_gate_snapshots()?;
+        let enabled = self.resolve_native()?;
         let report = self
             .omhl
-            .evaluate_pr_gate(&self.tenant, &work_item, &snapshots)?;
+            .evaluate_pr_gate(&self.tenant, &work_item, &snapshots, &enabled)?;
 
         Ok(output::gate(&report))
     }
@@ -172,11 +177,16 @@ impl Engine<'_> {
     fn close(&mut self, caller: &Caller, work_item: &str) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshots = self.probe_gate_snapshots()?;
+        let enabled = self.resolve_native()?;
         // Lida antes de gravar: o `close` nunca devolve erro depois do record de fechamento.
         let facts = self.retro_facts(&work_item)?;
-        let closed =
-            self.omhl
-                .close_work_item(&self.tenant, &work_item, &snapshots, &caller.author())?;
+        let closed = self.omhl.close_work_item(
+            &self.tenant,
+            &work_item,
+            &snapshots,
+            &enabled,
+            &caller.author(),
+        )?;
 
         Ok(output::closed(&closed, retro(&facts).as_ref()))
     }
@@ -197,6 +207,16 @@ impl Engine<'_> {
 
     pub(super) fn probe_snapshot(&self) -> Result<Snapshot, AppError> {
         reproducible(self.probe.probe())
+    }
+
+    /// Sem resolvedor injetado não há diretório principal: nunca vale um conjunto vazio no lugar.
+    fn resolve_native(&self) -> Result<NativeConfig, AppError> {
+        let resolver = self.native.ok_or_else(AppError::main_dir_unknown)?;
+
+        resolver.resolve().map_err(|refusal| match refusal {
+            NativeRefusal::MainDirUnknown => AppError::main_dir_unknown(),
+            NativeRefusal::InvalidWorkflow(error) => AppError::invalid_workflow(error),
+        })
     }
 
     fn probe_gate_snapshots(&self) -> Result<GateSnapshots, AppError> {

@@ -53,7 +53,7 @@ use self::retry::{RetryPolicy, with_retry};
 use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::{Omhl, OmhlDeps};
-use crate::probe::DevelopMark;
+use crate::probe::{DevelopMark, NativeResolver};
 use crate::runner::CommandRunner;
 use crate::workflow::matrix::PremiseFact;
 
@@ -85,6 +85,7 @@ impl<'d> App<'d> {
                 exec: None,
                 retention: None,
                 mark: None,
+                native: None,
                 retry: retry.clone(),
                 retry_after_run: RetryPolicy::after_run(),
                 hooks_dir: None,
@@ -115,6 +116,11 @@ impl<'d> App<'d> {
 
     pub fn with_develop_mark(mut self, mark: &'d dyn DevelopMark) -> App<'d> {
         self.engine.mark = Some(mark);
+        self
+    }
+
+    pub fn with_native_resolver(mut self, native: &'d dyn NativeResolver) -> App<'d> {
+        self.engine.native = Some(native);
         self
     }
 

@@ -24,6 +24,22 @@ impl Project {
         project
     }
 
+    /// Escreve o `.omhl/workflow.toml` com `[native] checks`; o `Project::new` não liga nenhum check nativo.
+    pub fn enable_natives(&self, ids: &[&str]) {
+        let dir = self.dir.path().join(".omhl");
+        fs::create_dir_all(&dir).expect("the .omhl directory is created");
+        let list = ids
+            .iter()
+            .map(|id| format!("\"{id}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        fs::write(
+            dir.join("workflow.toml"),
+            format!("version = 1\n\n[native]\nchecks = [{list}]\n"),
+        )
+        .expect("the workflow file is written");
+    }
+
     pub fn dir(&self) -> &Path {
         self.dir.path()
     }

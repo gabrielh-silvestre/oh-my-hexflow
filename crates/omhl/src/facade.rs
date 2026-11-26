@@ -18,6 +18,7 @@ use crate::pr_gate::{
 };
 use crate::probe::{SnapshotProbe, TreeSource};
 use crate::projection::ProjectionState;
+use crate::workflow::config::NativeConfig;
 use crate::{graphs, guard};
 
 static NATIVE: NativeBase = NativeBase;
@@ -193,10 +194,11 @@ impl<'d> Omhl<'d> {
         tenant: &TenantId,
         work_item: &SemanticId,
         snapshots: &GateSnapshots,
+        enabled: &NativeConfig,
     ) -> Result<GateReport, OmhlError> {
         self.find_work_item(tenant, work_item)?;
 
-        self.gate_report(tenant, work_item, snapshots)
+        self.gate_report(tenant, work_item, snapshots, enabled)
     }
 
     pub fn read_projection_state(
@@ -259,11 +261,12 @@ impl<'d> Omhl<'d> {
         tenant: &TenantId,
         work_item: &SemanticId,
         snapshots: &GateSnapshots,
+        enabled: &NativeConfig,
     ) -> Result<GateReport, OmhlError> {
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
         let (head, reports) = read_consistent(&mut source, tenant, |source| {
             let checks = source.nodes(tenant, &project_checks_filter())?;
-            let required = required_checks(NATIVE.checks(), &checks);
+            let required = required_checks(NATIVE.checks(), enabled, &checks);
             let digests = spec_digests(&checks);
             let mut questions = pr_gate_questions(&required, work_item, snapshots, &digests);
             questions.extend(anchor_questions(work_item));
@@ -280,6 +283,7 @@ impl<'d> Omhl<'d> {
         tenant: &TenantId,
         work_item: &SemanticId,
         snapshots: &GateSnapshots,
+        enabled: &NativeConfig,
         author: &Author,
     ) -> Result<ClosedWorkItem, OmhlError> {
         let session = self.session.resolve()?;
@@ -295,7 +299,7 @@ impl<'d> Omhl<'d> {
         if let Some(code) = head_commit.or(head_tree) {
             return Err(OmhlError::rule(code, "/snapshot"));
         }
-        let report = self.gate_report(tenant, work_item, snapshots)?;
+        let report = self.gate_report(tenant, work_item, snapshots, enabled)?;
         let request = closing_request(tenant, author, current, &report, &snapshots.head_commit);
         let outcome = self.hexlog.append_with_session(&request, &session)?;
 
