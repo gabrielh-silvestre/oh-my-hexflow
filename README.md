@@ -1,7 +1,8 @@
 # oh-my-hexflow
 
 O vocabulário (record, tenant, node, gate, extension, projection) está em
-[GLOSSARY.md](GLOSSARY.md).
+[GLOSSARY.md](GLOSSARY.md). Quem desenvolve o plugin encontra o que precisa em
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Requisitos
 
@@ -39,7 +40,7 @@ O plugin foi testado só no Linux e no WSL.
    cp target/release/omhl ~/.local/bin/omhl
    ```
 
-   Para atualizar, rode o mesmo comando de novo (ou recompile e copie, depois de puxar mudanças).
+   Para atualizar, rode o mesmo comando de novo.
    O `~/.local/bin` precisa estar no `PATH` do processo do Claude Code; reinicie a sessão depois de instalar.
 
 2. Instale o plugin pelo marketplace do GitHub, numa sessão do Claude Code:
@@ -50,7 +51,6 @@ O plugin foi testado só no Linux e no WSL.
    ```
 
    O marketplace instala só o plugin, não o `omhl`: o plugin lê o `omhl` do `PATH` (passo 1).
-   Para desenvolver o plugin, abra o Claude Code com `claude --plugin-dir plugin/`.
 
 ### Avisos de início de sessão
 
@@ -191,15 +191,15 @@ Se o TOML do disco diverge do banco ou ficou inválido, corrija o arquivo e
 rode `omhl load`. Detalhes em
 [docs/mechanical-gates.md](docs/mechanical-gates.md).
 
-## Desenvolvimento
+## Avisos de atualização
 
-`cargo test` sem filtro roda a suíte inteira, que é pesada. Ao mexer em área
-coberta por `tests/`, rode só o módulo afetado
-(`cargo test -p <crate> --test integration <modulo>::`; no omhl, `--test e2e`
-para o e2e; `--lib <modulo>::` para o unitário). Detalhes em
-[docs/mechanical-gates.md](docs/mechanical-gates.md).
+Uma entrada por mudança que exige ação de quem atualiza, a mais nova primeiro.
 
-O mapa dos módulos está em [docs/architecture.md](docs/architecture.md).
+### A pasta `.omhl/notes/` nasce com um `.gitignore` próprio
+
+O hook cria a pasta `.omhl/notes/` na primeira nota, agora com um `.gitignore` próprio, de uma linha `*`. O `omhl` nunca recria o arquivo se a pasta já existe. Para versionar as notas, edite ou apague esse `.gitignore`.
+
+Se a `.omhl/notes/` do seu projeto nasceu sem o arquivo, porque é anterior a esta mudança, porque um binário velho criou a pasta ou porque a criação falhou no meio, crie o `.omhl/notes/.gitignore` à mão com a linha `*`, se quiser. Não há migração, e o `omhl` não o recria.
 
 ## Créditos
 

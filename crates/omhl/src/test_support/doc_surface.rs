@@ -665,7 +665,7 @@ fn backing_files(root: &Path) -> Vec<PathBuf> {
 }
 
 fn markdown_files(root: &Path) -> Vec<PathBuf> {
-    let mut files: Vec<PathBuf> = ["README.md", "GLOSSARY.md", "AGENTS.md"]
+    let mut files: Vec<PathBuf> = ["README.md", "CONTRIBUTING.md", "GLOSSARY.md", "AGENTS.md"]
         .iter()
         .map(|name| root.join(name))
         .filter(|path| path.is_file())

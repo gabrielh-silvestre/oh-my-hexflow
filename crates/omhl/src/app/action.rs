@@ -113,7 +113,6 @@ impl Caller {
         }
     }
 
-    /// (ADR 0007: ).
     pub fn cli_with_role(claude_code: bool, role: Option<&str>) -> Result<Caller, OmhlError> {
         match (claude_code, role) {
             (true, None) => Ok(Caller::cli_under_claude_code()),

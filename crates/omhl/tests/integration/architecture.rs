@@ -84,7 +84,7 @@ const ROLE_MODULE: &str = "guard/role.rs";
 const REMOVED_PORT_TERMS: &[&str] = &["mcp", "tool_call", "json-rpc"];
 const NUMERIC_CUT_NEEDLES: &[&str] = &[".min(", ".max(", ".clamp(", ".take(", "saturating_"];
 /// Cortes numéricos de `src/app` por arquivo, os únicos justificados; um corte novo entra aqui com a
-/// razão ao lado e, se for um caso mantido, com a linha em "Avaliados e mantidos" do ADR 0007, nunca sozinho.
+/// razão de uma linha em comentário junto da entrada, nunca sozinho.
 const NUMERIC_CUTS_IN_APP: &[(&str, usize)] = &[
     // janela da cauda: saturating_sub(wanted) devolve menos linhas que o pedido; --tail acima de 500 já recusa (I1)
     ("byproduct_tail.rs", 1),
@@ -496,7 +496,7 @@ fn numeric_cut_mismatches(dir: &Path, allowed: &[(&str, usize)]) -> Vec<String> 
             .map_or(0, |(_, count)| *count);
         if found > expected {
             failures.push(format!(
-                "{relative}: {found} numeric cut(s), the closed list allows {expected}; refuse the option or report the cut, or record the kept case in docs/adr/0007-opcoes-da-cli-sao-respeitadas-ou-recusadas.md (\"Avaliados e mantidos\") and a one-line reason beside the entry, before raising the list"
+                "{relative}: {found} numeric cut(s), the closed list allows {expected}; refuse the option or report the cut, or record the kept case in a one-line comment beside its entry of NUMERIC_CUTS_IN_APP, before raising the list"
             ));
         } else if found < expected {
             failures.push(format!(

@@ -176,6 +176,14 @@ fn it_should_link_the_directives_flow_page_from_agents_md() {
 }
 
 #[test]
+fn it_should_link_contributing_from_agents_md_without_pointing_at_moved_text() {
+    let agents = read_repo_file("AGENTS.md");
+
+    assert!(agents.contains("](CONTRIBUTING.md)"));
+    assert!(!agents.contains("](docs/mechanical-gates.md#"));
+}
+
+#[test]
 fn it_should_tell_agents_md_to_write_through_the_cli() {
     let agents = read_repo_file("AGENTS.md");
 
