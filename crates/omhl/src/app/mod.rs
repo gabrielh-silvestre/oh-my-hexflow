@@ -10,6 +10,7 @@ mod gate_worktree;
 mod git_version;
 mod guideline_retire;
 mod hooks;
+mod language;
 mod load;
 mod read;
 mod report;
@@ -35,6 +36,7 @@ pub use crate::workflow::lock::{EditInput, Replacement, Tool, Verdict};
 pub use crate::workflow::omhl_leaf::Group;
 
 pub use self::agent_role::{AgentRoleEnv, RoleVerdict, agent_role};
+pub use self::language::{LanguageRungs, language_line, resolve_language, valid_language};
 pub use self::spec::{SpecLockEvent, SpecLockOutcome, spec_lock, wt_post_start};
 
 use std::path::{Path, PathBuf};

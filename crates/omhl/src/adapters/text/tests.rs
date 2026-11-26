@@ -25,17 +25,18 @@ fn it_should_defer_exactly_the_six_machine_read_commands() {
             CommandKey::HookSessionStart,
             CommandKey::HookSpecLock,
             CommandKey::HookAgentRole,
+            CommandKey::HookSubagentStart,
             CommandKey::HookWtPostStart,
         ]
     );
 }
 
 #[test]
-fn it_should_give_a_renderer_to_twenty_three_of_the_twenty_nine_commands() {
+fn it_should_give_a_renderer_to_twenty_three_of_the_thirty_commands() {
     let with_renderer = CommandKey::ALL
         .into_iter()
         .filter(|key| renderer_for(*key).is_some())
         .count();
 
-    assert_eq!((with_renderer, CommandKey::ALL.len()), (23, 29));
+    assert_eq!((with_renderer, CommandKey::ALL.len()), (23, 30));
 }

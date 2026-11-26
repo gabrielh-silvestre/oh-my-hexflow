@@ -58,12 +58,19 @@ version_check() {
   printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$warning" "$warning"
 }
 
+# Sempre sai com 0: um omhl anterior à lang1 não tem o subcomando, sai com 2, e o Claude Code mostraria um erro de hook a cada subagente.
+subagent_start() {
+  output=$(omhl hook subagent-start 2>/dev/null) || return 0
+  [ -z "$output" ] || printf '%s\n' "$output"
+}
+
 if command -v omhl >/dev/null 2>&1; then
   case $hook in
     version-check) version_check ;;
     spec-lock) omhl hook spec-lock || exit 2 ;;
     agent-role) omhl hook agent-role || exit 1 ;;
     session-start) exec omhl hook session-start ;;
+    subagent-start) subagent_start ;;
   esac
   exit 0
 fi

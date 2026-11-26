@@ -40,6 +40,7 @@ pub fn run_omhl_with_session(
         claude_code,
         role: role.map(str::to_owned),
         plugin_root: None,
+        claude: Default::default(),
         session,
     };
     let argv = ["omhl", "--project-dir"]

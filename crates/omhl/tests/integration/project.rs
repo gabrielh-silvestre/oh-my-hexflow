@@ -108,6 +108,7 @@ fn discover_error(project: &Project, db: &Path) -> Option<(String, String)> {
         claude_code: false,
         role: None,
         plugin_root: None,
+        claude: Default::default(),
         session: None,
     };
 

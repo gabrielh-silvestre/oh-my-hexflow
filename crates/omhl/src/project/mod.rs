@@ -14,6 +14,25 @@ pub struct Env<'e> {
     pub role: Option<String>,
     pub plugin_root: Option<&'e std::ffi::OsStr>,
     pub session: Option<std::ffi::OsString>,
+    pub claude: ClaudeEnv,
+}
+
+/// O que o hook `subagent-start` lê para achar o idioma da pessoa.
+#[derive(Default)]
+pub struct ClaudeEnv {
+    pub plugin_option_language: Option<std::ffi::OsString>,
+    pub project_dir: Option<std::ffi::OsString>,
+    pub config_dir: Option<std::ffi::OsString>,
+}
+
+impl ClaudeEnv {
+    pub fn from_process() -> ClaudeEnv {
+        ClaudeEnv {
+            plugin_option_language: std::env::var_os("CLAUDE_PLUGIN_OPTION_LANGUAGE"),
+            project_dir: std::env::var_os("CLAUDE_PROJECT_DIR"),
+            config_dir: std::env::var_os("CLAUDE_CONFIG_DIR"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

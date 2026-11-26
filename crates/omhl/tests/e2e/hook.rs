@@ -1069,3 +1069,60 @@ fn it_should_keep_the_context_within_10000_characters_with_60_marked_directives(
     assert!(shown > 0, "some directives fit");
     assert_eq!(confirmed, NATIVE_GUIDELINES.len() + shown);
 }
+
+// Idioma da opção do plugin
+
+fn session_start_with_language(project: &Project, language: &str) -> Child {
+    let elsewhere = TempDir::new().expect("other directory is created");
+
+    omhl(&["hook", "session-start"])
+        .cwd(elsewhere.path())
+        .xdg(project.xdg())
+        .env("CLAUDE_PLUGIN_OPTION_LANGUAGE", language)
+        .stdin(session_start(project.dir()).to_string())
+        .run()
+}
+
+#[test]
+fn it_should_add_the_language_line_to_the_session_context_with_the_plugin_option() {
+    let project = Project::new("acme");
+
+    let context = context_of(&session_start_with_language(&project, "pt-BR"));
+
+    assert!(context.contains("\"pt-BR\""));
+    assert!(context.contains("write any text addressed to the person in that language"));
+}
+
+#[test]
+fn it_should_not_add_a_language_line_without_the_plugin_option() {
+    let project = Project::new("acme");
+
+    let context = context_of(&hook_for(&project));
+
+    assert!(!context.contains("addressed to the person"));
+}
+
+#[test]
+fn it_should_not_add_a_language_line_when_the_plugin_option_is_blank() {
+    let project = Project::new("acme");
+
+    let context = context_of(&session_start_with_language(&project, "  "));
+
+    assert!(!context.contains("addressed to the person"));
+}
+
+#[test]
+fn it_should_stay_silent_without_a_marker_even_with_the_plugin_option() {
+    let bare = TempDir::new().expect("bare directory is created");
+    let xdg = TempDir::new().expect("data directory is created");
+
+    let output = omhl(&["hook", "session-start"])
+        .cwd(bare.path())
+        .xdg(xdg.path())
+        .env("CLAUDE_PLUGIN_OPTION_LANGUAGE", "pt-BR")
+        .stdin(session_start(bare.path()).to_string())
+        .run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout stays empty");
+}

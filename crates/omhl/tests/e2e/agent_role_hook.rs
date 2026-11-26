@@ -394,6 +394,7 @@ const LEAF_SAMPLES: &[(&str, &str)] = &[
     ("hook session-start", "omhl hook session-start"),
     ("hook spec-lock", "omhl hook spec-lock"),
     ("hook agent-role", "omhl hook agent-role"),
+    ("hook subagent-start", "omhl hook subagent-start"),
     (
         "hook wt-post-start",
         "omhl hook wt-post-start --branch feat/wi-x__y",
@@ -618,6 +619,7 @@ fn it_should_deny_every_hook_event_to_every_role() {
         "hook session-start",
         "hook spec-lock",
         "hook agent-role",
+        "hook subagent-start",
     ]));
 
     cases.iter().for_each(assert_case);
