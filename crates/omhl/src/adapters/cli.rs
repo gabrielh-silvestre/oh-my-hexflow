@@ -234,7 +234,7 @@ pub enum ReportCommand {
 }
 
 #[derive(Debug, Subcommand)]
-// O grupo tem dois contratos. Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o evento no stdin e nunca saem com 2; em erro interno `session-start` e `agent-role` liberam, e o `spec-lock` libera só antes de reconhecer a spec (depois dela, falha de git ou de leitura nega com `spec-lock-unavailable`, o `|| exit 2` do `spec-lock` e o `|| exit 1` do `agent-role` no `omhl-hook.sh` valem só para o `omhl` presente e falho; sem o binário, o script bloqueia só num projeto marcado, e o `agent-role` e o `session-start` saem com `exit 0`). O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai 1 em pasta de spec que é link simbólico.
+// O grupo tem dois contratos. Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o evento no stdin e nunca saem com 2; em erro interno `session-start` e `agent-role` liberam, e o `spec-lock` libera só antes de reconhecer a spec (depois dela, falha de git ou de leitura nega com `spec-lock-unavailable`). Quem decide o código de saída que bloqueia é o `omhl-hook.sh`, cujo ramo sem o binário sai com `exit 0` fora de projeto marcado (`docs/directives-flow.md`). O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai 1 em pasta de spec que é link simbólico.
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,

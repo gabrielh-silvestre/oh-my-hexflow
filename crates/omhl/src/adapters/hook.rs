@@ -45,7 +45,7 @@ pub fn session_start(
     }
 }
 
-/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON, e um erro interno antes de reconhecer a spec libera a escrita, com a linha de erro no stderr; depois do reconhecimento, a falha de git ou de leitura nega com `spec-lock-unavailable` (o `|| exit 2` do `spec-lock` e o `|| exit 1` do `agent-role` no `omhl-hook.sh` valem só para o `omhl` presente e falho; sem o binário, o script bloqueia só num projeto marcado, e o `agent-role` e o `session-start` saem com `exit 0`). Além das specs, nega a mudança do `specs.dir` no `workflow.toml` principal com spec congelada (`spec-dir-frozen`), qualquer edição sob um `.git` de projeto omhl (`git-dir-protected`) e a edição que deixaria o marcador do projeto inválido (`marker-protected`).
+/// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON, e um erro interno antes de reconhecer a spec libera a escrita, com a linha de erro no stderr; depois do reconhecimento, a falha de git ou de leitura nega com `spec-lock-unavailable`. Quem decide o código de saída que bloqueia é o `omhl-hook.sh`, cujo ramo sem o binário sai com `exit 0` fora de projeto marcado (`docs/directives-flow.md`). Além das specs, nega a mudança do `specs.dir` no `workflow.toml` principal com spec congelada (`spec-dir-frozen`), qualquer edição sob um `.git` de projeto omhl (`git-dir-protected`) e a edição que deixaria o marcador do projeto inválido (`marker-protected`).
 pub fn spec_lock(stdin: &mut impl Read, out: &mut impl Write, err: &mut impl Write) -> ExitCode {
     let mut notices = Vec::new();
     let code = pre_tool_use(stdin, out, err, |input| {
