@@ -33,7 +33,7 @@ The directive `.omhl/guidelines/boundary-classification.toml` carries this rule 
 | The lock of the spec | Method | The `spec-lock` hook of the plugin and the `omhl` binary | none |
 | The role hook of the agents | Method | The `agent-role` hook of the plugin and the matrix in the frontmatter of `plugin/agents/` | none |
 | The context injected at session start | Method | The `session-start` hook of the plugin, with the context rendered by the `omhl` binary from the graph | none |
-| The three native checks | Optional default configuration | The native catalog of the binary, off until a project turns each one on | Always on in every marked project: no key turns one off |
+| The three native checks | Optional default configuration | The native catalog of the binary, off until a project turns each one on | Off in every marked project until `[native] checks` in `.omhl/workflow.toml` lists its id |
 | The two native guidelines | Optional default configuration | The native catalog of the binary, off until a project turns each one on | Always on in every marked project: no key turns one off |
 | The branch name format | Optional default configuration | A default of the binary that `.omhl/workflow.toml` of the project can change | Fixed in the code as `<type>/wi-<id>__<slug>`, with `main` and `develop` as fixed names: any other name is refused and no key changes it |
 | The matrix of requirements by prefix | Optional default configuration | A default of the binary that `[prefix.<name>]` in `.omhl/workflow.toml` of the project can change | On in every marked project: without a `workflow.toml`, the binary applies its own matrix |

@@ -195,6 +195,17 @@ rode `omhl load`. Detalhes em
 
 Uma entrada por mudança que exige ação de quem atualiza, a mais nova primeiro.
 
+### Os checks nativos vêm desligados
+
+O que cada check nativo pede e como ligá-lo está em [native-checks.md](plugin/skills/directives-flow/references/native-checks.md). O que muda para quem atualiza:
+
+1. Um projeto sem `[native]` no `.omhl/workflow.toml` passa a ter os checks nativos desligados: o `render` não os imprime e o `gate-pr` e o `close` não perguntam por eles.
+2. Quem quiser manter algum declara o id em `[native] checks`.
+3. `checks.run-tests` e `checks.ci-green-before-merge` declarados são cobrados mesmo com um check próprio no mesmo momento: o check do projeto deixa de substituir o nativo.
+4. Um projeto com `.omhl.toml` e sem repositório git mostra a linha `main-dir-unknown` a cada início de sessão, e `gate-pr` e `close` recusam ali com `probe-failed`. O `git init` tira a linha da sessão, mas `gate-pr` e `close` precisam também de um primeiro commit com a árvore limpa, porque a sonda recusa um repositório sem commits.
+5. O binário anterior recusa um `workflow.toml` com `[native]`. Com o binário novo, um arquivo que ele não aceita faz `gate-pr` e `close` recusarem com `invalid-workflow-config`.
+6. Plugin e binário se atualizam juntos.
+
 ### A pasta `.omhl/notes/` nasce com um `.gitignore` próprio
 
 O hook cria a pasta `.omhl/notes/` na primeira nota escrita por uma ferramenta de edição de arquivo do Claude Code (uma nota escrita pelo `Bash` passa sem o hook), agora com um `.gitignore` próprio que ignora tudo (`*`). O `omhl` nunca recria o arquivo se a pasta já existe. Para versionar as notas, edite ou apague esse `.gitignore`.
