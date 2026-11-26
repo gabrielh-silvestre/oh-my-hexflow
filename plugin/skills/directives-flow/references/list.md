@@ -1,11 +1,11 @@
 # omhl list
 
 - [Who uses it](#who-uses-it-at-which-stage-and-with-which-filter)
-- [Quando usar](#quando-usar)
-- [Entradas](#entradas)
-- [Saída](#saída)
-- [Erros](#erros)
-- [Exemplos](#exemplos)
+- [When to use](#when-to-use)
+- [Inputs](#inputs)
+- [Output](#output)
+- [Errors](#errors)
+- [Examples](#examples)
 
 ## Who uses it, at which stage and with which filter
 
@@ -45,73 +45,73 @@
 | verifier | 8, 9 | `omhl list --type guideline` |
 | verifier | 9 | `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed` |
 
-## Quando usar
+## When to use
 
-Para achar nós no banco quando você não sabe o id: as premissas de um work item, as divergências abertas, os checks, as diretivas. O `list` devolve a revisão vigente de cada nó, em ordem de gravação, página a página. Se você já sabe o id, use `omhl get`. É somente leitura.
+To find nodes in the database when you do not know the id: the premises of a work item, the open divergences, the checks, the guidelines. `list` returns the current revision of each node, in recording order, page by page. If you already know the id, use `omhl get`. It is read-only.
 
-O `list` **respeita o pedido ou o recusa**: um filtro que nunca casaria nada (tipo no plural, campo que não existe, valor fora dos permitidos) vem como erro com a regra, nunca como `✔ 0 nodes`. Por isso um `✔ 0 nodes` (`{"items":[]}` no `json`) é resposta vazia verdadeira: nenhum nó casa. Para consultar as divergências abertas de um work item:
+`list` **honors the request or refuses it**: a filter that would never match anything (plural type, a field that does not exist, a value outside the allowed ones) comes back as an error with the rule, never as `✔ 0 nodes`. So a `✔ 0 nodes` (`{"items":[]}` in `json`) is a true empty answer: no node matches. To query the open divergences of a work item:
 
 ```omhl-example fixture=project
 $ omhl list --type divergence --where work_item=work-items.w1 --where resolution=open
 ✔ 0 nodes
 ```
 
-## Entradas
+## Inputs
 
-Todas as opções são opcionais. Sem nenhuma, lista os nós de todos os tipos.
+All options are optional. With none, it lists the nodes of all types.
 
-- `--type <tipo>`: um tipo do catálogo, **no singular**: `check`, `guideline`, `premise`, `decision`, `gap`, `divergence`, `attestation`, `work-item` ou `pull-request`. Um tipo que não existe no catálogo é recusado (`premises` no plural recusa).
-- `--id-prefix <prefixo>`: filtra pelo começo do id. Regras:
-  - é uma sequência de nomes separados por `.`; cada nome tem de 1 a 63 caracteres, só com letras minúsculas, dígitos e hífens, e não começa por hífen; o prefixo todo tem até 200 caracteres;
-  - **casa por segmento inteiro**: `premises.p1` casa `premises.p1`, mas `premises.p` não casa `premises.p1` (e `premises.cli1` não casa `premises.cli1-b1`);
-  - **começa por um namespace de tipo**: `premises`, `guidelines`, `checks`, `decisions`, `gaps`, `divergences`, `attestations` ou `work-items` (`premise` no singular recusa). Com `--type`, o namespace é o do tipo (`work-items` serve a `work-item` e `pull-request`).
-- `--where <CAMPO=VALOR>`: filtra por igualdade de um campo, repetível; todos os pares precisam bater. Regras:
-  - o comando divide no **primeiro** `=`, então o valor pode conter `=`; um par sem `=` ou com o campo vazio é recusado;
-  - o campo precisa ser de **texto**: o schema do campo tem `type: "string"`, ou não tem `type` e todo valor do `enum` é string (é o caso de `status`, `kind`, `resolution`, `concern` e `outcome`). Campo `boolean`, `integer`, `array` ou `object` não vale: `--where blocking=true` recusa;
-  - se o campo tem `enum`, o valor precisa ser um dos permitidos (`status=confimed` recusa);
-  - **um valor por campo**: o mesmo campo com valores diferentes recusa, e essa checagem vem antes da do `enum`: `--where status=confimed --where status=open` recusa o segundo par por repetição, não o primeiro por valor fora do `enum`; o mesmo par repetido segue aceito;
-  - o campo precisa existir no tipo (com `--type`) ou em algum tipo candidato (veja abaixo);
-  - no máximo 8 pares, e o valor tem até 256 caracteres.
-- **Tipos candidatos (sem `--type`).** Os candidatos são os tipos que o namespace do `--id-prefix` admite, ou os nove do catálogo se não há prefixo. O filtro vale se **algum candidato** declara todos os campos do `--where` como texto e aceita os valores; senão é recusado em `/where/<índice>`. Por isso `--where status=open` funciona sem `--type`, e `--where title=x --where kind=missing` recusa (nenhum tipo declara os dois). Como nenhum tipo tem mais de seis campos de texto, mais de seis campos distintos nunca passam.
-- `--limit <n>`: o tamanho da página, de **1 a 200**; sem a opção, 50. `0` e acima de 200 são recusados.
-- `--after-seq <n>`: o cursor da página: devolve os nós com `seq` maior que `n`. Use o `next_after_seq` da página anterior. Um valor além da cabeça do banco devolve a página vazia, que é resposta verdadeira.
-- `--db <caminho>`: o arquivo do banco. Um caminho novo **cria o banco**; o caminho precisa ficar fora da pasta do projeto.
-- `--project-dir <pasta>`: onde procurar o marcador `.omhl.toml`. A pasta precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
+- `--type <type>`: a type of the catalog, **in the singular**: `check`, `guideline`, `premise`, `decision`, `gap`, `divergence`, `attestation`, `work-item` or `pull-request`. A type that does not exist in the catalog is refused (`premises` in the plural is refused).
+- `--id-prefix <prefix>`: filters by the start of the id. Rules:
+  - it is a sequence of names separated by `.`; each name has 1 to 63 characters, only lowercase letters, digits and hyphens, and does not start with a hyphen; the whole prefix has up to 200 characters;
+  - **matches by whole segment**: `premises.p1` matches `premises.p1`, but `premises.p` does not match `premises.p1` (and `premises.cli1` does not match `premises.cli1-b1`);
+  - **starts with a type namespace**: `premises`, `guidelines`, `checks`, `decisions`, `gaps`, `divergences`, `attestations` or `work-items` (`premise` in the singular is refused). With `--type`, the namespace is that of the type (`work-items` serves `work-item` and `pull-request`).
+- `--where <FIELD=VALUE>`: filters by equality of a field, repeatable; all pairs must match. Rules:
+  - the command splits at the **first** `=`, so the value may contain `=`; a pair without `=` or with an empty field is refused;
+  - the field must be **text**: the field schema has `type: "string"`, or has no `type` and every `enum` value is a string (the case of `status`, `kind`, `resolution`, `concern` and `outcome`). A `boolean`, `integer`, `array` or `object` field does not qualify: `--where blocking=true` is refused;
+  - if the field has `enum`, the value must be one of the allowed ones (`status=confimed` is refused);
+  - **one value per field**: the same field with different values is refused, and this check comes before the `enum` one: `--where status=confimed --where status=open` refuses the second pair for repetition, not the first for a value outside the `enum`; the same pair repeated is still accepted;
+  - the field must exist in the type (with `--type`) or in some candidate type (see below);
+  - at most 8 pairs, and the value has up to 256 characters.
+- **Candidate types (without `--type`).** The candidates are the types that the namespace of `--id-prefix` admits, or the nine of the catalog if there is no prefix. The filter holds if **some candidate** declares all the `--where` fields as text and accepts the values; otherwise it is refused at `/where/<index>`. That is why `--where status=open` works without `--type`, and `--where title=x --where kind=missing` is refused (no type declares both). Since no type has more than six text fields, more than six distinct fields never pass.
+- `--limit <n>`: the page size, from **1 to 200**; without the option, 50. `0` and above 200 are refused.
+- `--after-seq <n>`: the page cursor: returns the nodes with `seq` greater than `n`. Use the `next_after_seq` of the previous page. A value beyond the database head returns the empty page, which is a true answer.
+- `--db <path>`: the database file. A new path **creates the database**; the path must be outside the project folder.
+- `--project-dir <dir>`: where to look for the `.omhl.toml` marker. The folder must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0. A primeira linha resume a página: `✔ N nodes · seq A–B` (a faixa de `seq` da página; `✔ 0 nodes` quando nenhum nó casa). Depois vem uma linha por nó, com o id inteiro (nunca encurtado), o tipo, o `seq` e os campos do tipo:
+Text on stdout, exit 0. The first line summarizes the page: `✔ N nodes · seq A–B` (the `seq` range of the page; `✔ 0 nodes` when no node matches). Then comes one line per node, with the whole id (never shortened), the type, the `seq` and the fields of the type:
 
-- `check`: o evento, `blocking` ou `non-blocking` e `concern/variant`;
-- `attestation`: o desfecho, o check e o work item;
-- `premise`: o `status`, o `kind`, o work item e o texto;
-- `work-item` e `pull-request`: o `status` e o título;
-- `guideline`: o `kind` e o texto;
-- `divergence`: a `resolution` e o texto;
-- `decision`: o texto; `gap`: a pergunta.
+- `check`: the event, `blocking` or `non-blocking` and `concern/variant`;
+- `attestation`: the outcome, the check and the work item;
+- `premise`: the `status`, the `kind`, the work item and the text;
+- `work-item` and `pull-request`: the `status` and the title;
+- `guideline`: the `kind` and the text;
+- `divergence`: the `resolution` and the text;
+- `decision`: the text; `gap`: the question.
 
-Um nó sobreposto por um check nativo de mesmo id leva a palavra `shadowed` depois do `seq`. O resto de `data` (evidências, `confirmed_by`, `run`, `expect`) e o autor, o `at` e o `record_id` ficam de fora: leia o nó inteiro com `omhl get <id>`. Quando há mais nós depois da página, a última linha é `Next: omhl list --after-seq N with the same filters for more. One node in full: omhl get <id>.`; repita o comando com `--after-seq N` **e os mesmos filtros**. Sem `Next:`, a página é a última. Com `--format human` os mesmos fatos saem em blocos, um por nó: o id numa linha e, abaixo, `type`, `seq`, os campos do tipo e `of` (o work item) com os rótulos alinhados.
+A node overridden by a native check with the same id carries the word `shadowed` after the `seq`. The rest of `data` (evidence, `confirmed_by`, `run`, `expect`) and the author, the `at` and the `record_id` stay out: read the whole node with `omhl get <id>`. When there are more nodes after the page, the last line is `Next: omhl list --after-seq N with the same filters for more. One node in full: omhl get <id>.`; repeat the command with `--after-seq N` **and the same filters**. Without `Next:`, the page is the last. With `--format human` the same facts come out in blocks, one per node: the id on one line and, below, `type`, `seq`, the fields of the type and `of` (the work item) with aligned labels.
 
-Com `--format json` a saída é uma linha: `{"items": [...]}`. Cada item traz `id`, `type`, `record_id`, `seq`, `at`, `data` (os campos do nó), `author` (`agent` e `client`) e `shadowed` (`true` quando um check nativo de mesmo id o sobrepõe), mais `snapshot` e `external_id` quando o nó os tem. Quando há mais nós depois da página, a resposta traz `next_after_seq`; repita o comando com `--after-seq` igual a esse valor. Sem `next_after_seq`, a página é a última.
+With `--format json` the output is one line: `{"items": [...]}`. Each item carries `id`, `type`, `record_id`, `seq`, `at`, `data` (the node fields), `author` (`agent` and `client`) and `shadowed` (`true` when a native check with the same id overrides it), plus `snapshot` and `external_id` when the node has them. When there are more nodes after the page, the answer carries `next_after_seq`; repeat the command with `--after-seq` equal to that value. Without `next_after_seq`, the page is the last.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON), com saída 1. Uma opção desconhecida ou um valor que o clap não lê (`--limit abc`) é erro de uso do clap, com saída 2 e sem código. A mensagem de cada recusa diz a regra e não repete o valor recebido. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+An error goes to stderr, as text (`✘ code · message`; with `--format json`, as a JSON line), with exit 1. An unknown option or a value that clap cannot read (`--limit abc`) is a clap usage error, with exit 2 and no code. The message of each refusal states the rule and does not repeat the received value. The errors common to all commands are in [errors.md](errors.md).
 
-- `invalid-arguments` em `/limit` (saída 1): o `--limit` é `0` ou passa de 200. Use um valor de 1 a 200.
-- `invalid-arguments` em `/type` (saída 1): o `--type` não existe no catálogo. Use o nome no singular, da lista acima.
-- `invalid-arguments` em `/id_prefix` (saída 1): o prefixo tem um segmento vazio, com caractere fora de letra minúscula, dígito e hífen, começando por `-` ou acima de 63 caracteres, passa de 200 caracteres no total, não começa por um namespace de tipo, ou está fora do namespace do `--type`. Corrija o prefixo.
-- `invalid-arguments` em `/where/<índice>` (saída 1): o par `--where` de posição `<índice>` viola uma regra: sem `=` ou com campo vazio; campo que o tipo não declara; campo que não é de texto; valor fora do `enum`; campo repetido com valores diferentes (o ponteiro é o do segundo par); ou, sem `--type`, nenhum tipo candidato o satisfaz. Corrija o par.
-- `where-eq-too-many` (saída 1): o `--where` tem mais de 8 pares (só passam pares idênticos repetidos, pois um tipo não declara tantos campos de texto). Reduza os pares.
-- `where-eq-value-too-long` (saída 1): o valor de um `--where` passa de 256 caracteres. Use um valor menor.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `invalid-arguments` at `/limit` (exit 1): `--limit` is `0` or exceeds 200. Use a value from 1 to 200.
+- `invalid-arguments` at `/type` (exit 1): `--type` does not exist in the catalog. Use the singular name, from the list above.
+- `invalid-arguments` at `/id_prefix` (exit 1): the prefix has an empty segment, a character outside lowercase letter, digit and hyphen, starting with `-` or above 63 characters, exceeds 200 characters in total, does not start with a type namespace, or is outside the namespace of `--type`. Fix the prefix.
+- `invalid-arguments` at `/where/<index>` (exit 1): the `--where` pair at position `<index>` breaks a rule: no `=` or an empty field; a field the type does not declare; a field that is not text; a value outside the `enum`; a field repeated with different values (the pointer is that of the second pair); or, without `--type`, no candidate type satisfies it. Fix the pair.
+- `where-eq-too-many` (exit 1): `--where` has more than 8 pairs (only identical repeated pairs pass, since a type does not declare that many text fields). Reduce the pairs.
+- `where-eq-value-too-long` (exit 1): the value of a `--where` exceeds 256 characters. Use a smaller value.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Lista tudo. A fixture tem um work item e uma premissa; com `--format json` a mesma resposta sai para máquinas:
+Lists everything. The fixture has a work item and a premise; with `--format json` the same answer comes out for machines:
 
 ```omhl-example fixture=project
 $ omhl list
@@ -122,7 +122,7 @@ $ omhl list --format json
 {"items":[{"at":"<at>","author":{"agent":"claude","client":"cli"},"data":{"status":"open","title":"First item"},"id":"work-items.w1","record_id":"<record-id>","seq":1,"shadowed":false,"type":"work-item"},{"at":"<at>","author":{"agent":"claude","client":"cli"},"data":{"confirmed_by":{"answer":"In cents.","by":"person:ana","question":"How is money stored?"},"kind":"business","status":"confirmed","text":"Money is stored in cents.","work_item":"work-items.w1"},"id":"premises.p1","record_id":"<record-id>","seq":2,"shadowed":false,"type":"premise"}]}
 ```
 
-Filtra por tipo e por um campo de texto, e filtra só por um campo sem `--type`:
+Filters by type and by a text field, and filters by a field alone without `--type`:
 
 ```omhl-example fixture=project
 $ omhl list --type premise --where status=confirmed
@@ -133,7 +133,7 @@ $ omhl list --where status=open
   work-items.w1 · work-item · seq 1 · open · First item
 ```
 
-Pagina: a primeira página traz `next_after_seq`; a segunda, não. Um `--after-seq` além da cabeça é a página vazia verdadeira:
+Paginates: the first page carries `next_after_seq`; the second does not. An `--after-seq` beyond the head is the true empty page:
 
 ```omhl-example fixture=project
 $ omhl list --limit 1
@@ -147,7 +147,7 @@ $ omhl list --after-seq 99
 ✔ 0 nodes
 ```
 
-Com `--format human` os mesmos fatos saem em blocos, um por nó:
+With `--format human` the same facts come out in blocks, one per node:
 
 ```omhl-example fixture=project
 $ omhl list --format human
@@ -168,7 +168,7 @@ $ omhl list --format human
     text:   Money is stored in cents.
 ```
 
-O prefixo casa por segmento inteiro: `premises.p1` casa, `premises.p` não:
+The prefix matches by whole segment: `premises.p1` matches, `premises.p` does not:
 
 ```omhl-example fixture=project
 $ omhl list --id-prefix premises.p1
@@ -178,7 +178,7 @@ $ omhl list --id-prefix premises.p
 ✔ 0 nodes
 ```
 
-Recusa: `--limit` fora de 1 a 200:
+Refusal: `--limit` outside 1 to 200:
 
 ```omhl-example fixture=project
 $ omhl list --limit 0
@@ -191,7 +191,7 @@ $ omhl list --limit 201
 # exit 1
 ```
 
-Recusa: `--type` que não existe no catálogo (o plural recusa):
+Refusal: a `--type` that does not exist in the catalog (the plural is refused):
 
 ```omhl-example fixture=project
 $ omhl list --type premises
@@ -200,7 +200,7 @@ $ omhl list --type premises
 # exit 1
 ```
 
-Recusa: `--id-prefix` que não começa por um namespace de tipo, ou que sai do namespace do `--type`:
+Refusal: an `--id-prefix` that does not start with a type namespace, or that leaves the namespace of `--type`:
 
 ```omhl-example fixture=project
 $ omhl list --id-prefix premise
@@ -213,7 +213,7 @@ $ omhl list --type premise --id-prefix work-items
 # exit 1
 ```
 
-Recusa: `--id-prefix` com segmento inválido (vazio, começando por `-`, acima de 63 caracteres):
+Refusal: an `--id-prefix` with an invalid segment (empty, starting with `-`, above 63 characters):
 
 ```omhl-example fixture=project
 $ omhl list --id-prefix premises..x
@@ -230,7 +230,7 @@ $ omhl list --id-prefix premises.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 # exit 1
 ```
 
-Recusa: com `--type`, campo que o tipo não declara, campo que não é de texto e valor fora do `enum`:
+Refusal: with `--type`, a field the type does not declare, a field that is not text and a value outside the `enum`:
 
 ```omhl-example fixture=project
 $ omhl list --type premise --where blocking=true
@@ -247,7 +247,7 @@ $ omhl list --type premise --where status=confimed
 # exit 1
 ```
 
-Recusa: o mesmo campo com valores diferentes. O mesmo par repetido segue aceito:
+Refusal: the same field with different values. The same pair repeated is still accepted:
 
 ```omhl-example fixture=project
 $ omhl list --type premise --where status=confirmed --where status=assumed
@@ -259,7 +259,7 @@ $ omhl list --type premise --where status=confirmed --where status=confirmed
   premises.p1 · premise · seq 2 · confirmed · business · work-items.w1 · Money is stored in cents.
 ```
 
-Recusa: sem `--type`, nenhum tipo declara todos os campos do `--where`:
+Refusal: without `--type`, no type declares all the `--where` fields:
 
 ```omhl-example fixture=project
 $ omhl list --where title=x --where kind=missing
@@ -268,7 +268,7 @@ $ omhl list --where title=x --where kind=missing
 # exit 1
 ```
 
-Recusa: `--where` malformado (sem `=` ou com o campo vazio):
+Refusal: a malformed `--where` (without `=` or with an empty field):
 
 ```omhl-example fixture=project
 $ omhl list --where foo
@@ -281,7 +281,7 @@ $ omhl list --where =x
 # exit 1
 ```
 
-Recusa: `--db` dentro da pasta do projeto:
+Refusal: `--db` inside the project folder:
 
 ```omhl-example fixture=project
 $ omhl list --db novo.db

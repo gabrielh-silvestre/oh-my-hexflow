@@ -1,37 +1,37 @@
 # omhl guideline retire
 
-## Quando usar
+## When to use
 
-Para retirar uma diretiva (`guideline`) cujo arquivo `.omhl/guidelines/<nome>.toml` foi apagado da árvore de trabalho. Ela sai do contexto da sessão e o próximo `omhl load` não a recria. A retirada é definitiva para todos os clones e branches, porque o banco é do usuário e é append-only: retire só depois de a remoção do arquivo estar mergeada, e peça ao humano antes. Numa branch anterior à diretiva, faça rebase em vez de retirar.
+To retire a guideline (`guideline`) whose file `.omhl/guidelines/<name>.toml` was deleted from the working tree. It leaves the session context and the next `omhl load` does not recreate it. The retirement is definitive for all clones and branches, because the database belongs to the user and is append-only: retire only after the file removal is merged, and ask the human first. On a branch older than the guideline, rebase instead of retiring.
 
-## Entradas
+## Inputs
 
-- `<ID>`: o id da diretiva, como `guidelines.brief`. Precisa ser uma diretiva vigente do repositório, não nativa, com o arquivo já apagado.
-- `--by <id>`: a diretiva que substitui a retirada. Opcional; com ela o comando grava no mesmo pedido a relation `supersedes` (da nova para a antiga) e a retirada. A sucessora precisa ser vigente e diferente da retirada.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
+- `<ID>`: the guideline id, like `guidelines.brief`. It must be a current guideline of the repository, not native, with the file already deleted.
+- `--by <id>`: the guideline that replaces the retired one. Optional; with it the command records in the same request the `supersedes` relation (from the new to the old) and the retirement. The successor must be current and different from the retired one.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0: `✔ guideline retire · retired <id>`, com `· superseded by <id>` quando há `--by`. Com `--format json` é uma linha JSON: `retired` (o id retirado) e `superseded_by` (o id de `--by`, ou `null`). Decisões que só se apoiavam nessa diretiva passam a reprovar `decisions-anchored` até ganharem outro apoio.
+Text on stdout, exit 0: `✔ guideline retire · retired <id>`, with `· superseded by <id>` when there is `--by`. With `--format json` it is a JSON line: `retired` (the retired id) and `superseded_by` (the id of `--by`, or `null`). Decisions that rested only on that guideline start failing `decisions-anchored` until they gain another anchor.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Cada recusa traz a causa em `message` e o próximo passo em `next_step` (no texto, a linha `Next:`), sem repetir o valor de entrada. A falta do `<ID>` é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). Each refusal carries the cause in `message` and the next step in `next_step` (in the text, the `Next:` line), without repeating the input value. A missing `<ID>` is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](errors.md).
 
-- `guideline-not-found` (saída 1): o id não é uma diretiva vigente do repositório (não existe, já foi retirada, é nativa ou é de outro tipo). Confira o id.
-- `guideline-not-orphaned` (saída 1): o arquivo da diretiva ainda existe na árvore. Apague o arquivo, mergeie a remoção e repita.
-- `successor-not-current` (saída 1): o id de `--by` não é uma diretiva vigente. Carregue a sucessora com `omhl load` antes, ou retire sem `--by`.
-- `successor-is-self` (saída 1): o `--by` é a própria diretiva retirada. Passe outra, ou retire sem `--by`.
-- `supersedes-cycle` (saída 1): a sucessora já é superada pela retirada, direto ou por outras. Escolha outra sucessora.
-- `guideline-retire-by-command` (saída 1): a retirada veio pelo `omhl append`. Só este comando a grava.
-- `INVALID_INPUT` (saída 1): um id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
-- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor (`path` vazio). Remova a variável ou rode o `omhl` numa sessão do Claude Code.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `guideline-not-found` (exit 1): the id is not a current guideline of the repository (it does not exist, was already retired, is native or is of another type). Check the id.
+- `guideline-not-orphaned` (exit 1): the guideline file still exists in the tree. Delete the file, merge the removal and repeat.
+- `successor-not-current` (exit 1): the id of `--by` is not a current guideline. Load the successor with `omhl load` first, or retire without `--by`.
+- `successor-is-self` (exit 1): `--by` is the retired guideline itself. Pass another, or retire without `--by`.
+- `supersedes-cycle` (exit 1): the successor is already superseded by the retired one, directly or through others. Choose another successor.
+- `guideline-retire-by-command` (exit 1): the retirement came through `omhl append`. Only this command records it.
+- `INVALID_INPUT` (exit 1): an id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
+- `invalid-session-id` (exit 1): `CLAUDE_CODE_SESSION_ID` is set but empty, is not UTF-8, exceeds 100 UTF-16 units or equals the `outside-claude-code` marker; nothing is recorded and the error does not show the value (empty `path`). Remove the variable or run `omhl` in a Claude Code session.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Retira a diretiva órfã. Repetir a retirada falha, porque ela já não é vigente:
+Retires the orphan guideline. Repeating the retirement fails, because it is no longer current:
 
 ```omhl-example fixture=retire-guideline
 $ omhl guideline retire guidelines.brief
@@ -43,14 +43,14 @@ $ omhl guideline retire guidelines.brief
 # exit 1
 ```
 
-Com `--format json` a sucessora aparece como `null` quando não há `--by`:
+With `--format json` the successor appears as `null` when there is no `--by`:
 
 ```omhl-example fixture=retire-guideline
 $ omhl guideline retire guidelines.brief --format json
 {"retired":"guidelines.brief","superseded_by":null}
 ```
 
-Recusa: a sucessora é a própria diretiva:
+Refusal: the successor is the guideline itself:
 
 ```omhl-example fixture=retire-guideline
 $ omhl guideline retire guidelines.brief --by guidelines.brief
@@ -60,7 +60,7 @@ $ omhl guideline retire guidelines.brief --by guidelines.brief
 # exit 1
 ```
 
-Recusa: a sucessora não existe:
+Refusal: the successor does not exist:
 
 ```omhl-example fixture=retire-guideline
 $ omhl guideline retire guidelines.brief --by guidelines.new
@@ -70,7 +70,7 @@ $ omhl guideline retire guidelines.brief --by guidelines.new
 # exit 1
 ```
 
-Recusa: a diretiva não existe:
+Refusal: the guideline does not exist:
 
 ```omhl-example fixture=retire-guideline
 $ omhl guideline retire guidelines.nope

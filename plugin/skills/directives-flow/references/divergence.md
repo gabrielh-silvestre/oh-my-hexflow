@@ -1,21 +1,21 @@
-# A divergência e seus desfechos
+# The divergence and its outcomes
 
-Quando consultar: ao gravar uma `divergence` (o agente fugiu da spec congelada) ou ao fechá-la. Os campos de `data` estão na tabela de [append.md](append.md); aqui ficam os valores e o que cada desfecho pede.
+When to consult: when recording a `divergence` (the agent strayed from the frozen spec) or when closing it. The `data` fields are in the table of [append.md](append.md); here are the values and what each outcome asks for.
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
-| `source_ref` | O item da spec (`CMP-###` ou `CA-###`) ou o id da diretiva ou premissa |
-| `kind` | `missing`, `partial`, `contradicts` ou `unrequested` |
-| `text` | O previsto, o feito e o motivo |
-| `evidence` | De 1 a 20 itens `{source, summary}` |
-| `resolution` | `open`, `spec-stale`, `code-fixed` ou `accepted` |
-| `work_item` | O work item da divergência |
-| `confirmed_by`, `amendment` | Só em `spec-stale` |
+| `source_ref` | The spec item (`CMP-###` or `CA-###`) or the id of the guideline or premise |
+| `kind` | `missing`, `partial`, `contradicts` or `unrequested` |
+| `text` | What was expected, what was done and the reason |
+| `evidence` | 1 to 20 items `{source, summary}` |
+| `resolution` | `open`, `spec-stale`, `code-fixed` or `accepted` |
+| `work_item` | The work item of the divergence |
+| `confirmed_by`, `amendment` | Only in `spec-stale` |
 
-Toda divergência nasce `open`. Os três desfechos são novas revisões da mesma `divergence` (`omhl append` com `base`, o `record_id` de `omhl get divergences.<nome>`):
+Every divergence is born `open`. The three outcomes are new revisions of the same `divergence` (`omhl append` with `base`, the `record_id` from `omhl get divergences.<name>`):
 
-- `spec-stale`: a spec estava errada e o humano aprovou a emenda. A revisão leva `amendment` (`emenda-NN`, sem `.md`) e `confirmed_by`; o passo a passo está no `SKILL.md`, em "Corrigir a spec depois da aprovação".
-- `code-fixed`: a spec estava certa e você corrigiu o código para segui-la.
-- `accepted`: a spec estava certa e o humano aceita o desvio. Grave só com a resposta dele; o `accepted` não guarda prova, porque o `confirmed_by` é proibido nele.
+- `spec-stale`: the spec was wrong and the human approved the amendment. The revision carries `amendment` (`amendment-NN` or `emenda-NN`, without `.md`) and `confirmed_by`; the step by step is in `SKILL.md`, under "Correcting the spec after approval".
+- `code-fixed`: the spec was right and you fixed the code to follow it.
+- `accepted`: the spec was right and the human accepts the deviation. Record it only with their answer; `accepted` keeps no proof, because `confirmed_by` is forbidden in it.
 
-Em `code-fixed` e `accepted`, não leve `confirmed_by` nem `amendment`: a guarda recusa com `confirmation-invalid`. Uma divergência que já saiu de `open` não aceita emenda depois. Enquanto fica `open`, ela aparece em toda retro (`omhl report retro`).
+In `code-fixed` and `accepted`, do not carry `confirmed_by` or `amendment`: the guard refuses with `confirmation-invalid`. A divergence that already left `open` accepts no amendment afterwards. While it stays `open`, it appears in every retro (`omhl report retro`).

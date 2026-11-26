@@ -1,17 +1,17 @@
 //! `skill_coverage`: toda folha da CLI de ação é citada por uma skill, cada folha tem o seu
 //! `references/<folha>.md` com os cinco títulos fixos, o `SKILL.md` cabe em 80 linhas, e todo código de
-//! erro citado na seção "Erros" existe no código. A lógica fica em funções puras sobre um diretório de
+//! erro citado na seção "Errors" existe no código. A lógica fica em funções puras sobre um diretório de
 //! skills, para a prova de falha rodar sobre um diretório sintético. Cada opção da CLI (as de cada folha
-//! e as globais) também precisa aparecer na seção "Entradas" da página da folha, e todo caminho `.md`
+//! e as globais) também precisa aparecer na seção "Inputs" da página da folha, e todo caminho `.md`
 //! citado (link `](alvo.md)` ou caminho entre crases que começa por `./`, `../`, `references/` ou `docs/`)
 //! precisa resolver para um arquivo dentro de `plugin/`: o plugin viaja sozinho, sem o `docs/` do repositório.
 //!
 //! Convenções que as skills seguem:
 //! - citação: `omhl <caminho completo>` dentro de crases ou numa linha `$ omhl ...` (a prosa solta
 //!   "omhl é..." não conta);
-//! - código de erro: todo trecho entre crases do começo de um item de lista da seção "Erros" (antes do
-//!   primeiro `:`) que tenha forma de código, como em `- \`no-marker\` (saída 1): ...` ou
-//!   `- \`a\` e \`b\`: ...`; um ponteiro (`/limit`) não é código, e o erro de uso do clap (saída 2) não
+//! - código de erro: todo trecho entre crases do começo de um item de lista da seção "Errors" (antes do
+//!   primeiro `:`) que tenha forma de código, como em `- \`no-marker\` (exit 1): ...` ou
+//!   `- \`a\` e \`b\`: ...`; um ponteiro (`/limit`) não é código, e o erro de uso do clap (exit 2) não
 //!   tem código e não é conferido;
 //! - frontmatter: todo `SKILL.md` abre com `name:` igual à pasta e `description:` não vazia;
 //! - página órfã: toda página de `references/` que não é de uma folha é linkada pelo `SKILL.md` da sua skill;
@@ -30,19 +30,19 @@ use crate::support::scan::prove_both_sides;
 
 pub const MAX_SKILL_LINES: usize = 80;
 const TITLES: [&str; 5] = [
-    "## Quando usar",
-    "## Entradas",
-    "## Saída",
-    "## Erros",
-    "## Exemplos",
+    "## When to use",
+    "## Inputs",
+    "## Output",
+    "## Errors",
+    "## Examples",
 ];
 const PREFIXES: [&str; 10] = [
     "subcommands not cited by any skill under plugin/skills",
     "cited subcommands that do not exist",
     "SKILL.md files above 80 lines",
     "references missing or without the five fixed titles",
-    "error codes cited in Erros that are not a literal in crates/*/src",
-    "options missing from the Entradas section of their reference",
+    "error codes cited in Errors that are not a literal in crates/*/src",
+    "options missing from the Inputs section of their reference",
     "markdown paths that do not resolve to a file inside plugin/",
     "SKILL.md files without the house frontmatter (name equal to the folder, non-empty description)",
     "reference pages not linked from the SKILL.md of their skill",
@@ -202,7 +202,7 @@ fn is_group_mention(words: &[String], leaves: &[String]) -> bool {
 }
 
 /// Todos os códigos (`kebab-case` ou `MAIUSCULO_COM_SUBLINHADO`) entre crases no começo de cada item de lista
-/// da seção "Erros", antes do primeiro `:`; `/limit` (ponteiro) e texto depois do `:` não entram.
+/// da seção "Errors", antes do primeiro `:`; `/limit` (ponteiro) e texto depois do `:` não entram.
 fn error_codes(text: &str) -> Vec<String> {
     let bullet = Regex::new(r"^\s*[-*] (`[^:]*)").expect("regex");
     let code = Regex::new(r"`([A-Za-z][A-Za-z0-9_-]*)`").expect("regex");
@@ -210,7 +210,7 @@ fn error_codes(text: &str) -> Vec<String> {
     let mut codes = Vec::new();
     for line in text.lines() {
         if line.starts_with("## ") {
-            in_section = line.trim_end() == "## Erros";
+            in_section = line.trim_end() == "## Errors";
         } else if in_section && let Some(head) = bullet.captures(line) {
             codes.extend(
                 code.captures_iter(&head[1])
@@ -222,13 +222,13 @@ fn error_codes(text: &str) -> Vec<String> {
     codes
 }
 
-/// Texto da seção "Entradas" (até o próximo `## `).
+/// Texto da seção "Inputs" (até o próximo `## `).
 fn entradas(text: &str) -> String {
     let mut in_section = false;
     let mut section = String::new();
     for line in text.lines() {
         if line.starts_with("## ") {
-            in_section = line.trim_end() == "## Entradas";
+            in_section = line.trim_end() == "## Inputs";
         } else if in_section {
             section.push_str(line);
             section.push('\n');
@@ -489,14 +489,14 @@ fn reference(leaf: &str, errors: &str) -> String {
 
 fn page(leaf: &str, entradas: &str, usage: &str, errors: &str) -> String {
     format!(
-        "# t\n\n## Quando usar\n\n{usage}\n\n## Entradas\n\n{entradas}\n\n## Saída\n\n## Erros\n\n{errors}\n\n## Exemplos\n\n$ omhl {leaf}\n"
+        "# t\n\n## When to use\n\n{usage}\n\n## Inputs\n\n{entradas}\n\n## Output\n\n## Errors\n\n{errors}\n\n## Examples\n\n$ omhl {leaf}\n"
     )
 }
 
 /// Árvore sintética completa, depois das trocas (`None` apaga o arquivo), serializada como
 /// `=== <caminho>` seguido do conteúdo: é o "trecho" que o `prove_both_sides` recebe.
 fn tree(changes: &[(&str, Option<String>)]) -> String {
-    let known = "- `known-code` (saída 1): the thing failed.";
+    let known = "- `known-code` (exit 1): the thing failed.";
     let mut files = std::collections::BTreeMap::from([
         ("s/SKILL.md".to_owned(), skill_md("s", BOTH_CITED)),
         ("s/references/list.md".to_owned(), reference("list", known)),
@@ -577,37 +577,34 @@ pub fn prove_checks() -> Vec<String> {
     let no_file = tree(&[("s/references/check-run.md", None)]);
     let no_title = tree(&[(
         "s/references/list.md",
-        Some(reference("list", "- `known-code` (saída 1): x.").replace("## Saída\n\n", "")),
+        Some(reference("list", "- `known-code` (exit 1): x.").replace("## Output\n\n", "")),
     )]);
     let ghost = tree(&[(
         "s/references/list.md",
-        Some(reference("list", "- `ghost-code` (saída 1): x.")),
+        Some(reference("list", "- `ghost-code` (exit 1): x.")),
     )]);
     let group_only = skill_with(&format!("{BOTH_CITED}See `omhl check`.\n"));
     let clap_usage = tree(&[(
         "s/references/list.md",
-        Some(reference(
-            "list",
-            "- Saída 2: erro de uso do clap, sem código.",
-        )),
+        Some(reference("list", "- Exit 2: clap usage error, no code.")),
     )]);
     let hook_group = skill_with(&format!("{BOTH_CITED}Not ours: `omhl hook x`.\n"));
     let two_codes = tree(&[(
         "s/references/list.md",
         Some(reference(
             "list",
-            "- `known-code` e `ghost-code` (saída 1): x.",
+            "- `known-code` and `ghost-code` (exit 1): x.",
         )),
     )]);
     let code_with_pointer = tree(&[(
         "s/references/list.md",
         Some(reference(
             "list",
-            "- `known-code` em `/limit` (saída 1): o `ghost-code` só aparece depois do dois-pontos.",
+            "- `known-code` at `/limit` (exit 1): the `ghost-code` appears only after the colon.",
         )),
     )]);
 
-    let known = "- `known-code` (saída 1): x.";
+    let known = "- `known-code` (exit 1): x.";
     let list_page = |entradas: &str, usage: &str| {
         tree(&[(
             "s/references/list.md",

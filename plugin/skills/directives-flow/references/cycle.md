@@ -1,23 +1,23 @@
-# O ciclo com os agentes
+# The cycle with the agents
 
-Quando consultar: antes de começar um work item que vai passar pelos agentes do plugin, ou para saber em que passo do ciclo você está. Quem faz cada papel e o que a sessão principal passa a cada um está em [roles.md](roles.md). Os passos 2 a 8 têm a skill [plan-consensus](../../plan-consensus/SKILL.md); os passos 9 e 10, a skill [review](../../review/SKILL.md).
+When to consult: before starting a work item that will go through the plugin agents, or to know which step of the cycle you are in. Who plays each role and what the main session passes to each one is in [roles.md](roles.md). Steps 2 to 8 have the skill [plan-consensus](../../plan-consensus/SKILL.md); steps 9 and 10, the skill [review](../../review/SKILL.md).
 
-**Antes do passo 1.** Em `feat` e `fix`, a sessão principal conduz a entrevista de negócio com o dono (skill [interview](../../interview/SKILL.md)): rodadas de perguntas até a ambiguidade chegar a 20% ou menos, e só então o passo 1 grava o work item e as premissas de negócio confirmadas. Nos outros prefixos a entrevista só roda a pedido do dono. O estado das rodadas fica em `.omhl/notes/`, fora do banco e fora da spec.
+**Before step 1.** In `feat` and `fix`, the main session runs the business interview with the owner (skill [interview](../../interview/SKILL.md)): rounds of questions until the ambiguity reaches 20% or less, and only then step 1 records the work item and the confirmed business premises. In the other prefixes the interview runs only at the owner's request. The state of the rounds stays in `.omhl/notes/`, outside the database and outside the spec.
 
-O ciclo tem dez passos.
+The cycle has ten steps.
 
-1. **Work item.** A sessão principal grava `work-items.<id>` com `omhl append`, com o prefixo e o slug escolhidos.
-2. **Analyst.** O `oh-my-hexflow:analyst` grava premissas `assumed` e gaps, cada gap com `kind` (`technical` ou `business`).
-3. **Confirmation.** O que é de negócio vai ao humano, que confirma dentro da sessão. O que é técnico vai ao critic (`oh-my-hexflow:critic`). Gap sem `kind` vai ao humano.
-4. **Planner.** O `oh-my-hexflow:planner` cria a spec com `omhl spec init` e a escreve em `.omhl/specs/wi-<id>__<slug>/`; ele a valida com `omhl spec validate` até passar.
-5. **Architect.** O `oh-my-hexflow:architect` grava cada `decision` com `rests-on` para a âncora. Ele não responde gap: a resposta é uma premissa.
-6. **Critic.** O `oh-my-hexflow:critic` grava, para cada decisão do architect que avalia, uma `decision` própria com `rests-on` e liga a ela, para a decisão do architect, um `supports` ou `contradicts`; confirma premissa técnica e responde gap `technical`.
-7. **Consensus.** A volta 1 são os passos 5 e 6; sem aceite, o `oh-my-hexflow:architect` (e o `oh-my-hexflow:planner`, se a spec muda) revê e o `oh-my-hexflow:critic` julga de novo, em no máximo 3 voltas no total. Sem aceite na terceira, a sessão principal para e mostra o impasse ao dono. Premissa tardia (`origin: late`) confirmada pelo dono até o congelamento da spec, no nascimento da branch do work item, reabre o plano: a volta conta nas 3 e o impasse vai ao dono; depois do congelamento, ela entra só por `divergence` e, se a spec estava errada, por `emenda-NN`. O veredito do critic fica só na mensagem entre os agentes.
-8. **Spec and worktree.** Com o aceite, o `oh-my-hexflow:verifier` retira os `contradicts` resolvidos; então vêm a conferência final com `omhl spec validate`, `omhl gate-worktree`, a worktree e a implementação.
-9. **Review.** O `oh-my-hexflow:code-reviewer`, o `oh-my-hexflow:security-reviewer` e o `oh-my-hexflow:verifier` revisam a entrega.
-10. **PR and closing.** O PR leva no corpo a tabela das decisões do critic ([tracking-table.md](tracking-table.md)); depois vêm `omhl gate-pr` e `omhl close`, pela skill [review](../../review/SKILL.md), passo 8.
+1. **Work item.** The main session records `work-items.<id>` with `omhl append`, with the chosen prefix and slug.
+2. **Analyst.** `oh-my-hexflow:analyst` records `assumed` premises and gaps, each gap with `kind` (`technical` or `business`).
+3. **Confirmation.** What is business goes to the human, who confirms inside the session. What is technical goes to the critic (`oh-my-hexflow:critic`). A gap without `kind` goes to the human.
+4. **Planner.** `oh-my-hexflow:planner` creates the spec with `omhl spec init` and writes it in `.omhl/specs/wi-<id>__<slug>/`; it validates it with `omhl spec validate` until it passes.
+5. **Architect.** `oh-my-hexflow:architect` records each `decision` with `rests-on` to the anchor. It does not answer a gap: the answer is a premise.
+6. **Critic.** `oh-my-hexflow:critic` records, for each architect decision it evaluates, a `decision` of its own with `rests-on` and links it, to the architect decision, with a `supports` or `contradicts`; it confirms a technical premise and answers a `technical` gap.
+7. **Consensus.** Round 1 is steps 5 and 6; without acceptance, `oh-my-hexflow:architect` (and `oh-my-hexflow:planner`, if the spec changes) revises and `oh-my-hexflow:critic` judges again, in at most 3 rounds in total. Without acceptance in the third, the main session stops and shows the impasse to the owner. A late premise (`origin: late`) confirmed by the owner until the spec is frozen, at the birth of the work item branch, reopens the plan: the round counts in the 3 and the impasse goes to the owner; after the freeze, it enters only by `divergence` and, if the spec was wrong, by `amendment-NN`. The critic verdict stays only in the message between the agents.
+8. **Spec and worktree.** With acceptance, `oh-my-hexflow:verifier` retires the resolved `contradicts`; then come the final check with `omhl spec validate`, `omhl gate-worktree`, the worktree and the implementation.
+9. **Review.** `oh-my-hexflow:code-reviewer`, `oh-my-hexflow:security-reviewer` and `oh-my-hexflow:verifier` review the delivery.
+10. **PR and closing.** The PR body carries the table of the critic decisions ([tracking-table.md](tracking-table.md)); then come `omhl gate-pr` and `omhl close`, through the skill [review](../../review/SKILL.md), step 8.
 
-Os papéis de cada passo, como dado: as skills `role-<papel>` dos agentes e os testes leem este bloco; a lista numerada acima é a prosa.
+The roles of each step, as data: the `role-<role>` skills of the agents and the tests read this block; the numbered list above is the prose.
 
 ```yaml omhl-cycle
 stages:
@@ -33,8 +33,8 @@ stages:
   - {n: 10, name: pr-and-closing,      roles: [session]}
 ```
 
-**Caminho leve (`chore` e `docs`).** Não há spec: o consenso fica nos passos 2 e 3 (o critic só no modo do passo 3), sem planner nem voltas e sem os passos 4 a 7, e o passo 8 se reduz ao `omhl gate-worktree`. A skill [plan-consensus](../../plan-consensus/SKILL.md) descreve o caminho na seção "Caminho leve".
+**Light path (`chore` and `docs`).** There is no spec: the consensus stays in steps 2 and 3 (the critic only in the mode of step 3), with no planner or rounds and without steps 4 to 7, and step 8 shrinks to `omhl gate-worktree`. The skill [plan-consensus](../../plan-consensus/SKILL.md) describes the path in the "Light path" section.
 
-**Sem `name`.** A sessão principal chama os agentes `oh-my-hexflow:*` sem o parâmetro `name`. Com `name`, o agente roda sem a matriz `omhl-allow` e sem a vista pré-carregada (a skill dele não chega), e, pelo desenho do hook `agent-role`, o que ele gravar deve sair como `claude`.
+**Without `name`.** The main session calls the `oh-my-hexflow:*` agents without the `name` parameter. With `name`, the agent runs without the `omhl-allow` matrix and without the preloaded view (its skill does not arrive), and, by the design of the `agent-role` hook, what it records must come out as `claude`. Each call also names the language of the conversation with the person, as a fallback to the `SubagentStart` hook, never as the only channel ([roles.md](roles.md)).
 
-O que a spec congelada, a divergência e a emenda pedem em qualquer passo continua no [SKILL.md](../SKILL.md).
+What the frozen spec, the divergence and the amendment ask for at any step stays in [SKILL.md](../SKILL.md).

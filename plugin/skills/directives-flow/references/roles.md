@@ -1,48 +1,48 @@
-# Os papéis dos agentes
+# The agent roles
 
-Quando consultar: antes de chamar um agente do plugin (o que passar a ele), ao ler a resposta dele, ou quando uma guarda recusar uma gravação com `role-record-forbidden`, `role-revision-forbidden`, `role-answer-forbidden` ou `role-retirement-forbidden`. A ordem em que os agentes entram está em [cycle.md](cycle.md).
+When to consult: before calling a plugin agent (what to pass it), when reading its answer, or when a guard refuses a record with `role-record-forbidden`, `role-revision-forbidden`, `role-answer-forbidden` or `role-retirement-forbidden`. The order in which the agents enter is in [cycle.md](cycle.md).
 
-## A matriz
+## The matrix
 
-A matriz de comandos, tipos de node, relações e retiradas de cada papel está numa tabela só, na seção "A matriz por papel" de [directives-flow.md](https://github.com/gabrielh-silvestre/oh-my-hexflow/blob/main/docs/directives-flow.md#a-matriz-por-papel). Esta página não a copia. A matriz da versão instalada está no frontmatter (`omhl-allow`) de cada agente em `plugin/agents/`, por exemplo [critic.md](../../../agents/critic.md). Leitura (`omhl list`, `omhl get` e os demais) vale para os sete papéis; `attest`, `load`, `close`, `gate-pr` e `gate-worktree` não valem para nenhum.
+The matrix of commands, node types, relations and retirements of each role is in a single table, in the section "A matriz por papel" of [directives-flow.md](https://github.com/gabrielh-silvestre/oh-my-hexflow/blob/main/docs/directives-flow.md#a-matriz-por-papel). This page does not copy it. The matrix of the installed version is in the frontmatter (`omhl-allow`) of each agent in `plugin/agents/`, for example [critic.md](../../../agents/critic.md). Reading (`omhl list`, `omhl get` and the others) holds for the seven roles; `attest`, `load`, `close`, `gate-pr` and `gate-worktree` hold for none.
 
-## O que a sessão principal passa a cada agente
+## What the main session passes to each agent
 
-A chamada é `oh-my-hexflow:<papel>`. Todo agente recebe o id do work item (`work-items.<id>`): sem ele, ele não grava.
+The call is `oh-my-hexflow:<role>`. Every agent receives the id of the work item (`work-items.<id>`): without it, it does not record. Every call also names the language of the conversation with the person (for example "Conversation language: pt-BR"): it is the fallback to the `SubagentStart` hook, which already announces the language to the agent, never the only channel.
 
-| Agente | Passe também |
+| Agent | Also pass |
 |---|---|
-| `oh-my-hexflow:analyst` | Nada além do id; o pedido do humano, se houver; o que a entrevista já confirmou (em `feat` e `fix`), para ele cobrir só o técnico |
-| `oh-my-hexflow:planner` | O slug da spec na primeira chamada, a pasta absoluta da spec nas seguintes; o modo consenso (RALPLAN-DR), SHORT (DELIBERATE só a pedido do humano ou item de alto risco); as perguntas abertas do analyst |
-| `oh-my-hexflow:architect` | O resumo RALPLAN-DR e o ADR do planner; o modo "revisão de consenso (ralplan), SHORT" (ou DELIBERATE); a objeção do critic, nas voltas seguintes |
-| `oh-my-hexflow:critic` | O caminho absoluto da pasta da spec; o modo "revisão de consenso (ralplan), SHORT" (ou DELIBERATE) e o pedido da linha-resumo ralplan |
-| `oh-my-hexflow:code-reviewer` | A pasta da spec e a mudança a revisar |
-| `oh-my-hexflow:security-reviewer` | A pasta da spec e a mudança a revisar |
-| `oh-my-hexflow:verifier` | A pasta da spec; o id da divergência a conferir; o par `from`/`to` de cada `contradicts` a retirar |
+| `oh-my-hexflow:analyst` | Nothing beyond the id; the human's request, if any; what the interview already confirmed (in `feat` and `fix`), so it covers only the technical |
+| `oh-my-hexflow:planner` | The spec slug in the first call, the absolute spec folder in the following ones; the consensus mode (RALPLAN-DR), SHORT (DELIBERATE only at the human's request or for a high-risk item); the open questions of the analyst |
+| `oh-my-hexflow:architect` | The RALPLAN-DR summary and the ADR of the planner; the mode "consensus review (ralplan), SHORT" (or DELIBERATE); the objection of the critic, in the following rounds |
+| `oh-my-hexflow:critic` | The absolute path of the spec folder; the mode "consensus review (ralplan), SHORT" (or DELIBERATE) and the request for the ralplan summary line |
+| `oh-my-hexflow:code-reviewer` | The spec folder and the change to review |
+| `oh-my-hexflow:security-reviewer` | The spec folder and the change to review |
+| `oh-my-hexflow:verifier` | The spec folder; the id of the divergence to check; the `from`/`to` pair of each `contradicts` to retire |
 
-A spec mora no checkout principal, fora da worktree do agente. Passe o caminho **absoluto** da pasta, no checkout principal: o `dir` do `omhl spec init`, que o planner repete em "Spec written to". Um caminho relativo (`.omhl/specs/wi-<id>__<slug>/`) não existe dentro da worktree, e sem a pasta os leitores da spec não a encontram.
+The spec lives in the main checkout, outside the agent worktree. Pass the **absolute** path of the folder, in the main checkout: the `dir` of `omhl spec init`, which the planner repeats in "Spec written to". A relative path (`.omhl/specs/wi-<id>__<slug>/`) does not exist inside the worktree, and without the folder the spec readers do not find it.
 
-O par `from`/`to` de cada `contradicts` vem das linhas `contradicts: <from> -> <to>` que o critic e os revisores listam na resposta (é parte do contrato deles). Para conferir o que está vigente, ou se a resposta não trouxe o par, rode `omhl project` e leia a seção `## Relations` de `.omhl/projection/work-items.<id>.md`: a projeção só lista relações não retiradas. Nenhum comando de leitura do banco (`omhl list`, `omhl get`, `omhl render`) devolve relações, e o verifier não roda `project`: sem o par no pedido, ele o devolve.
+The `from`/`to` pair of each `contradicts` comes from the `contradicts: <from> -> <to>` lines that the critic and the reviewers list in the answer (it is part of their contract). To check what is current, or if the answer did not bring the pair, run `omhl project` and read the `## Relations` section of `.omhl/projection/work-items.<id>.md`: the projection lists only non-retired relations. No database read command (`omhl list`, `omhl get`, `omhl render`) returns relations, and the verifier does not run `project`: without the pair in the request, it hands it back.
 
-## O que fazer com a resposta
+## What to do with the answer
 
-Toda resposta termina com dois campos fixos:
+Every answer ends with two fixed fields:
 
-- **Next role:** o papel a chamar em seguida, ou `none`. A sessão principal decide; chamar o papel indicado é o padrão.
-- **Open questions for the main session:** perguntas que o agente não pode gravar. A sessão principal grava cada uma como `gap` com `omhl append`, com o `kind` sugerido (`technical` ou `business`). Sem `kind`, o gap vai ao humano.
+- **Next role:** the role to call next, or `none`. The main session decides; calling the indicated role is the default.
+- **Open questions for the main session:** questions that the agent cannot record. The main session records each one as a `gap` with `omhl append`, with the suggested `kind` (`technical` or `business`). Without `kind`, the gap goes to the human.
 
-## Quem confirma o quê
+## Who confirms what
 
-- O critic confirma qualquer premissa `technical`, seja qual for o autor, e só premissa: grava `status` `confirmed` e `confirmed_by` com `by` igual a `critic`, mais `question` e `answer` literais. Premissa de negócio, diretiva e gap `business` ou sem `kind` continuam com o humano. O critic responde (`answers`) só gap `technical`.
-- Um `confirmed_by` com `by` igual a `critic` gravado por outro autor, ou numa premissa de negócio, é `confirmation-invalid`.
+- The critic confirms any `technical` premise, whoever the author, and only premises: it records `status` `confirmed` and `confirmed_by` with `by` equal to `critic`, plus verbatim `question` and `answer`. Business premise, guideline and `business` gap or gap without `kind` stay with the human. The critic answers (`answers`) only a `technical` gap.
+- A `confirmed_by` with `by` equal to `critic` recorded by another author, or on a business premise, is `confirmation-invalid`.
 
-## A âncora
+## The anchor
 
-Toda `decision` (do architect, do critic ou de um revisor) leva `rests-on` para uma diretiva ou premissa confirmada, inclusive a premissa que o critic confirmou. Sem a âncora, o `omhl gate-pr` reprova `decisions-anchored`. O revisor que acusa uma violação grava a `decision` dele com `rests-on` e liga um `contradicts` ao alvo violado.
+Every `decision` (of the architect, the critic or a reviewer) carries `rests-on` to a confirmed guideline or premise, including the premise that the critic confirmed. Without the anchor, `omhl gate-pr` fails `decisions-anchored`. The reviewer who reports a violation records their `decision` with `rests-on` and links a `contradicts` to the violated target.
 
-## A retirada
+## The retirement
 
-- Só o `oh-my-hexflow:verifier` (isolado, sem o contexto do autor) e o dono retiram um `contradicts`. Ninguém retira o que ele mesmo gravou. A sessão principal (`claude`) não retira: a guarda recusa com `role-retirement-forbidden`.
-- O verifier retira em duas chamadas ao `omhl append` e dá a razão na mensagem dele, porque o grafo só guarda a retirada. Não repasse a ele um par que ele não deva retirar.
-- O dono (`user`) é a CLI fora do Claude Code, então o dono retira um `contradicts` só num terminal externo, fora do Claude Code. `! omhl ...` dentro do Claude Code grava `claude` e é recusado. A receita (corpo `retirement` e o `base` em duas chamadas) está em [append.md](append.md#entradas). Como a sessão principal não sabe os ids, passe ao dono o par `from`/`to` copiado das linhas `contradicts: <from> -> <to>` ou da seção `## Relations` da projeção.
-- Entre os agentes, só o verifier tira uma `divergence` de revisor de `open`, para `code-fixed`, com evidência nova. `accepted` e `spec-stale` são respostas do humano: a sessão principal as grava, com a resposta dele.
+- Only `oh-my-hexflow:verifier` (isolated, without the author's context) and the owner retire a `contradicts`. Nobody retires what they recorded themselves. The main session (`claude`) does not retire: the guard refuses with `role-retirement-forbidden`.
+- The verifier retires in two calls to `omhl append` and gives the reason in its message, because the graph keeps only the retirement. Do not pass it a pair it should not retire.
+- The owner (`user`) is the CLI outside Claude Code, so the owner retires a `contradicts` only in an external terminal, outside Claude Code. `! omhl ...` inside Claude Code records `claude` and is refused. The recipe (`retirement` body and the `base` in two calls) is in [append.md](append.md#inputs). Since the main session does not know the ids, pass the owner the `from`/`to` pair copied from the `contradicts: <from> -> <to>` lines or from the `## Relations` section of the projection.
+- Among the agents, only the verifier moves a reviewer `divergence` out of `open`, to `code-fixed`, with new evidence. `accepted` and `spec-stale` are answers of the human: the main session records them, with their answer.

@@ -1,60 +1,60 @@
 # omhl spec init
 
-## Quando usar
+## When to use
 
-Para criar a pasta da spec de um work item `feat/` ou `fix/`, com a primeira parte (`parte-01.md`) já com as cinco seções vazias. Rode antes de escrever a spec e antes de `omhl gate-worktree`: o gate desses prefixos exige uma spec válida. A pasta nasce no diretório principal do repositório, mesmo que você esteja numa worktree.
+To create the spec folder of a `feat/` or `fix/` work item, with the first part (`part-01.md`) already holding the five empty sections, with the English headings `Objective`, `Applicable directives and premises`, `Behaviors`, `Acceptance criteria` and `Out of scope`. Run it before writing the spec and before `omhl gate-worktree`: the gate of these prefixes requires a valid spec. The folder is born in the main directory of the repository, even if you are in a worktree. An old spec with `parte-NN.md` files and Portuguese headings stays valid, and `omhl spec validate` accepts both name families (`part-NN.md` or `parte-NN.md`, `amendment-NN.md` or `emenda-NN.md`); new files use the English names and headings.
 
-## Entradas
+## Inputs
 
-- `<WORK_ITEM>`: o id do work item, como `work-items.w1`. Precisa existir e estar aberto.
-- `<SLUG>`: o nome da pasta depois do id, de 1 a 64 caracteres de `a-z`, `0-9` e `-`, sem começar por `-`. A pasta será `wi-<id>__<slug>`.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
-- Precisa de um repositório git (o comando acha o diretório principal por ele).
+- `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist and be open.
+- `<SLUG>`: the folder name after the id, 1 to 64 characters of `a-z`, `0-9` and `-`, not starting with `-`. The folder will be `wi-<id>__<slug>`.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
+- It needs a git repository (the command finds the main directory through it).
 
-## Saída
+## Output
 
-Texto no stdout, saída 0: `✔ spec init · <work item> · <slug>`, as linhas `dir:` (a pasta criada) e `path:` (o `parte-01.md`) e o `Next:` com o passo seguinte (preencher as cinco seções e rodar `omhl spec validate`). Com `--format json` é uma linha JSON: `dir`, `path`, `slug` e `work_item`. O comando também escreve um `.gitignore` com `*` na pasta de specs: a spec não vai para o git.
+Text on stdout, exit 0: `✔ spec init · <work item> · <slug>`, the `dir:` (the created folder) and `path:` (the `part-01.md`) lines and the `Next:` with the following step (fill in the five sections and run `omhl spec validate`). With `--format json` it is a JSON line: `dir`, `path`, `slug` and `work_item`. The command also writes a `.gitignore` with `*` in the specs folder: the spec does not go to git.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta de um argumento é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). A missing argument is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](errors.md).
 
-- `spec-slug-invalid` (saída 1): o slug não segue a regra. O ponteiro é `/slug`. Corrija o nome.
-- `spec-exists` (saída 1): o work item já tem uma pasta de spec, de qualquer slug. Edite a existente; se a spec já foi aprovada, a correção é uma emenda.
-- `work-item-not-found` (saída 1): o work item não existe. Grave-o com `omhl append` antes.
-- `work-item-closed` (saída 1): o work item já foi fechado. Use um work item aberto.
-- `spec-store-unusable` (saída 1): a pasta de specs não pode ser lida ou escrita, passou de 10 000 entradas, ou o work item tem mais de uma pasta `wi-<id>__*`. Corrija a pasta no diretório principal.
-- `probe-failed` (saída 1): o git não respondeu (fora de um repositório). Rode dentro de um checkout.
-- `invalid-workflow-config` (saída 1): o `.omhl/workflow.toml` é inválido. A mensagem traz o arquivo e a posição; corrija-o.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `spec-slug-invalid` (exit 1): the slug does not follow the rule. The pointer is `/slug`. Fix the name.
+- `spec-exists` (exit 1): the work item already has a spec folder, of any slug. Edit the existing one; if the spec was already approved, the correction is an amendment.
+- `work-item-not-found` (exit 1): the work item does not exist. Record it with `omhl append` first.
+- `work-item-closed` (exit 1): the work item is already closed. Use an open work item.
+- `spec-store-unusable` (exit 1): the specs folder cannot be read or written, exceeded 10 000 entries, or the work item has more than one `wi-<id>__*` folder. Fix the folder in the main directory.
+- `probe-failed` (exit 1): git did not respond (outside a repository). Run inside a checkout.
+- `invalid-workflow-config` (exit 1): `.omhl/workflow.toml` is invalid. The message carries the file and the position; fix it.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Cria a spec do work item `w1` (`<repo>` é a raiz do repositório):
+Creates the spec of work item `w1` (`<repo>` is the repository root):
 
 ```omhl-example fixture=git
 $ omhl spec init work-items.w1 export-reports
 ✔ spec init · work-items.w1 · export-reports
   dir: <repo>/.omhl/specs/wi-w1__export-reports
-  path: <repo>/.omhl/specs/wi-w1__export-reports/parte-01.md
+  path: <repo>/.omhl/specs/wi-w1__export-reports/part-01.md
 Next: fill in the five sections of the part file, then run omhl spec validate work-items.w1.
 ```
 
-Com `--format json` o resultado sai para máquinas:
+With `--format json` the result comes out for machines:
 
 ```omhl-example fixture=git
 $ omhl spec init work-items.w1 export-reports --format json
-{"dir":"<repo>/.omhl/specs/wi-w1__export-reports","path":"<repo>/.omhl/specs/wi-w1__export-reports/parte-01.md","slug":"export-reports","work_item":"work-items.w1"}
+{"dir":"<repo>/.omhl/specs/wi-w1__export-reports","path":"<repo>/.omhl/specs/wi-w1__export-reports/part-01.md","slug":"export-reports","work_item":"work-items.w1"}
 ```
 
-Recusa: o work item já tem spec, mesmo com outro slug:
+Refusal: the work item already has a spec, even with another slug:
 
 ```omhl-example fixture=git
 $ omhl spec init work-items.w1 export-reports
 ✔ spec init · work-items.w1 · export-reports
   dir: <repo>/.omhl/specs/wi-w1__export-reports
-  path: <repo>/.omhl/specs/wi-w1__export-reports/parte-01.md
+  path: <repo>/.omhl/specs/wi-w1__export-reports/part-01.md
 Next: fill in the five sections of the part file, then run omhl spec validate work-items.w1.
 $ omhl spec init work-items.w1 other
 2> ✘ spec-exists · a spec folder of this work item already exists
@@ -62,7 +62,7 @@ $ omhl spec init work-items.w1 other
 # exit 1
 ```
 
-Recusa: slug fora da regra:
+Refusal: slug outside the rule:
 
 ```omhl-example fixture=git
 $ omhl spec init work-items.w1 Bad_Slug
@@ -71,7 +71,7 @@ $ omhl spec init work-items.w1 Bad_Slug
 # exit 1
 ```
 
-Recusa: work item que não existe:
+Refusal: a work item that does not exist:
 
 ```omhl-example fixture=git
 $ omhl spec init work-items.zz x

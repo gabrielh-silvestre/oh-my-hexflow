@@ -168,12 +168,9 @@ fn it_should_carry_the_critic_confirmation_and_anchor_rules_in_roles_md() {
 fn it_should_carry_the_heading_legend_and_totals_in_the_tracking_table_template() {
     let template = base_reference("tracking-table.md");
 
-    assert!(
-        template.contains("## Acompanhamento"),
-        "the template heading"
-    );
-    assert!(template.contains("**Legenda:**"), "the template legend");
-    assert!(template.contains("**Totais ("), "the template totals line");
+    assert!(template.contains("## Tracking"), "the template heading");
+    assert!(template.contains("**Legend:**"), "the template legend");
+    assert!(template.contains("**Totals ("), "the template totals line");
 }
 
 #[test]
@@ -186,8 +183,8 @@ fn it_should_state_that_the_override_replaces_the_default_template() {
             &template,
             &[
                 ".omhl/templates/tracking-table.md",
-                "primeiro",
-                "vale no lugar"
+                "First read",
+                "applies in place"
             ]
         )
         .is_some(),
@@ -213,7 +210,7 @@ fn it_should_state_that_the_plugin_template_applies_when_the_override_is_absent(
     let review = read("review/SKILL.md");
 
     assert!(
-        line_with(&template, &["ausente", "plugin"]).is_some(),
+        line_with(&template, &["absent", "plugin"]).is_some(),
         "the plugin template applies when the file is absent"
     );
     assert!(
@@ -264,13 +261,13 @@ fn it_should_state_in_roles_md_that_the_owner_retires_contradicts_only_from_a_te
     assert!(
         line_with(
             &roles,
-            &["dono", "terminal", "fora do Claude Code", "contradicts"]
+            &["owner", "terminal", "outside Claude Code", "contradicts"]
         )
         .is_some(),
         "the owner retires contradicts from an external terminal"
     );
     assert!(
-        line_with(&roles, &["! omhl", "claude", "recusad"]).is_some(),
+        line_with(&roles, &["! omhl", "claude", "refused"]).is_some(),
         "`! omhl` inside Claude Code records claude and is refused"
     );
 }
@@ -325,7 +322,7 @@ fn it_should_tell_review_to_list_decisions_and_critic_confirmed_premises_without
     );
 }
 
-const NEGATIONS: [&str; 3] = ["não", "nunca", "sem"];
+const NEGATIONS: [&str; 7] = ["não", "nunca", "sem", "not", "never", "no", "without"];
 
 pub(super) fn numbered_steps(text: &str) -> Vec<String> {
     let step = regex::Regex::new(r"^\d+\. ").expect("regex");
@@ -515,7 +512,7 @@ fn it_should_tell_roles_md_where_the_from_to_pair_is_read() {
     assert!(
         !roles
             .to_lowercase()
-            .contains("nenhum comando de leitura devolve relações"),
+            .contains("no read command returns relations"),
         "the false statement is gone"
     );
 }
@@ -525,7 +522,7 @@ fn it_should_tell_roles_md_that_the_verifier_cannot_read_the_pair() {
     let roles = base_reference("roles.md");
 
     assert!(
-        line_with(&roles, &["verifier não roda `project`"]).is_some(),
+        line_with(&roles, &["verifier does not run `project`"]).is_some(),
         "the verifier cannot run project, so the pair travels in the request"
     );
 }
@@ -535,7 +532,7 @@ fn it_should_tell_roles_md_that_the_spec_folder_is_absolute() {
     let roles = base_reference("roles.md");
 
     assert!(
-        line_with(&roles, &["**absoluto**", "`dir`", "omhl spec init"]).is_some(),
+        line_with(&roles, &["**absolute**", "`dir`", "omhl spec init"]).is_some(),
         "the spec folder is absolute"
     );
 }
@@ -549,15 +546,15 @@ fn it_should_state_each_cycle_step_with_its_role() {
             3,
             &[
                 "oh-my-hexflow:critic",
-                "técnico",
-                "humano",
-                "Gap sem `kind`",
+                "technical",
+                "human",
+                "A gap without `kind`",
             ],
         ),
         (4, &["oh-my-hexflow:planner", "omhl spec init"]),
         (5, &["oh-my-hexflow:architect", "rests-on"]),
         (6, &["oh-my-hexflow:critic", "contradicts"]),
-        (7, &["3 voltas", "dono"]),
+        (7, &["3 rounds", "owner"]),
         (8, &["verifier", "omhl spec validate", "omhl gate-worktree"]),
         (
             9,
@@ -623,7 +620,7 @@ fn it_should_forbid_claude_from_retiring() {
     assert!(
         line_with(
             &roles,
-            &["`claude`", "não retira", "role-retirement-forbidden"]
+            &["`claude`", "does not retire", "role-retirement-forbidden"]
         )
         .is_some(),
         "claude does not retire"
@@ -635,11 +632,11 @@ fn it_should_keep_the_owner_rule_affirmative() {
     let roles = base_reference("roles.md");
     let owner = roles
         .lines()
-        .find(|line| line.contains("O dono (`user`)"))
+        .find(|line| line.contains("The owner (`user`)"))
         .expect("the owner line");
 
-    assert!(!prefix_has_negation(owner, "retira um `contradicts`"));
-    assert!(owner.contains("só num terminal externo, fora do Claude Code"));
+    assert!(!prefix_has_negation(owner, "retires a `contradicts`"));
+    assert!(owner.contains("only in an external terminal, outside Claude Code"));
 }
 
 #[test]
@@ -650,9 +647,9 @@ fn it_should_not_say_in_the_base_skill_that_every_record_is_claude() {
         line_with(
             &base,
             &[
-                "`claude` na sessão principal",
-                "`omhl:<papel>` num agente do plugin",
-                "`user` para o dono"
+                "`claude` in the main session",
+                "`omhl:<role>` in a plugin agent",
+                "`user` for the owner"
             ]
         )
         .is_some(),
@@ -717,12 +714,12 @@ fn it_should_give_the_pr_table_recipe_its_header_the_critic_path_and_the_paginat
         "the listing is paginated"
     );
     assert!(
-        template.contains("`| ID | Item | Estado | Evidência |`"),
+        template.contains("`| ID | Item | State | Evidence |`"),
         "the PR table header"
     );
     assert!(line_with(&template, &["**Item:**", "`data.text`"]).is_some());
-    assert!(line_with(&template, &["**Evidência:**", "mensagem do verifier"]).is_some());
-    assert!(line_with(&template, &["**ID:**", "texto simples"]).is_some());
+    assert!(line_with(&template, &["**Evidence:**", "verifier message"]).is_some());
+    assert!(line_with(&template, &["**ID:**", "plain text"]).is_some());
     for (name, text) in [("review", &review), ("tracking-table", &template)] {
         assert!(
             text.contains("byproduct.md"),
@@ -776,7 +773,7 @@ fn it_should_point_both_skills_to_the_reply_fields_rule_kept_in_roles_md() {
 fn it_should_send_a_gap_without_kind_to_the_human_in_roles_md() {
     let roles = base_reference("roles.md");
 
-    assert!(line_with(&roles, &["Sem `kind`", "vai ao humano"]).is_some());
+    assert!(line_with(&roles, &["Without `kind`", "goes to the human"]).is_some());
 }
 
 #[test]
@@ -840,6 +837,14 @@ const GAP_ANSWER_LATE: [&str; 5] = [
     "`origin-required`",
 ];
 
+const GAP_ANSWER_LATE_EN: [&str; 5] = [
+    "first `decision`",
+    "`origin: late`",
+    "reopens the plan",
+    "freeze",
+    "`origin-required`",
+];
+
 #[test]
 fn it_should_record_a_business_gap_answer_after_the_first_decision_as_late_in_plan_consensus() {
     let text = read("plan-consensus/SKILL.md");
@@ -859,7 +864,7 @@ fn it_should_record_a_business_gap_answer_after_the_first_decision_as_late_in_di
     let text = read("directives-flow/SKILL.md");
 
     assert!(
-        line_with(&text, &GAP_ANSWER_LATE).is_some(),
+        line_with(&text, &GAP_ANSWER_LATE_EN).is_some(),
         "directives-flow carries the gap-answer sentence"
     );
 }

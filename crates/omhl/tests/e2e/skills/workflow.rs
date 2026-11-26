@@ -18,6 +18,13 @@ const NAME_REASON: [&str; 4] = [
     "`claude`",
 ];
 
+const NAME_REASON_EN: [&str; 4] = [
+    "`name`",
+    "without the `omhl-allow` matrix",
+    "without the preloaded view",
+    "`claude`",
+];
+
 /// As skills de CLI que viraram páginas de `directives-flow` e `review`.
 const DISSOLVED_SKILLS: [&str; 3] = [
     "query-and-integrity",
@@ -200,20 +207,23 @@ fn it_should_tell_the_session_to_call_plugin_agents_without_name() {
         (
             "plan-consensus/SKILL.md",
             ["oh-my-hexflow:*", "**sem** `name`"],
+            NAME_REASON,
         ),
         (
             "review/SKILL.md",
             ["oh-my-hexflow:<papel>", "**sem** `name`"],
+            NAME_REASON,
         ),
         (
             "directives-flow/references/cycle.md",
-            ["oh-my-hexflow:*", "sem o parâmetro `name`"],
+            ["oh-my-hexflow:*", "without the `name` parameter"],
+            NAME_REASON_EN,
         ),
     ];
 
-    for (file, instruction) in rules {
+    for (file, instruction, reason) in rules {
         let text = read(file);
-        let needles: Vec<&str> = instruction.into_iter().chain(NAME_REASON).collect();
+        let needles: Vec<&str> = instruction.into_iter().chain(reason).collect();
 
         assert!(
             line_with(&text, &needles).is_some(),
@@ -445,27 +455,33 @@ fn it_should_mark_every_business_suggestion_after_the_interview_as_late_in_plan_
 
 #[test]
 fn it_should_give_the_confirmed_late_premise_two_destinations_around_the_spec_freeze() {
-    for file in [
-        "plan-consensus/SKILL.md",
-        "directives-flow/SKILL.md",
-        "directives-flow/references/cycle.md",
+    let portuguese = [
+        "até o congelamento",
+        "reabre o plano",
+        "a volta conta nas 3",
+        "o impasse vai ao dono",
+        "depois do congelamento",
+        "`divergence`",
+        "`emenda-NN`",
+    ];
+    let english = [
+        "until the spec is frozen",
+        "reopens the plan",
+        "counts in the 3",
+        "the impasse goes to the owner",
+        "after the freeze",
+        "`divergence`",
+        "`amendment-NN`",
+    ];
+    for (file, needles) in [
+        ("plan-consensus/SKILL.md", portuguese),
+        ("directives-flow/SKILL.md", english),
+        ("directives-flow/references/cycle.md", english),
     ] {
         let text = read(file);
 
         assert!(
-            line_with(
-                &text,
-                &[
-                    "até o congelamento",
-                    "reabre o plano",
-                    "a volta conta nas 3",
-                    "o impasse vai ao dono",
-                    "depois do congelamento",
-                    "`divergence`",
-                    "`emenda-NN`"
-                ]
-            )
-            .is_some(),
+            line_with(&text, &needles).is_some(),
             "{file} must say both destinations of the confirmed late premise"
         );
     }
