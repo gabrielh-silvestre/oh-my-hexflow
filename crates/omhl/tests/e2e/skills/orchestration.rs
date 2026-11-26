@@ -9,8 +9,7 @@ use omhl::guard::ROLE_REFERENCE_COMMANDS;
 
 use crate::skills::coverage::skills_dir;
 
-const BASE_SENTENCE: &str =
-    "Esta skill exige a `directives-flow`. Se não estiver carregada, carregue-a";
+const BASE_SENTENCE: &str = "This skill requires `directives-flow`. If it is not loaded, load it";
 
 /// `omhl:analyst` -> `analyst`; os sete papéis vêm da constante de referência da guarda.
 fn reference_roles() -> Vec<&'static str> {
@@ -83,7 +82,7 @@ fn it_should_give_the_new_skills_the_house_frontmatter() {
         assert_eq!(lines[0], "---", "{skill} frontmatter opens");
         assert_eq!(lines[1], format!("name: {skill}"));
         assert!(
-            lines[2].starts_with("description: Protocolo "),
+            lines[2].starts_with("description: Protocol "),
             "{skill} description"
         );
         assert_eq!(lines[3], "---", "{skill} frontmatter closes");
@@ -95,7 +94,7 @@ fn it_should_state_the_three_round_limit_in_plan_consensus() {
     let text = read("plan-consensus/SKILL.md");
 
     assert!(
-        line_with(&text, &["3 voltas"]).is_some(),
+        line_with(&text, &["3 rounds"]).is_some(),
         "the three-round limit"
     );
 }
@@ -105,7 +104,7 @@ fn it_should_escalate_the_impasse_to_the_owner_on_the_third_round_in_plan_consen
     let text = read("plan-consensus/SKILL.md");
 
     assert!(
-        line_with(&text, &["terceira", "impasse", "dono"]).is_some(),
+        line_with(&text, &["third", "impasse", "owner"]).is_some(),
         "on the third round without acceptance, stop and show the impasse to the owner"
     );
 }
@@ -114,10 +113,10 @@ fn it_should_escalate_the_impasse_to_the_owner_on_the_third_round_in_plan_consen
 fn it_should_call_the_verifier_before_spec_validate_in_plan_consensus() {
     let text = body(&read("plan-consensus/SKILL.md"));
 
-    let verifier = line_with(&text, &["oh-my-hexflow:verifier", "contexto isolado"])
+    let verifier = line_with(&text, &["oh-my-hexflow:verifier", "isolated context"])
         .expect("a step that calls the verifier in an isolated context");
     let validate =
-        line_with(&text, &["rode `omhl spec validate"]).expect("the final spec validate step");
+        line_with(&text, &["run `omhl spec validate"]).expect("the final spec validate step");
 
     assert!(verifier < validate, "the verifier step comes first");
     assert!(
@@ -132,7 +131,7 @@ fn it_should_call_the_verifier_before_spec_validate_in_plan_consensus() {
 fn it_should_call_the_verifier_in_an_isolated_context_before_gate_pr_in_review() {
     let text = body(&read("review/SKILL.md"));
 
-    let verifier = line_with(&text, &["oh-my-hexflow:verifier", "contexto isolado"])
+    let verifier = line_with(&text, &["oh-my-hexflow:verifier", "isolated context"])
         .expect("a step that calls the verifier in an isolated context");
     let gate = line_with(&text, &["omhl gate-pr"]).expect("a step that cites gate-pr");
 
@@ -195,8 +194,8 @@ fn it_should_state_that_the_override_replaces_the_default_template() {
             &review,
             &[
                 ".omhl/templates/tracking-table.md",
-                "existir",
-                "vale no lugar"
+                "exists",
+                "takes its place"
             ]
         )
         .is_some(),
@@ -216,7 +215,7 @@ fn it_should_state_that_the_plugin_template_applies_when_the_override_is_absent(
     assert!(
         line_with(
             &review,
-            &["tracking-table.md](", "template do plugin", "existir"]
+            &["tracking-table.md](", "plugin template", "exists"]
         )
         .is_some(),
         "review: the plugin template applies otherwise"
@@ -297,7 +296,7 @@ fn it_should_tell_review_to_list_decisions_and_critic_confirmed_premises_without
         assert!(!line.contains('|'), "no pipe in the listing item: {line}");
     }
     assert!(
-        line_with(&text, &["um comando por chamada", "sem pipe"]).is_some(),
+        line_with(&text, &["one command per call", "no pipe"]).is_some(),
         "one command per call, no pipe"
     );
     assert!(
@@ -305,24 +304,20 @@ fn it_should_tell_review_to_list_decisions_and_critic_confirmed_premises_without
         "the rows come from the critic: decisions by author.agent, premises by confirmed_by.by"
     );
     assert!(
-        line_with(&text, &["author.agent", "igual a `claude`", "reinstalar"]).is_some(),
+        line_with(&text, &["author.agent", "equal to `claude`", "reinstall"]).is_some(),
         "a decision recorded as claude means the role hook failed open: stop"
     );
     assert!(
         line_with(
             &text,
-            &[
-                "`omhl:code-reviewer`",
-                "`omhl:security-reviewer`",
-                "vigente"
-            ]
+            &["`omhl:code-reviewer`", "`omhl:security-reviewer`", "live"]
         )
         .is_some(),
         "the reviewers' decisions with a live contradicts also enter the table"
     );
 }
 
-const NEGATIONS: [&str; 7] = ["não", "nunca", "sem", "not", "never", "no", "without"];
+const NEGATIONS: [&str; 4] = ["not", "never", "no", "without"];
 
 pub(super) fn numbered_steps(text: &str) -> Vec<String> {
     let step = regex::Regex::new(r"^\d+\. ").expect("regex");
@@ -340,7 +335,7 @@ pub(super) fn step_with(text: &str, needles: &[&str]) -> Option<usize> {
 }
 
 /// O trecho da linha antes de `marker`: uma negação ali inverteria a regra. Casa a palavra inteira
-/// (`semântica` não é `sem`), sem distinguir maiúscula.
+/// (`nothing` não é `no`), sem distinguir maiúscula.
 fn prefix_has_negation(line: &str, marker: &str) -> bool {
     let prefix = line.split(marker).next().unwrap_or_default();
     prefix
@@ -356,9 +351,9 @@ fn it_should_order_the_plan_consensus_steps_by_number() {
         &text,
         &[
             "oh-my-hexflow:critic",
-            "premissas técnicas",
-            "ainda não há plano",
-            "ausência da pasta",
+            "technical premises",
+            "there is no plan or spec folder yet",
+            "absence of the folder",
             "VERDICT",
         ],
     )
@@ -367,10 +362,10 @@ fn it_should_order_the_plan_consensus_steps_by_number() {
     let architect = step_with(&text, &["oh-my-hexflow:architect"]).expect("the architect step");
     let verifier = step_with(
         &text,
-        &["oh-my-hexflow:verifier", "contexto isolado", "contradicts"],
+        &["oh-my-hexflow:verifier", "isolated context", "contradicts"],
     )
     .expect("the verifier step");
-    let validate = step_with(&text, &["rode `omhl spec validate"]).expect("the final validate");
+    let validate = step_with(&text, &["run `omhl spec validate"]).expect("the final validate");
 
     assert!(technical_critic < planner && planner < architect && architect < verifier);
     assert!(
@@ -384,7 +379,7 @@ fn it_should_never_negate_the_verifier_call_in_plan_consensus() {
     let text = read("plan-consensus/SKILL.md");
     let verifier = step_with(
         &text,
-        &["oh-my-hexflow:verifier", "contexto isolado", "contradicts"],
+        &["oh-my-hexflow:verifier", "isolated context", "contradicts"],
     )
     .expect("the verifier step");
 
@@ -401,11 +396,11 @@ fn it_should_tell_plan_consensus_that_the_planner_validates_the_spec() {
         [step_with(&text, &["oh-my-hexflow:planner"]).expect("the planner step")];
 
     assert!(
-        planner.contains("e a valida"),
+        planner.contains("and validates it"),
         "the planner validates the spec"
     );
     assert!(
-        !planner.contains("fica para"),
+        !planner.contains("is left for"),
         "the validation is not deferred"
     );
 }
@@ -417,7 +412,7 @@ fn it_should_tell_plan_consensus_that_the_last_validate_is_the_final_check() {
         [step_with(&text, &["oh-my-hexflow:planner"]).expect("the planner step")];
 
     assert!(
-        planner.contains("conferência final"),
+        planner.contains("final check"),
         "the last validate is the final check"
     );
 }
@@ -425,30 +420,34 @@ fn it_should_tell_plan_consensus_that_the_last_validate_is_the_final_check() {
 #[test]
 fn it_should_define_acceptance_and_the_loop_exits_in_plan_consensus() {
     let text = read("plan-consensus/SKILL.md");
-    let rounds = &numbered_steps(&text)[step_with(&text, &["3 voltas"]).expect("the rounds step")];
+    let rounds = &numbered_steps(&text)[step_with(&text, &["3 rounds"]).expect("the rounds step")];
 
     for phrase in [
         "`ACCEPT`",
         "ACCEPT-WITH-RESERVATIONS",
-        "terceira",
+        "third",
         "impasse",
-        "dono",
+        "owner",
         "gate-pr",
         "`REJECT`",
         "`REVISE`",
-        "outra volta",
-        "devolva as objeções ao architect",
+        "another round",
+        "send the objections back to the architect",
     ] {
         assert!(rounds.contains(phrase), "the rounds step lacks '{phrase}'");
     }
     assert!(
-        rounds.contains("o dono os retira") && rounds.contains("o verifier retira"),
+        rounds.contains("the owner retires them") && rounds.contains("the verifier retires them"),
         "at the deadlock the owner retires the contradicts or orders a revision that the verifier closes"
     );
     assert!(
         step_with(
             &text,
-            &["oh-my-hexflow:verifier", "`FAIL`", "volta sem aceite"]
+            &[
+                "oh-my-hexflow:verifier",
+                "`FAIL`",
+                "round without acceptance"
+            ]
         )
         .is_some(),
         "a verifier FAIL counts as a round without acceptance"
@@ -460,7 +459,11 @@ fn it_should_keep_the_critic_verdict_out_of_the_graph_in_plan_consensus() {
     let text = read("plan-consensus/SKILL.md");
 
     assert!(
-        step_with(&text, &["veredito", "só na mensagem", "não o grave"]).is_some(),
+        step_with(
+            &text,
+            &["verdict", "only in the message", "do not record it"]
+        )
+        .is_some(),
         "the verdict circulates only in the message"
     );
 }
@@ -471,7 +474,11 @@ fn it_should_hand_agents_the_absolute_spec_folder_in_both_skills() {
         let text = read(&format!("{skill}/SKILL.md"));
 
         assert!(
-            line_with(&text, &["**absoluto**", "não existe dentro da worktree"]).is_some(),
+            line_with(
+                &text,
+                &["**absolute**", "does not exist inside the worktree"]
+            )
+            .is_some(),
             "{skill}: the spec folder is passed as an absolute path"
         );
     }
@@ -666,17 +673,23 @@ fn it_should_point_review_findings_to_a_decision_that_rests_on_a_guideline_or_pr
         line_with(
             &text,
             &[
-                "`rests-on` para uma diretriz ou premissa confirmada",
-                "nunca para uma `decision`",
+                "`rests-on` to a confirmed guideline or premise",
+                "never a `decision`",
                 "`contradicts`"
             ]
         )
         .is_some()
     );
-    assert!(line_with(&text, &["`source_ref` no `CA-###`", "`resolution` `open`"]).is_some());
-    assert!(line_with(&text, &["o resto", "só na mensagem"]).is_some());
     assert!(
-        line_with(&text, &["CRITICAL ou HIGH", "corpo do PR", "ao dono"]).is_some(),
+        line_with(
+            &text,
+            &["`source_ref` on the spec's `CA-###`", "`resolution` `open`"]
+        )
+        .is_some()
+    );
+    assert!(line_with(&text, &["the rest", "stays only in the message"]).is_some());
+    assert!(
+        line_with(&text, &["CRITICAL or HIGH", "PR body", "to the owner"]).is_some(),
         "a CRITICAL or HIGH security finding without a target goes to the owner and to the PR body"
     );
 }
@@ -690,7 +703,7 @@ fn it_should_close_the_review_loop_when_the_verifier_fails_or_leaves_a_divergenc
         &["`FAIL`", "`INCOMPLETE`", "`open`", "go back to step 3"],
     )
     .expect("a step that loops back to step 3");
-    let fix = step_with(&text, &["Corrija o código"]).expect("the fix step");
+    let fix = step_with(&text, &["Fix the code"]).expect("the fix step");
 
     assert!(steps[loop_step].contains("call it again"));
     assert!(
@@ -743,7 +756,7 @@ fn it_should_point_both_skills_to_the_reply_fields_rule_kept_in_roles_md() {
                     "**Next role:**",
                     "**Open questions for the main session:**",
                     "roles.md",
-                    "O que fazer com a resposta"
+                    "What to do with the answer"
                 ]
             )
             .is_some(),
@@ -781,7 +794,11 @@ fn it_should_send_business_premises_and_gaps_without_kind_to_the_human_in_plan_c
     let text = read("plan-consensus/SKILL.md");
     let steps = numbered_steps(&text);
 
-    let step = step_with(&text, &["Leve ao humano", "`business`", "sem `kind`"]).expect("step 2");
+    let step = step_with(
+        &text,
+        &["Take to the human", "`business`", "without `kind`"],
+    )
+    .expect("step 2");
 
     assert_eq!(step + 1, 2);
     assert!(!steps[step].contains("critic"));
@@ -795,7 +812,11 @@ fn it_should_not_let_the_main_session_record_again_as_claude_what_a_role_refused
     assert!(
         line_with(
             &text,
-            &["`role-record-forbidden`", "não regrave", "`claude`"]
+            &[
+                "`role-record-forbidden`",
+                "do not record the same content again",
+                "`claude`"
+            ]
         )
         .is_some(),
         "a refusal by the role matrix is the answer, not an order to record it as claude"
@@ -815,10 +836,10 @@ fn it_should_order_the_review_steps_by_number() {
         ],
     )
     .expect("the step that calls both reviewers");
-    let fix = step_with(&text, &["Corrija o código"]).expect("the fix step");
-    let verifier = step_with(&text, &["oh-my-hexflow:verifier", "contexto isolado"])
+    let fix = step_with(&text, &["Fix the code"]).expect("the fix step");
+    let verifier = step_with(&text, &["oh-my-hexflow:verifier", "isolated context"])
         .expect("the verifier step");
-    let table = step_with(&text, &["Monte a tabela do PR"]).expect("the table step");
+    let table = step_with(&text, &["Build the PR table"]).expect("the table step");
     let gate = step_with(&text, &["omhl gate-pr"]).expect("the gate step");
 
     assert!(reviewers < fix && fix < verifier && verifier < table && table < gate);
@@ -830,14 +851,6 @@ fn it_should_order_the_review_steps_by_number() {
 }
 
 const GAP_ANSWER_LATE: [&str; 5] = [
-    "primeira `decision`",
-    "`origin: late`",
-    "reabre o plano",
-    "congelamento",
-    "`origin-required`",
-];
-
-const GAP_ANSWER_LATE_EN: [&str; 5] = [
     "first `decision`",
     "`origin: late`",
     "reopens the plan",
@@ -864,7 +877,7 @@ fn it_should_record_a_business_gap_answer_after_the_first_decision_as_late_in_di
     let text = read("directives-flow/SKILL.md");
 
     assert!(
-        line_with(&text, &GAP_ANSWER_LATE_EN).is_some(),
+        line_with(&text, &GAP_ANSWER_LATE).is_some(),
         "directives-flow carries the gap-answer sentence"
     );
 }

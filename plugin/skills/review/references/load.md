@@ -6,33 +6,33 @@
 |---|---|---|
 | session | review rules | `omhl load` |
 
-## Quando usar
+## When to use
 
-Depois de criar, editar ou apagar um arquivo em `.omhl/` (check ou diretiva), para o banco refletir os arquivos. Rode-o antes de qualquer `omhl check run` que venha depois de uma mudança num check: o `check run` recusa com `spec-stale` se o TOML e o banco divergem. `--dry-run` mostra o plano sem gravar nada.
+After creating, editing or deleting a file in `.omhl/` (check or guideline), so the database reflects the files. Run it before any `omhl check run` that comes after a change to a check: `check run` refuses with `spec-stale` if the TOML and the database diverge. `--dry-run` shows the plan without recording anything.
 
-## Entradas
+## Inputs
 
-- Sem argumentos posicionais. Lê os arquivos do projeto em `.omhl/`.
-- `--dry-run`: informa o que faria, sem gravar.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
+- No positional arguments. It reads the project files in `.omhl/`.
+- `--dry-run`: reports what it would do, without recording.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0: `✔ loaded` (ou `✔ dry run`, que não grava nada) com as contagens de `created`, `revised` e `unchanged`, e as de `skipped`, relações, órfãos e `warning` quando existem; depois uma linha por grupo não vazio com os ids (`created`, `revised`, `orphan`) ou uma linha por item (`skipped`, `relation`, `orphan relation`, `warning` com caminho, código e mensagem). Com `warning` o cabeçalho passa a `⚠`. Os ids de `unchanged` só entram na contagem. Com `--format json` é uma linha JSON: `tenant`, `dry_run`, e as listas de ids `created`, `revised`, `unchanged`, `skipped`, `orphans`, `orphan_relations`, `relations_created`, mais `warnings`. Um arquivo apagado da árvore não some do banco: o `load` só lista o id em `orphans` (`orphan` no texto). Para descartá-lo de vez, use `omhl check retire` (check) ou `omhl guideline retire` (diretiva). Um id já retirado volta em `skipped` e não é recriado. O comando é idempotente: sem mudança nos arquivos, tudo sai em `unchanged`.
+Text on stdout, exit 0: `✔ loaded` (or `✔ dry run`, which records nothing) with the counts of `created`, `revised` and `unchanged`, and those of `skipped`, relations, orphans and `warning` when they exist; then one line per non-empty group with the ids (`created`, `revised`, `orphan`) or one line per item (`skipped`, `relation`, `orphan relation`, `warning` with path, code and message). With `warning` the header becomes `⚠`. The `unchanged` ids only enter the count. With `--format json` it is a JSON line: `tenant`, `dry_run`, and the id lists `created`, `revised`, `unchanged`, `skipped`, `orphans`, `orphan_relations`, `relations_created`, plus `warnings`. A file deleted from the tree does not vanish from the database: `load` only lists the id in `orphans` (`orphan` in the text). To discard it for good, use `omhl check retire` (check) or `omhl guideline retire` (guideline). An id already retired comes back in `skipped` and is not recreated. The command is idempotent: with no change to the files, everything comes out in `unchanged`.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). An unknown option or a missing argument is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
-- `extensions-invalid` (saída 1): algum arquivo de `.omhl/` é inválido. Os `details` trazem o `path` e o `code` do problema (por exemplo `event-unsupported`, para um evento fora de `before-commit`, `before-pr` e `before-merge`, ou `rule-two-streams`, para uma regra com padrão em `stdout` e em `stderr`). Corrija o TOML e rode de novo.
-- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor (`path` vazio). Remova a variável ou rode o `omhl` numa sessão do Claude Code.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `extensions-invalid` (exit 1): some file in `.omhl/` is invalid. The `details` carry the `path` and the `code` of the problem (for example `event-unsupported`, for an event outside `before-commit`, `before-pr` and `before-merge`, or `rule-two-streams`, for a rule with a pattern in `stdout` and in `stderr`). Fix the TOML and run again.
+- `invalid-session-id` (exit 1): `CLAUDE_CODE_SESSION_ID` is set but empty, is not UTF-8, exceeds 100 UTF-16 units or equals the marker `outside-claude-code`; nothing is recorded and the error does not show the value (empty `path`). Remove the variable or run `omhl` in a Claude Code session.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Carrega os arquivos do projeto. Sem mudança nenhuma, os checks saem em `unchanged`; o `--dry-run` só informa:
+Loads the project files. With no change at all, the checks come out in `unchanged`; `--dry-run` only reports:
 
 ```omhl-example fixture=checks
 $ omhl load
@@ -41,7 +41,7 @@ $ omhl load --dry-run
 ✔ dry run · 0 created · 0 revised · 2 unchanged
 ```
 
-Com `--format json` o relatório sai para máquinas, com as listas de ids por inteiro:
+With `--format json` the report comes out for machines, with the id lists in full:
 
 ```omhl-example fixture=checks
 $ omhl load --format json

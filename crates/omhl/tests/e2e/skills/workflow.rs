@@ -13,13 +13,6 @@ const OPTIONAL_PREFIXES: [&str; 5] = ["refactor", "tests", "bugfix", "chore", "d
 /// A razão medida pelo G1 para nunca chamar `oh-my-hexflow:*` com `name`.
 const NAME_REASON: [&str; 4] = [
     "`name`",
-    "sem a matriz `omhl-allow`",
-    "sem a vista pré-carregada",
-    "`claude`",
-];
-
-const NAME_REASON_EN: [&str; 4] = [
-    "`name`",
     "without the `omhl-allow` matrix",
     "without the preloaded view",
     "`claude`",
@@ -45,7 +38,7 @@ const WHO_USES_HEADING: &str = "## Who uses it, at which stage and with which fi
 
 /// A ordem do fechamento no passo 8 da `review`: a parada do PR filho vem antes do primeiro `check run`.
 const CLOSING_ORDER: [&str; 7] = [
-    "pare depois de colar a tabela",
+    "stop after pasting the table",
     "omhl check run --event before-merge",
     "omhl attest",
     "omhl gate-pr",
@@ -74,7 +67,7 @@ fn it_should_state_the_ambiguity_gate_and_the_pre_work_item_order_in_the_intervi
     let text = lowercase("interview/SKILL.md");
 
     assert!(
-        line_with(&text, &["placar", "dimensão", "ambiguidade"]).is_some(),
+        line_with(&text, &["scoreboard", "dimension", "ambiguity"]).is_some(),
         "a scoreboard of ambiguity per dimension"
     );
     assert!(
@@ -82,7 +75,7 @@ fn it_should_state_the_ambiguity_gate_and_the_pre_work_item_order_in_the_intervi
         "the interview stops at 20% ambiguity or less"
     );
     assert!(
-        line_with(&text, &["antes do work item"]).is_some(),
+        line_with(&text, &["before the work item"]).is_some(),
         "the interview comes before the work item"
     );
 }
@@ -94,7 +87,11 @@ fn it_should_keep_the_interview_notes_out_of_the_database() {
         fs::read_to_string(repo_root().join(".gitignore")).expect("the root .gitignore");
 
     assert!(
-        line_with(&text, &[".omhl/notes/interview-", "não vira registro"]).is_some(),
+        line_with(
+            &text,
+            &[".omhl/notes/interview-", "does not become a record"]
+        )
+        .is_some(),
         "the round state lives in .omhl/notes and never becomes a record"
     );
     assert!(
@@ -107,9 +104,9 @@ fn it_should_keep_the_interview_notes_out_of_the_database() {
 fn it_should_require_the_interview_for_feat_and_fix_and_list_the_five_optional_prefixes() {
     let text = read("interview/SKILL.md");
 
-    let required = line_with(&text, &["Obrigatória", "`feat`", "`fix`"])
+    let required = line_with(&text, &["Mandatory", "`feat`", "`fix`"])
         .expect("a line that makes the interview mandatory for feat and fix");
-    let optional = line_with(&text, &["Opcional", "a pedido do dono"])
+    let optional = line_with(&text, &["Optional", "at the owner's request"])
         .expect("a line that makes the interview optional, on request");
 
     let required_line = text.lines().nth(required).unwrap_or_default();
@@ -157,7 +154,7 @@ fn it_should_describe_the_light_path_for_chore_and_docs_without_planner_or_round
     let text = read("plan-consensus/SKILL.md");
     let heading = text
         .lines()
-        .position(|line| line.starts_with("## Caminho leve"))
+        .position(|line| line.starts_with("## Light path"))
         .expect("a light path section");
 
     let last_step = numbered_steps(&text).pop().expect("numbered steps");
@@ -165,7 +162,7 @@ fn it_should_describe_the_light_path_for_chore_and_docs_without_planner_or_round
         .lines()
         .position(|line| line == last_step)
         .expect("the last numbered step is in the text");
-    let light_path = section(&text, "Caminho leve").join("\n");
+    let light_path = section(&text, "Light path").join("\n");
 
     assert!(
         last_step_line < heading,
@@ -175,7 +172,7 @@ fn it_should_describe_the_light_path_for_chore_and_docs_without_planner_or_round
         "`chore`",
         "`docs`",
         "`omhl gate-worktree`",
-        "sem planner nem voltas",
+        "no planner or rounds",
     ] {
         assert!(light_path.contains(needle), "the light path cites {needle}");
     }
@@ -187,18 +184,18 @@ fn it_should_offer_the_challenge_modes_only_when_the_owner_asks() {
 
     let heading = text
         .lines()
-        .find(|line| line.starts_with("## Modos de desafio"))
+        .find(|line| line.starts_with("## Challenge modes"))
         .expect("a challenge modes section");
-    let modes = section(&text, "Modos de desafio").join("\n");
+    let modes = section(&text, "Challenge modes").join("\n");
 
     assert!(
-        heading.contains("só quando o dono pedir"),
+        heading.contains("only when the owner asks"),
         "heading: {heading}"
     );
     for mode in ["Contrarian", "Simplifier", "Ontologist"] {
         assert!(modes.contains(mode), "the section describes {mode}");
     }
-    assert!(modes.contains("no máximo uma vez"), "each mode runs once");
+    assert!(modes.contains("at most once"), "each mode runs once");
 }
 
 #[test]
@@ -206,18 +203,18 @@ fn it_should_tell_the_session_to_call_plugin_agents_without_name() {
     let rules = [
         (
             "plan-consensus/SKILL.md",
-            ["oh-my-hexflow:*", "**sem** `name`"],
+            ["oh-my-hexflow:*", "**without** `name`"],
             NAME_REASON,
         ),
         (
             "review/SKILL.md",
-            ["oh-my-hexflow:<papel>", "**sem** `name`"],
+            ["oh-my-hexflow:<role>", "**without** `name`"],
             NAME_REASON,
         ),
         (
             "directives-flow/references/cycle.md",
             ["oh-my-hexflow:*", "without the `name` parameter"],
-            NAME_REASON_EN,
+            NAME_REASON,
         ),
     ];
 
@@ -306,17 +303,17 @@ fn it_should_open_the_interview_with_round_zero_parts_locked_in_the_note_and_ask
         line_with(
             &text,
             &[
-                "Rodada 0",
-                "confirme, junte, divida ou adie",
-                "seção `Partes`",
-                "não a altera"
+                "Round 0",
+                "confirm, merge, split or postpone",
+                "`Parts` section",
+                "does not change it"
             ]
         )
         .is_some(),
-        "round 0 lists the parts and locks them in the Partes section of the note"
+        "round 0 lists the parts and locks them in the Parts section of the note"
     );
     assert!(
-        line_with(&text, &["`person:<nome>`", "Rodada 0 ou na rodada 1"]).is_some(),
+        line_with(&text, &["`person:<name>`", "Round 0 or in round 1"]).is_some(),
         "the owner name is asked in round 0 or round 1"
     );
 }
@@ -351,11 +348,7 @@ fn it_should_draft_and_confirm_one_premise_per_round_with_the_proof_in_the_confi
         "the confirmed_by carries the drafted premise and the owner's literal answer, up to 2000 characters"
     );
     assert!(
-        line_with(
-            &text,
-            &["pergunta e a resposta literais da rodada, inteiras"]
-        )
-        .is_some(),
+        line_with(&text, &["literal question and answer, in full"]).is_some(),
         "the note keeps the whole literal question and answer of the round"
     );
 }
@@ -397,20 +390,20 @@ fn it_should_write_both_interview_batches_at_the_end_without_a_batch_confirmatio
     let step = step_with(
         &text,
         &[
-            "lote 2",
-            "`key` de idempotência",
-            "**sem** nova rodada de confirmação em lote",
+            "batch 2",
+            "idempotency `key`",
+            "**without** a new batch confirmation round",
         ],
     )
     .expect("a step that writes batch 2 without a new confirmation");
     let line = &numbered_steps(&text)[step];
 
     assert!(
-        line.contains("regrave só ele"),
+        line.contains("record only it again"),
         "a failed batch 2 is rewritten alone"
     );
     assert!(
-        line_with(&text, &["lote 1", "`key` de idempotência"]).is_some(),
+        line_with(&text, &["batch 1", "idempotency `key`"]).is_some(),
         "batch 1 carries a key too"
     );
 }
@@ -432,7 +425,7 @@ fn it_should_mark_every_business_suggestion_after_the_interview_as_late_in_plan_
     assert!(
         line_with(
             &text,
-            &["O planner não cita na spec premissa tardia ainda `assumed`"]
+            &["The planner does not cite in the spec a late premise that is still `assumed`"]
         )
         .is_some(),
         "the planner does not cite a late premise that is still assumed"
@@ -455,16 +448,7 @@ fn it_should_mark_every_business_suggestion_after_the_interview_as_late_in_plan_
 
 #[test]
 fn it_should_give_the_confirmed_late_premise_two_destinations_around_the_spec_freeze() {
-    let portuguese = [
-        "até o congelamento",
-        "reabre o plano",
-        "a volta conta nas 3",
-        "o impasse vai ao dono",
-        "depois do congelamento",
-        "`divergence`",
-        "`emenda-NN`",
-    ];
-    let english = [
+    let needles = [
         "until the spec is frozen",
         "reopens the plan",
         "counts in the 3",
@@ -473,10 +457,10 @@ fn it_should_give_the_confirmed_late_premise_two_destinations_around_the_spec_fr
         "`divergence`",
         "`amendment-NN`",
     ];
-    for (file, needles) in [
-        ("plan-consensus/SKILL.md", portuguese),
-        ("directives-flow/SKILL.md", english),
-        ("directives-flow/references/cycle.md", english),
+    for file in [
+        "plan-consensus/SKILL.md",
+        "directives-flow/SKILL.md",
+        "directives-flow/references/cycle.md",
     ] {
         let text = read(file);
 
@@ -501,8 +485,8 @@ fn it_should_ask_review_and_verifier_for_one_line_per_confirmed_premise_with_evi
             &[
                 command,
                 "`next_after_seq`",
-                "uma linha por premissa",
-                "evidência na entrega"
+                "one line per premise",
+                "evidence in the delivery"
             ]
         )
         .is_some(),

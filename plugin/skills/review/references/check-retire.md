@@ -6,34 +6,34 @@
 |---|---|---|
 | session | review rules | `omhl check retire` |
 
-## Quando usar
+## When to use
 
-Para descartar de vez um check cujo arquivo foi apagado da árvore e cujo apagamento já foi mergeado. Sem isso o `omhl load` só lista o id em `orphans`, o `omhl check run` avisa `check-orphaned` a cada execução e o gate de pull request continua cobrando uma attestation que ninguém grava mais. **A retirada é definitiva** e vale para todos os clones e branches: o id nunca volta. Se a sua branch é anterior ao check (o arquivo ainda não existia nela), não aposente: rebaseie sobre a `main` ou restaure o arquivo.
+To discard for good a check whose file was deleted from the tree and whose deletion was already merged. Without this, `omhl load` only lists the id in `orphans`, `omhl check run` warns `check-orphaned` on every run and the pull request gate keeps asking for an attestation nobody records anymore. **The retirement is final** and holds for all clones and branches: the id never comes back. If your branch predates the check (the file did not exist in it yet), do not retire: rebase onto `main` or restore the file.
 
-## Entradas
+## Inputs
 
-- `<CHECK>`: o id do check, como `checks.ok`. Tem de ser um check vigente do projeto, com o arquivo `.omhl/checks/<slug>.toml` ausente da árvore.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
+- `<CHECK>`: the check id, like `checks.ok`. It must be a live check of the project, with the file `.omhl/checks/<slug>.toml` absent from the tree.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0: `✔ check retire · retired <id>`. Com `--format json` é uma linha JSON, `{"retired":"<id>"}`. O banco é append-only: o comando não apaga nada, grava um registro de retirada (autor `loader`) e a cadeia segue válida. Depois, o check some do `check run`, do aviso e do gate de pull request. Um `omhl load` com o arquivo de volta reporta o id em `skipped` e não o recria; para trazer o check de volta, use outro nome de arquivo.
+Text on stdout, exit 0: `✔ check retire · retired <id>`. With `--format json` it is a JSON line, `{"retired":"<id>"}`. The database is append-only: the command deletes nothing, it records a retirement record (author `loader`) and the chain stays valid. Afterwards, the check disappears from `check run`, from the warning and from the pull request gate. An `omhl load` with the file back reports the id in `skipped` and does not recreate it; to bring the check back, use another file name.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). An unknown option or a missing argument is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
-- `check-not-orphaned` (saída 1): o arquivo do check ainda existe na árvore. Apague-o (e mergeie a remoção) antes, ou desista da retirada.
-- `check-not-found` (saída 1): o id não é um check vigente do projeto (inclui o que já foi aposentado). Confira o id.
-- `INVALID_INPUT` (saída 1): o id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
-- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor (`path` vazio). Remova a variável ou rode o `omhl` numa sessão do Claude Code.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `check-not-orphaned` (exit 1): the check file still exists in the tree. Delete it (and merge the removal) first, or give up the retirement.
+- `check-not-found` (exit 1): the id is not a live check of the project (this includes one already retired). Check the id.
+- `INVALID_INPUT` (exit 1): the id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
+- `invalid-session-id` (exit 1): `CLAUDE_CODE_SESSION_ID` is set but empty, is not UTF-8, exceeds 100 UTF-16 units or equals the marker `outside-claude-code`; nothing is recorded and the error does not show the value (empty `path`). Remove the variable or run `omhl` in a Claude Code session.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Aposenta um check cujo arquivo foi apagado. A segunda chamada recusa, porque o check já não é vigente, e um id que nunca existiu recusa do mesmo jeito:
+Retires a check whose file was deleted. The second call refuses, because the check is no longer live, and an id that never existed refuses the same way:
 
 ```omhl-example fixture=retire-check
 $ omhl check retire checks.ok
@@ -48,14 +48,14 @@ $ omhl check retire checks.nope
 # exit 1
 ```
 
-Com `--format json`, a retirada sai para máquinas:
+With `--format json`, the retirement comes out for machines:
 
 ```omhl-example fixture=retire-check
 $ omhl check retire checks.ok --format json
 {"retired":"checks.ok"}
 ```
 
-Recusa: o arquivo do check ainda existe na árvore:
+Refusal: the check file still exists in the tree:
 
 ```omhl-example fixture=checks
 $ omhl check retire checks.ok
@@ -64,7 +64,7 @@ $ omhl check retire checks.ok
 # exit 1
 ```
 
-Recusa: id com forma inválida:
+Refusal: an id with an invalid form:
 
 ```omhl-example fixture=checks
 $ omhl check retire BAD

@@ -1,15 +1,15 @@
-# Gravar o work item e as premissas da entrevista
+# Recording the work item and the interview premises
 
-Quando consultar: nos passos 2 e 3 da skill [interview](../SKILL.md), ao gravar, no fim da entrevista, o work item e as premissas que as rodadas já confirmaram. A referência completa do `omhl append`, com as entradas e os erros, está em [append.md](../../directives-flow/references/append.md).
+When to consult: in steps 2 and 3 of the [interview](../SKILL.md) skill, when recording, at the end of the interview, the work item and the premises the rounds already confirmed. The complete reference of `omhl append`, with the inputs and the errors, is in [append.md](../../directives-flow/references/append.md).
 
-São dois lotes de `omhl append`, nesta ordem (a guarda recusa premissa sem um work item aberto):
+There are two `omhl append` batches, in this order (the guard refuses a premise without an open work item):
 
-- **Lote 1:** o work item (`work-items.<id>`, `title`, `status` `open`), gravado como `claude`.
-- **Lote 2:** uma premissa de negócio por item, todas já confirmadas nas rodadas, sem nova confirmação em lote. Cada uma leva `status` `confirmed`, `kind` `business`, o `work_item` e o `confirmed_by`, com `by` = `person:<nome>`, a `question` (a premissa como você a redigiu) e a `answer` (a confirmação ou a correção literal do dono, sem resumir, traduzir nem corrigir), cada texto com até 2000 caracteres. A pergunta da rodada e a resposta inteiras ficam na nota.
+- **Batch 1:** the work item (`work-items.<id>`, `title`, `status` `open`), recorded as `claude`.
+- **Batch 2:** one business premise per item, all already confirmed in the rounds, with no new batch confirmation. Each one carries `status` `confirmed`, `kind` `business`, the `work_item` and the `confirmed_by`, with `by` = `person:<name>`, the `question` (the premise as you drafted it) and the `answer` (the owner's literal confirmation or correction, without summarizing, translating or correcting), each text up to 2000 characters. The round's full question and answer stay in the note.
 
-Cada lote leva uma `key`. Se o lote 2 falhar, regrave só ele; o lote 1 já está no banco.
+Each batch carries a `key`. If batch 2 fails, record only it again; batch 1 is already in the database.
 
-Mostre a premissa ao dono em português; o `text` gravado é em inglês.
+Show the premise to the owner in the language of the conversation; the recorded `text` is in English.
 
 ```omhl-example fixture=project
 $ omhl append <<'EOF'
@@ -18,7 +18,7 @@ EOF
 ✔ append · 1 record
 - <record-id> · seq 3
 $ omhl append <<'EOF'
-{"items":[{"body":{"kind":"node","id":"premises.i1","type":"premise","data":{"text":"The export must include every column the user sees.","status":"confirmed","kind":"business","work_item":"work-items.i1","confirmed_by":{"by":"person:ana","question":"O export inclui todas as colunas que o usuário vê na tela.","answer":"Confirmo."}}}}]}
+{"items":[{"body":{"kind":"node","id":"premises.i1","type":"premise","data":{"text":"The export must include every column the user sees.","status":"confirmed","kind":"business","work_item":"work-items.i1","confirmed_by":{"by":"person:ana","question":"The export includes every column the user sees on the screen.","answer":"I confirm."}}}}]}
 EOF
 ✔ append · 1 record
 - <record-id> · seq 4
