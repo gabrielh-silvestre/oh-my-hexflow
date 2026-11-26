@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 
+use super::git::commit_marker;
+
 /// Projeto de teste: uma pasta com `.omhl.toml` e uma pasta de dados (XDG) fora dela.
 pub struct Project {
     dir: TempDir,
@@ -20,6 +22,14 @@ impl Project {
             format!("version = 1\ntenant = \"{tenant}\"\n"),
         )
         .expect("marker is written");
+
+        project
+    }
+
+    /// Repositório git com o marcador commitado: o diretório principal resolve e o `render` não traz o aviso `main-dir-unknown`.
+    pub fn with_git(tenant: &str) -> Project {
+        let project = Project::new(tenant);
+        commit_marker(project.dir());
 
         project
     }

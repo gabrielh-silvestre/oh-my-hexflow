@@ -6,9 +6,23 @@ use super::read::all_nodes;
 use crate::facade::Omhl;
 use crate::graphs;
 use crate::native::NativeBase;
+use crate::probe::NativeRefusal;
 use crate::render::{CONTEXT_BUDGET, RenderInput, render};
+use crate::workflow::config::NativeConfig;
 
-pub(super) fn render_context(omhl: &mut Omhl<'_>, tenant: &TenantId) -> Result<Value, AppError> {
+const INVALID_WORKFLOW_NOTICE: &str = "WARNING: .omhl/workflow.toml is not accepted (invalid-workflow-config): gate-pr and close refuse until it is fixed and no native check is printed meanwhile; run omhl load --dry-run for details";
+const MAIN_DIR_UNKNOWN_NOTICE: &str = "WARNING: the main directory was not resolved (main-dir-unknown): no native check is printed and gate-pr and close refuse; run git init if the project has no repository, or check the repository if it has one";
+
+/// O `render` nunca recusa: sem ativação legível vale o conjunto vazio e o preâmbulo diz por quê.
+pub(super) fn render_context(
+    omhl: &mut Omhl<'_>,
+    tenant: &TenantId,
+    native: Result<NativeConfig, NativeRefusal>,
+) -> Result<Value, AppError> {
+    let (enabled, notice) = match native {
+        Ok(enabled) => (enabled, None),
+        Err(refusal) => (NativeConfig::default(), Some(refusal_notice(&refusal))),
+    };
     let checks = all_nodes(omhl, tenant, "check")?;
     let guidelines = all_nodes(omhl, tenant, "guideline")?;
     let decisions = all_nodes(omhl, tenant, "decision")?;
@@ -20,6 +34,8 @@ pub(super) fn render_context(omhl: &mut Omhl<'_>, tenant: &TenantId) -> Result<V
     let input = RenderInput {
         tenant: tenant.as_str(),
         native: &NativeBase,
+        enabled: &enabled,
+        notice,
         checks: &checks,
         guidelines: &guidelines,
         decisions: &decisions,
@@ -30,6 +46,13 @@ pub(super) fn render_context(omhl: &mut Omhl<'_>, tenant: &TenantId) -> Result<V
     let rendered = render(&input, CONTEXT_BUDGET);
 
     Ok(json!({ "text": rendered.text, "omitted": rendered.omitted }))
+}
+
+fn refusal_notice(refusal: &NativeRefusal) -> &'static str {
+    match refusal {
+        NativeRefusal::MainDirUnknown => MAIN_DIR_UNKNOWN_NOTICE,
+        NativeRefusal::InvalidWorkflow(_) => INVALID_WORKFLOW_NOTICE,
+    }
 }
 
 fn open_premises(premises: Vec<NodeView>, work_items: &[NodeView]) -> Vec<NodeView> {

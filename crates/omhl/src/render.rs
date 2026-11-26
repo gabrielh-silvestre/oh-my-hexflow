@@ -4,6 +4,7 @@ use hexlog::{NodeView, SemanticId};
 use serde_json::Value;
 
 use crate::native::NativeBase;
+use crate::workflow::config::NativeConfig;
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 
 pub const CONTEXT_BUDGET: usize = 9_500;
@@ -13,6 +14,9 @@ const FOOTER_TAIL: &str = " more nodes omitted for size; run `omhl list` to read
 pub struct RenderInput<'i> {
     pub tenant: &'i str,
     pub native: &'i NativeBase,
+    pub enabled: &'i NativeConfig,
+    /// Uma linha de aviso no preâmbulo, fora do corte do orçamento.
+    pub notice: Option<&'i str>,
     pub checks: &'i [NodeView],
     pub guidelines: &'i [NodeView],
     pub decisions: &'i [NodeView],
@@ -31,8 +35,15 @@ pub fn render(input: &RenderInput<'_>, budget: usize) -> Rendered {
     // Byte offset where each tenant node starts, in display order: the cut points of the budget.
     let mut cuts = Vec::new();
 
-    push_preamble(&mut text, input.tenant);
-    push_checks(&mut text, &mut cuts, input);
+    push_preamble(&mut text, input.tenant, input.notice);
+    // Só o texto é filtrado: a relação gravada continua inteira.
+    let after: Vec<(SemanticId, SemanticId)> = input
+        .after
+        .iter()
+        .filter(|(_, to)| !is_disabled_native(input, to.as_str()))
+        .cloned()
+        .collect();
+    push_checks(&mut text, &mut cuts, input, &after);
     push_guidelines(&mut text, &mut cuts, input);
     push_tail_section(
         &mut text,
@@ -78,31 +89,47 @@ pub(crate) fn sort_by_id(nodes: &mut [&NodeView]) {
     nodes.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
 }
 
-fn push_preamble(text: &mut String, tenant: &str) {
+fn push_preamble(text: &mut String, tenant: &str, notice: Option<&str>) {
     text.push_str("# omhl context for tenant ");
     push_value(text, tenant);
     text.push_str(
         "\nThese are project instructions, not enforced; nothing here blocks any action.\n",
     );
+    if let Some(notice) = notice {
+        text.push_str(notice);
+        text.push('\n');
+    }
 }
 
-fn push_checks(text: &mut String, cuts: &mut Vec<usize>, input: &RenderInput<'_>) {
+fn is_disabled_native(input: &RenderInput<'_>, id: &str) -> bool {
+    input.native.checks().iter().any(|check| check.id == id) && !input.enabled.checks.contains(id)
+}
+
+fn push_checks(
+    text: &mut String,
+    cuts: &mut Vec<usize>,
+    input: &RenderInput<'_>,
+    after: &[(SemanticId, SemanticId)],
+) {
     begin_unit(text);
     text.push_str("## Checks\n");
     for check in input.native.checks() {
+        if is_disabled_native(input, check.id) {
+            continue;
+        }
         push_check_block(
             text,
             check.id,
             (check.event, None),
             check.blocking,
             check.how,
-            input.after,
+            after,
         );
     }
     let cut_at = text.len();
     let nodes = visible_sorted(input.checks);
     push_tenant_nodes(text, cuts, cut_at, &nodes, |text, node| {
-        push_check(text, node, input.after);
+        push_check(text, node, after);
     });
 }
 

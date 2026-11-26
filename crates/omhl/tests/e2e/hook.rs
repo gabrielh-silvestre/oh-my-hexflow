@@ -149,7 +149,8 @@ fn it_should_print_one_json_object_with_the_session_start_context() {
 
 #[test]
 fn it_should_inject_the_native_base_and_the_project_nodes() {
-    let project = Project::new("acme");
+    let project = Project::with_git("acme");
+    project.enable_natives(&NATIVE_CHECKS);
     append_use_wal(&project);
 
     let context = context_of(&hook_for(&project));
@@ -279,7 +280,8 @@ fn it_should_exit_one_with_no_stdout_on_an_invalid_marker() {
 
 #[test]
 fn it_should_print_identical_output_and_write_nothing_on_a_second_run() {
-    let project = Project::new("acme");
+    let project = Project::with_git("acme");
+    project.enable_natives(&NATIVE_CHECKS);
     let total = |project: &Project| {
         json_line(&in_project(project, &["verify"]).stdout)["total_records"].clone()
     };
@@ -345,7 +347,7 @@ fn it_should_list_the_orphaned_checks_in_a_note() {
 
 #[test]
 fn it_should_not_append_anything_when_extensions_are_synced() {
-    let project = Project::new("acme");
+    let project = Project::with_git("acme");
     ExtTree::at(project.dir()).check("lint", LINT_TOML);
     let loaded = in_project(&project, &["load"]);
 
@@ -361,7 +363,7 @@ fn it_should_not_append_anything_when_extensions_are_synced() {
 
 #[test]
 fn it_should_warn_about_an_invalid_workflow_file_instead_of_swallowing_it() {
-    let project = Project::new("acme");
+    let project = Project::with_git("acme");
     ExtTree::at(project.dir()).file(
         ".omhl/workflow.toml",
         "version = 1\n\n[specs]\ndirr = \"x\"\n",
@@ -399,7 +401,7 @@ fn it_should_not_write_to_the_database_when_extensions_are_pending() {
 
 #[test]
 fn it_should_warn_with_codes_and_counts_but_never_paths() {
-    let project = Project::new("acme");
+    let project = Project::with_git("acme");
     ExtTree::at(project.dir())
         .check("alpha-check", INVALID_TOML)
         .check("beta-check", INVALID_TOML)
@@ -582,7 +584,7 @@ fn it_should_stay_silent_without_a_marker_even_with_an_old_git() {
 
 #[test]
 fn it_should_keep_the_session_start_object_unchanged_with_a_good_git() {
-    let project = Project::new("acme");
+    let project = Project::with_git("acme");
     let git = git_printing("git version 2.39.2");
 
     let output = hook_with_git_dir(&project, git.path());

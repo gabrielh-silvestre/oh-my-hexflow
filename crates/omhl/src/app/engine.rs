@@ -86,7 +86,11 @@ impl Engine<'_> {
                 outcome,
                 note,
             } => self.attest(caller, check, work_item, outcome, note.as_deref()),
-            Action::Render => context::render_context(&mut self.omhl, &self.tenant),
+            Action::Render => {
+                let native = self.native_refusal();
+
+                context::render_context(&mut self.omhl, &self.tenant, native)
+            }
             Action::GatePr { work_item } => self.gate_pr(work_item),
             Action::Close { work_item } => self.close(caller, work_item),
             Action::Verify => {
@@ -210,10 +214,12 @@ impl Engine<'_> {
     }
 
     /// Sem resolvedor injetado não há diretório principal: nunca vale um conjunto vazio no lugar.
-    fn resolve_native(&self) -> Result<NativeConfig, AppError> {
-        let resolver = self.native.ok_or_else(AppError::main_dir_unknown)?;
+    fn native_refusal(&self) -> Result<NativeConfig, NativeRefusal> {
+        self.native.ok_or(NativeRefusal::MainDirUnknown)?.resolve()
+    }
 
-        resolver.resolve().map_err(|refusal| match refusal {
+    fn resolve_native(&self) -> Result<NativeConfig, AppError> {
+        self.native_refusal().map_err(|refusal| match refusal {
             NativeRefusal::MainDirUnknown => AppError::main_dir_unknown(),
             NativeRefusal::InvalidWorkflow(error) => AppError::invalid_workflow(error),
         })
