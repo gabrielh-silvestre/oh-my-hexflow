@@ -4,30 +4,95 @@ use std::collections::{HashMap, HashSet};
 
 use super::config::SpecsConfig;
 use super::gap::GapState;
-use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX};
+use super::names::{FILE_SUFFIX, strip_amendment_prefix};
 use crate::graphs::{DIVERGENCE_NAMESPACE, GAP_NAMESPACE, GUIDELINE_NAMESPACE, PREMISE_NAMESPACE};
 
 pub const SPEC_STALE: &str = "spec-stale";
-const PART_SECTIONS: [&str; 5] = [
-    "Objetivo",
-    DIRECTIVES,
-    "Comportamentos",
-    "Critérios de aceitação",
-    "Fora de escopo",
-];
-const AMENDMENT_SECTIONS: [&str; 3] = ["Divergência", "Correções", "Motivo"];
-const BEHAVIORS: &str = "Comportamentos";
-const CRITERIA: &str = "Critérios de aceitação";
-const DIVERGENCE: &str = "Divergência";
-const CORRECTIONS: &str = "Correções";
 const HEADING_PREFIX: &str = "## ";
 const ITEM_PREFIX: &str = "- ";
-const PENDING_MARKER: &str = "[PENDENTE";
-const PENDING_OPEN: &str = "[PENDENTE: ";
-const DIRECTIVES: &str = "Diretivas e premissas aplicáveis";
 const CITED_NAMESPACES: [&str; 2] = [PREMISE_NAMESPACE, GUIDELINE_NAMESPACE];
 const BUSINESS_KIND: &str = "business";
 const CLOSED_RESOLUTIONS: [&str; 2] = ["code-fixed", "accepted"];
+
+/// Cada arquivo é todo de um vocabulário, escolhido pelo primeiro título.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Vocab {
+    Portuguese,
+    English,
+}
+
+impl Vocab {
+    const ALL: [Vocab; 2] = [Vocab::Portuguese, Vocab::English];
+
+    /// Título que não é de nenhum vocabulário cai no português, para o erro seguir o de sempre.
+    fn of_first_title(title: Option<&str>) -> Vocab {
+        match title {
+            Some("Objective" | "Divergence") => Vocab::English,
+            _ => Vocab::Portuguese,
+        }
+    }
+
+    fn other(self) -> Vocab {
+        match self {
+            Vocab::Portuguese => Vocab::English,
+            Vocab::English => Vocab::Portuguese,
+        }
+    }
+
+    fn part_sections(self) -> [&'static str; 5] {
+        match self {
+            Vocab::Portuguese => [
+                "Objetivo",
+                "Diretivas e premissas aplicáveis",
+                "Comportamentos",
+                "Critérios de aceitação",
+                "Fora de escopo",
+            ],
+            Vocab::English => [
+                "Objective",
+                "Applicable directives and premises",
+                "Behaviors",
+                "Acceptance criteria",
+                "Out of scope",
+            ],
+        }
+    }
+
+    fn amendment_sections(self) -> [&'static str; 3] {
+        match self {
+            Vocab::Portuguese => ["Divergência", "Correções", "Motivo"],
+            Vocab::English => ["Divergence", "Corrections", "Reason"],
+        }
+    }
+
+    fn directives(self) -> &'static str {
+        self.part_sections()[1]
+    }
+
+    fn behaviors(self) -> &'static str {
+        self.part_sections()[2]
+    }
+
+    fn criteria(self) -> &'static str {
+        self.part_sections()[3]
+    }
+
+    fn divergence(self) -> &'static str {
+        self.amendment_sections()[0]
+    }
+
+    fn corrections(self) -> &'static str {
+        self.amendment_sections()[1]
+    }
+
+    /// O início do marcador, sem os dois-pontos.
+    fn pending_marker(self) -> &'static str {
+        match self {
+            Vocab::Portuguese => "[PENDENTE",
+            Vocab::English => "[PENDING",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct SpecFile<'a> {
@@ -127,6 +192,7 @@ struct Item<'a> {
 
 struct Doc<'a> {
     name: &'a str,
+    vocab: Vocab,
     lines: Vec<&'a str>,
     sections: Vec<Section<'a>>,
 }
@@ -152,6 +218,7 @@ impl<'a> Doc<'a> {
 
         Doc {
             name: file.name,
+            vocab: Vocab::of_first_title(sections.first().map(|section| section.title)),
             lines,
             sections,
         }
@@ -159,6 +226,23 @@ impl<'a> Doc<'a> {
 
     fn section(&self, title: &str) -> Option<&Section<'a>> {
         self.sections.iter().find(|section| section.title == title)
+    }
+
+    fn directives_section(&self) -> Option<&Section<'a>> {
+        self.section(self.vocab.directives())
+    }
+
+    fn divergence_section(&self) -> Option<&Section<'a>> {
+        self.section(self.vocab.divergence())
+    }
+
+    fn correction_items(&self) -> Vec<Item<'a>> {
+        let corrections = self.vocab.corrections();
+
+        self.items()
+            .into_iter()
+            .filter(|item| item.section == corrections)
+            .collect()
     }
 
     /// Item é a linha que começa na coluna 0 com `- `; linha indentada é continuação.
@@ -226,9 +310,10 @@ fn check_part<'a>(
     config: &SpecsConfig,
     defined: &mut HashSet<&'a str>,
 ) -> Vec<Found> {
-    let mut found = check_shared(doc, &PART_SECTIONS, config);
+    let mut found = check_shared(doc, &doc.vocab.part_sections(), config);
     let items = doc.items();
-    for title in [BEHAVIORS, CRITERIA] {
+    let (behaviors, criteria) = (doc.vocab.behaviors(), doc.vocab.criteria());
+    for title in [behaviors, criteria] {
         let Some(section) = doc.section(title) else {
             continue;
         };
@@ -241,10 +326,12 @@ fn check_part<'a>(
         }
     }
     for item in items {
-        let prefix = match item.section {
-            BEHAVIORS => "CMP-",
-            CRITERIA => "CA-",
-            _ => continue,
+        let prefix = if item.section == behaviors {
+            "CMP-"
+        } else if item.section == criteria {
+            "CA-"
+        } else {
+            continue;
         };
         match item_id(&item, prefix) {
             None => found.push(Found {
@@ -274,7 +361,7 @@ fn check_amendment<'a>(
     config: &SpecsConfig,
     context: &mut AmendmentContext<'a>,
 ) -> Vec<Found> {
-    let mut found = check_shared(doc, &AMENDMENT_SECTIONS, config);
+    let mut found = check_shared(doc, &doc.vocab.amendment_sections(), config);
     let number = amendment_number(doc.name);
     match number {
         None => found.push(Found {
@@ -287,7 +374,7 @@ fn check_amendment<'a>(
         }),
         Some(_) => {}
     }
-    if let Some(section) = doc.section(DIVERGENCE) {
+    if let Some(section) = doc.divergence_section() {
         let references: usize = section
             .body
             .iter()
@@ -307,7 +394,7 @@ fn check_amendment<'a>(
                 line: item.line,
                 code: Code::AmendmentDefinesItem,
             });
-        } else if item.section == CORRECTIONS {
+        } else if item.section == doc.vocab.corrections() {
             check_correction(&item, number, context, &mut found);
         }
     }
@@ -425,7 +512,7 @@ fn check_shared(doc: &Doc, expected: &[&str], config: &SpecsConfig) -> Vec<Found
                 code: Code::PlaceholderFound,
             });
         }
-        if has_malformed_pending_marker(line) {
+        if has_invalid_pending_marker(line, doc.vocab) {
             found.push(Found {
                 line: index + 1,
                 code: Code::PendingMarkerInvalid,
@@ -455,14 +542,11 @@ fn is_digits(text: &str, len: usize) -> bool {
 }
 
 pub(crate) fn is_amendment_id(id: &str) -> bool {
-    id.strip_prefix(AMENDMENT_PREFIX)
-        .is_some_and(|number| is_digits(number, 2))
+    strip_amendment_prefix(id).is_some_and(|number| is_digits(number, 2))
 }
 
 pub(crate) fn amendment_number(name: &str) -> Option<u32> {
-    let digits = name
-        .strip_prefix(AMENDMENT_PREFIX)?
-        .strip_suffix(FILE_SUFFIX)?;
+    let digits = strip_amendment_prefix(name)?.strip_suffix(FILE_SUFFIX)?;
 
     if !is_digits(digits, 2) {
         return None;
@@ -477,11 +561,7 @@ fn defined_emds<'a>(docs: &[Doc<'a>]) -> HashMap<&'a str, u32> {
         let Some(number) = amendment_number(doc.name) else {
             continue;
         };
-        for item in doc
-            .items()
-            .iter()
-            .filter(|item| item.section == CORRECTIONS)
-        {
+        for item in &doc.correction_items() {
             if let Some(token) = item_id(item, "EMD-") {
                 defined.entry(token).or_insert(number);
             }
@@ -525,24 +605,28 @@ fn divergence_ref_prefix() -> String {
     id_prefix(DIVERGENCE_NAMESPACE)
 }
 
-fn pending_prefix() -> String {
-    format!("{PENDING_OPEN}{}", id_prefix(GAP_NAMESPACE))
+fn pending_prefix(vocab: Vocab) -> String {
+    format!("{}: {}", vocab.pending_marker(), id_prefix(GAP_NAMESPACE))
 }
 
-fn has_malformed_pending_marker(line: &str) -> bool {
-    let pending_prefix = pending_prefix();
+/// Marcador do outro vocabulário (bem formado ou não) ou marcador malformado do próprio.
+fn has_invalid_pending_marker(line: &str, vocab: Vocab) -> bool {
+    let pending_prefix = pending_prefix(vocab);
 
-    line.match_indices(PENDING_MARKER).any(|(start, _)| {
-        let valid = line[start..]
-            .strip_prefix(pending_prefix.as_str())
-            .is_some_and(|rest| {
-                let len = semantic_id_len(rest);
+    line.contains(vocab.other().pending_marker())
+        || line
+            .match_indices(vocab.pending_marker())
+            .any(|(start, _)| {
+                let valid = line[start..]
+                    .strip_prefix(pending_prefix.as_str())
+                    .is_some_and(|rest| {
+                        let len = semantic_id_len(rest);
 
-                len > 0 && rest[len..].starts_with(']')
-            });
+                        len > 0 && rest[len..].starts_with(']')
+                    });
 
-        !valid
-    })
+                !valid
+            })
 }
 
 fn count_divergence_refs(line: &str) -> usize {
@@ -622,7 +706,7 @@ pub fn validate_graph(
         && let (Some(doc), Some(found)) = (part_docs.first(), part_found.first_mut())
     {
         found.push(Found {
-            line: doc.section(DIRECTIVES).map_or(1, |section| section.line),
+            line: doc.directives_section().map_or(1, |section| section.line),
             code,
         });
     }
@@ -643,7 +727,7 @@ pub fn validate_graph(
 /// quando a citação já é `divergence-ref-invalid` da validação estrutural.
 pub fn amendment_divergence_mismatch(file: &SpecFile<'_>, expected: &str) -> Option<Violation> {
     let doc = Doc::new(file);
-    let refs = prefixed_ids(doc.section(DIVERGENCE)?, &divergence_ref_prefix());
+    let refs = prefixed_ids(doc.divergence_section()?, &divergence_ref_prefix());
 
     match refs[..] {
         [(line, id)] if id != expected => Some(Violation {
@@ -672,7 +756,7 @@ fn check_part_graph(doc: &Doc, facts: &impl SpecFacts) -> Vec<Found> {
 
 fn check_amendment_graph(doc: &Doc, work_item: &str, facts: &impl SpecFacts) -> Vec<Found> {
     let mut found = check_pending_gaps(doc, facts);
-    let Some(section) = doc.section(DIVERGENCE) else {
+    let Some(section) = doc.divergence_section() else {
         return found;
     };
     let refs = prefixed_ids(section, &divergence_ref_prefix());
@@ -708,9 +792,8 @@ fn divergence_violation(
 }
 
 fn corrects(doc: &Doc, item_ref: &str) -> bool {
-    doc.items()
+    doc.correction_items()
         .iter()
-        .filter(|item| item.section == CORRECTIONS)
         .filter_map(|item| item_id(item, "EMD-").map(|emd| correction_target(item, emd)))
         .any(|target| target == Some(item_ref))
 }
@@ -733,23 +816,29 @@ fn check_pending_gaps(doc: &Doc, facts: &impl SpecFacts) -> Vec<Found> {
 
 /// Os ids `gaps.<nome>` dos marcadores bem formados da linha.
 fn pending_gaps(line: &str) -> Vec<&str> {
-    let pending_prefix = pending_prefix();
     let gap_prefix_len = id_prefix(GAP_NAMESPACE).len();
 
-    line.match_indices(pending_prefix.as_str())
-        .filter_map(|(start, _)| {
-            let name_start = start + pending_prefix.len();
-            let len = semantic_id_len(&line[name_start..]);
-            let id_start = name_start - gap_prefix_len;
+    Vocab::ALL
+        .into_iter()
+        .flat_map(|vocab| {
+            let pending_prefix = pending_prefix(vocab);
 
-            (len > 0 && line[name_start + len..].starts_with(']'))
-                .then(|| &line[id_start..name_start + len])
+            line.match_indices(pending_prefix.as_str())
+                .filter_map(|(start, _)| {
+                    let name_start = start + pending_prefix.len();
+                    let len = semantic_id_len(&line[name_start..]);
+                    let id_start = name_start - gap_prefix_len;
+
+                    (len > 0 && line[name_start + len..].starts_with(']'))
+                        .then(|| &line[id_start..name_start + len])
+                })
+                .collect::<Vec<_>>()
         })
         .collect()
 }
 
 fn cited_ids<'a>(doc: &Doc<'a>) -> Vec<(usize, &'a str)> {
-    let Some(section) = doc.section(DIRECTIVES) else {
+    let Some(section) = doc.directives_section() else {
         return Vec::new();
     };
 

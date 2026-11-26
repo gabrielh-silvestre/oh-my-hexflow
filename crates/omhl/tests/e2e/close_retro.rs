@@ -823,3 +823,48 @@ fn it_should_refuse_report_retro_without_a_work_item() {
         output.stderr
     );
 }
+
+// Famílias de nome da emenda: `amendment-` e `emenda-`
+
+#[test]
+fn it_should_list_an_unapproved_english_amendment_as_pending_in_the_report_and_in_the_close() {
+    let fixture = Fixture::with_spec();
+    fixture.write("amendment-01.md", &amendment_for(DIVERGENCE));
+
+    let report = fixture.retro_report();
+    let closed = fixture.close();
+
+    let expected = json!({ "approved": [], "pending": ["amendment-01.md"] });
+    assert_eq!(retro_of(&report)["amendments"], expected);
+    assert_eq!(retro_of(&closed)["amendments"], expected);
+}
+
+#[test]
+fn it_should_list_an_unapproved_portuguese_amendment_as_pending_in_the_report_and_in_the_close() {
+    let fixture = Fixture::with_spec();
+    fixture.write("emenda-01.md", &amendment_for(DIVERGENCE));
+
+    let report = fixture.retro_report();
+    let closed = fixture.close();
+
+    let expected = json!({ "approved": [], "pending": ["emenda-01.md"] });
+    assert_eq!(retro_of(&report)["amendments"], expected);
+    assert_eq!(retro_of(&closed)["amendments"], expected);
+}
+
+#[test]
+fn it_should_take_an_approved_english_amendment_out_of_pending() {
+    let fixture = Fixture::with_spec();
+    fixture.write("amendment-01.md", &amendment_for(DIVERGENCE));
+    fixture.approve("amendment-01");
+
+    let report = fixture.retro_report();
+
+    assert_eq!(
+        retro_of(&report)["amendments"],
+        json!({
+            "approved": [{ "name": "amendment-01.md", "divergence": DIVERGENCE }],
+            "pending": [],
+        })
+    );
+}

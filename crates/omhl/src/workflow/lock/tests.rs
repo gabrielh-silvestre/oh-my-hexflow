@@ -204,7 +204,35 @@ mod lock {
     fn it_should_name_the_first_amendment_for_an_empty_folder() {
         let next = next_amendment(&[]);
 
-        assert_eq!(next, "emenda-01.md");
+        assert_eq!(next, "amendment-01.md");
+    }
+
+    #[test]
+    fn it_should_name_the_first_amendment_in_english_when_the_folder_has_only_english_parts() {
+        let next = next_amendment(&strings(&["part-01.md", "part-02.md"]));
+
+        assert_eq!(next, "amendment-01.md");
+    }
+
+    #[test]
+    fn it_should_name_the_amendment_after_the_highest_number_across_both_families() {
+        let next = next_amendment(&strings(&["part-01.md", "amendment-01.md", "emenda-03.md"]));
+
+        assert_eq!(next, "amendment-04.md");
+    }
+
+    #[test]
+    fn it_should_name_a_portuguese_amendment_when_the_folder_has_only_portuguese_files() {
+        let next = next_amendment(&strings(&["parte-01.md", "emenda-02.md"]));
+
+        assert_eq!(next, "emenda-03.md");
+    }
+
+    #[test]
+    fn it_should_name_an_english_amendment_when_the_folder_mixes_the_families() {
+        let next = next_amendment(&strings(&["parte-01.md", "part-02.md"]));
+
+        assert_eq!(next, "amendment-01.md");
     }
 
     #[test]
@@ -475,6 +503,104 @@ mod lock {
 
         assert_eq!(code, "spec-folder-unknown");
         assert!(reason.contains(MAIN_FOLDER), "reason: {reason}");
+    }
+
+    #[test]
+    fn it_should_allow_only_the_next_english_amendment_when_the_folder_has_english_parts() {
+        let verdict = verdict(Tool::Write, "amendment-01.md", &["part-01.md"], true, false);
+
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    #[test]
+    fn it_should_deny_a_portuguese_amendment_when_the_folder_has_english_parts() {
+        let (code, reason) = denial(verdict(
+            Tool::Write,
+            "emenda-01.md",
+            &["part-01.md"],
+            true,
+            false,
+        ));
+
+        assert_eq!(code, FROZEN);
+        assert!(
+            reason.contains(&format!("{MAIN_FOLDER}/amendment-01.md")),
+            "reason: {reason}"
+        );
+    }
+
+    #[test]
+    fn it_should_deny_a_new_english_part_when_the_folder_has_english_parts() {
+        let (code, _) = denial(verdict(
+            Tool::Write,
+            "part-02.md",
+            &["part-01.md"],
+            true,
+            false,
+        ));
+
+        assert_eq!(code, FROZEN);
+    }
+
+    #[test]
+    fn it_should_allow_only_the_next_portuguese_amendment_when_the_folder_has_portuguese_parts() {
+        let verdict = verdict(Tool::Write, "emenda-01.md", &["parte-01.md"], true, false);
+
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    #[test]
+    fn it_should_deny_an_english_amendment_when_the_folder_has_portuguese_parts() {
+        let (code, reason) = denial(verdict(
+            Tool::Write,
+            "amendment-01.md",
+            &["parte-01.md"],
+            true,
+            false,
+        ));
+
+        assert_eq!(code, FROZEN);
+        assert!(
+            reason.contains(&format!("{MAIN_FOLDER}/emenda-01.md")),
+            "reason: {reason}"
+        );
+    }
+
+    #[test]
+    fn it_should_deny_a_new_portuguese_part_when_the_folder_has_portuguese_parts() {
+        let (code, _) = denial(verdict(
+            Tool::Write,
+            "parte-02.md",
+            &["parte-01.md"],
+            true,
+            false,
+        ));
+
+        assert_eq!(code, FROZEN);
+    }
+
+    #[test]
+    fn it_should_count_both_families_to_allow_the_next_amendment_number() {
+        let existing = ["part-01.md", "amendment-01.md", "emenda-02.md"];
+
+        let allowed = verdict(Tool::Write, "amendment-03.md", &existing, true, false);
+        let skipped = verdict(Tool::Write, "amendment-02.md", &existing, true, false);
+
+        assert_eq!(allowed, Verdict::Allow);
+        assert_eq!(denial(skipped).0, FROZEN);
+    }
+
+    #[test]
+    fn it_should_deny_a_new_file_of_the_english_family_over_an_existing_one() {
+        let (code, _) = denial(verdict(
+            Tool::Write,
+            "amendment-01.md",
+            &["part-01.md", "amendment-01.md"],
+            true,
+            false,
+        ));
+
+        assert_eq!(code, FROZEN);
     }
 
     #[test]

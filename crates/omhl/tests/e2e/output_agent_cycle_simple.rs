@@ -449,7 +449,7 @@ fn it_should_print_the_spec_folder_and_part_and_ask_to_fill_the_sections() {
         [
             "✔ spec init · work-items.payroll · export-reports".to_owned(),
             format!("  dir: {dir}"),
-            format!("  path: {dir}/parte-01.md"),
+            format!("  path: {dir}/part-01.md"),
             "Next: fill in the five sections of the part file, then run omhl spec validate work-items.payroll."
                 .to_owned(),
         ]
@@ -469,7 +469,7 @@ fn it_should_align_the_spec_init_labels_in_human() {
 
     assert!(text.contains(&format!("\n  dir:  {dir}\n")), "{text}");
     assert!(
-        text.contains(&format!("\n  path: {dir}/parte-01.md\n")),
+        text.contains(&format!("\n  path: {dir}/part-01.md\n")),
         "{text}"
     );
 }

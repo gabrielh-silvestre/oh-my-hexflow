@@ -1,7 +1,11 @@
 use std::path::{Component, Path, PathBuf};
 
 use super::config::parse_workflow;
-use super::names::{AMENDMENT_PREFIX, FILE_SUFFIX, FREEZE_MARK, PART_PREFIX, work_item_of_folder};
+use super::names::{
+    ENGLISH_AMENDMENT_PREFIX, ENGLISH_PART_PREFIX, FILE_SUFFIX, FREEZE_MARK,
+    PORTUGUESE_AMENDMENT_PREFIX, PORTUGUESE_PART_PREFIX, is_amendment_name, is_part_name,
+    work_item_of_folder,
+};
 use super::spec::amendment_number;
 use crate::probe::GIT_TIMED_OUT;
 use crate::project::layout::{DOT_GIT_DIR, EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
@@ -292,10 +296,24 @@ pub fn next_amendment(folder_files: &[String]) -> String {
         .max()
         .unwrap_or(0);
 
-    format!("{AMENDMENT_PREFIX}{:02}{FILE_SUFFIX}", highest + 1)
+    let has = |prefixes: [&str; 2]| {
+        folder_files
+            .iter()
+            .any(|name| prefixes.iter().any(|prefix| name.starts_with(prefix)))
+    };
+    // Pasta antiga só em português segue com `emenda-`; qualquer outra nasce em inglês.
+    let prefix = if has([PORTUGUESE_PART_PREFIX, PORTUGUESE_AMENDMENT_PREFIX])
+        && !has([ENGLISH_PART_PREFIX, ENGLISH_AMENDMENT_PREFIX])
+    {
+        PORTUGUESE_AMENDMENT_PREFIX
+    } else {
+        ENGLISH_AMENDMENT_PREFIX
+    };
+
+    format!("{prefix}{:02}{FILE_SUFFIX}", highest + 1)
 }
 
-/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe e qualquer arquivo de marcador do projeto; congelada só admite `Write` de arquivo novo que não seja `parte-*` nem `emenda-*` fora de ordem.
+/// Ordem: worktree ligada; sem branch e sem marca libera; congelada nega qualquer arquivo em pasta que não existe e qualquer arquivo de marcador do projeto; congelada só admite `Write` de arquivo novo que não seja `part-*`, `parte-*`, `amendment-*` nem `emenda-*` fora de ordem.
 pub fn decide(tool: Tool, spec: &SpecPath, facts: &Facts) -> Verdict {
     if facts.linked_worktree {
         return Verdict::Deny {
@@ -358,7 +376,7 @@ fn creates_allowed_file(tool: Tool, spec: &SpecPath, facts: &Facts) -> bool {
 }
 
 fn is_spec_family(spec: &SpecPath) -> bool {
-    spec.file.starts_with(PART_PREFIX) || spec.file.starts_with(AMENDMENT_PREFIX)
+    is_part_name(&spec.file) || is_amendment_name(&spec.file)
 }
 
 fn normalized_names(path: &Path) -> Option<Vec<&str>> {

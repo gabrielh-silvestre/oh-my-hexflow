@@ -32,7 +32,7 @@ use crate::workflow::spec::{
 };
 
 const SLUG_MAX: usize = 64;
-const FIRST_PART: &str = "## Objetivo\n\n## Diretivas e premissas aplicáveis\n\n## Comportamentos\n\n## Critérios de aceitação\n\n## Fora de escopo\n";
+const FIRST_PART: &str = "## Objective\n\n## Applicable directives and premises\n\n## Behaviors\n\n## Acceptance criteria\n\n## Out of scope\n";
 
 enum SpecCheck {
     Missing,

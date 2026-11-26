@@ -347,12 +347,12 @@ fn it_should_refuse_the_skeleton_created_by_spec_init_with_one_detail_per_empty_
     assert_eq!(
         error_details(&output),
         vec![
-            "parte-01.md:1 section-empty",
-            "parte-01.md:3 section-empty",
-            "parte-01.md:3 business-premise-missing",
-            "parte-01.md:5 section-empty",
-            "parte-01.md:7 section-empty",
-            "parte-01.md:9 section-empty",
+            "part-01.md:1 section-empty",
+            "part-01.md:3 section-empty",
+            "part-01.md:3 business-premise-missing",
+            "part-01.md:5 section-empty",
+            "part-01.md:7 section-empty",
+            "part-01.md:9 section-empty",
         ]
     );
 }

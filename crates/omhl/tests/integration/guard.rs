@@ -1985,14 +1985,14 @@ fn it_should_refuse_a_spec_stale_divergence_without_an_amendment() {
 }
 
 #[test]
-fn it_should_refuse_an_amendment_outside_the_two_digit_emenda_form() {
+fn it_should_refuse_an_amendment_outside_the_two_digit_form_of_both_families() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     let amended =
         |amendment: &str| with_field(stale_divergence_data(), "amendment", json!(amendment));
 
-    let results = ["emenda-1", "emenda-001", "amendment-01"].map(|amendment| {
+    let results = ["emenda-1", "emenda-001", "amendment-1", "amend-01"].map(|amendment| {
         appended_by_agent(
             &mut omhl,
             "divergences.v-1",
@@ -2004,8 +2004,25 @@ fn it_should_refuse_an_amendment_outside_the_two_digit_emenda_form() {
     let refused = rule(RuleCode::ConfirmationInvalid, AMENDMENT_POINTER);
     assert_eq!(
         results,
-        [Err(refused.clone()), Err(refused.clone()), Err(refused)]
+        [
+            Err(refused.clone()),
+            Err(refused.clone()),
+            Err(refused.clone()),
+            Err(refused)
+        ]
     );
+}
+
+#[test]
+fn it_should_accept_an_amendment_named_in_the_english_family() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let data = with_field(stale_divergence_data(), "amendment", json!("amendment-01"));
+
+    let result = appended_by_agent(&mut omhl, "divergences.v-1", "divergence", data);
+
+    assert_eq!(result, Ok(1));
 }
 
 #[test]
