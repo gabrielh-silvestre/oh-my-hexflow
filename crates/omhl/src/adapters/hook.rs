@@ -16,6 +16,7 @@ use crate::app::{
     valid_language,
 };
 use crate::app::{ExtensionKind, Group, INVALID_WORKFLOW_CONFIG};
+use crate::ports::files::{read_followed_regular_utf8, read_regular_utf8};
 use crate::project::Env;
 
 pub fn session_start(
@@ -52,6 +53,8 @@ const MANAGED_SETTINGS: &str = "/Library/Application Support/ClaudeCode/managed-
 #[cfg(not(target_os = "macos"))]
 const MANAGED_SETTINGS: &str = "/etc/claude-code/managed-settings.json";
 
+const SETTINGS_MAX_BYTES: u64 = 64 * 1024;
+
 /// Nunca bloqueia nem falha: sem idioma, ou com settings ilegíveis, sai mudo com 0.
 pub fn subagent_start(stdin: &mut impl Read, out: &mut impl Write, env: &Env<'_>) -> ExitCode {
     let cwd = read_json_input(stdin)
@@ -67,7 +70,7 @@ pub fn subagent_start(stdin: &mut impl Read, out: &mut impl Write, env: &Env<'_>
     let managed = settings_language(Some(Path::new(MANAGED_SETTINGS)));
     let local = settings_language(project_file("settings.local.json").as_deref());
     let shared = settings_language(project_file("settings.json").as_deref());
-    let personal = settings_language(user.map(|dir| dir.join("settings.json")).as_deref());
+    let personal = user_settings_language(user.map(|dir| dir.join("settings.json")).as_deref());
     let language = resolve_language(&LanguageRungs {
         plugin_option: env
             .claude
@@ -91,10 +94,19 @@ fn non_empty(value: Option<&OsStr>) -> Option<&OsStr> {
     value.filter(|text| !text.is_empty())
 }
 
-/// Arquivo ausente, ilegível ou com JSON inválido conta como sem `language`.
+/// Arquivo ausente, ilegível, não regular, grande demais ou com JSON inválido conta como sem `language`.
+/// Link simbólico também é recusado: um repositório clonado pode trazer `/dev/zero` no lugar do arquivo.
 fn settings_language(path: Option<&Path>) -> Option<String> {
-    let text = std::fs::read_to_string(path?).ok()?;
-    let settings: Value = serde_json::from_str(&text).ok()?;
+    language_in(&read_regular_utf8(path?, SETTINGS_MAX_BYTES).ok()?)
+}
+
+/// O `settings.json` do usuário costuma ser link de gerenciador de dotfiles: segue o link, mas lê só arquivo regular.
+fn user_settings_language(path: Option<&Path>) -> Option<String> {
+    language_in(&read_followed_regular_utf8(path?, SETTINGS_MAX_BYTES).ok()?)
+}
+
+fn language_in(text: &str) -> Option<String> {
+    let settings: Value = serde_json::from_str(text).ok()?;
 
     settings["language"].as_str().map(str::to_owned)
 }

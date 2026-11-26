@@ -484,6 +484,19 @@ fn it_should_not_repeat_the_english_code_convention_in_any_agent_prompt() {
 }
 
 #[test]
+fn it_should_tell_every_agent_to_apply_the_listed_guidelines() {
+    for agent in agents() {
+        assert!(
+            squash(&agent.body).contains(
+                "`omhl list --type guideline` lists the guidelines of the repository; apply the listed guidelines to your work."
+            ),
+            "{}: the guidelines sentence is missing",
+            agent.role
+        );
+    }
+}
+
+#[test]
 fn it_should_not_repeat_the_no_emoji_rule_in_any_agent_prompt() {
     for agent in agents() {
         assert!(

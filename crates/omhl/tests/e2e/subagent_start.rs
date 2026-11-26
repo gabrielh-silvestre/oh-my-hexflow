@@ -1,8 +1,11 @@
 use crate::support;
 
 use std::fs;
+use std::os::unix::fs::symlink;
 use std::path::Path;
 
+use nix::sys::stat::Mode;
+use nix::unistd::mkfifo;
 use serde_json::{Value, json};
 use support::child::{Output, omhl};
 use tempfile::TempDir;
@@ -231,6 +234,75 @@ fn it_should_skip_a_settings_file_with_invalid_json() {
     let home = TempDir::new().expect("home directory is created");
     project_settings(&project, "{ not json");
     user_settings(&home, &language_settings("pt-BR"));
+
+    let output = run_hook(project.path(), home.path(), &[]);
+
+    assert!(line_of(&output).contains("\"pt-BR\""));
+}
+
+// Arquivo de settings que não é arquivo regular nunca trava nem estoura memória
+
+// O `run` mata o filho e falha o teste passados 30 s, então um hook preso não pendura a suíte.
+#[test]
+fn it_should_print_nothing_when_the_project_settings_is_a_symlink_to_dev_zero() {
+    let project = TempDir::new().expect("project directory is created");
+    let home = TempDir::new().expect("home directory is created");
+    fs::create_dir_all(project.path().join(".claude")).expect("settings directory is created");
+    symlink("/dev/zero", project.path().join(".claude/settings.json")).expect("link is created");
+
+    let output = run_hook(project.path(), home.path(), &[]);
+
+    assert_silent(&output);
+}
+
+#[test]
+fn it_should_print_nothing_when_the_project_settings_is_a_fifo() {
+    let project = TempDir::new().expect("project directory is created");
+    let home = TempDir::new().expect("home directory is created");
+    fs::create_dir_all(project.path().join(".claude")).expect("settings directory is created");
+    mkfifo(
+        &project.path().join(".claude/settings.json"),
+        Mode::from_bits_truncate(0o600),
+    )
+    .expect("fifo is created");
+
+    let output = run_hook(project.path(), home.path(), &[]);
+
+    assert_silent(&output);
+}
+
+#[test]
+fn it_should_treat_a_project_settings_over_the_cap_as_absent() {
+    let project = TempDir::new().expect("project directory is created");
+    let home = TempDir::new().expect("home directory is created");
+    let padding = " ".repeat(64 * 1024);
+    project_settings(
+        &project,
+        &format!("{}{padding}", language_settings("English")),
+    );
+    user_settings(&home, &language_settings("pt-BR"));
+
+    let output = run_hook(project.path(), home.path(), &[]);
+
+    assert!(line_of(&output).contains("\"pt-BR\""));
+}
+
+#[test]
+fn it_should_follow_a_user_settings_symlink_to_a_regular_file() {
+    let project = TempDir::new().expect("project directory is created");
+    let home = TempDir::new().expect("home directory is created");
+    let dotfiles = TempDir::new().expect("dotfiles directory is created");
+    fs::write(
+        dotfiles.path().join("settings.json"),
+        language_settings("pt-BR"),
+    )
+    .expect("target is written");
+    fs::create_dir_all(home.path().join(".claude")).expect("settings directory is created");
+    symlink(
+        dotfiles.path().join("settings.json"),
+        home.path().join(".claude/settings.json"),
+    )
+    .expect("link is created");
 
     let output = run_hook(project.path(), home.path(), &[]);
 

@@ -1,7 +1,9 @@
 #![cfg(target_os = "linux")]
 //! `open_regular_nonblocking` e `read_regular_utf8`.
 
-use crate::ports::files::{FILE_TOO_LARGE, open_regular_nonblocking, read_regular_utf8};
+use crate::ports::files::{
+    FILE_TOO_LARGE, open_regular_nonblocking, read_followed_regular_utf8, read_regular_utf8,
+};
 use nix::sys::stat::Mode;
 use nix::unistd::mkfifo;
 use std::fs;
@@ -73,4 +75,46 @@ fn it_should_refuse_a_file_over_the_cap_by_the_descriptor_size() {
     let result = read_regular_utf8(&path, 4);
 
     assert_eq!(result, Err(FILE_TOO_LARGE));
+}
+
+#[test]
+fn it_should_read_a_followed_symlink_to_a_regular_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.txt");
+    let link = dir.path().join("link.txt");
+    fs::write(&target, "text").unwrap();
+    symlink(&target, &link).unwrap();
+
+    let result = read_followed_regular_utf8(&link, 4);
+
+    assert_eq!(result, Ok("text".to_owned()));
+}
+
+#[test]
+fn it_should_refuse_a_followed_file_over_the_cap() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("file.txt");
+    fs::write(&path, "12345").unwrap();
+
+    let result = read_followed_regular_utf8(&path, 4);
+
+    assert_eq!(result, Err(FILE_TOO_LARGE));
+}
+
+#[test]
+fn it_should_refuse_a_followed_symlink_to_a_fifo_without_blocking() {
+    let dir = tempfile::tempdir().unwrap();
+    let fifo = dir.path().join("pipe");
+    let link = dir.path().join("link");
+    mkfifo(&fifo, Mode::from_bits_truncate(0o600)).unwrap();
+    symlink(&fifo, &link).unwrap();
+    let (sender, receiver) = mpsc::channel();
+    // Mesmo motivo do teste do FIFO acima: a thread presa não recebe `join`.
+    thread::spawn(move || {
+        let _ = sender.send(read_followed_regular_utf8(&link, 4));
+    });
+
+    let result = receiver.recv_timeout(Duration::from_secs(5));
+
+    assert_eq!(result, Ok(Err("not-regular-file")));
 }
