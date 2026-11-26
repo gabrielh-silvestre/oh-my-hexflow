@@ -13,7 +13,7 @@ O humano define diretivas e premissas. O agente escolhe os comportamentos e escr
 | 1 | Premissa | Agente | Grava o work item e sugere premissas (`append`). |
 | 2 | Confirmação humana | Humano | Confirma dentro da sessão. O agente grava a premissa com `confirmed_by`, copiando a pergunta e a resposta literais |
 | 3 | Gap e divergência | Agente | Dúvida técnica vira `gap`, respondido por uma premissa. Desvio da spec vira `divergence` com `resolution` `open` |
-| 4 | Emenda | Agente e humano | Se a spec estava errada, o agente cria `emenda-NN.md` e o humano a aprova. A parte original não muda |
+| 4 | Emenda | Agente e humano | Se a spec estava errada, o agente cria a próxima emenda (`amendment-NN.md`) e o humano a aprova. A parte original não muda |
 | 5 | Retro | `omhl close` | O agente propõe melhorias, cada uma só vale com a confirmação do humano |
 | 6 | Promoção | Agente e humano | O humano confirma |
 
@@ -115,6 +115,8 @@ omhl spec init work-items.w1 export-reports
 
 ### O formato
 
+Spec nova nasce em inglês: o `omhl spec init` cria `part-01.md` com os títulos `Objective`, `Applicable directives and premises`, `Behaviors`, `Acceptance criteria` e `Out of scope`, e a emenda nova se chama `amendment-NN.md`, com `Divergence`, `Corrections` e `Reason`. Os nomes `parte-NN.md` e `emenda-NN.md` e os títulos em português seguem aceitos, e as specs antigas continuam válidas sem mudar uma linha. O validador escolhe o vocabulário de cada arquivo pelo primeiro título `## `, então um arquivo é todo de um vocabulário. Numa pasta antiga, só em português, o arquivo novo leva o nome `parte-` ou `emenda-` e os títulos em inglês.
+
 Se uma parte passar do limite de tamanho, divida o trabalho em mais partes completas, todas no mesmo work item.
 
 ### `omhl spec validate`
@@ -200,16 +202,16 @@ Para corrigir um erro da spec depois da aprovação, o agente segue estes passos
 
 1. Registre uma `divergence` com `resolution` `open` (`omhl append`).
 2. Pergunte ao humano se a spec estava errada.
-3. Se estava, crie `emenda-NN.md` na pasta da spec do work item, com `Write` de um arquivo novo.
-4. Rode `omhl spec validate <work-item>`. Se a emenda for inválida, abandone-a e crie a `emenda-(NN+1).md`. Continue a numeração na emenda seguinte (`EMD-002` depois de `EMD-001`), senão ela cai em `item-id-duplicate`.
+3. Se estava, crie a próxima emenda na pasta da spec do work item, com `Write` de um arquivo novo: `amendment-NN.md`, ou `emenda-NN.md` numa pasta que só tem nomes em português. O número conta as duas famílias de nome.
+4. Rode `omhl spec validate <work-item>`. Se a emenda for inválida, abandone-a e crie a emenda de número `NN+1`. Continue a numeração na emenda seguinte (`EMD-002` depois de `EMD-001`), senão ela cai em `item-id-duplicate`.
 5. Mostre a emenda ao humano e peça a aprovação, copiando a pergunta e a resposta literais.
-6. Grave uma nova revisão da mesma divergência (append-only, com `base`) com `resolution` `spec-stale`, `amendment` (`emenda-NN`, sem `.md`) e `confirmed_by`.
+6. Grave uma nova revisão da mesma divergência (append-only, com `base`) com `resolution` `spec-stale`, `amendment` (o nome do arquivo sem `.md`, como `amendment-01` ou `emenda-01`) e `confirmed_by`.
 
    O `record_id` da revisão atual vem de `omhl get <id>`.
 
 Nunca tente editar a spec nem procure como descongelá-la.
 
-A `parte-NN.md` original fica intacta. O valor vigente de um item é o da emenda aprovada de maior `NN` que o cita.
+A parte original (`part-NN.md` ou `parte-NN.md`) fica intacta. O valor vigente de um item é o da emenda aprovada de maior `NN` que o cita.
 
 ## 10. Ativação, bypasses e limites
 
@@ -328,6 +330,10 @@ flowchart TD
 ### O que cada passo grava
 
 - A sessão principal grava o que couber a ela, por exemplo um gap para cada pergunta em aberto.
+
+### O idioma dos agentes
+
+O texto que o agente lê (agentes, skills, spec e registros) é inglês; o idioma da pessoa vale só no texto dirigido a ela. Os agentes do plugin recebem esse idioma pelo hook `SubagentStart` (`omhl hook subagent-start`, com `matcher` `^oh-my-hexflow:`), que nunca bloqueia e fica mudo quando não acha idioma. O valor vem da opção `language` do plugin, que o Claude Code pergunta na instalação e mostra em `/config`; sem ela, da chave `language` dos settings, na precedência do Claude Code: gerenciados, depois `.claude/settings.local.json` e `.claude/settings.json` do projeto, depois o `settings.json` do usuário. Um repositório que versiona `language` define o idioma dos agentes de quem trabalha nele, e só a opção do plugin o sobrepõe. Num projeto com `.omhl.toml`, o `session-start` também leva a opção do plugin à sessão principal. O pedido de delegação nomeia o idioma da conversa como reserva do hook.
 
 ### O hook `agent-role`
 
