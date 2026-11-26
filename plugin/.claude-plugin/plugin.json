@@ -6,7 +6,7 @@
     "language": {
       "type": "string",
       "title": "Conversation language",
-      "description": "Language for the text the oh-my-hexflow agents address to you and, in a project with .omhl.toml, for the main session. Overrides the language setting of Claude Code. Leave empty to follow it."
+      "description": "Language for the text the oh-my-hexflow agents address to you. Overrides the language setting of Claude Code for these agents only. Leave empty to follow it."
     }
   }
 }

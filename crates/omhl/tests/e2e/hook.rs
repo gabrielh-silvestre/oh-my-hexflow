@@ -1084,29 +1084,10 @@ fn session_start_with_language(project: &Project, language: &str) -> Child {
 }
 
 #[test]
-fn it_should_add_the_language_line_to_the_session_context_with_the_plugin_option() {
+fn it_should_leave_the_language_to_claude_code_in_the_session_context_with_the_plugin_option() {
     let project = Project::new("acme");
 
     let context = context_of(&session_start_with_language(&project, "pt-BR"));
-
-    assert!(context.contains("\"pt-BR\""));
-    assert!(context.contains("write any text addressed to the person in that language"));
-}
-
-#[test]
-fn it_should_not_add_a_language_line_without_the_plugin_option() {
-    let project = Project::new("acme");
-
-    let context = context_of(&hook_for(&project));
-
-    assert!(!context.contains("addressed to the person"));
-}
-
-#[test]
-fn it_should_not_add_a_language_line_when_the_plugin_option_is_blank() {
-    let project = Project::new("acme");
-
-    let context = context_of(&session_start_with_language(&project, "  "));
 
     assert!(!context.contains("addressed to the person"));
 }

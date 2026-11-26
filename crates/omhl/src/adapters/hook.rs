@@ -13,7 +13,7 @@ use crate::app::runtime::Runtime;
 use crate::app::{
     AgentRoleEnv, EditInput, LanguageRungs, Replacement, RoleVerdict, SpecLockEvent, Tool, Verdict,
     agent_role as check_agent_role, language_line, resolve_language, settings_language,
-    spec_lock as check_spec_lock, user_settings_language, valid_language,
+    spec_lock as check_spec_lock, user_settings_language,
 };
 use crate::app::{ExtensionKind, Group, INVALID_WORKFLOW_CONFIG};
 use crate::project::Env;
@@ -241,15 +241,6 @@ fn context_for_session(
     let git_notice = runtime.git_notice();
     if let Some(line) = &git_notice {
         text.push_str(&format!("\n{line}\n"));
-    }
-    // O `language` dos settings o Claude Code já aplica à sessão principal; só a opção do plugin precisa deste reforço.
-    let option = env
-        .claude
-        .plugin_option_language
-        .as_deref()
-        .and_then(OsStr::to_str);
-    if let Some(language) = option.and_then(valid_language) {
-        text.push_str(&format!("\n{}\n", language_line(language)));
     }
 
     Ok(Some((text, git_notice)))

@@ -333,7 +333,7 @@ flowchart TD
 
 ### O idioma dos agentes
 
-O texto que o agente lê (agentes, skills, spec e registros) é inglês; o idioma da pessoa vale só no texto dirigido a ela. Os agentes do plugin recebem esse idioma pelo hook `SubagentStart` (`omhl hook subagent-start`, com `matcher` `^oh-my-hexflow:`). O valor vem da opção `language` do plugin, que o Claude Code pergunta na instalação e mostra em `/config`; sem ela, da chave `language` dos settings, na precedência do próprio Claude Code. Um repositório que versiona `language` define o idioma dos agentes de quem trabalha nele, e só a opção do plugin o sobrepõe. Num projeto com `.omhl.toml`, o `session-start` também leva a opção do plugin à sessão principal. O pedido de delegação nomeia o idioma da conversa como reserva do hook.
+O texto que o agente lê (agentes, skills, spec e registros) é inglês; o idioma da pessoa vale só no texto dirigido a ela. Os agentes do plugin recebem esse idioma pelo hook `SubagentStart` (`omhl hook subagent-start`, com `matcher` `^oh-my-hexflow:`). O valor vem da opção `language` do plugin, que o Claude Code pergunta na instalação e mostra em `/config`; sem ela, da chave `language` dos settings, na precedência do próprio Claude Code. Um repositório que versiona `language` define o idioma dos agentes de quem trabalha nele, e só a opção do plugin o sobrepõe. A sessão principal segue só o `language` do Claude Code. O pedido de delegação nomeia o idioma da conversa como reserva do hook.
 
 ### O hook `agent-role`
 
