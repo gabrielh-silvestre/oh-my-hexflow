@@ -5,6 +5,7 @@ pub mod doc_surface;
 pub mod ext;
 pub mod gate;
 pub mod omhl;
+pub mod plugin_labels;
 pub mod pr_gate;
 pub mod role_view;
 pub mod views;

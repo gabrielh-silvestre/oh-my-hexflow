@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl, omhl_json};
 use support::git::git_in;
-use support::omhl::work_item_data;
+use support::omhl::{decision_data, work_item_data};
 use support::project::Project;
 use tempfile::TempDir;
 
@@ -564,4 +564,28 @@ fn it_should_not_create_a_portuguese_named_part() {
         .join(PART_DIR)
         .join("parte-01.md");
     assert!(!portuguese.exists());
+}
+
+#[test]
+fn it_should_not_create_the_notes_folder_on_append_spec_init_and_load() {
+    let fixture = Fixture::new();
+    let decision = json!({
+        "items": [{ "body": {
+            "kind": "node", "id": "decisions.use-wal", "type": "decision",
+            "data": decision_data("Use WAL", None),
+        } }]
+    });
+
+    let appended = omhl(&["append"])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .stdin(decision.to_string())
+        .run();
+    let initialized = fixture.init_from_linked(WORK_ITEM, SLUG);
+    let loaded = fixture.run_in(&fixture.main_dir(), &["load"]);
+
+    assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+    assert_eq!(initialized.code, Some(0), "stderr: {}", initialized.stderr);
+    assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
+    assert!(!fixture.main_dir().join(".omhl/notes").exists());
 }

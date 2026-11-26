@@ -55,6 +55,8 @@ A confirmação é um rastro, não uma prova.
 
 ## 4. O arquivo `.omhl/workflow.toml`
 
+Um exemplo para copiar está em [plugin/examples/README.md](../plugin/examples/README.md).
+
 | Chave | Efeito |
 |---|---|
 | `specs.dir` | Pasta das specs, relativa ao diretório principal (e lida do `workflow.toml` dele). O padrão `.omhl/specs` e pastas como `docs/specs` valem |

@@ -1,0 +1,7 @@
+concern = "style"
+variant = "format"
+blocking = true
+run = ["make", "format-check"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }]
+when = { event = "before-commit" }

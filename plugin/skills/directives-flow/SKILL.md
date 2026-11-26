@@ -5,7 +5,7 @@ description: Protocol of the omhl guideline-and-premise flow. Use before startin
 
 # Guideline and premise flow
 
-The human defines guidelines (`guideline`) and premises (`premise`). You choose the behaviors and write the spec from them. The reference of each command and the details of the flow are in `references/`: the prefix matrix in [matrix.md](references/matrix.md), the divergence and its outcomes in [divergence.md](references/divergence.md), the cycle with the agents in [cycle.md](references/cycle.md) (the skills [plan-consensus](../plan-consensus/SKILL.md) and [review](../review/SKILL.md) derive from it) and the PR table in [tracking-table.md](references/tracking-table.md).
+The human defines guidelines (`guideline`) and premises (`premise`). You choose the behaviors and write the spec from them. The reference of each command and the details of the flow are in `references/`: the prefix matrix in [matrix.md](references/matrix.md), the divergence and its outcomes in [divergence.md](references/divergence.md), the cycle with the agents in [cycle.md](references/cycle.md) (the skills [plan-consensus](../plan-consensus/SKILL.md) and [review](../review/SKILL.md) derive from it) and the PR table in [tracking-table.md](references/tracking-table.md). Files a project can copy into its `.omhl/` (checks, guidelines and `workflow.toml`) are in [examples/README.md](../../examples/README.md).
 
 ## Rules that always apply
 

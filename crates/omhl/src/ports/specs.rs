@@ -260,7 +260,7 @@ fn exists_without_following(path: &Path) -> Result<bool, SpecStoreError> {
     }
 }
 
-fn write_new(path: &Path, content: &str) -> std::io::Result<()> {
+pub(crate) fn write_new(path: &Path, content: &str) -> std::io::Result<()> {
     OpenOptions::new()
         .write(true)
         .create_new(true)

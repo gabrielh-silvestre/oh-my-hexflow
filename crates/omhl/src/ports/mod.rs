@@ -4,6 +4,7 @@ pub(crate) mod files;
 pub mod git;
 pub mod hooks;
 pub mod ids;
+pub mod notes;
 pub(crate) mod paths;
 pub mod pipes;
 pub mod process;

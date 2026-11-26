@@ -1,0 +1,1 @@
+Dependencies point inward: the domain layer depends on nothing, the application layer depends only on the domain, and adapters depend on both. A change that makes an inner layer import an outer one is reworked before it is delivered.

@@ -1,0 +1,2 @@
+kind = "architecture"
+text = "Every new behavior the plugin brings to a project is classified as Method, Optional default configuration or Exclusive to this repository by docs/plugin-and-project-boundary.md, and is planned, built and reviewed by that class. When the class is unclear the owner decides, and the delivery that moves a behavior to another class updates that document in the same delivery."

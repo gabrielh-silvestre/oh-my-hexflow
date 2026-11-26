@@ -1297,3 +1297,43 @@ mod marker_protection {
         assert!(!reason.contains('\n'), "reason: {reason:?}");
     }
 }
+
+mod notes {
+    use std::path::Path;
+
+    use crate::workflow::lock::{is_notes_candidate, is_notes_path_of};
+
+    #[test]
+    fn it_should_take_a_file_under_the_omhl_notes_folder_as_a_candidate_without_touching_the_disk()
+    {
+        let note = Path::new("/nonexistent/.omhl/notes/a.md");
+
+        assert!(is_notes_candidate(note));
+    }
+
+    #[test]
+    fn it_should_not_take_a_path_that_only_resembles_the_notes_folder_as_a_candidate() {
+        for path in [
+            "/p/.omhl/notes-x/a.md",
+            "/p/.omhl/note/a.md",
+            "/p/.omhl/notes",
+            "/p/.omhl/notes/../a.md",
+        ] {
+            assert!(!is_notes_candidate(Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
+    fn it_should_take_only_the_notes_folder_of_the_marker_root() {
+        let root = Path::new("/p");
+
+        assert!(is_notes_path_of(Path::new("/p/.omhl/notes/a.md"), root));
+        assert!(is_notes_path_of(Path::new("/p/.omhl/notes/sub/a.md"), root));
+        assert!(!is_notes_path_of(
+            Path::new("/p/src/.omhl/notes/a.md"),
+            root
+        ));
+        assert!(!is_notes_path_of(Path::new("/p/.omhl/notes/../a.md"), root));
+        assert!(!is_notes_path_of(Path::new("/p/.omhl/notes"), root));
+    }
+}

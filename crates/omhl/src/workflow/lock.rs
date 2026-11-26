@@ -8,7 +8,7 @@ use super::names::{
 };
 use super::spec::amendment_number;
 use crate::probe::GIT_TIMED_OUT;
-use crate::project::layout::{DOT_GIT_DIR, EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
+use crate::project::layout::{DOT_GIT_DIR, EXT_FILE_MAX_BYTES, NOTES_DIR, OMHL_DIR, WORKFLOW_FILE};
 use crate::project::marker::MARKER_FILE;
 
 const FROZEN: &str = "spec-frozen";
@@ -200,6 +200,35 @@ pub fn is_marker_candidate(file_path: &Path) -> bool {
         normalized_names(file_path).as_deref(),
         Some([init @ .., MARKER_FILE]) if !init.contains(&OMHL_DIR)
     )
+}
+
+/// Filtro barato e puro, que roda antes de achar o marcador; `is_notes_path_of` confirma depois que a pasta é a da raiz.
+pub fn is_notes_candidate(file_path: &Path) -> bool {
+    !has_parent_dir(file_path)
+        && normalized_names(file_path).is_some_and(|names| {
+            names
+                .windows(3)
+                .any(|window| window[..2] == [OMHL_DIR, NOTES_DIR])
+        })
+}
+
+/// Confirma o que `is_notes_candidate` só suspeita, com a raiz do marcador já conhecida: `src/.omhl/notes/a.md` passa o filtro e é recusado aqui.
+pub fn is_notes_path_of(file_path: &Path, root: &Path) -> bool {
+    !has_parent_dir(file_path)
+        && normalized_names(file_path)
+            .zip(normalized_names(root))
+            .is_some_and(|(names, root)| {
+                matches!(
+                    names.strip_prefix(root.as_slice()),
+                    Some([OMHL_DIR, NOTES_DIR, _, ..])
+                )
+            })
+}
+
+fn has_parent_dir(file_path: &Path) -> bool {
+    file_path
+        .components()
+        .any(|component| component == Component::ParentDir)
 }
 
 /// A razão não sugere o `Bash`: quem a lê tem `Bash`, e o dono muda o `.git` fora do Claude Code.

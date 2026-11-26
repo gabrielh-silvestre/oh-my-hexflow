@@ -13,6 +13,7 @@ use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::branch::work_item_id;
 use crate::ports::files::{FILE_TOO_LARGE, read_regular_utf8};
 use crate::ports::git::{GitProbe, SPEC_LOCK_GIT_BUDGET};
+use crate::ports::notes::birth_notes_folder;
 use crate::ports::paths::resolve_physical;
 use crate::ports::specs::{FreezeMarkWrite, SpecDocument, SpecFolder, SpecStore, SpecStoreError};
 use crate::ports::workflow::{read_policy, read_workflow};
@@ -22,8 +23,9 @@ use crate::project::marker::{find_marker, find_valid_marker, is_valid_marker};
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{
     Cause, EditInput, Facts, SpecPath, Tool, Verdict, decide, git_dir_protected, has_git_component,
-    has_spec_folder_component, is_marker_candidate, is_same_path, is_workflow_candidate,
-    marker_protected, parse_spec_path, resulting_texts, spec_dir_frozen, specs_dir_of, unavailable,
+    has_spec_folder_component, is_marker_candidate, is_notes_candidate, is_notes_path_of,
+    is_same_path, is_workflow_candidate, marker_protected, parse_spec_path, resulting_texts,
+    spec_dir_frozen, specs_dir_of, unavailable,
 };
 use crate::workflow::names::{FOLDER_PREFIX, WORK_ITEM_ID_PREFIX};
 use crate::workflow::spec::{
@@ -372,6 +374,7 @@ fn is_lock_candidate(file_path: &Path) -> bool {
     needs_git(file_path)
         || has_git_component(file_path, Path::new("/"))
         || is_marker_candidate(file_path)
+        || is_notes_candidate(file_path)
 }
 
 /// Só estes caminhos gastam o git.
@@ -394,11 +397,14 @@ fn decide_path(
     if has_git_component(file_path, &located.root) {
         return Ok((git_dir_protected(file_path), Vec::new()));
     }
-    let (verdict, healed) = if needs_git(file_path) {
+    let (verdict, mut healed) = if needs_git(file_path) {
         decide_with_git(tool, input, file_path, &located.root, deadline)
     } else {
         (Verdict::Allow, Vec::new())
     };
+    if is_notes_path_of(file_path, &located.root) && birth_notes_folder(&located.root).is_err() {
+        healed.push(AppError::notes_folder_unwritable());
+    }
     if matches!(verdict, Verdict::Deny { .. }) || !is_marker_candidate(file_path) {
         return Ok((verdict, healed));
     }
@@ -772,3 +778,6 @@ fn spec_store_refusal(error: SpecStoreError) -> AppError {
         SpecStoreError::Unusable(reason) => AppError::spec_store_unusable(reason),
     }
 }
+
+#[cfg(test)]
+mod tests;

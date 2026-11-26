@@ -465,6 +465,16 @@ fn it_should_skip_the_files_the_sweep_leaves_out() {
 }
 
 #[test]
+fn it_should_scan_the_contributing_page() {
+    let root = tempfile::tempdir().expect("temp dir");
+    write(root.path(), "CONTRIBUTING.md", "Espera 30 segundos.\n");
+
+    let found = scan_repo(root.path());
+
+    assert_eq!(found, [finding("CONTRIBUTING.md", 1, Rule::Measure)]);
+}
+
+#[test]
 fn it_should_not_restate_the_code_in_the_repository_documentation() {
     let found = scan_repo(&repo_root());
 

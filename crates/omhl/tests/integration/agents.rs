@@ -23,7 +23,7 @@ const OPUS_ROLES: [&str; 2] = ["architect", "critic"];
 const PLANNER: &str = "planner";
 const GROUNDED_ROLES: [&str; 3] = ["critic", "code-reviewer", "security-reviewer"];
 
-/// Tags de topo (filhas de `<Agent_Prompt>`) de cada agente do OMC 5.7.19, congeladas: o CI não tem o cache do OMC.
+/// Tags de topo (filhas de `<Agent_Prompt>`) de cada agente, congeladas a partir do OMC 5.7.19 com os rótulos do OMC trocados: o CI não tem o cache do OMC.
 const UPSTREAM_TOP_LEVEL_TAGS: [(&str, &[&str]); 7] = [
     (
         "analyst",
@@ -51,7 +51,7 @@ const UPSTREAM_TOP_LEVEL_TAGS: [(&str, &[&str]); 7] = [
             "Success_Criteria",
             "Constraints",
             "Investigation_Protocol",
-            "Consensus_RALPLAN_DR_Protocol",
+            "Consensus_Protocol",
             "Tool_Usage",
             "Execution_Policy",
             "Output_Format",
@@ -721,7 +721,7 @@ const HANDOFF_ROLES: [&str; 6] = [
     "critic",
 ];
 const DECISION_ROLES: [&str; 4] = ["architect", "critic", "code-reviewer", "security-reviewer"];
-/// Conceitos que só existem no OMC e virariam instrução quebrada aqui (`ralplan` segue permitido; `executor` e `qa-tester` só como descrição de papel, nunca no handoff).
+/// Conceitos que só existem no OMC e virariam instrução quebrada aqui.
 const OMC_ONLY_CONCEPTS: [&str; 7] = [
     "start-work",
     "AskUserQuestion",

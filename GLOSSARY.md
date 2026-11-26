@@ -172,6 +172,10 @@ _Avoid_: id (sozinho), target, name
 O identificador técnico de um record específico, gerado na gravação. Cada revisão de um node tem o seu.
 _Avoid_: id (sozinho), uuid
 
+**Boundary**:
+A divisão do que o plugin traz a um projeto em três classes: `Method` (o que o plugin impõe), `Optional default configuration` (desligado até o projeto escolher, com exemplo para copiar) e `Exclusive to this repository` (vive aqui e não no plugin).
+_Avoid_: scope, limit, escopo
+
 **Output format**:
 A forma em que um comando do `omhl` imprime o resultado, escolhida pela opção global `--format`.
 _Avoid_: modo de saída, text (o antigo `--format text` virou `agent`)
