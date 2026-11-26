@@ -1072,13 +1072,13 @@ fn it_should_keep_the_context_within_10000_characters_with_60_marked_directives(
 
 // Idioma da opção do plugin
 
-fn session_start_with_language(project: &Project, language: &str) -> Child {
+fn session_start_with_language(project: &Project) -> Child {
     let elsewhere = TempDir::new().expect("other directory is created");
 
     omhl(&["hook", "session-start"])
         .cwd(elsewhere.path())
         .xdg(project.xdg())
-        .env("CLAUDE_PLUGIN_OPTION_LANGUAGE", language)
+        .env("CLAUDE_PLUGIN_OPTION_LANGUAGE", "pt-BR")
         .stdin(session_start(project.dir()).to_string())
         .run()
 }
@@ -1087,7 +1087,7 @@ fn session_start_with_language(project: &Project, language: &str) -> Child {
 fn it_should_leave_the_language_to_claude_code_in_the_session_context_with_the_plugin_option() {
     let project = Project::new("acme");
 
-    let context = context_of(&session_start_with_language(&project, "pt-BR"));
+    let context = context_of(&session_start_with_language(&project));
 
     assert!(!context.contains("addressed to the person"));
 }

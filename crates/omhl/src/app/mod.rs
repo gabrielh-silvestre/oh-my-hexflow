@@ -38,7 +38,6 @@ pub use crate::workflow::omhl_leaf::Group;
 pub use self::agent_role::{AgentRoleEnv, RoleVerdict, agent_role};
 pub use self::language::{
     LanguageRungs, language_line, resolve_language, settings_language, user_settings_language,
-    valid_language,
 };
 pub use self::spec::{SpecLockEvent, SpecLockOutcome, spec_lock, wt_post_start};
 
