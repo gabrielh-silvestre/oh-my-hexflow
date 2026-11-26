@@ -13,9 +13,9 @@ The call is `oh-my-hexflow:<role>`. Every agent receives the id of the work item
 | Agent | Also pass |
 |---|---|
 | `oh-my-hexflow:analyst` | Nothing beyond the id; the human's request, if any; what the interview already confirmed (in `feat` and `fix`), so it covers only the technical |
-| `oh-my-hexflow:planner` | The spec slug in the first call, the absolute spec folder in the following ones; the consensus mode (RALPLAN-DR), SHORT (DELIBERATE only at the human's request or for a high-risk item); the open questions of the analyst |
-| `oh-my-hexflow:architect` | The RALPLAN-DR summary and the ADR of the planner; the mode "consensus review (ralplan), SHORT" (or DELIBERATE); the objection of the critic, in the following rounds |
-| `oh-my-hexflow:critic` | The absolute path of the spec folder; the mode "consensus review (ralplan), SHORT" (or DELIBERATE) and the request for the ralplan summary line |
+| `oh-my-hexflow:planner` | The spec slug in the first call, the absolute spec folder in the following ones; the consensus mode, SHORT (DELIBERATE only at the human's request or for a high-risk item); the open questions of the analyst |
+| `oh-my-hexflow:architect` | The consensus summary and the ADR of the planner; the mode "consensus review, SHORT" (or DELIBERATE); the objection of the critic, in the following rounds |
+| `oh-my-hexflow:critic` | The absolute path of the spec folder; the mode "consensus review, SHORT" (or DELIBERATE) and the request for the consensus summary line |
 | `oh-my-hexflow:code-reviewer` | The spec folder and the change to review |
 | `oh-my-hexflow:security-reviewer` | The spec folder and the change to review |
 | `oh-my-hexflow:verifier` | The spec folder; the id of the divergence to check; the `from`/`to` pair of each `contradicts` to retire |

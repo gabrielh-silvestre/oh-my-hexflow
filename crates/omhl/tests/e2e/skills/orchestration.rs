@@ -881,3 +881,19 @@ fn it_should_record_a_business_gap_answer_after_the_first_decision_as_late_in_di
         "directives-flow carries the gap-answer sentence"
     );
 }
+
+#[test]
+fn it_should_explain_a_test_suite_failure_in_byproduct_md_without_naming_a_runner() {
+    let text = read("review/references/byproduct.md");
+
+    let mentions_cargo = text.to_lowercase().contains("cargo");
+
+    assert!(!mentions_cargo, "byproduct.md is about any test runner");
+    for fragment in [
+        "omhl byproduct checks.test-suite <work-item> --tail 40",
+        "ceiling of 500",
+        "On the `develop` branch there is no `byproduct`",
+    ] {
+        assert!(text.contains(fragment), "byproduct.md lacks '{fragment}'");
+    }
+}
