@@ -36,14 +36,14 @@ The directive `.omhl/guidelines/boundary-classification.toml` carries this rule 
 | The three native checks | Optional default configuration | The native catalog of the binary (`crates/omhl/src/native/`), off until a project turns each one on | Always on in every marked project: `workflow.toml` has no key to turn one off |
 | The two native guidelines | Optional default configuration | The native catalog of the binary (`crates/omhl/src/native/`), off until a project turns each one on | Always on in every marked project: `workflow.toml` has no key to turn one off |
 | The branch name format | Optional default configuration | A default of the binary that `.omhl/workflow.toml` of the project can change | Fixed in the code as `<type>/wi-<id>__<slug>`, with `main` and `develop` as fixed names: any other name is refused by `check run` (`branch-name-invalid`) and no key changes it |
-| The matrix of requirements by prefix | Optional default configuration | A default of the binary that `[prefix.<name>]` in `.omhl/workflow.toml` of the project can change | none |
+| The matrix of requirements by prefix | Optional default configuration | A default of the binary that `[prefix.<name>]` in `.omhl/workflow.toml` of the project can change | On in every marked project: without a `workflow.toml`, the binary applies its own matrix for `feat`, `fix`, `refactor`, `tests` and `bugfix` |
 | The mark of the `develop` branch | Optional default configuration | The command `plugin/commands/omhl-develop-mark.md`, used only by a project that chose the mark | Required by every `before-commit` run on `develop` (`develop-mark-missing`): no key turns it off |
 | The hooks of `wt` | Optional default configuration | The `.config/wt.toml` of the project, copied from an example in `plugin/examples/` | The file exists only in this repository (`.config/wt.toml`) and `plugin/examples/` has no example of it |
 | The git hooks (`omhl hooks install`) | Optional default configuration | The command of the binary, run in each clone of a project that wants the hooks | The command writes a fixed set of git hook scripts and sets `core.hooksPath` of the clone: the project cannot pick one |
 | The use of GitHub | Optional default configuration | The pull request step of `plugin/skills/directives-flow/references/cycle.md` and of the skill `review`, replaceable by the project | The cycle always ends in a pull request (`pr-and-closing` and `omhl gate-pr`); the binary itself calls no GitHub API and no `gh`, only `git` |
 | The language of the plugin texts | Method | The skills, agents and references of the plugin, written in English | none |
 | The language and the emoji rule of the code | Exclusive to this repository | The directive `.omhl/guidelines/code-in-english-no-emoji.toml` | none |
-| The checks and the conventions of this repository | Exclusive to this repository | `.omhl/checks/`, `.omhl/guidelines/` and `AGENTS.md` | none |
+| The checks and the conventions of this repository | Exclusive to this repository | `.omhl/checks/`, `.omhl/guidelines/`, `AGENTS.md` and `CONTRIBUTING.md` | none |
 
 ## Where text lives
 

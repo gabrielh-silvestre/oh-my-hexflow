@@ -441,6 +441,9 @@ fn it_should_open_the_update_notices_of_the_readme_with_the_notes_gitignore() {
         "`*`",
         "o `omhl` não o recria",
         "à mão",
+        "anterior a esta mudança",
+        "binário velho",
+        "falhou no meio",
     ] {
         assert!(notices.contains(needle), "the notice lacks `{needle}`");
     }
