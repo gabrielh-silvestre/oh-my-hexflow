@@ -4,6 +4,7 @@ use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
+use omhl::project::layout::NOTES_GITIGNORE_CONTENT;
 use serde_json::{Value, json};
 use support::child::{Output as Child, omhl, omhl_json};
 use support::git::git_in;
@@ -2912,5 +2913,185 @@ fn it_should_deny_an_english_amendment_that_reuses_a_number_of_the_other_family(
     assert!(
         reason.contains(&expected.to_string_lossy().into_owned()),
         "reason: {reason}"
+    );
+}
+
+// A pasta de notas nasce com o `.gitignore`, uma vez
+
+fn note_file(project: &Project) -> PathBuf {
+    project.dir().join(".omhl/notes/a.md")
+}
+
+fn notes_gitignore(project: &Project) -> PathBuf {
+    project.dir().join(".omhl/notes/.gitignore")
+}
+
+fn hook_on_note(project: &Project, tool: &str, file_path: &Path) -> Child {
+    run_spec_lock(project.xdg(), &payload(project.dir(), tool, file_path))
+}
+
+fn assert_notes_gitignore_born(project: &Project) {
+    let written = fs::read_to_string(notes_gitignore(project)).expect("the gitignore exists");
+    let lines: Vec<&str> = written.lines().collect();
+
+    assert_eq!(written, NOTES_GITIGNORE_CONTENT);
+    assert_eq!(lines.last(), Some(&"*"));
+    assert_eq!(lines.iter().filter(|line| line.starts_with('#')).count(), 2);
+    assert!(written.contains("once"), "text: {written}");
+    assert!(
+        written.contains("Edit or delete it to version the notes"),
+        "text: {written}"
+    );
+    assert!(written.contains("never recreates"), "text: {written}");
+    assert!(!written.contains("do not edit"), "text: {written}");
+}
+
+#[test]
+fn it_should_create_the_notes_gitignore_when_write_targets_a_note_in_a_new_folder() {
+    let project = Project::new("acme");
+
+    let output = hook_on_note(&project, "Write", &note_file(&project));
+
+    assert_allowed(&output);
+    assert_notes_gitignore_born(&project);
+}
+
+#[test]
+fn it_should_create_the_notes_gitignore_when_edit_targets_a_note_in_a_new_folder() {
+    let project = Project::new("acme");
+
+    let output = hook_on_note(&project, "Edit", &note_file(&project));
+
+    assert_allowed(&output);
+    assert_notes_gitignore_born(&project);
+}
+
+#[test]
+fn it_should_create_the_notes_gitignore_when_multi_edit_targets_a_note_in_a_new_folder() {
+    let project = Project::new("acme");
+
+    let output = hook_on_note(&project, "MultiEdit", &note_file(&project));
+
+    assert_allowed(&output);
+    assert_notes_gitignore_born(&project);
+}
+
+#[test]
+fn it_should_create_the_notes_gitignore_without_git_in_the_hook_path() {
+    let project = Project::new("acme");
+
+    let (output, git_called) = run_with_nothing_openable(&project, &note_file(&project));
+
+    assert_allowed(&output);
+    assert_notes_gitignore_born(&project);
+    assert!(!git_called, "git was consulted for a note path");
+}
+
+#[test]
+fn it_should_not_create_the_gitignore_when_the_notes_folder_already_exists_without_it() {
+    let project = Project::new("acme");
+    fs::create_dir_all(project.dir().join(".omhl/notes")).expect("notes folder is created");
+
+    let output = hook_on_note(&project, "Write", &note_file(&project));
+
+    assert_allowed(&output);
+    assert!(!notes_gitignore(&project).exists());
+}
+
+#[test]
+fn it_should_leave_an_edited_notes_gitignore_as_it_was() {
+    let project = Project::new("acme");
+    fs::create_dir_all(project.dir().join(".omhl/notes")).expect("notes folder is created");
+    fs::write(notes_gitignore(&project), "*.tmp\n").expect("gitignore is written");
+
+    let output = hook_on_note(&project, "Write", &note_file(&project));
+
+    assert_allowed(&output);
+    assert_eq!(
+        fs::read_to_string(notes_gitignore(&project)).expect("the gitignore exists"),
+        "*.tmp\n"
+    );
+}
+
+#[test]
+fn it_should_not_recreate_a_deleted_notes_gitignore_when_the_folder_has_other_notes() {
+    let project = Project::new("acme");
+    fs::create_dir_all(project.dir().join(".omhl/notes")).expect("notes folder is created");
+    fs::write(project.dir().join(".omhl/notes/other.md"), "note").expect("note is written");
+
+    let output = hook_on_note(&project, "Write", &note_file(&project));
+
+    assert_allowed(&output);
+    assert!(!notes_gitignore(&project).exists());
+}
+
+#[test]
+fn it_should_create_nothing_for_a_note_path_without_a_valid_marker_above() {
+    let bare = TempDir::new().expect("bare directory is created");
+    let xdg = TempDir::new().expect("data directory is created");
+
+    let output = run_spec_lock(
+        xdg.path(),
+        &payload(bare.path(), "Write", &bare.path().join(".omhl/notes/a.md")),
+    );
+
+    assert_allowed(&output);
+    assert!(!bare.path().join(".omhl").exists());
+}
+
+#[test]
+fn it_should_create_nothing_for_a_path_that_only_resembles_the_notes_folder() {
+    for note in [
+        ".omhl/notes-x/a.md",
+        ".omhl/note/a.md",
+        "src/.omhl/notes/a.md",
+        ".omhl/notes/../a.md",
+    ] {
+        let project = Project::new("acme");
+
+        let output = hook_on_note(&project, "Write", &project.dir().join(note));
+
+        assert_allowed(&output);
+        assert!(!project.dir().join(".omhl").exists(), "{note}");
+        assert!(!project.dir().join("src").exists(), "{note}");
+    }
+}
+
+#[test]
+fn it_should_warn_and_allow_the_note_when_the_notes_folder_cannot_be_created() {
+    let project = Project::new("acme");
+    fs::write(project.dir().join(".omhl"), "not a directory").expect("blocker file is written");
+
+    let output = hook_on_note(&project, "Write", &note_file(&project));
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout: {}", output.stdout);
+    // `.omhl` sendo arquivo também impede resolver o caminho físico, então o aviso vem depois do `path-unresolvable`.
+    let codes: Vec<Value> = output
+        .stderr
+        .lines()
+        .map(|line| json_line(line)["error"]["code"].clone())
+        .collect();
+    assert!(
+        codes.contains(&json!("notes-folder-unwritable")),
+        "stderr: {}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_print_path_unresolvable_and_allow_a_note_whose_physical_path_cannot_be_resolved() {
+    let project = Project::new("acme");
+    fs::create_dir_all(project.dir().join(".omhl/notes")).expect("notes folder is created");
+    let looping = note_file(&project);
+    link(Path::new("a.md"), &looping);
+
+    let output = hook_on_note(&project, "Write", &looping);
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(output.stdout.is_empty(), "stdout: {}", output.stdout);
+    assert_eq!(
+        json_line(&output.stderr)["error"]["code"],
+        json!("path-unresolvable")
     );
 }

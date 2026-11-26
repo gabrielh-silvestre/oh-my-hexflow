@@ -543,3 +543,50 @@ fn it_should_fail_a_premise_without_evidence_and_open_a_missing_divergence_on_it
         "verifier.md says a premise without evidence fails and opens a missing divergence"
     );
 }
+
+const NOTES_WRITE_REASON: [&str; 3] = [
+    "with the `Write` tool",
+    "the hook does not see what `Bash` writes",
+    "`Write` is where the folder gets its `.gitignore`",
+];
+
+#[test]
+fn it_should_tell_the_interview_to_write_its_state_with_the_write_tool_and_say_why() {
+    let text = read("interview/SKILL.md");
+    let mut needles = vec![".omhl/notes/interview-<slug>.md", "in the main checkout"];
+    needles.extend(NOTES_WRITE_REASON);
+
+    let line = line_with(&text, &needles);
+
+    assert!(line.is_some(), "the state is written with Write, and why");
+}
+
+#[test]
+fn it_should_tell_the_plan_consensus_retirements_note_to_use_write_and_say_why() {
+    let text = read("plan-consensus/SKILL.md");
+    let mut needles = vec![
+        "<main checkout>/.omhl/notes/<id>-retiradas.md",
+        "absolute path",
+    ];
+    needles.extend(&NOTES_WRITE_REASON[1..]);
+    needles.push("use `Write`, not `Bash`");
+
+    let step = step_with(&text, &needles);
+
+    assert!(step.is_some(), "step 8 writes the note with Write, and why");
+}
+
+#[test]
+fn it_should_tell_the_review_retirements_note_to_use_write_and_say_why() {
+    let text = read("review/SKILL.md");
+    let mut needles = vec![
+        "<main checkout>/.omhl/notes/<id>-retiradas.md",
+        "absolute path",
+    ];
+    needles.extend(&NOTES_WRITE_REASON[1..]);
+    needles.push("use `Write`, not `Bash`");
+
+    let step = step_with(&text, &needles);
+
+    assert!(step.is_some(), "step 4 writes the note with Write, and why");
+}

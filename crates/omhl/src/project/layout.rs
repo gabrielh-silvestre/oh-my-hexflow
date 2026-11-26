@@ -11,6 +11,7 @@ pub const GITIGNORE_NAME: &str = ".gitignore";
 pub const LOCK_NAME: &str = ".lock";
 pub const GENERATED_HEADER: &str = "<!-- omhl: generated file, do not edit -->";
 pub const GITIGNORE_CONTENT: &str = "# omhl: generated file, do not edit\n*\n";
+pub const NOTES_GITIGNORE_CONTENT: &str = "# omhl creates this file once, when the notes folder is born.\n# Edit or delete it to version the notes: omhl never recreates it.\n*\n";
 pub const TMP_PREFIX: &str = ".omhl-";
 pub const TMP_SUFFIX: &str = ".tmp";
 pub const EXT_FILE_MAX_BYTES: u64 = 65_536;

@@ -170,6 +170,13 @@ impl AppError {
         )
     }
 
+    pub(crate) fn notes_folder_unwritable() -> AppError {
+        AppError::plain(
+            "notes-folder-unwritable",
+            "the .omhl/notes folder could not be created; the lock allowed the write anyway",
+        )
+    }
+
     pub(crate) fn path_unresolvable() -> AppError {
         AppError::plain(
             "path-unresolvable",
