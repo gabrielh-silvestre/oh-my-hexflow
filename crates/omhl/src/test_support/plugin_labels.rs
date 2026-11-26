@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use regex::Regex;
 
@@ -10,21 +9,28 @@ const ORIGIN_PREFIX: &str = "Ported from oh-my-claudecode ";
 const OMC_LABELS: &str =
     r"(?i)oh-my-claudecode|\bomc\b|ralplan|\b(?:executor|test-engineer|quality-reviewer)\b";
 
-/// Arquivos rastreados de `plugin/`, fora de qualquer pasta `.omc/`.
-pub fn tracked_plugin_files(root: &Path) -> Vec<String> {
-    let output = Command::new("git")
-        .args(["ls-files", "plugin"])
-        .current_dir(root)
-        .output()
-        .expect("git ls-files runs");
-    assert!(output.status.success(), "git ls-files plugin failed");
+/// Arquivos de `plugin/`, fora de qualquer pasta `.omc/`, relativos a `root`.
+pub fn plugin_files(root: &Path) -> Vec<String> {
+    // Percorre a pasta em vez de `git ls-files`: teste unitário não abre processo (regra de arquitetura).
+    let mut found = Vec::new();
+    let mut pending = vec![root.join("plugin")];
+    while let Some(dir) = pending.pop() {
+        for entry in fs::read_dir(&dir).expect("plugin folder is readable") {
+            let path = entry.expect("entry is readable").path();
+            if path.file_name().is_some_and(|name| name == ".omc") {
+                continue;
+            }
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                let relative = path.strip_prefix(root).expect("path is under root");
+                found.push(relative.to_string_lossy().into_owned());
+            }
+        }
+    }
+    found.sort();
 
-    String::from_utf8(output.stdout)
-        .expect("the listing is UTF-8")
-        .lines()
-        .filter(|path| !path.split('/').any(|part| part == ".omc"))
-        .map(str::to_owned)
-        .collect()
+    found
 }
 
 /// `arquivo:linha` de cada linha com rótulo do OMC que não seja linha de origem.

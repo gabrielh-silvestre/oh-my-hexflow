@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{scan_files, tracked_plugin_files};
+use super::{plugin_files, scan_files};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -14,9 +14,9 @@ fn seeded_file(root: &Path, name: &str, content: &str) -> Vec<String> {
 }
 
 #[test]
-fn it_should_find_no_omc_label_outside_the_origin_line_in_the_tracked_plugin_files() {
+fn it_should_find_no_omc_label_outside_the_origin_line_in_the_plugin_files() {
     let root = repo_root();
-    let files = tracked_plugin_files(&root);
+    let files = plugin_files(&root);
 
     let found = scan_files(&root, &files);
 
@@ -71,7 +71,7 @@ fn it_should_not_report_a_word_that_only_contains_a_label() {
 
 #[test]
 fn it_should_not_ship_a_license_file_inside_plugin() {
-    let files = tracked_plugin_files(&repo_root());
+    let files = plugin_files(&repo_root());
 
     let licenses: Vec<&String> = files
         .iter()
