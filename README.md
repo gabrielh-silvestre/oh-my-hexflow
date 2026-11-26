@@ -20,7 +20,7 @@ O vocabulário (record, tenant, node, gate, extension, projection) está em
 
 ### Opcional
 
-- Worktrunk e GitHub: o binário nunca inicia nenhum dos dois.
+- Worktrunk e GitHub: o `omhl` não depende de nenhum dos dois para rodar.
 
 O plugin foi testado só no Linux e no WSL.
 
@@ -54,7 +54,7 @@ O plugin foi testado só no Linux e no WSL.
 
 ### Avisos de início de sessão
 
-O plugin avisa no início da sessão, com o comando para corrigir, em quatro casos:
+O plugin avisa no início da sessão, com o comando para corrigir, nos casos abaixo:
 
 - O `omhl` não está no `PATH`: os hooks ficam inativos. Num projeto marcado com `.omhl.toml`, a edição de arquivos é bloqueada até você instalar o binário.
 - O `omhl` é mais velho que a versão em `plugin/hooks/min-omhl-version`: atualize com o mesmo comando.

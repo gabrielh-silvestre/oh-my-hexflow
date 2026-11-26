@@ -162,7 +162,6 @@ fn pre_tool_use(
     ExitCode::SUCCESS
 }
 
-/// O contexto e, à parte, o aviso do `git`, que também já está dentro do contexto.
 fn context_for_session(
     stdin: &mut impl Read,
     env: &Env<'_>,

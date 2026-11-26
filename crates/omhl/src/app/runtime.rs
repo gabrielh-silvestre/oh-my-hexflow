@@ -97,7 +97,6 @@ impl Runtime {
             .with_hooks_dir(hooks_dir))
     }
 
-    /// A linha de aviso do `git` ausente ou antigo demais; sem aviso, `None`.
     pub fn git_notice(&self) -> Option<String> {
         git_version::notice(&self.probe.version())
     }

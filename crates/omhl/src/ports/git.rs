@@ -129,7 +129,6 @@ impl GitProbe {
         finish(child, deadline)
     }
 
-    /// Roda o `git --version` e só separa a falta do programa; a falha de leitura fica `Unreadable`.
     pub fn version(&self) -> GitVersion {
         let Ok(deadline) = self.call_deadline() else {
             return GitVersion::Unreadable;
