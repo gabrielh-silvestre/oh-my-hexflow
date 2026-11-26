@@ -13,7 +13,7 @@ O humano define diretivas e premissas. O agente escolhe os comportamentos e escr
 | 1 | Premissa | Agente | Grava o work item e sugere premissas (`append`). |
 | 2 | Confirmação humana | Humano | Confirma dentro da sessão. O agente grava a premissa com `confirmed_by`, copiando a pergunta e a resposta literais |
 | 3 | Gap e divergência | Agente | Dúvida técnica vira `gap`, respondido por uma premissa. Desvio da spec vira `divergence` com `resolution` `open` |
-| 4 | Emenda | Agente e humano | Se a spec estava errada, o agente cria `emenda-NN.md` e o humano a aprova. A parte original não muda |
+| 4 | Emenda | Agente e humano | Se a spec estava errada, o agente cria a próxima emenda (`amendment-NN.md`) e o humano a aprova. A parte original não muda |
 | 5 | Retro | `omhl close` | O agente propõe melhorias, cada uma só vale com a confirmação do humano |
 | 6 | Promoção | Agente e humano | O humano confirma |
 
@@ -115,6 +115,8 @@ omhl spec init work-items.w1 export-reports
 
 ### O formato
 
+Spec nova nasce em inglês: o `omhl spec init` cria `part-01.md`, e a emenda nova se chama `amendment-NN.md`. Os nomes `parte-NN.md` e `emenda-NN.md` e os títulos em português seguem aceitos, e as specs antigas continuam válidas sem mudar uma linha. O validador escolhe o vocabulário de cada arquivo pelo primeiro título `## `, então um arquivo é todo de um vocabulário. Numa pasta antiga, só em português, o arquivo novo leva o nome `parte-` ou `emenda-` e os títulos em inglês.
+
 Se uma parte passar do limite de tamanho, divida o trabalho em mais partes completas, todas no mesmo work item.
 
 ### `omhl spec validate`
@@ -200,16 +202,16 @@ Para corrigir um erro da spec depois da aprovação, o agente segue estes passos
 
 1. Registre uma `divergence` com `resolution` `open` (`omhl append`).
 2. Pergunte ao humano se a spec estava errada.
-3. Se estava, crie `emenda-NN.md` na pasta da spec do work item, com `Write` de um arquivo novo.
-4. Rode `omhl spec validate <work-item>`. Se a emenda for inválida, abandone-a e crie a `emenda-(NN+1).md`. Continue a numeração na emenda seguinte (`EMD-002` depois de `EMD-001`), senão ela cai em `item-id-duplicate`.
+3. Se estava, crie a próxima emenda na pasta da spec do work item, com `Write` de um arquivo novo: `amendment-NN.md`, ou `emenda-NN.md` numa pasta que só tem nomes em português. O número conta as duas famílias de nome.
+4. Rode `omhl spec validate <work-item>`. Se a emenda for inválida, abandone-a e crie a emenda de número `NN+1`. Continue a numeração na emenda seguinte (`EMD-002` depois de `EMD-001`), senão ela cai em `item-id-duplicate`.
 5. Mostre a emenda ao humano e peça a aprovação, copiando a pergunta e a resposta literais.
-6. Grave uma nova revisão da mesma divergência (append-only, com `base`) com `resolution` `spec-stale`, `amendment` (`emenda-NN`, sem `.md`) e `confirmed_by`.
+6. Grave uma nova revisão da mesma divergência (append-only, com `base`) com `resolution` `spec-stale`, `amendment` (o nome do arquivo sem `.md`, como `amendment-01` ou `emenda-01`) e `confirmed_by`.
 
    O `record_id` da revisão atual vem de `omhl get <id>`.
 
 Nunca tente editar a spec nem procure como descongelá-la.
 
-A `parte-NN.md` original fica intacta. O valor vigente de um item é o da emenda aprovada de maior `NN` que o cita.
+A parte original (`part-NN.md` ou `parte-NN.md`) fica intacta. O valor vigente de um item é o da emenda aprovada de maior `NN` que o cita.
 
 ## 10. Ativação, bypasses e limites
 
@@ -257,7 +259,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - As regras do `workflow.toml`, do `.git` e do marcador não alcançam um projeto cujo marcador fica numa subpasta do repositório (o `workflow.toml` dele não é o de `<pasta principal do git>/.omhl/`, e o `.git` da pasta principal fica acima do marcador) nem um sistema de arquivos sem distinção de caixa (macOS; pasta do Windows no WSL), em que `.OMHL/workflow.toml`, `.GIT` e `.OMHL.TOML` são os mesmos arquivos e os filtros não os reconhecem.
 - As travas protegem contra deslize, não contra agente hostil: o `Bash` fica fora do `spec-lock`, então mudar o `.git` ou o `.omhl.toml` por ele segue possível. Limites conhecidos, um por linha: um `Write` em `.claude/settings*.json` com `"disableAllHooks": true` desliga o hook se o Claude Code recarregar o arquivo na sessão sem pedir permissão (não verificado); um `git` falso num executável gravável antes de `/usr/bin` no `PATH` (baixa probabilidade, não verificado); um repositório bare com worktrees ligadas (`repo.git`), em que o `main_dir` vira o pai de `repo.git` e o layout parece não ser suportado hoje.
 - Com `specs.dir` customizado, um marcador válido plantado na pasta de specs (fora de `.omhl/`) solta a trava só com `Write`: um repositório bare falso (`HEAD`, `objects/`, `refs/`) na pasta de specs ou numa pasta entre ela e a raiz, que o git aceita sem nenhum componente `.git`, e o git quebrado por `[core` em `~/.gitconfig` ou `$XDG_CONFIG_HOME/git/config`, fora do projeto. É o resíduo documentado, com um teste `residual` para cada forma.
-- Os hooks do plugin passam pelo `plugin/hooks/omhl-hook.sh`, que decide por hook o que fazer quando falta o binário. Sem o binário `omhl` no `PATH`, o `spec-lock` bloqueia só num projeto marcado com `.omhl.toml`, e o `agent-role` e o `session-start` saem com `exit 0` em silêncio. O `|| exit 2` do `spec-lock` e o `|| exit 1` do `agent-role`, dentro do script, valem só para o binário presente que falha: pânico ou saída `1` no `spec-lock` bloqueia toda escrita por ferramenta de arquivo, e o `agent-role` segue liberando (a negação normal sai por JSON com saída `0`). O hook encerrado pelo prazo do Claude Code ainda libera (só a saída `2` bloqueia). Duas aproximações conhecidas do ramo sem binário: o `PATH` do hook pode não ter o `omhl` enquanto o do `Bash` tem (a pasta `bin/` do plugin e o `CLAUDE_ENV_FILE` chegam só ao `Bash`); e o marcador é procurado a partir do diretório da sessão, não do arquivo editado, e só por existência (o binário valida tamanho, UTF-8, versão e tenant), então uma edição fora do projeto numa sessão marcada é bloqueada a mais e um projeto marcado vizinho passa a menos.
+- Os hooks do plugin passam pelo `plugin/hooks/omhl-hook.sh`, que decide por hook o que fazer quando falta o binário. Sem o binário `omhl` no `PATH`, o `spec-lock` bloqueia só num projeto marcado com `.omhl.toml`, e o `agent-role`, o `session-start` e o `subagent-start` saem com `exit 0` em silêncio. O `|| exit 2` do `spec-lock` e o `|| exit 1` do `agent-role`, dentro do script, valem só para o binário presente que falha: pânico ou saída `1` no `spec-lock` bloqueia toda escrita por ferramenta de arquivo, e o `agent-role` segue liberando (a negação normal sai por JSON com saída `0`). O hook encerrado pelo prazo do Claude Code ainda libera (só a saída `2` bloqueia). Duas aproximações conhecidas do ramo sem binário: o `PATH` do hook pode não ter o `omhl` enquanto o do `Bash` tem (a pasta `bin/` do plugin e o `CLAUDE_ENV_FILE` chegam só ao `Bash`); e o marcador é procurado a partir do diretório da sessão, não do arquivo editado, e só por existência (o binário valida tamanho, UTF-8, versão e tenant), então uma edição fora do projeto numa sessão marcada é bloqueada a mais e um projeto marcado vizinho passa a menos.
 - O `spec-lock` acha o checkout pela raiz do `.omhl.toml`, não pela pasta do arquivo. Numa worktree ligada aninhada dentro do diretório principal e sem `.omhl.toml` próprio (branch anterior ao marcador), o marcador achado é o do principal, `linked_worktree` sai falso e o `spec-in-linked-worktree` não dispara. O fluxo do `wt` cria worktrees irmãs, então isso não acontece nele.
 
 ## 11. Diretivas: `kind`, âncora e retirada
@@ -328,6 +330,10 @@ flowchart TD
 ### O que cada passo grava
 
 - A sessão principal grava o que couber a ela, por exemplo um gap para cada pergunta em aberto.
+
+### O idioma dos agentes
+
+O texto que o agente lê (agentes, skills, spec e registros) é inglês; o idioma da pessoa vale só no texto dirigido a ela. Os agentes do plugin recebem esse idioma pelo hook `SubagentStart` (`omhl hook subagent-start`, com `matcher` `^oh-my-hexflow:`). O valor vem da opção `language` do plugin, que o Claude Code pergunta na instalação e mostra em `/config`; sem ela, da chave `language` dos settings, na precedência do próprio Claude Code. Um repositório que versiona `language` define o idioma dos agentes de quem trabalha nele, e só a opção do plugin o sobrepõe. A sessão principal segue só o `language` do Claude Code: uma segunda ordem de idioma brigaria com a que o próprio Claude Code injeta. O pedido de delegação nomeia o idioma da conversa como reserva do hook.
 
 ### O hook `agent-role`
 

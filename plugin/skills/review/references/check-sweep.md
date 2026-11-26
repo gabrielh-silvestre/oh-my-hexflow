@@ -1,42 +1,42 @@
 # omhl check sweep
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-Nenhuma etapa do ciclo a roda.
+No stage of the cycle runs it.
 
-A varredura global é do dono e só roda com a aprovação do humano: `SKILL.md` da `review`, seção Regras.
+The global sweep is the owner's and only runs with the human's approval: `SKILL.md` of `review`, Rules section.
 
-## Quando usar
+## When to use
 
-Quando sobrou processo de um check cujo `omhl` já saiu (Ctrl+C, `kill`, queda do terminal). Antes de rodar, peça a aprovação do humano: o comando vale para **qualquer raiz de projeto da máquina**, do mesmo usuário, e pode encerrar um servidor (`sccache`, daemon do Gradle) que outra sessão ainda usa. Para o caso comum, rode o `omhl check run`: ele já varre, em silêncio, os órfãos do próprio projeto no começo de cada execução. Este comando faz a varredura sob demanda. Só roda no Linux.
+When a process was left over from a check whose `omhl` already exited (Ctrl+C, `kill`, a dropped terminal). Before running, ask for the human's approval: the command holds for **any project root on the machine**, of the same user, and may stop a server (`sccache`, the Gradle daemon) that another session still uses. For the common case, run `omhl check run`: it already sweeps, silently, the orphans of its own project at the start of each run. This command does the sweep on demand. It only runs on Linux.
 
-## Entradas
+## Inputs
 
-- Sem argumentos posicionais.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
+- No positional arguments.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0, também quando não há alvo: `✔ check sweep · N swept · N unreadable` e uma linha `- <comm> · pid <pid> · owner <pid>` por processo encerrado. Quando a leitura de `/proc` estoura o tempo (no máximo 1 segundo), o cabeçalho vira `⚠ check sweep · N swept · N unreadable · scan timed out` e fecha com `Next:` mandando repetir o comando, porque a varredura desistiu antes de ler tudo e o `swept` vazio não prova nada. Com `--format json` é uma linha JSON: `swept` (uma lista; cada item tem `pid`, `comm` e `owner_pid`), `unreadable` (quantos processos não puderam ser lidos) e `scan_timed_out`. Por varrer a máquina inteira, **`swept`, `unreadable` e `scan_timed_out` (no texto, as contagens e os pids) não são determinísticos**: dependem dos processos vivos naquele momento. Não leia um `swept` vazio como prova de que nada vazou em outro projeto, e não conte com o mesmo número em duas chamadas. Quando acha alvo, a varredura encerra o processo (`TERM`, 2 segundos de carência, `KILL`) e acrescenta uma linha a `$XDG_DATA_HOME/omhl/sweep.jsonl`. O arquivo tem teto de 1 MiB: acima disso ele passa a `sweep.jsonl.1` (uma só geração antiga, a anterior é substituída) e um `sweep.jsonl` novo recebe a linha. Duas rotações simultâneas podem perder uma geração.
+Text on stdout, exit 0, also when there is no target: `✔ check sweep · N swept · N unreadable` and one `- <comm> · pid <pid> · owner <pid>` line per process stopped. When reading `/proc` times out (at most 1 second), the header becomes `⚠ check sweep · N swept · N unreadable · scan timed out` and closes with a `Next:` telling you to repeat the command, because the sweep gave up before reading everything and the empty `swept` proves nothing. With `--format json` it is a JSON line: `swept` (a list; each item has `pid`, `comm` and `owner_pid`), `unreadable` (how many processes could not be read) and `scan_timed_out`. Because it sweeps the whole machine, **`swept`, `unreadable` and `scan_timed_out` (in the text, the counts and the pids) are not deterministic**: they depend on the processes alive at that moment. Do not read an empty `swept` as proof that nothing leaked in another project, and do not count on the same number in two calls. When it finds a target, the sweep stops the process (`TERM`, 2 seconds of grace, `KILL`) and appends a line to `$XDG_DATA_HOME/omhl/sweep.jsonl`. The file has a 1 MiB ceiling: above that it becomes `sweep.jsonl.1` (a single old generation, the previous one is replaced) and a new `sweep.jsonl` receives the line. Two simultaneous rotations may lose a generation.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). An unknown option or a missing argument is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Varredura sem alvo. Em outra máquina, ou com outros processos vivos, `swept`, `unreadable` e `scan_timed_out` mudam:
+A sweep with no target. On another machine, or with other live processes, `swept`, `unreadable` and `scan_timed_out` change:
 
 ```omhl-example fixture=checks
 $ omhl check sweep
 ✔ check sweep · 0 swept · 0 unreadable
 ```
 
-A mesma varredura para máquina:
+The same sweep for machines:
 
 ```omhl-example fixture=checks
 $ omhl check sweep --format json

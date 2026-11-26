@@ -15,6 +15,7 @@ fn it_should_use_xdg_data_home_when_absolute() {
         claude_code: false,
         role: None,
         plugin_root: None,
+        claude: Default::default(),
         session: None,
     };
 
@@ -33,6 +34,7 @@ fn it_should_ignore_a_relative_or_empty_xdg_data_home() {
         claude_code: false,
         role: None,
         plugin_root: None,
+        claude: Default::default(),
         session: None,
     };
     let empty = Env {
@@ -43,6 +45,7 @@ fn it_should_ignore_a_relative_or_empty_xdg_data_home() {
         claude_code: false,
         role: None,
         plugin_root: None,
+        claude: Default::default(),
         session: None,
     };
 
@@ -62,6 +65,7 @@ fn it_should_fail_without_xdg_and_home() {
         claude_code: false,
         role: None,
         plugin_root: None,
+        claude: Default::default(),
         session: None,
     };
 

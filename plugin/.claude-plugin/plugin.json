@@ -1,5 +1,12 @@
 {
   "name": "oh-my-hexflow",
   "version": "0.2.0",
-  "description": "Injects the project decisions and work items from hexlog into the Claude Code session and guards the work item flow through hooks and the omhl CLI."
+  "description": "Injects the project decisions and work items from hexlog into the Claude Code session and guards the work item flow through hooks and the omhl CLI.",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Conversation language",
+      "description": "Language for the text the oh-my-hexflow agents address to you. Overrides the language setting of Claude Code for these agents only. Leave empty to follow it."
+    }
+  }
 }

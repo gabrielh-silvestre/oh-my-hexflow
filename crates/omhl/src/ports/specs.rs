@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::ports::files::{FILE_TOO_LARGE, list_sorted_capped, read_regular_utf8};
 use crate::project::layout::{EXT_FILE_MAX_BYTES, GITIGNORE_CONTENT, GITIGNORE_NAME};
 use crate::workflow::names::{
-    AMENDMENT_PREFIX, FILE_SUFFIX, FIRST_PART_FILE, FREEZE_MARK, PART_PREFIX, folder_prefix,
+    FILE_SUFFIX, FIRST_PART_FILE, FREEZE_MARK, folder_prefix, is_amendment_name, is_part_name,
     work_item_of_folder,
 };
 
@@ -68,9 +68,9 @@ impl SpecStore {
             .into_iter()
             .filter(|name| name.ends_with(FILE_SUFFIX))
         {
-            let target = if name.starts_with(PART_PREFIX) {
+            let target = if is_part_name(&name) {
                 &mut spec.parts
-            } else if name.starts_with(AMENDMENT_PREFIX) {
+            } else if is_amendment_name(&name) {
                 &mut spec.amendments
             } else {
                 continue;
@@ -102,7 +102,7 @@ impl SpecStore {
 
         Ok(list_names(&folder)?
             .into_iter()
-            .filter(|name| name.starts_with(AMENDMENT_PREFIX) && name.ends_with(FILE_SUFFIX))
+            .filter(|name| is_amendment_name(name) && name.ends_with(FILE_SUFFIX))
             .collect())
     }
 

@@ -1,37 +1,37 @@
-# O que fazer quando o check ou o hook recusa
+# What to do when the check or the hook refuses
 
-Quando consultar: o `omhl check run` ou um hook de git (`pre-commit`, `pre-push`) saiu com erro e você precisa saber o que tentar. Os erros de cada comando estão na página dele; aqui ficam as recusas que impedem o veredito.
+When to consult: `omhl check run` or a git hook (`pre-commit`, `pre-push`) exited with an error and you need to know what to try. The errors of each command are on its page; here are the refusals that prevent the verdict.
 
-## Falha sem veredito
+## Failure without a verdict
 
-Um erro sem veredito não é um `failed`: o `omhl` não consegue dizer se o check passou e não grava attestation. Cada item de `details` nomeia o check (`path`), o motivo (`code`) e, na maioria dos casos, um `context` com `kind` e `hint`. Nada do `context` vai para o banco.
+An error without a verdict is not a `failed`: `omhl` cannot say whether the check passed and records no attestation. Each item of `details` names the check (`path`), the reason (`code`) and, in most cases, a `context` with `kind` and `hint`. Nothing from the `context` goes to the database.
 
-| `code` do detalhe | O que fazer |
+| `code` of the detail | What to do |
 |---|---|
-| `spawn-failed` | O binário do `run` não existe no `PATH` do git. Instale-o ou ponha a pasta dele no `PATH` dos hooks, e repita o mesmo comando |
-| `outcome-immutable` | O mesmo snapshot já tem outro desfecho. Mude a árvore (um commit novo) para um veredito novo |
-| `command-changed-tree`, `command-changed-worktree` | O check alterou a árvore. Mantenha-o somente leitura; ponha o que ele gera no `.gitignore` ou restaure os rastreados com `git checkout -- <caminho>` |
-| `spec-stale` | O TOML do check diverge do banco. Corrija o arquivo, rode `omhl load` e repita |
-| `spec-invalid` | O `data` do check no banco não decodifica. Corrija o TOML e rode `omhl load` |
-| `snapshot-tree-mismatch`, `snapshot-dirty` | O índice mudou durante o hook, ou a árvore está suja. Não faça stage durante o hook e rode de novo |
-| `work-item-closed` | O work item foi fechado durante a execução. Confira com `omhl get <work-item>` |
-| `probe-failed` | O `omhl` não leu a árvore ou o `HEAD`. Rode `git status` e corrija o estado do repositório |
-| `attestation-not-recorded` | O banco ficou travado depois de o comando rodar. O veredito foi calculado e não gravado: repita o mesmo comando |
+| `spawn-failed` | The `run` binary does not exist in git's `PATH`. Install it or put its folder in the hooks' `PATH`, and repeat the same command |
+| `outcome-immutable` | The same snapshot already has another outcome. Change the tree (a new commit) for a new verdict |
+| `command-changed-tree`, `command-changed-worktree` | The check changed the tree. Keep it read-only; put what it generates in `.gitignore` or restore the tracked files with `git checkout -- <path>` |
+| `spec-stale` | The check's TOML diverges from the database. Fix the file, run `omhl load` and repeat |
+| `spec-invalid` | The check's `data` in the database does not decode. Fix the TOML and run `omhl load` |
+| `snapshot-tree-mismatch`, `snapshot-dirty` | The index changed during the hook, or the tree is dirty. Do not stage during the hook and run again |
+| `work-item-closed` | The work item was closed during the run. Check with `omhl get <work-item>` |
+| `probe-failed` | `omhl` could not read the tree or `HEAD`. Run `git status` and fix the repository state |
+| `attestation-not-recorded` | The database was locked after the command ran. The verdict was computed and not recorded: repeat the same command |
 
-Quando só há checks bloqueantes reprovados, o erro é `checks-failed`: leia a causa com `omhl byproduct` ([byproduct.md](byproduct.md)). Um problema sem veredito tem precedência sobre `checks-failed`.
+When there are only failed blocking checks, the error is `checks-failed`: read the cause with `omhl byproduct` ([byproduct.md](byproduct.md)). A problem without a verdict takes precedence over `checks-failed`.
 
-## Branch e work item
+## Branch and work item
 
-O `omhl check run` descobre o work item pelo nome da branch `tipo/wi-<id>__<slug>`. Na `main` ele responde `branch-protected` e não roda nada; fora do padrão, `branch-name-invalid`. Na `develop` ele roda sem gravar nada, e o `before-commit` pede a marca da `develop`.
+`omhl check run` finds the work item by the branch name `type/wi-<id>__<slug>`. On `main` it answers `branch-protected` and runs nothing; outside the pattern, `branch-name-invalid`. On `develop` it runs without recording anything, and `before-commit` asks for the `develop` mark.
 
 ## Push
 
-O `pre-push` só atesta a branch do checkout. Um `git push` de outra ref, sem trocar de checkout, é barrado com `push-ref-not-checked-out`. Push com destino `main` é barrado com `branch-protected`.
+`pre-push` only attests the checkout's branch. A `git push` of another ref, without switching checkout, is blocked with `push-ref-not-checked-out`. A push with `main` as the destination is blocked with `branch-protected`.
 
-## Bypass é do dono
+## Bypass is the owner's
 
-Nunca use `--no-verify` nem `--force` do `omhl hooks install` por conta própria: contornar um hook é decisão do dono, não sua.
+Never use `--no-verify` or the `--force` of `omhl hooks install` on your own: getting around a hook is the owner's decision, not yours.
 
-## Prazo do check
+## Check deadline
 
-Cada check tem um `timeout_secs` no TOML. Um check que estoura o prazo grava `failed`, imutável para aquela árvore. Reajustar o prazo é decisão do dono: o valor se mede com o `target/` limpo (rodada mais lenta vezes 1,3, piso de 10 segundos) e se grava no TOML, seguido de `omhl load`.
+Each check has a `timeout_secs` in the TOML. A check that overruns the deadline records `failed`, immutable for that tree. Readjusting the deadline is the owner's decision: the value is measured with a clean `target/` (slowest run times 1.3, floor of 10 seconds) and recorded in the TOML, followed by `omhl load`.

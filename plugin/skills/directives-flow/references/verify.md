@@ -1,51 +1,51 @@
 # omhl verify
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-Nenhuma etapa do ciclo a roda.
+No stage of the cycle runs it.
 
-A leitura do símbolo do `verify` (sai 0 com a cadeia quebrada) é regra da base: [directives-flow](../SKILL.md), seção Consulta.
+Reading the `verify` symbol (it exits 0 with a broken chain) is a base rule: [directives-flow](../SKILL.md), Querying section.
 
-## Quando usar
+## When to use
 
-Para provar que o banco do projeto não foi adulterado: o `verify` percorre a cadeia de hashes de todos os registros do projeto e diz se ela fecha. Use quando suspeitar de corrupção, depois de restaurar um banco de backup, ou antes de confiar numa attestation. É somente leitura.
+To prove that the project database was not tampered with: `verify` walks the hash chain of all the project records and says whether it closes. Use it when you suspect corruption, after restoring a database from backup, or before trusting an attestation. It is read-only.
 
-## Entradas
+## Inputs
 
-- Nenhum argumento.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco, fora da pasta do projeto; o `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
+- No arguments.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database, outside the project folder; `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
-## Saída
+## Output
 
-Texto no stdout, **saída 0 mesmo com a cadeia quebrada**: leia o símbolo da primeira linha. Cadeia fechada: `✔ verify · chain ok · N records`. Cadeia quebrada: `✘ verify · chain broken · N records · M breaks`, uma linha `- reason · seq S` por quebra achada (as primeiras 100) e, só então, `Next:` com o que fazer. Com `--format json` é uma linha JSON, cujos campos são:
+Text on stdout, **exit 0 even with a broken chain**: read the symbol of the first line. Closed chain: `✔ verify · chain ok · N records`. Broken chain: `✘ verify · chain broken · N records · M breaks`, one `- reason · seq S` line per break found (the first 100) and, only then, `Next:` with what to do. With `--format json` it is a JSON line, whose fields are:
 
-- `ok`: `true` quando a cadeia fecha.
-- `total_records`: quantos registros foram percorridos.
-- `chain_head`: o hash da cabeça da cadeia.
-- `breaks`: as quebras achadas, cada uma com `reason` e, quando se aplica, `seq`. Os motivos são `diverging-seq`, `hash-mismatch`, `invalid-body`, `column-mismatch`, `batch-index-mismatch`, `anchor-mismatch` e `chain-head-not-found`.
-- `total_breaks`: o total de quebras.
+- `ok`: `true` when the chain closes.
+- `total_records`: how many records were walked.
+- `chain_head`: the hash of the chain head.
+- `breaks`: the breaks found, each with `reason` and, when it applies, `seq`. The reasons are `diverging-seq`, `hash-mismatch`, `invalid-body`, `column-mismatch`, `batch-index-mismatch`, `anchor-mismatch` e `chain-head-not-found`.
+- `total_breaks`: the total of breaks.
 
-Com `✘ verify · chain broken` (em JSON, `ok: false`), não grave nada novo no banco nem confie nas attestations: avise o dono, com o `reason` e o `seq` da primeira quebra.
+With `✘ verify · chain broken` (in JSON, `ok: false`), record nothing new in the database and do not trust the attestations: warn the owner, with the `reason` and the `seq` of the first break.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código. Uma cadeia quebrada **não** é erro: sai 0 com `✘ verify · chain broken` (em JSON, `ok: false`). Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). An unknown option is a clap usage error, with exit 2 and no code. A broken chain is **not** an error: it exits 0 with `✘ verify · chain broken` (in JSON, `ok: false`). The errors common to all commands are in [errors.md](errors.md).
 
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Verifica um banco com dois registros (o work item e a premissa):
+Verifies a database with two records (the work item and the premise):
 
 ```omhl-example fixture=project
 $ omhl verify
 ✔ verify · chain ok · 2 records
 ```
 
-A cadeia cresce a cada gravação, e o `verify` a acompanha; com `--format json` a mesma resposta sai para máquinas:
+The chain grows with each record, and `verify` follows it; with `--format json` the same answer comes out for machines:
 
 ```omhl-example fixture=project
 $ omhl append <<'EOF'

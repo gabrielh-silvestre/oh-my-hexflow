@@ -126,7 +126,7 @@ impl Flow {
     fn write_valid_spec(&self) {
         let init = self.run_ok(&["spec", "init", W1, "login"]);
         assert_eq!(init["slug"], json!("login"));
-        fs::write(self.spec_dir().join("parte-01.md"), VALID_PART).expect("the part is written");
+        fs::write(self.spec_dir().join("part-01.md"), VALID_PART).expect("the part is written");
     }
 
     fn create_branch(&self) {
@@ -228,7 +228,7 @@ impl Flow {
     }
 
     fn write_amendment(&self) {
-        fs::write(self.spec_dir().join("emenda-01.md"), amendment_text())
+        fs::write(self.spec_dir().join("amendment-01.md"), amendment_text())
             .expect("the amendment is written");
     }
 
@@ -237,8 +237,8 @@ impl Flow {
         let current = self.run_ok(&["get", DIVERGENCE]);
         let mut data = divergence_data();
         data["resolution"] = json!("spec-stale");
-        data["amendment"] = json!("emenda-01");
-        data["confirmed_by"] = confirmed_by("Approve emenda-01?", "Yes, approved.");
+        data["amendment"] = json!("amendment-01");
+        data["confirmed_by"] = confirmed_by("Approve amendment-01?", "Yes, approved.");
         let mut revision = node(DIVERGENCE, "divergence", data);
         revision["base"] = current["node"]["record_id"].clone();
 
@@ -403,7 +403,7 @@ fn it_should_validate_the_spec_the_agent_wrote() {
 
     assert_eq!(
         validated,
-        json!({ "ok": true, "parts": ["parte-01.md"], "amendments": [] })
+        json!({ "ok": true, "parts": ["part-01.md"], "amendments": [] })
     );
 }
 
@@ -426,7 +426,7 @@ fn it_should_allow_the_worktree_once_the_premise_is_confirmed_and_the_spec_is_va
 fn it_should_deny_an_edit_of_the_spec_once_the_branch_exists() {
     let flow = Flow::with_frozen_spec();
 
-    let locked = flow.spec_lock("Edit", "parte-01.md");
+    let locked = flow.spec_lock("Edit", "part-01.md");
 
     assert_eq!((locked.code, decision(&locked)), (Some(0), json!("deny")));
 }
@@ -435,14 +435,14 @@ fn it_should_deny_an_edit_of_the_spec_once_the_branch_exists() {
 fn it_should_name_the_next_amendment_when_it_denies_an_edit_of_the_spec() {
     let flow = Flow::with_frozen_spec();
 
-    let locked = flow.spec_lock("Edit", "parte-01.md");
+    let locked = flow.spec_lock("Edit", "part-01.md");
 
     let reason = json_line(&locked.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("the reason is text")
         .to_owned();
     assert!(
-        reason.starts_with("spec-frozen") && reason.contains("emenda-01.md"),
+        reason.starts_with("spec-frozen") && reason.contains("amendment-01.md"),
         "reason: {reason}"
     );
 }
@@ -451,7 +451,7 @@ fn it_should_name_the_next_amendment_when_it_denies_an_edit_of_the_spec() {
 fn it_should_let_the_agent_create_the_next_amendment_once_the_spec_is_frozen() {
     let flow = Flow::with_frozen_spec();
 
-    let allowed = flow.spec_lock("Write", "emenda-01.md");
+    let allowed = flow.spec_lock("Write", "amendment-01.md");
 
     assert_eq!(
         (allowed.code, allowed.stdout, allowed.stderr),
@@ -493,7 +493,7 @@ fn it_should_validate_a_pending_amendment_without_approving_it() {
 
     assert_eq!(
         validated["amendments"],
-        json!([{ "name": "emenda-01.md", "state": "pending", "violations": [] }])
+        json!([{ "name": "amendment-01.md", "state": "pending", "violations": [] }])
     );
 }
 
@@ -510,8 +510,8 @@ fn it_should_validate_the_spec_with_the_amendment_approved() {
         validated,
         json!({
             "ok": true,
-            "parts": ["parte-01.md"],
-            "amendments": [{ "name": "emenda-01.md", "state": "approved", "violations": [] }],
+            "parts": ["part-01.md"],
+            "amendments": [{ "name": "amendment-01.md", "state": "approved", "violations": [] }],
         })
     );
 }
@@ -653,7 +653,7 @@ fn it_should_close_with_a_retro_that_carries_the_approved_amendment() {
         json!({
             "divergences": [{ "kind": "partial", "resolution": "spec-stale", "ids": [DIVERGENCE] }],
             "amendments": {
-                "approved": [{ "divergence": DIVERGENCE, "name": "emenda-01.md" }],
+                "approved": [{ "divergence": DIVERGENCE, "name": "amendment-01.md" }],
                 "pending": [],
             },
             "no_criterion": [{ "gap": GAP, "answered_by": GAP_ANSWER }],

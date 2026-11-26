@@ -729,3 +729,29 @@ fn it_should_leave_the_chain_intact_when_the_cli_refuses_an_invalid_amendment() 
     assert_eq!(error_of(&cli)["code"], json!("amendment-invalid"));
     assert_eq!(fixture.chain(), before);
 }
+
+#[test]
+fn it_should_accept_the_approval_that_cites_an_english_amendment() {
+    let fixture = Fixture::new();
+    fixture.write("part-01.md", &valid_part());
+    fixture.write("amendment-01.md", &valid_amendment());
+
+    let output = fixture.try_append(vec![fixture.approval("amendment-01")]);
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+}
+
+#[test]
+fn it_should_show_an_english_amendment_as_approved_after_the_approval() {
+    let fixture = Fixture::new();
+    fixture.write("part-01.md", &valid_part());
+    fixture.write("amendment-01.md", &valid_amendment());
+    fixture.append(vec![fixture.approval("amendment-01")]);
+
+    let output = fixture.validate();
+
+    assert_eq!(
+        amendments_of(&output),
+        json!([{ "name": "amendment-01.md", "state": "approved", "violations": [] }])
+    );
+}

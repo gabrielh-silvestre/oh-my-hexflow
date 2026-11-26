@@ -1,48 +1,48 @@
 # omhl attest
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review 8, review regras | `omhl attest` |
+| session | review 8, review rules | `omhl attest` |
 
-## Quando usar
+## When to use
 
-Para gravar à mão o desfecho de um check **manual** (sem o campo `run`) sobre um work item, depois de o humano revisá-lo. O registro é do par check e work item, preso ao commit atual. Um check com `run` é mecânico: quem grava o desfecho dele é o `omhl check run`, nunca você (a recusa é `check-run-author`).
+To record by hand the outcome of a **manual** check (without the `run` field) on a work item, after the human reviews it. The record belongs to the check and work item pair, tied to the current commit. A check with `run` is mechanical: whoever records its outcome is `omhl check run`, never you (the refusal is `check-run-author`).
 
-## Entradas
+## Inputs
 
-- `<CHECK>`: o id do check, como `checks.review`. O check precisa existir (rode `omhl load` depois de criar o arquivo em `.omhl/checks/`).
-- `<WORK_ITEM>`: o id do work item, como `work-items.w1`. Precisa existir e estar aberto.
-- `--outcome`: `passed`, `passed_with_warning` ou `failed`. Obrigatório.
-- `--note <texto>`: observação livre, opcional.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
-- Precisa de um repositório git com a árvore limpa: o registro prende o desfecho ao `HEAD`.
+- `<CHECK>`: the check id, like `checks.review`. The check must exist (run `omhl load` after creating the file in `.omhl/checks/`).
+- `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist and be open.
+- `--outcome`: `passed`, `passed_with_warning` or `failed`. Required.
+- `--note <text>`: free note, optional.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
+- It needs a git repository with a clean tree: the record ties the outcome to `HEAD`.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0: `✔ attest · <check> · <work item> · <outcome> · snapshot <7 caracteres do commit>`, com `⚠` no lugar de `✔` quando o desfecho não é `passed`, e uma linha `note: ...` quando há `--note`. Com `--format json` é uma linha JSON: `attestation` (o `id` derivado do commit, o check, o work item, `outcome`, `ok` e `snapshot`, mais `note` quando houver), `chain_head` e `records`; o `id` da attestation só sai no JSON. Repetir o mesmo desfecho para o mesmo commit grava uma revisão e sai 0. Um desfecho diferente para o mesmo commit é recusado: o primeiro desfecho gravado é imutável.
+Text on stdout, exit 0: `✔ attest · <check> · <work item> · <outcome> · snapshot <7 characters of the commit>`, with `⚠` in place of `✔` when the outcome is not `passed`, and a `note: ...` line when there is `--note`. With `--format json` it is a JSON line: `attestation` (the `id` derived from the commit, the check, the work item, `outcome`, `ok` and `snapshot`, plus `note` when present), `chain_head` and `records`; the attestation `id` only comes out in the JSON. Repeating the same outcome for the same commit records a revision and exits 0. A different outcome for the same commit is refused: the first recorded outcome is immutable.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta de `--outcome` ou de um argumento é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). A missing `--outcome` or argument is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
-- `invalid-arguments` (saída 1): o `--outcome` não é um dos três valores. O ponteiro `/outcome` e a mensagem dizem a regra. Corrija o valor.
-- `check-run-author` (saída 1): o check tem `run`. Só o `omhl check run` grava o desfecho dele. Use um check manual ou rode o check.
-- `check-not-found` (saída 1): o check não existe no banco. Confira o id e rode `omhl load`.
-- `work-item-not-found` (saída 1): o work item não existe. Grave-o antes.
-- `work-item-closed` (saída 1): o work item já foi fechado. Ateste num work item aberto.
-- `outcome-immutable` (saída 1): o commit já tem outro desfecho gravado para o par. Faça um commit novo, ou aceite o desfecho gravado.
-- `snapshot-dirty` (saída 1): a árvore tem mudança não commitada. Commite e repita.
-- `probe-failed` (saída 1): o git não respondeu (fora de um repositório, por exemplo). Rode dentro de um checkout.
-- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor (`path` vazio). Remova a variável ou rode o `omhl` numa sessão do Claude Code.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
-- `INVALID_INPUT` (saída 1): um id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
+- `invalid-arguments` (exit 1): `--outcome` is not one of the three values. The `/outcome` pointer and the message state the rule. Fix the value.
+- `check-run-author` (exit 1): the check has `run`. Only `omhl check run` records its outcome. Use a manual check or run the check.
+- `check-not-found` (exit 1): the check does not exist in the database. Check the id and run `omhl load`.
+- `work-item-not-found` (exit 1): the work item does not exist. Record it first.
+- `work-item-closed` (exit 1): the work item was already closed. Attest on an open work item.
+- `outcome-immutable` (exit 1): the commit already has another outcome recorded for the pair. Make a new commit, or accept the recorded outcome.
+- `snapshot-dirty` (exit 1): the tree has an uncommitted change. Commit and repeat.
+- `probe-failed` (exit 1): git did not answer (outside a repository, for example). Run inside a checkout.
+- `invalid-session-id` (exit 1): `CLAUDE_CODE_SESSION_ID` is set but empty, is not UTF-8, exceeds 100 UTF-16 units or equals the marker `outside-claude-code`; nothing is recorded and the error does not show the value (empty `path`). Remove the variable or run `omhl` in a Claude Code session.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
+- `INVALID_INPUT` (exit 1): an id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
 
-## Exemplos
+## Examples
 
-Atesta um check manual. A segunda chamada tenta gravar outro desfecho para o mesmo commit e é recusada:
+Attests a manual check. The second call tries to record another outcome for the same commit and is refused:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.review work-items.w1 --outcome passed --note 'Reviewed by hand.'
@@ -54,14 +54,14 @@ $ omhl attest checks.review work-items.w1 --outcome failed
 # exit 1
 ```
 
-Com `--format json` a resposta traz o `id` da attestation, o `snapshot` inteiro e a cabeça da cadeia:
+With `--format json` the answer carries the attestation `id`, the whole `snapshot` and the chain head:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.review work-items.w1 --outcome passed --format json
 {"attestation":{"check":"checks.review","id":"attestations.2dbf9e30bc28b8e377c513c63a9f8cae.a3ca65f3.checks.review.work-items.w1","ok":true,"outcome":"passed","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false}
 ```
 
-Recusa: o check tem `run`, então é mecânico:
+Refusal: the check has `run`, so it is mechanical:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.ok work-items.w1 --outcome passed
@@ -70,7 +70,7 @@ $ omhl attest checks.ok work-items.w1 --outcome passed
 # exit 1
 ```
 
-Recusa: `--outcome` fora dos três valores:
+Refusal: `--outcome` outside the three values:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.review work-items.w1 --outcome maybe
@@ -79,7 +79,7 @@ $ omhl attest checks.review work-items.w1 --outcome maybe
 # exit 1
 ```
 
-Recusa: check e work item que não existem:
+Refusal: a check and a work item that do not exist:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.nope work-items.w1 --outcome passed

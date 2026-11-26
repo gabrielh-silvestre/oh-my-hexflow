@@ -1,40 +1,40 @@
 # omhl project
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | plan-consensus 6, plan-consensus 7, plan-consensus 8, review 4, review 7 | `omhl project` |
+| session | plan-consensus 6, plan-consensus 7, plan-consensus 8, review 4, review 7 | `omhl project` |
 
-## Quando usar
+## When to use
 
-Para regenerar a projeção do projeto: um arquivo Markdown por work item em `.omhl/projection/`, com tudo o que está vigente para ele (decisões, premissas, attestations, relations, e as seções de gaps e de divergências). Use quando precisar ler o estado de um work item como arquivo, ou depois de gravar registros e querer a projeção em dia. Não grava nenhum registro no banco; só escreve arquivos, e só dentro de `.omhl/projection/`.
+To regenerate the project projection: one Markdown file per work item in `.omhl/projection/`, with everything that is current for it (decisions, premises, attestations, relations, and the gaps and divergences sections). Use it when you need to read the state of a work item as a file, or after recording and wanting the projection up to date. It records nothing in the database; it only writes files, and only inside `.omhl/projection/`.
 
-## Entradas
+## Inputs
 
-- Nenhum argumento.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco, fora da pasta do projeto; o `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
+- No arguments.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database, outside the project folder; `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0: `✔ project · <dir> · N written · N unchanged · N removed`, e uma linha `- written · <arquivos>` e outra `- removed · <arquivos>` só quando a lista não é vazia. Os nomes dos `unchanged` só são contados no texto. Com `--format json` é uma linha JSON: `dir` (a pasta da projeção, `.omhl/projection`) e três listas de nomes de arquivo: `written` (criados ou alterados), `unchanged` (já estavam iguais) e `removed` (de work items que não existem mais). O mesmo estado do banco gera os mesmos bytes, então rodar duas vezes seguidas devolve tudo em `unchanged`.
+Text on stdout, exit 0: `✔ project · <dir> · N written · N unchanged · N removed`, and a `- written · <files>` line and a `- removed · <files>` line only when the list is not empty. The `unchanged` names are only counted in the text. With `--format json` it is a JSON line: `dir` (the projection folder, `.omhl/projection`) and three lists of file names: `written` (created or changed), `unchanged` (already equal) and `removed` (of work items that no longer exist). The same database state generates the same bytes, so running twice in a row returns everything in `unchanged`.
 
-Os arquivos são só de leitura e começam com o cabeçalho `omhl: generated file, do not edit`. A pasta traz o próprio `.gitignore` e não é versionada, então a projeção não suja a árvore do git. Não edite esses arquivos.
+The files are read-only and start with the header `omhl: generated file, do not edit`. The folder carries its own `.gitignore` and is not versioned, so the projection does not dirty the git tree. Do not edit these files.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). An unknown option is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](errors.md).
 
-- `projection-failed` (saída 1): a projeção não pôde ser escrita. O detalhe traz o caminho e o código da causa: `not-generated` (já existe na pasta um arquivo sem o cabeçalho de gerado, que o comando nunca sobrescreve: mova-o) ou `too-many-work-items` (há work items demais para a projeção).
-- `no-project-root` (saída 1): não há raiz de projeto para escrever a pasta. Rode dentro do projeto.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `projection-failed` (exit 1): the projection could not be written. The detail carries the path and the code of the cause: `not-generated` (the folder already has a file without the generated header, which the command never overwrites: move it) or `too-many-work-items` (there are too many work items for the projection).
+- `no-project-root` (exit 1): there is no project root to write the folder. Run inside the project.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Gera a projeção e repete: na segunda vez nada muda:
+Generates the projection and repeats: the second time nothing changes:
 
 ```omhl-example fixture=project
 $ omhl project
@@ -44,7 +44,7 @@ $ omhl project
 ✔ project · .omhl/projection · 0 written · 1 unchanged · 0 removed
 ```
 
-Um work item novo ganha o próprio arquivo:
+A new work item gets its own file:
 
 ```omhl-example fixture=project
 $ omhl project

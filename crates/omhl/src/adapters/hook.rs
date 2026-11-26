@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use serde_json::{Value, json};
@@ -10,8 +11,9 @@ use crate::app::error::AppError;
 use crate::app::input::{absolute_path, read_json_input};
 use crate::app::runtime::Runtime;
 use crate::app::{
-    AgentRoleEnv, EditInput, Replacement, RoleVerdict, SpecLockEvent, Tool, Verdict,
-    agent_role as check_agent_role, spec_lock as check_spec_lock,
+    AgentRoleEnv, EditInput, LanguageRungs, Replacement, RoleVerdict, SpecLockEvent, Tool, Verdict,
+    agent_role as check_agent_role, language_line, resolve_language, settings_language,
+    spec_lock as check_spec_lock, user_settings_language,
 };
 use crate::app::{ExtensionKind, Group, INVALID_WORKFLOW_CONFIG};
 use crate::project::Env;
@@ -43,6 +45,59 @@ pub fn session_start(
             ExitCode::from(1)
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+const MANAGED_SETTINGS: &str = "/Library/Application Support/ClaudeCode/managed-settings.json";
+#[cfg(not(target_os = "macos"))]
+const MANAGED_SETTINGS: &str = "/etc/claude-code/managed-settings.json";
+
+/// Nunca bloqueia nem falha: sem idioma, ou com settings ilegíveis, sai mudo com 0.
+pub fn subagent_start(stdin: &mut impl Read, out: &mut impl Write, env: &Env<'_>) -> ExitCode {
+    let cwd = read_json_input(stdin)
+        .ok()
+        .and_then(|input| input["cwd"].as_str().map(PathBuf::from));
+    let project = non_empty(env.claude.project_dir.as_deref())
+        .map(PathBuf::from)
+        .or(cwd.filter(|dir| dir.is_absolute()));
+    let user = non_empty(env.claude.config_dir.as_deref())
+        .map(PathBuf::from)
+        .or_else(|| non_empty(env.home).map(|home| Path::new(home).join(".claude")));
+    let project_file = |name: &str| project.as_ref().map(|dir| dir.join(".claude").join(name));
+    let managed = settings_language(Some(Path::new(MANAGED_SETTINGS)));
+    let local = settings_language(project_file("settings.local.json").as_deref());
+    let shared = settings_language(project_file("settings.json").as_deref());
+    let personal = user_settings_language(user.map(|dir| dir.join("settings.json")).as_deref());
+    let language = resolve_language(&LanguageRungs {
+        plugin_option: env
+            .claude
+            .plugin_option_language
+            .as_deref()
+            .and_then(OsStr::to_str),
+        managed: managed.as_deref(),
+        local: local.as_deref(),
+        project: shared.as_deref(),
+        user: personal.as_deref(),
+    });
+
+    if let Some(language) = language {
+        let _ = writeln!(out, "{}", language_output("SubagentStart", &language));
+    }
+
+    ExitCode::SUCCESS
+}
+
+fn non_empty(value: Option<&OsStr>) -> Option<&OsStr> {
+    value.filter(|text| !text.is_empty())
+}
+
+fn language_output(event: &str, language: &str) -> Value {
+    json!({
+        "hookSpecificOutput": {
+            "hookEventName": event,
+            "additionalContext": language_line(language),
+        }
+    })
 }
 
 /// Só a recusa de `--format agent|human` sai com 2, e vem antes de o hook rodar; a negação vai no JSON, e um erro interno antes de reconhecer a spec libera a escrita, com a linha de erro no stderr; depois do reconhecimento, a falha de git ou de leitura nega com `spec-lock-unavailable`. Quem decide o código de saída que bloqueia é o `omhl-hook.sh`, cujo ramo sem o binário sai com `exit 0` fora de projeto marcado (`docs/directives-flow.md`). Além das specs, nega a mudança do `specs.dir` no `workflow.toml` principal com spec congelada (`spec-dir-frozen`), qualquer edição sob um `.git` de projeto omhl (`git-dir-protected`) e a edição que deixaria o marcador do projeto inválido (`marker-protected`).

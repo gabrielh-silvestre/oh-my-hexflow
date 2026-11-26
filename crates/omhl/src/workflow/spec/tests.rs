@@ -4,7 +4,7 @@ use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::gap::{Answerer, GapState};
 use crate::workflow::spec::{
     AmendmentState, DivergenceFact, SpecFacts, SpecFile, amendment_divergence_mismatch,
-    amendment_state, validate_graph, validate_spec,
+    amendment_state, is_amendment_id, validate_graph, validate_spec,
 };
 
 // Camada pura: `crate::workflow::spec::validate_spec`
@@ -979,18 +979,30 @@ fn graph_violations(
     config: &SpecsConfig,
     facts: &FakeFacts,
 ) -> Vec<String> {
-    let part_text = text(part_lines);
-    let amendment_text = amendment_lines.map(text);
+    graph_violations_named(
+        ("parte-01.md", part_lines),
+        amendment_lines.map(|lines| ("emenda-01.md", lines)),
+        config,
+        facts,
+    )
+}
+
+fn graph_violations_named(
+    part: (&str, &[&str]),
+    amendment: Option<(&str, &[&str])>,
+    config: &SpecsConfig,
+    facts: &FakeFacts,
+) -> Vec<String> {
+    let part_text = text(part.1);
+    let amendment_text = amendment.map(|(_, lines)| text(lines));
     let parts = [SpecFile {
-        name: "parte-01.md",
+        name: part.0,
         text: &part_text,
     }];
     let amendments: Vec<SpecFile> = amendment_text
         .iter()
-        .map(|text| SpecFile {
-            name: "emenda-01.md",
-            text,
-        })
+        .zip(amendment)
+        .map(|(text, (name, _))| SpecFile { name, text })
         .collect();
 
     validate_graph(W1, &parts, &amendments, config, facts)
@@ -1358,4 +1370,755 @@ fn it_should_call_an_amendment_pending_when_the_approval_belongs_to_another_work
     let state = amendment_state(W1, "emenda-01.md", &facts);
 
     assert_eq!(state, AmendmentState::Pending);
+}
+
+// Vocabulário inglês: fixtures com o mesmo leiaute das portuguesas, então as constantes de linha valem
+
+fn english_part() -> Vec<&'static str> {
+    vec![
+        "## Objective",
+        "",
+        "Allow the login.",
+        "",
+        "## Applicable directives and premises",
+        "",
+        "- premises.login-rule",
+        "",
+        "## Behaviors",
+        "",
+        "- CMP-001: the system authenticates the user.",
+        "",
+        "## Acceptance criteria",
+        "",
+        "- CA-001: a valid login returns a session.",
+        "",
+        "## Out of scope",
+        "",
+        "Logout.",
+    ]
+}
+
+fn english_amendment() -> Vec<&'static str> {
+    vec![
+        "## Divergence",
+        "",
+        "divergences.login-cmp-001",
+        "",
+        "## Corrections",
+        "",
+        "- EMD-001 CMP-001: the system authenticates the user and logs the access.",
+        "",
+        "## Reason",
+        "",
+        "The spec omitted the access log.",
+    ]
+}
+
+fn validate_english_part(lines: Vec<&str>) -> Vec<String> {
+    validate(&[("part-01.md", lines)], &[], &default_config())
+}
+
+fn validate_english_amendment(lines: Vec<&str>) -> Vec<String> {
+    validate(
+        &[("part-01.md", english_part())],
+        &[("amendment-01.md", lines)],
+        &default_config(),
+    )
+}
+
+fn english_graph_violations(
+    part_lines: &[&str],
+    amendment_lines: Option<&[&str]>,
+    facts: &FakeFacts,
+) -> Vec<String> {
+    graph_violations_named(
+        ("part-01.md", part_lines),
+        amendment_lines.map(|lines| ("amendment-01.md", lines)),
+        &default_config(),
+        facts,
+    )
+}
+
+fn heading_lines(lines: &[&str]) -> Vec<usize> {
+    lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.starts_with("## "))
+        .map(|(index, _)| index + 1)
+        .collect()
+}
+
+fn sections_invalid(violations: &[String]) -> Vec<String> {
+    violations
+        .iter()
+        .filter(|violation| violation.ends_with(" sections-invalid"))
+        .cloned()
+        .collect()
+}
+
+fn without_heading(mut lines: Vec<&'static str>, section: usize) -> Vec<&'static str> {
+    lines.remove(heading_lines(&lines)[section] - 1);
+
+    lines
+}
+
+fn with_swapped_headings(
+    mut lines: Vec<&'static str>,
+    first: usize,
+    second: usize,
+) -> Vec<&'static str> {
+    let headings = heading_lines(&lines);
+    lines.swap(headings[first] - 1, headings[second] - 1);
+
+    lines
+}
+
+fn with_repeated_heading(mut lines: Vec<&'static str>, section: usize) -> Vec<&'static str> {
+    let at = heading_lines(&lines)[section] - 1;
+    lines.insert(at + 1, lines[at]);
+
+    lines
+}
+
+macro_rules! heading_tests {
+    (
+        $fixture:ident, $validate:ident, $file:literal, $count:literal;
+        $($section:literal => $missing:ident, $swapped:ident, $repeated:ident;)*
+    ) => {
+        $(
+            #[test]
+            fn $missing() {
+                let section: usize = $section;
+                let original = $fixture();
+                let line = if section + 1 < $count { heading_lines(&original)[section + 1] - 1 } else { 1 };
+
+                let violations = $validate(without_heading(original, section));
+
+                assert_eq!(sections_invalid(&violations), vec![format!("{}:{line} sections-invalid", $file)]);
+            }
+
+            #[test]
+            fn $swapped() {
+                let section: usize = $section;
+                let neighbor = if section + 1 < $count { section + 1 } else { section - 1 };
+                let original = $fixture();
+                let line = heading_lines(&original)[section.min(neighbor)];
+
+                let violations = $validate(with_swapped_headings(original, section, neighbor));
+
+                assert_eq!(sections_invalid(&violations), vec![format!("{}:{line} sections-invalid", $file)]);
+            }
+
+            #[test]
+            fn $repeated() {
+                let section: usize = $section;
+                let original = $fixture();
+                let line = heading_lines(&original)[section] + 1;
+
+                let violations = $validate(with_repeated_heading(original, section));
+
+                assert_eq!(sections_invalid(&violations), vec![format!("{}:{line} sections-invalid", $file)]);
+            }
+        )*
+    };
+}
+
+heading_tests! {
+    english_part, validate_english_part, "part-01.md", 5;
+    0 => it_should_reject_an_english_part_without_the_objective_heading,
+        it_should_reject_an_english_part_with_the_objective_heading_swapped,
+        it_should_reject_an_english_part_with_the_objective_heading_repeated;
+    1 => it_should_reject_an_english_part_without_the_directives_heading,
+        it_should_reject_an_english_part_with_the_directives_heading_swapped,
+        it_should_reject_an_english_part_with_the_directives_heading_repeated;
+    2 => it_should_reject_an_english_part_without_the_behaviors_heading,
+        it_should_reject_an_english_part_with_the_behaviors_heading_swapped,
+        it_should_reject_an_english_part_with_the_behaviors_heading_repeated;
+    3 => it_should_reject_an_english_part_without_the_acceptance_criteria_heading,
+        it_should_reject_an_english_part_with_the_acceptance_criteria_heading_swapped,
+        it_should_reject_an_english_part_with_the_acceptance_criteria_heading_repeated;
+    4 => it_should_reject_an_english_part_without_the_out_of_scope_heading,
+        it_should_reject_an_english_part_with_the_out_of_scope_heading_swapped,
+        it_should_reject_an_english_part_with_the_out_of_scope_heading_repeated;
+}
+
+heading_tests! {
+    english_amendment, validate_english_amendment, "amendment-01.md", 3;
+    0 => it_should_reject_an_english_amendment_without_the_divergence_heading,
+        it_should_reject_an_english_amendment_with_the_divergence_heading_swapped,
+        it_should_reject_an_english_amendment_with_the_divergence_heading_repeated;
+    1 => it_should_reject_an_english_amendment_without_the_corrections_heading,
+        it_should_reject_an_english_amendment_with_the_corrections_heading_swapped,
+        it_should_reject_an_english_amendment_with_the_corrections_heading_repeated;
+    2 => it_should_reject_an_english_amendment_without_the_reason_heading,
+        it_should_reject_an_english_amendment_with_the_reason_heading_swapped,
+        it_should_reject_an_english_amendment_with_the_reason_heading_repeated;
+}
+
+#[test]
+fn it_should_accept_a_valid_english_part() {
+    let violations = validate_english_part(english_part());
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_accept_a_valid_english_amendment() {
+    let violations = validate_english_amendment(english_amendment());
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_reject_an_english_cmp_id_that_is_not_three_digits_at_its_line() {
+    let lines = with_line(
+        english_part(),
+        PART_CMP_LINE,
+        "- CMP-x: the system logs in.",
+    );
+
+    let violations = validate_english_part(lines);
+
+    assert_eq!(violations, vec!["part-01.md:11 item-id-invalid"]);
+}
+
+#[test]
+fn it_should_reject_a_repeated_english_item_id_at_the_second_occurrence() {
+    let lines = with_line(
+        english_part(),
+        PART_CMP_LINE + 1,
+        "- CMP-001: the system logs out.",
+    );
+
+    let violations = validate_english_part(lines);
+
+    assert_eq!(violations, vec!["part-01.md:12 item-id-duplicate"]);
+}
+
+#[test]
+fn it_should_reject_an_english_behaviors_section_with_only_prose_at_its_heading() {
+    let lines = with_line(
+        english_part(),
+        PART_CMP_LINE,
+        "The system authenticates the user.",
+    );
+
+    let violations = validate_english_part(lines);
+
+    assert_eq!(violations, vec!["part-01.md:9 section-without-items"]);
+}
+
+#[test]
+fn it_should_reject_an_english_criteria_section_with_only_prose_at_its_heading() {
+    let lines = with_line(
+        english_part(),
+        PART_CA_LINE,
+        "A valid login returns a session.",
+    );
+
+    let violations = validate_english_part(lines);
+
+    assert_eq!(violations, vec!["part-01.md:13 section-without-items"]);
+}
+
+#[test]
+fn it_should_reject_a_part_whose_first_heading_is_of_neither_vocabulary_at_line_one() {
+    let lines = with_line(english_part(), 1, "## Overview");
+
+    let violations = validate_english_part(lines);
+
+    assert_eq!(violations, vec!["part-01.md:1 sections-invalid"]);
+}
+
+// Vocabulário inglês: um título do outro vocabulário e arquivos de vocabulários diferentes
+
+#[test]
+fn it_should_reject_a_portuguese_heading_inside_an_english_part_at_its_line() {
+    let lines = with_line(english_part(), 9, "## Comportamentos");
+
+    let violations = validate_english_part(lines);
+
+    assert_eq!(violations, vec!["part-01.md:9 sections-invalid"]);
+}
+
+#[test]
+fn it_should_reject_an_english_heading_inside_a_portuguese_part_at_its_line() {
+    let lines = with_line(valid_part(), 13, "## Acceptance criteria");
+
+    let violations = validate_part(lines);
+
+    assert_eq!(violations, vec!["parte-01.md:13 sections-invalid"]);
+}
+
+#[test]
+fn it_should_reject_a_portuguese_heading_inside_an_english_amendment_at_its_line() {
+    let lines = with_line(english_amendment(), 5, "## Correções");
+
+    let violations = validate_english_amendment(lines);
+
+    assert_eq!(violations, vec!["amendment-01.md:5 sections-invalid"]);
+}
+
+#[test]
+fn it_should_accept_a_portuguese_part_next_to_an_english_part() {
+    let second = with_line(
+        with_line(
+            english_part(),
+            PART_CMP_LINE,
+            "- CMP-002: the system ends the session.",
+        ),
+        PART_CA_LINE,
+        "- CA-002: logout invalidates the session.",
+    );
+
+    let violations = validate(
+        &[("parte-01.md", valid_part()), ("part-02.md", second)],
+        &[],
+        &default_config(),
+    );
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_accept_an_english_and_a_portuguese_amendment_over_an_english_part() {
+    let portuguese = with_line(
+        valid_amendment(),
+        AMENDMENT_ITEM_LINE,
+        "- EMD-002 CA-001: login válido devolve sessão e registra o acesso.",
+    );
+
+    let violations = validate(
+        &[("part-01.md", english_part())],
+        &[
+            ("amendment-01.md", english_amendment()),
+            ("emenda-02.md", portuguese),
+        ],
+        &default_config(),
+    );
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_accept_an_english_and_a_portuguese_amendment_over_a_portuguese_part() {
+    let english = with_line(
+        english_amendment(),
+        AMENDMENT_ITEM_LINE,
+        "- EMD-002 CA-001: a valid login returns a session and logs the access.",
+    );
+
+    let violations = validate(
+        &[("parte-01.md", valid_part())],
+        &[
+            ("emenda-01.md", valid_amendment()),
+            ("amendment-02.md", english),
+        ],
+        &default_config(),
+    );
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+// Vocabulário inglês: emendas
+
+#[test]
+fn it_should_reject_an_english_amendment_that_cites_no_divergence_id() {
+    let lines = with_line(english_amendment(), 3, "divergence.login-cmp-001");
+
+    let violations = validate_english_amendment(lines);
+
+    assert_eq!(violations, vec!["amendment-01.md:1 divergence-ref-invalid"]);
+}
+
+#[test]
+fn it_should_reject_an_english_amendment_that_cites_two_divergence_ids() {
+    let lines = with_line(
+        english_amendment(),
+        3,
+        "divergences.login-a and divergences.login-b",
+    );
+
+    let violations = validate_english_amendment(lines);
+
+    assert_eq!(violations, vec!["amendment-01.md:1 divergence-ref-invalid"]);
+}
+
+#[test]
+fn it_should_reject_an_english_correction_whose_target_is_not_defined_in_any_part() {
+    let lines = with_line(
+        english_amendment(),
+        AMENDMENT_ITEM_LINE,
+        "- EMD-001 CMP-099: new value.",
+    );
+
+    let violations = validate_english_amendment(lines);
+
+    assert_eq!(
+        violations,
+        vec!["amendment-01.md:7 correction-target-unknown"]
+    );
+}
+
+#[test]
+fn it_should_accept_an_english_amendment_that_corrects_an_emd_of_a_lower_numbered_one() {
+    let second = with_line(
+        english_amendment(),
+        AMENDMENT_ITEM_LINE,
+        "- EMD-002 EMD-001: the final value.",
+    );
+
+    let violations = validate(
+        &[("part-01.md", english_part())],
+        &[
+            ("amendment-01.md", english_amendment()),
+            ("amendment-02.md", second),
+        ],
+        &default_config(),
+    );
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_reject_an_amendment_item_that_defines_a_cmp_in_the_english_corrections() {
+    let lines = with_line(
+        english_amendment(),
+        AMENDMENT_MOTIVE_BODY_LINE,
+        "- CMP-009: new behavior.",
+    );
+
+    let violations = validate_english_amendment(lines);
+
+    assert_eq!(
+        violations,
+        vec!["amendment-01.md:11 amendment-defines-item"]
+    );
+}
+
+// Famílias de nome de arquivo
+
+#[test]
+fn it_should_accept_a_folder_with_only_portuguese_file_names() {
+    let violations = validate(
+        &[("parte-01.md", valid_part())],
+        &[("emenda-01.md", valid_amendment())],
+        &default_config(),
+    );
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_accept_a_folder_with_only_english_file_names() {
+    let violations = validate(
+        &[("part-01.md", english_part())],
+        &[("amendment-01.md", english_amendment())],
+        &default_config(),
+    );
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_reject_an_amendment_number_repeated_across_the_two_name_families() {
+    let other = with_line(
+        english_amendment(),
+        AMENDMENT_ITEM_LINE,
+        "- EMD-002 CMP-001: other value.",
+    );
+
+    let violations = validate(
+        &[("part-01.md", english_part())],
+        &[
+            ("amendment-02.md", english_amendment()),
+            ("emenda-02.md", other),
+        ],
+        &default_config(),
+    );
+
+    assert_eq!(
+        violations,
+        vec!["emenda-02.md:1 amendment-number-duplicate"]
+    );
+}
+
+#[test]
+fn it_should_reject_an_english_amendment_name_whose_number_has_one_digit() {
+    let violations = validate(
+        &[("part-01.md", english_part())],
+        &[("amendment-1.md", english_amendment())],
+        &default_config(),
+    );
+
+    assert_eq!(violations, vec!["amendment-1.md:1 amendment-name-invalid"]);
+}
+
+#[test]
+fn it_should_reject_a_portuguese_amendment_name_whose_number_has_one_digit() {
+    let violations = validate(
+        &[("parte-01.md", valid_part())],
+        &[("emenda-1.md", valid_amendment())],
+        &default_config(),
+    );
+
+    assert_eq!(violations, vec!["emenda-1.md:1 amendment-name-invalid"]);
+}
+
+#[test]
+fn it_should_recognize_both_families_as_amendment_ids() {
+    let ids = ["amendment-01", "emenda-01", "amendment-1", "amend-01"];
+
+    let recognized: Vec<bool> = ids.iter().map(|id| is_amendment_id(id)).collect();
+
+    assert_eq!(recognized, vec![true, true, false, false]);
+}
+
+// Marcador de pendência nos dois vocabulários
+
+fn english_pending_part(marker: &str) -> Vec<String> {
+    let line = format!("Depends on {marker}.");
+
+    validate_english_part(with_line(english_part(), PART_OBJECTIVE_LINE, &line))
+}
+
+#[test]
+fn it_should_accept_a_well_formed_english_pending_marker() {
+    let violations = english_pending_part("[PENDING: gaps.login-timeout]");
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_reject_each_malformed_english_pending_marker_at_its_line() {
+    let malformed = [
+        "[PENDING: gap-1]",
+        "[PENDING gaps.x]",
+        "[PENDING: gaps.]",
+        "[PENDING: gaps.x",
+        "[PENDING: gaps.X]",
+    ];
+    for marker in malformed {
+        let violations = english_pending_part(marker);
+
+        assert_eq!(
+            violations,
+            vec!["part-01.md:3 pending-marker-invalid"],
+            "marker {marker}"
+        );
+    }
+}
+
+#[test]
+fn it_should_reject_a_well_formed_english_marker_inside_a_portuguese_part() {
+    let lines = with_line(
+        valid_part(),
+        PART_OBJECTIVE_LINE,
+        "Depende de [PENDING: gaps.pay-day].",
+    );
+
+    let violations = validate_part(lines);
+
+    assert_eq!(violations, vec!["parte-01.md:3 pending-marker-invalid"]);
+}
+
+#[test]
+fn it_should_reject_a_well_formed_portuguese_marker_inside_an_english_part() {
+    let violations = english_pending_part("[PENDENTE: gaps.pay-day]");
+
+    assert_eq!(violations, vec!["part-01.md:3 pending-marker-invalid"]);
+}
+
+#[test]
+fn it_should_reject_a_malformed_english_marker_inside_a_portuguese_part() {
+    let lines = with_line(
+        valid_part(),
+        PART_OBJECTIVE_LINE,
+        "Depende de [PENDING gaps.x].",
+    );
+
+    let violations = validate_part(lines);
+
+    assert_eq!(violations, vec!["parte-01.md:3 pending-marker-invalid"]);
+}
+
+#[test]
+fn it_should_reject_an_english_pending_marker_that_points_to_an_open_gap() {
+    let facts = base_facts().gap("gaps.pay-day", GapState::Open);
+    let lines = with_line(
+        english_part(),
+        PART_OBJECTIVE_LINE,
+        "Allow the login [PENDING: gaps.pay-day].",
+    );
+
+    let violations = english_graph_violations(&lines, None, &facts);
+
+    assert_eq!(violations, vec!["part-01.md:3 pending-gap-unresolved"]);
+}
+
+#[test]
+fn it_should_accept_an_english_pending_marker_that_points_to_an_answered_gap() {
+    let facts = base_facts().gap("gaps.pay-day", answered());
+    let lines = with_line(
+        english_part(),
+        PART_OBJECTIVE_LINE,
+        "Allow the login [PENDING: gaps.pay-day].",
+    );
+
+    let violations = english_graph_violations(&lines, None, &facts);
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_reject_an_english_marker_of_an_open_gap_inside_a_portuguese_part_with_both_codes() {
+    let facts = base_facts().gap("gaps.pay-day", GapState::Open);
+    let lines = with_line(
+        valid_part(),
+        PART_OBJECTIVE_LINE,
+        "Permitir o login [PENDING: gaps.pay-day].",
+    );
+
+    let structural = validate_part(lines.clone());
+    let graph = part_violations(&lines, &facts);
+
+    assert_eq!(structural, vec!["parte-01.md:3 pending-marker-invalid"]);
+    assert_eq!(graph, vec!["parte-01.md:3 pending-gap-unresolved"]);
+}
+
+#[test]
+fn it_should_reject_a_portuguese_marker_of_an_open_gap_inside_an_english_part_with_both_codes() {
+    let facts = base_facts().gap("gaps.pay-day", GapState::Open);
+    let lines = with_line(
+        english_part(),
+        PART_OBJECTIVE_LINE,
+        "Allow the login [PENDENTE: gaps.pay-day].",
+    );
+
+    let structural = validate_english_part(lines.clone());
+    let graph = english_graph_violations(&lines, None, &facts);
+
+    assert_eq!(structural, vec!["part-01.md:3 pending-marker-invalid"]);
+    assert_eq!(graph, vec!["part-01.md:3 pending-gap-unresolved"]);
+}
+
+#[test]
+fn it_should_reject_an_english_pending_marker_inside_an_english_amendment_that_points_to_an_open_gap()
+ {
+    let facts = base_facts().gap("gaps.pay-day", GapState::Open);
+    let lines = with_line(
+        english_amendment(),
+        AMENDMENT_MOTIVE_BODY_LINE,
+        "Depends on [PENDING: gaps.pay-day].",
+    );
+
+    let violations = english_graph_violations(&english_part(), Some(&lines), &facts);
+
+    assert_eq!(
+        violations,
+        vec!["amendment-01.md:11 pending-gap-unresolved"]
+    );
+}
+
+// Vocabulário inglês: verificações do grafo pelo título do arquivo
+
+#[test]
+fn it_should_reject_an_english_spec_without_a_confirmed_business_premise_at_the_directives_heading()
+{
+    let lines = with_line(
+        english_part(),
+        PART_FIRST_CITATION_LINE,
+        "- guidelines.tone",
+    );
+
+    let violations = english_graph_violations(&lines, None, &base_facts());
+
+    assert_eq!(violations, vec!["part-01.md:5 business-premise-missing"]);
+}
+
+#[test]
+fn it_should_reject_an_english_spec_whose_only_cited_business_premise_is_late() {
+    let facts = base_facts().late(BUSINESS_PREMISE);
+
+    let violations = english_graph_violations(&english_part(), None, &facts);
+
+    assert_eq!(
+        violations,
+        vec!["part-01.md:5 main-business-premise-missing"]
+    );
+}
+
+#[test]
+fn it_should_reject_a_cited_id_that_does_not_exist_inside_the_english_directives_section() {
+    let lines = with_line(
+        english_part(),
+        PART_SECOND_CITATION_LINE,
+        "- premises.unknown",
+    );
+
+    let violations = english_graph_violations(&lines, None, &base_facts());
+
+    assert_eq!(violations, vec!["part-01.md:8 cited-id-unknown"]);
+}
+
+#[test]
+fn it_should_accept_an_english_spec_whose_citations_and_amendment_all_resolve() {
+    let violations =
+        english_graph_violations(&english_part(), Some(&english_amendment()), &base_facts());
+
+    assert_eq!(violations, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_reject_an_english_amendment_that_cites_a_divergence_that_does_not_exist() {
+    let violations = english_graph_violations(
+        &english_part(),
+        Some(&english_amendment()),
+        &FakeFacts::default().premise(BUSINESS_PREMISE, "business", W1, true),
+    );
+
+    assert_eq!(
+        violations,
+        vec!["amendment-01.md:3 amendment-divergence-unknown"]
+    );
+}
+
+#[test]
+fn it_should_reject_an_english_amendment_that_does_not_correct_the_cmp_of_the_divergence() {
+    let facts = base_facts().divergence(DIVERGENCE, W1, "open", "CMP-002");
+
+    let violations = english_graph_violations(&english_part(), Some(&english_amendment()), &facts);
+
+    assert_eq!(
+        violations,
+        vec!["amendment-01.md:3 amendment-correction-missing"]
+    );
+}
+
+#[test]
+fn it_should_reject_an_english_amendment_that_does_not_correct_the_ca_of_the_divergence() {
+    let facts = base_facts().divergence(DIVERGENCE, W1, "open", "CA-001");
+
+    let violations = english_graph_violations(&english_part(), Some(&english_amendment()), &facts);
+
+    assert_eq!(
+        violations,
+        vec!["amendment-01.md:3 amendment-correction-missing"]
+    );
+}
+
+#[test]
+fn it_should_report_the_english_amendment_divergence_that_differs_from_the_expected_one() {
+    let text = text(&english_amendment());
+    let file = SpecFile {
+        name: "amendment-01.md",
+        text: &text,
+    };
+
+    let mismatch = amendment_divergence_mismatch(&file, "divergences.other");
+
+    assert_eq!(
+        mismatch.map(|violation| format!("{} {}", violation.path, violation.code)),
+        Some("amendment-01.md:3 amendment-divergence-mismatch".to_owned())
+    );
 }

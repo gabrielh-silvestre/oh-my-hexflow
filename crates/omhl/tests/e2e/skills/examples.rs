@@ -438,7 +438,7 @@ impl Fixture {
                 fixture.seed();
                 fixture.init_git();
                 fixture.omhl_ok(&["spec", "init", "work-items.w1", "x"]);
-                fixture.write(".omhl/specs/wi-w1__x/parte-01.md", SPEC_PART);
+                fixture.write(".omhl/specs/wi-w1__x/part-01.md", SPEC_PART);
             }
             "checks" | "retire-check" | "dirty-checks" => {
                 fixture.write(".omhl/checks/ok.toml", MECHANICAL_CHECK);

@@ -64,11 +64,12 @@ pub enum CommandKey {
     HookSessionStart,
     HookSpecLock,
     HookAgentRole,
+    HookSubagentStart,
     HookWtPostStart,
 }
 
 impl CommandKey {
-    pub const ALL: [CommandKey; 29] = [
+    pub const ALL: [CommandKey; 30] = [
         Self::List,
         Self::Get,
         Self::Append,
@@ -97,6 +98,7 @@ impl CommandKey {
         Self::HookSessionStart,
         Self::HookSpecLock,
         Self::HookAgentRole,
+        Self::HookSubagentStart,
         Self::HookWtPostStart,
     ];
 }
@@ -138,6 +140,7 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole
+        | CommandKey::HookSubagentStart
         | CommandKey::HookWtPostStart => None,
     }
 }
@@ -172,6 +175,7 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole
+        | CommandKey::HookSubagentStart
         | CommandKey::HookWtPostStart => &Profile::EMPTY,
     }
 }
@@ -209,6 +213,7 @@ pub fn deferred(key: CommandKey) -> bool {
         CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole
+        | CommandKey::HookSubagentStart
         | CommandKey::HookWtPostStart
         | CommandKey::HooksPostCommit
         | CommandKey::GateWorktree => true,

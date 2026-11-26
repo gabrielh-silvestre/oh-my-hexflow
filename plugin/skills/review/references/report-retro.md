@@ -1,49 +1,49 @@
 # omhl report retro
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review 8 | `omhl report retro` |
+| session | review 8 | `omhl report retro` |
 
-## Quando usar
+## When to use
 
-Para ler a retro de um work item, aberto ou fechado, sem fechá-lo: o mesmo relatório que o `omhl close` imprime no campo `retro`. Use antes do `close` para ver o que a retro vai trazer, ou depois dele para propor melhorias. É somente leitura.
+To read the retro of a work item, open or closed, without closing it: the same report that `omhl close` prints in the `retro` field. Use it before `close` to see what the retro will carry, or after it to propose improvements. It is read-only.
 
-## Entradas
+## Inputs
 
-- `<WORK_ITEM>`: o id do work item, como `work-items.w1`. Precisa existir; pode estar aberto ou fechado.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
-- Não exige árvore limpa. Sem retro também não exige git; com retro, o comando lê a pasta da spec pelo repositório git do projeto e recusa com `probe-failed` fora de um.
+- `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist; it may be open or closed.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
+- It does not require a clean tree. Without a retro it does not require git either; with a retro, the command reads the spec folder through the project's git repository and refuses with `probe-failed` outside one.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0. Sem retro sai `✔ report retro · none`: o work item não tem divergência nem gap respondido sem critério (um gap aberto sozinho, ou um arquivo de emenda sozinho, não gera retro). Com retro, o cabeçalho conta os itens (`✔ report retro · 1 divergence · 1 no-criterion gap`), cada item ganha uma linha `- divergence`, `- amendment`, `- pending amendment`, `- no criterion` ou `- open gap` com os ids inteiros, e o `Next:` manda propor uma melhoria por item ao dono. Com `--format json` é uma linha JSON, `{"retro": ...}`, com `null` quando não há retro. Com retro, o objeto traz:
+Text on stdout, exit 0. Without a retro it prints `✔ report retro · none`: the work item has no divergence or gap answered without a criterion (an open gap alone, or an amendment file alone, does not produce a retro). With a retro, the header counts the items (`✔ report retro · 1 divergence · 1 no-criterion gap`), each item gets a `- divergence`, `- amendment`, `- pending amendment`, `- no criterion` or `- open gap` line with the whole ids, and the `Next:` says to propose one improvement per item to the owner. With `--format json` it is a JSON line, `{"retro": ...}`, with `null` when there is no retro. With a retro, the object carries:
 
-- `divergences`: os ids agrupados por `kind` e `resolution`.
-- `amendments`: `approved` (emendas citadas por uma divergência `spec-stale`) e `pending` (arquivos de emenda que nenhuma divergência cita).
-- `no_criterion`: os gaps respondidos sem uma diretiva que sustente a resposta (`gap` e `answered_by`).
-- `open_gaps`: os gaps `open` e `needs-human`.
+- `divergences`: the ids grouped by `kind` and `resolution`.
+- `amendments`: `approved` (amendments cited by a `spec-stale` divergence) and `pending` (amendment files that no divergence cites).
+- `no_criterion`: the gaps answered without a guideline backing the answer (`gap` and `answered_by`).
+- `open_gaps`: the `open` and `needs-human` gaps.
 
-A retro traz só ids e nomes de arquivo, nunca o texto de uma divergência, spec ou emenda. Proponha as melhorias como descrito em [fechamento.md](fechamento.md).
+The retro carries only ids and file names, never the text of a divergence, spec or amendment. Propose the improvements as described in [fechamento.md](fechamento.md).
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. A pasta da spec e o `workflow.toml` só são lidos quando há retro. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). A missing `<WORK_ITEM>` is a clap usage error, with exit 2 and no code. The spec folder and `workflow.toml` are only read when there is a retro. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
-- `work-item-not-found` (saída 1): o work item não existe. O ponteiro é `/work_item`. Confira o id.
-- `INVALID_INPUT` (saída 1): o id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
-- `spec-store-unusable` (saída 1): há retro e a pasta da spec do work item não pôde ser lida, ou há mais de uma pasta `wi-<id>__*`. Corrija a pasta no diretório principal.
-- `invalid-workflow-config` (saída 1): há retro e o `.omhl/workflow.toml` é inválido. Corrija o arquivo.
-- `probe-failed` (saída 1): há retro e o git não respondeu (fora de um repositório, por exemplo). Rode dentro de um checkout. Sem retro o comando não lê o git.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `work-item-not-found` (exit 1): the work item does not exist. The pointer is `/work_item`. Check the id.
+- `INVALID_INPUT` (exit 1): the id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
+- `spec-store-unusable` (exit 1): there is a retro and the work item's spec folder could not be read, or there is more than one `wi-<id>__*` folder. Fix the folder in the main directory.
+- `invalid-workflow-config` (exit 1): there is a retro and `.omhl/workflow.toml` is invalid. Fix the file.
+- `probe-failed` (exit 1): there is a retro and git did not answer (outside a repository, for example). Run inside a checkout. Without a retro the command does not read git.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Sem divergência nem gap respondido, não há retro:
+With no divergence or answered gap, there is no retro:
 
 ```omhl-example fixture=project
 $ omhl report retro work-items.w1
@@ -52,7 +52,7 @@ $ omhl report retro work-items.w1 --format json
 {"retro":null}
 ```
 
-Com uma divergência aberta e um gap respondido por uma premissa sem diretiva que a sustente, a retro lista os dois (o gap sem critério traz a premissa que o respondeu):
+With an open divergence and a gap answered by a premise without a guideline backing it, the retro lists both (the gap without a criterion carries the premise that answered it):
 
 ```omhl-example fixture=git
 $ omhl append <<'EOF'
@@ -71,7 +71,7 @@ $ omhl report retro work-items.w1 --format json
 {"retro":{"amendments":{"approved":[],"pending":[]},"divergences":[{"ids":["divergences.limit"],"kind":"missing","resolution":"open"}],"no_criterion":[{"answered_by":"premises.p1","gap":"gaps.limit"}],"open_gaps":[]}}
 ```
 
-Com retro, fora de um repositório git, o comando recusa:
+With a retro, outside a git repository, the command refuses:
 
 ```omhl-example fixture=project
 $ omhl append <<'EOF'
@@ -87,7 +87,7 @@ $ omhl report retro work-items.w1
 # exit 1
 ```
 
-Recusa: o work item não existe e o id está mal formado:
+Refusal: the work item does not exist and the id is malformed:
 
 ```omhl-example fixture=project
 $ omhl report retro work-items.zz

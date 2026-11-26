@@ -28,6 +28,27 @@ pub(crate) fn read_regular_utf8(path: &Path, max_bytes: u64) -> Result<String, &
     String::from_utf8(bytes).map_err(|_| "not-utf8")
 }
 
+/// Como `read_regular_utf8`, mas segue link simbólico (dotfiles): só lê se o alvo for arquivo regular.
+pub(crate) fn read_followed_regular_utf8(
+    path: &Path,
+    max_bytes: u64,
+) -> Result<String, &'static str> {
+    // `fs::metadata` segue o link; checar antes do `open` evita travar num FIFO.
+    if !fs::metadata(path).map_err(|_| "io-error")?.is_file() {
+        return Err("not-regular-file");
+    }
+    let mut bytes = Vec::new();
+    File::open(path)
+        .map_err(|_| "io-error")?
+        .take(max_bytes + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "io-error")?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(FILE_TOO_LARGE);
+    }
+    String::from_utf8(bytes).map_err(|_| "not-utf8")
+}
+
 /// Abre sem seguir link e sem travar num FIFO sem escritor; o que o descritor aberto mostra
 /// que não é arquivo regular volta como `not-regular-file`. Cobre a troca do arquivo depois da
 /// pré-checagem por `symlink_metadata`.

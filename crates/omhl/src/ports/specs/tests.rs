@@ -413,3 +413,69 @@ fn it_should_return_an_error_when_listing_the_specs_dir_fails_looking_for_a_froz
 
     assert_eq!(frozen, Err(TOO_MANY_ENTRIES));
 }
+
+#[test]
+fn it_should_list_the_amendments_of_both_name_families() {
+    let (dir, store) = store();
+    seed(
+        dir.path(),
+        FOLDER,
+        &["part-01.md", "amendment-02.md", "emenda-01.md", "notes.md"],
+    );
+
+    let names = store.amendment_names("w1");
+
+    assert_eq!(
+        names,
+        Ok(vec![
+            "amendment-02.md".to_owned(),
+            "emenda-01.md".to_owned()
+        ])
+    );
+}
+
+#[test]
+fn it_should_split_a_folder_with_only_english_names_into_parts_and_amendments() {
+    let (dir, store) = store();
+    seed(
+        dir.path(),
+        FOLDER,
+        &["part-01.md", "part-02.md", "amendment-01.md", "notes.md"],
+    );
+
+    let folder = store.read_folder("w1").unwrap().unwrap();
+
+    let parts: Vec<&str> = folder.parts.iter().map(|part| part.name.as_str()).collect();
+    let amendments: Vec<&str> = folder
+        .amendments
+        .iter()
+        .map(|amendment| amendment.name.as_str())
+        .collect();
+    assert_eq!(
+        (parts, amendments),
+        (vec!["part-01.md", "part-02.md"], vec!["amendment-01.md"])
+    );
+}
+
+#[test]
+fn it_should_split_a_folder_with_only_portuguese_names_into_parts_and_amendments() {
+    let (dir, store) = store();
+    seed(
+        dir.path(),
+        FOLDER,
+        &["parte-01.md", "parte-02.md", "emenda-01.md", "notas.md"],
+    );
+
+    let folder = store.read_folder("w1").unwrap().unwrap();
+
+    let parts: Vec<&str> = folder.parts.iter().map(|part| part.name.as_str()).collect();
+    let amendments: Vec<&str> = folder
+        .amendments
+        .iter()
+        .map(|amendment| amendment.name.as_str())
+        .collect();
+    assert_eq!(
+        (parts, amendments),
+        (vec!["parte-01.md", "parte-02.md"], vec!["emenda-01.md"])
+    );
+}

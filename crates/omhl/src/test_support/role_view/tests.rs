@@ -25,72 +25,72 @@ const AGENT: &str = "---\nname: scribe\nomhl-allow:\n  commands: [append, list, 
 const AGENT_WITHOUT_APPEND: &str =
     "---\nname: scribe\nomhl-allow:\n  commands: [list, get, help]\n---\nbody\n";
 
-const CYCLE_MD: &str = r#"# Ciclo
+const CYCLE_MD: &str = r#"# Cycle
 
-1. **Work item.** A sessão grava.
-2. **Scribe.** O `oh-my-hexflow:scribe` grava.
-3. **Confirmação.** O `oh-my-hexflow:scribe` confirma e a sessão revê.
+1. **Work item.** The session records.
+2. **Scribe.** The `oh-my-hexflow:scribe` records.
+3. **Confirmation.** The `oh-my-hexflow:scribe` confirms and the session reviews.
 
 ```yaml omhl-cycle
-etapas:
-  - {n: 1, nome: work-item, papeis: [sessao]}
-  - {n: 2, nome: scribe, papeis: [scribe]}
-  - {n: 3, nome: confirmacao, papeis: [scribe, sessao]}
+stages:
+  - {n: 1, name: work-item, roles: [session]}
+  - {n: 2, name: scribe, roles: [scribe]}
+  - {n: 3, name: confirmation, roles: [scribe, session]}
 ```
 "#;
 
 const VIEW: &str = r#"role: scribe
-etapas:
-  - etapa: 2
-    comandos:
+stages:
+  - stage: 2
+    commands:
       - "omhl list --type premise --where work_item=work-items.<id>"
-      - "omhl get premises.<nome>"
+      - "omhl get premises.<name>"
       - "omhl append"
-    grava: {nodes: [premise], relations: [answers, contradicts], retire: [contradicts]}
-  - etapa: 3
-    repete: 2
-nao_usados: [help]
+    records: {nodes: [premise], relations: [answers, contradicts], retire: [contradicts]}
+  - stage: 3
+    repeats: 2
+unused: [help]
 "#;
 
 const MALFORMED_VIEW: &str = r#"role: other
-etapas:
-  - etapa: 2
-    repete: 3
-    comandos:
+stages:
+  - stage: 2
+    repeats: 3
+    commands:
       - "list"
-  - etapa: 3
-  - etapa: 4
-    comandos:
+  - stage: 3
+  - stage: 4
+    commands:
       - "omhl list --where kind=<kind>"
       - "omhl get a | b"
       - "omhl get a && b"
       - "omhl get a; b"
-    grava: {nodes: [], relations: [], retire: []}
-  - etapa: 5
-    comandos:
+    records: {nodes: [], relations: [], retire: []}
+  - stage: 5
+    commands:
       - "omhl append"
-  - etapa: 6
-    repete: 9
-  - etapa: 10
-    repete: 2
-    grava: {nodes: [], relations: [], retire: []}
-nao_usados: [help]
+  - stage: 6
+    repeats: 9
+  - stage: 10
+    repeats: 2
+    records: {nodes: [], relations: [], retire: []}
+unused: [help]
 "#;
 
-const WORKFLOW_SKILL: &str = "---\nname: plan-consensus\n---\n# X\n\n1. Rode. A sessão confere com `omhl list --type premise --where work_item=work-items.<id>`.\n\n## Comando para referência\n\n| Comando | Referência |\n|---|---|\n| `omhl get` | [get.md](get.md) |\n";
-const WORKFLOW_SKILL_WITHOUT_CITATION: &str = "---\nname: plan-consensus\n---\n# X\n\n1. Rode.\n";
+const WORKFLOW_SKILL: &str = "---\nname: plan-consensus\n---\n# X\n\n1. Run. The session checks with `omhl list --type premise --where work_item=work-items.<id>`.\n\n## Command reference\n\n| Command | Reference |\n|---|---|\n| `omhl get` | [get.md](get.md) |\n";
+const WORKFLOW_SKILL_WITHOUT_CITATION: &str = "---\nname: plan-consensus\n---\n# X\n\n1. Run.\n";
 
-const WHO_USES_PAGE: &str = "# omhl list\n\n## Quem usa, em qual etapa e com qual filtro\n\n| Papel | Etapa | Comando |\n|---|---|---|\n| scribe | 2, 3 | `omhl list --type premise --where work_item=work-items.<id>` |\n| sessao | plan-consensus 1 | `omhl list --type premise --where work_item=work-items.<id>` |\n\n## Quando usar\n";
+const WHO_USES_PAGE: &str = "# omhl list\n\n## Who uses it, at which stage and with which filter\n\n| Role | Stage | Command |\n|---|---|---|\n| scribe | 2, 3 | `omhl list --type premise --where work_item=work-items.<id>` |\n| session | plan-consensus 1 | `omhl list --type premise --where work_item=work-items.<id>` |\n\n## Quando usar\n";
 const SCRIBE_ROW: &str =
     "| scribe | 2, 3 | `omhl list --type premise --where work_item=work-items.<id>` |\n";
 
 const VIEW_RECORDING_WITHOUT_APPEND_IN_ALLOW: &str = r#"role: scribe
-etapas:
-  - etapa: 2
-    comandos:
+stages:
+  - stage: 2
+    commands:
       - "omhl append"
-    grava: {nodes: [premise], relations: [], retire: []}
-nao_usados: [list, get, help]
+    records: {nodes: [premise], relations: [], retire: []}
+unused: [list, get, help]
 "#;
 
 fn plugin_dir() -> PathBuf {
@@ -186,6 +186,21 @@ fn it_should_accept_the_shipped_role_views() {
 }
 
 #[test]
+fn it_should_list_the_guidelines_in_every_shipped_role_view_and_allow_list() {
+    for role in ROLES {
+        let view = read_plugin(&format!("skills/role-{role}/SKILL.md"));
+        let allow = parse_role_allow(&read_plugin(&format!("agents/{role}.md")))
+            .expect("the shipped omhl-allow");
+
+        assert!(view.contains("omhl list --type guideline"), "{role}: view");
+        assert!(
+            allow.commands.iter().any(|command| command == "list"),
+            "{role}: allow"
+        );
+    }
+}
+
+#[test]
 fn it_should_accept_the_shipped_cycle_prose() {
     let cycle_md = read_plugin("skills/directives-flow/references/cycle.md");
     let cycle = parse_cycle(&cycle_md).expect("the shipped cycle block");
@@ -206,16 +221,16 @@ fn it_should_accept_the_session_checks_of_the_shipped_workflows() {
 
 #[test]
 fn it_should_list_the_stages_a_role_view_lacks() {
-    let found = rejected(&VIEW.replace("  - etapa: 3\n    repete: 2\n", ""));
+    let found = rejected(&VIEW.replace("  - stage: 3\n    repeats: 2\n", ""));
 
-    assert_eq!(found, ["etapas sem linha: [3]"]);
+    assert_eq!(found, ["stages without a line: [3]"]);
 }
 
 #[test]
 fn it_should_reject_a_stage_the_role_does_not_act_in() {
-    let found = rejected(&VIEW.replace("nao_usados", "  - etapa: 1\n    repete: 2\nnao_usados"));
+    let found = rejected(&VIEW.replace("unused", "  - stage: 1\n    repeats: 2\nunused"));
 
-    assert_eq!(found, ["etapas fora do papel: [1]"]);
+    assert_eq!(found, ["stages outside the role: [1]"]);
 }
 
 #[test]
@@ -225,14 +240,14 @@ fn it_should_reject_a_command_outside_the_omhl_allow() {
         "      - \"omhl append\"\n      - \"omhl render\"\n",
     ));
 
-    assert_eq!(found, ["comandos fora do omhl-allow: [render]"]);
+    assert_eq!(found, ["commands outside the omhl-allow: [render]"]);
 }
 
 #[test]
 fn it_should_reject_an_unused_entry_outside_the_omhl_allow() {
-    let found = rejected(&VIEW.replace("nao_usados: [help]", "nao_usados: [help, sweep]"));
+    let found = rejected(&VIEW.replace("unused: [help]", "unused: [help, sweep]"));
 
-    assert_eq!(found, ["nao_usados fora do omhl-allow: [sweep]"]);
+    assert_eq!(found, ["unused outside the omhl-allow: [sweep]"]);
 }
 
 #[test]
@@ -244,22 +259,22 @@ fn it_should_sort_the_commands_outside_the_omhl_allow_together_with_the_unresolv
 
     assert_eq!(
         found,
-        ["comandos fora do omhl-allow: [omhl --help, render]"]
+        ["commands outside the omhl-allow: [omhl --help, render]"]
     );
 }
 
 #[test]
 fn it_should_reject_an_omhl_allow_command_with_no_line() {
-    let found = rejected(&VIEW.replace("nao_usados: [help]", "nao_usados: []"));
+    let found = rejected(&VIEW.replace("unused: [help]", "unused: []"));
 
-    assert_eq!(found, ["comandos do omhl-allow sem linha: [help]"]);
+    assert_eq!(found, ["omhl-allow commands without a line: [help]"]);
 }
 
 #[test]
 fn it_should_reject_a_command_both_used_and_unused() {
-    let found = rejected(&VIEW.replace("nao_usados: [help]", "nao_usados: [help, list]"));
+    let found = rejected(&VIEW.replace("unused: [help]", "unused: [help, list]"));
 
-    assert_eq!(found, ["comandos do omhl-allow sem linha: [list]"]);
+    assert_eq!(found, ["omhl-allow commands without a line: [list]"]);
 }
 
 #[test]
@@ -269,21 +284,21 @@ fn it_should_reject_a_recorded_item_no_stage_declares() {
         "relations: [contradicts]",
     ));
 
-    assert_eq!(found, ["grava sem linha: [relação:answers]"]);
+    assert_eq!(found, ["records without a line: [relation:answers]"]);
 }
 
 #[test]
 fn it_should_tell_a_retired_item_from_a_recorded_relation_of_the_same_name() {
     let found = rejected(&VIEW.replace("retire: [contradicts]", "retire: []"));
 
-    assert_eq!(found, ["grava sem linha: [retirada:contradicts]"]);
+    assert_eq!(found, ["records without a line: [retire:contradicts]"]);
 }
 
 #[test]
 fn it_should_reject_a_recorded_item_outside_the_omhl_allow() {
     let found = rejected(&VIEW.replace("nodes: [premise]", "nodes: [premise, gap]"));
 
-    assert_eq!(found, ["grava fora do omhl-allow: [nó:gap]"]);
+    assert_eq!(found, ["records outside the omhl-allow: [node:gap]"]);
 }
 
 #[test]
@@ -293,18 +308,18 @@ fn it_should_reject_a_malformed_role_view_block() {
     assert_eq!(
         found,
         [
-            "forma do bloco: [role other ≠ scribe]",
-            "forma do bloco: [etapa 2: comando sem o prefixo omhl: list]",
-            "forma do bloco: [etapa 2: repete com comandos]",
-            "forma do bloco: [etapa 3: sem repete e sem comandos]",
-            "forma do bloco: [etapa 4: grava sem omhl append nos comandos]",
-            "forma do bloco: [etapa 4: operador && em omhl get a && b]",
-            "forma do bloco: [etapa 4: operador ; em omhl get a; b]",
-            "forma do bloco: [etapa 4: operador | em omhl get a | b]",
-            "forma do bloco: [etapa 4: placeholder <kind> fora de <id>, <nome> e <slug>]",
-            "forma do bloco: [etapa 5: omhl append sem grava]",
-            "forma do bloco: [etapa 6: repete a etapa 9, que o papel não tem]",
-            "forma do bloco: [etapa 10: repete com grava]",
+            "block shape: [role other ≠ scribe]",
+            "block shape: [stage 2: command without the omhl prefix: list]",
+            "block shape: [stage 2: repeats with commands]",
+            "block shape: [stage 3: no repeats and no commands]",
+            "block shape: [stage 4: operator && in omhl get a && b]",
+            "block shape: [stage 4: operator ; in omhl get a; b]",
+            "block shape: [stage 4: operator | in omhl get a | b]",
+            "block shape: [stage 4: placeholder <kind> outside <id>, <name> and <slug>]",
+            "block shape: [stage 4: records without omhl append in the commands]",
+            "block shape: [stage 5: omhl append without records]",
+            "block shape: [stage 6: repeats stage 9, which the role does not have]",
+            "block shape: [stage 10: repeats with records]",
         ]
     );
 }
@@ -312,15 +327,15 @@ fn it_should_reject_a_malformed_role_view_block() {
 #[test]
 fn it_should_reject_a_stage_declared_twice_or_repeating_itself() {
     let found = findings(&VIEW.replace(
-        "  - etapa: 3\n    repete: 2\n",
-        "  - etapa: 3\n    repete: 3\n  - etapa: 2\n    repete: 3\n",
+        "  - stage: 3\n    repeats: 2\n",
+        "  - stage: 3\n    repeats: 3\n  - stage: 2\n    repeats: 3\n",
     ));
 
     assert_eq!(
         found,
         [
-            "forma do bloco: [etapa 2: etapa repetida]",
-            "forma do bloco: [etapa 3: repete a própria etapa]",
+            "block shape: [stage 2: stage repeated]",
+            "block shape: [stage 3: repeats its own stage]",
         ]
     );
 }
@@ -340,13 +355,13 @@ fn it_should_reject_a_recorded_item_when_the_omhl_allow_has_no_append() {
 
     assert_eq!(
         found,
-        ["forma do bloco: [etapa 2: grava, mas o omhl-allow não tem append]"]
+        ["block shape: [stage 2: records, but the omhl-allow has no append]"]
     );
 }
 
 #[test]
 fn it_should_reject_a_role_view_file_without_exactly_one_block() {
-    let without_block = "---\nname: role-scribe\n---\n\nsem cerca\n";
+    let without_block = "---\nname: role-scribe\n---\n\nno fence\n";
     let two_blocks = format!("{}{}", skill_with(VIEW), skill_with(VIEW));
     let unknown_field = skill_with(&format!("{VIEW}extra: 1\n"));
 
@@ -356,16 +371,60 @@ fn it_should_reject_a_role_view_file_without_exactly_one_block() {
 
     assert_eq!(
         none,
-        ["forma do bloco: [cercas omhl-role-view: esperada 1, achadas 0]"]
+        ["block shape: [omhl-role-view fences: expected 1, found 0]"]
     );
     assert_eq!(
         twice,
-        ["forma do bloco: [cercas omhl-role-view: esperada 1, achadas 2]"]
+        ["block shape: [omhl-role-view fences: expected 1, found 2]"]
     );
     assert_eq!(unknown.len(), 1, "{unknown:?}");
     assert!(
-        unknown[0].starts_with("forma do bloco: [yaml: ") && unknown[0].contains("extra"),
+        unknown[0].starts_with("block shape: [yaml: ") && unknown[0].contains("extra"),
         "{unknown:?}"
+    );
+}
+
+#[test]
+fn it_should_refuse_a_role_view_written_with_the_old_portuguese_keys() {
+    let portuguese_view = VIEW
+        .replace("stages:", "etapas:")
+        .replace("  - stage:", "  - etapa:")
+        .replace("    commands:", "    comandos:")
+        .replace("    records:", "    grava:")
+        .replace("    repeats:", "    repete:")
+        .replace("unused:", "nao_usados:");
+
+    let found = findings(&portuguese_view);
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0].starts_with("block shape: [yaml: ") && found[0].contains("etapas"),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_refuse_a_cycle_block_written_with_the_old_portuguese_keys() {
+    let portuguese_cycle = CYCLE_MD
+        .replace("stages:", "etapas:")
+        .replace("name:", "nome:")
+        .replace("roles:", "papeis:");
+
+    let parsed = parse_cycle(&portuguese_cycle);
+
+    assert!(parsed.is_err(), "{parsed:?}");
+}
+
+#[test]
+fn it_should_refuse_the_old_portuguese_session_phrase() {
+    let skill =
+        "---\nname: x\n---\n# X\n\n1. Rode. A sessão confere com `omhl get work-items.<id>`.\n";
+
+    let found = session_checks(skill);
+
+    assert_eq!(
+        found,
+        ["steps without a session check: [1: missing the phrase \"The session checks\"]"]
     );
 }
 
@@ -378,11 +437,11 @@ fn it_should_reject_a_skills_list_other_than_the_role_view() {
 
     assert_eq!(
         spelled_bare,
-        ["skills do agente: [esperado oh-my-hexflow:role-scribe, achado [\"role-scribe\"]]"]
+        ["agent skills: [expected oh-my-hexflow:role-scribe, found [\"role-scribe\"]]"]
     );
     assert_eq!(
         absent,
-        ["skills do agente: [esperado oh-my-hexflow:role-scribe, achado ausente]"]
+        ["agent skills: [expected oh-my-hexflow:role-scribe, found absent]"]
     );
 }
 
@@ -399,12 +458,12 @@ fn it_should_reject_an_empty_or_a_multiple_skills_list() {
 
     assert_eq!(
         empty,
-        ["skills do agente: [esperado oh-my-hexflow:role-scribe, achado []]"]
+        ["agent skills: [expected oh-my-hexflow:role-scribe, found []]"]
     );
     assert_eq!(
         multiple,
         [
-            "skills do agente: [esperado oh-my-hexflow:role-scribe, achado [\"oh-my-hexflow:role-scribe\", \"oh-my-hexflow:role-other\"]]"
+            "agent skills: [expected oh-my-hexflow:role-scribe, found [\"oh-my-hexflow:role-scribe\", \"oh-my-hexflow:role-other\"]]"
         ]
     );
 }
@@ -417,14 +476,14 @@ fn it_should_reject_a_cited_skill_without_a_skill_file() {
 
     assert_eq!(
         found,
-        ["skill do agente sem SKILL.md: [oh-my-hexflow:role-scribe]"]
+        ["agent skill without SKILL.md: [oh-my-hexflow:role-scribe]"]
     );
 }
 
 #[test]
 fn it_should_read_the_cycle_key_n_but_reject_an_unquoted_number_or_boolean_as_text() {
-    let number_as_name = CYCLE_MD.replace("nome: scribe", "nome: 2");
-    let boolean_as_role = CYCLE_MD.replace("papeis: [scribe]", "papeis: [true]");
+    let number_as_name = CYCLE_MD.replace("name: scribe", "name: 2");
+    let boolean_as_role = CYCLE_MD.replace("roles: [scribe]", "roles: [true]");
 
     assert!(parse_cycle(CYCLE_MD).is_ok());
     assert!(parse_cycle(&number_as_name).is_err());
@@ -433,61 +492,64 @@ fn it_should_read_the_cycle_key_n_but_reject_an_unquoted_number_or_boolean_as_te
 
 #[test]
 fn it_should_reject_a_cycle_role_the_prose_does_not_name() {
-    let prose = CYCLE_MD.replace("O `oh-my-hexflow:scribe` grava.", "O agente grava.");
+    let prose = CYCLE_MD.replace("The `oh-my-hexflow:scribe` records.", "The agent records.");
 
     let found = cycle_prose(&cycle(), &prose);
 
-    assert_eq!(found, ["papeis do ciclo: [2: papeis [] ≠ [scribe]]"]);
+    assert_eq!(found, ["cycle roles: [2: roles [] ≠ [scribe]]"]);
 }
 
 #[test]
 fn it_should_reject_a_cycle_number_or_name_the_prose_does_not_have() {
     let prose = CYCLE_MD
-        .replace("3. **Confirmação.**", "4. **Confirmação.**")
-        .replace("2. **Scribe.**", "2. **Escriba.**");
+        .replace("3. **Confirmation.**", "4. **Confirmation.**")
+        .replace("2. **Scribe.**", "2. **Scribbler.**");
 
     let found = cycle_prose(&cycle(), &prose);
 
     assert_eq!(
         found,
-        ["papeis do ciclo: [2: nome escriba ≠ scribe, 3: sem linha numerada]"]
+        ["cycle roles: [2: name scribbler ≠ scribe, 3: no numbered line]"]
     );
 }
 
 #[test]
 fn it_should_reject_a_workflow_step_without_a_session_check() {
-    let skill = "---\nname: x\n---\n# X\n\n1. Rode. A sessão confere com `omhl get work-items.<id>`.\n2. Chame o agente.\n";
+    let skill = "---\nname: x\n---\n# X\n\n1. Run. The session checks with `omhl get work-items.<id>`.\n2. Call the agent.\n";
 
     let found = session_checks(skill);
 
     assert_eq!(
         found,
-        ["passos sem conferência: [2: sem a frase \"A sessão confere\", 2: sem comando omhl]"]
+        [
+            "steps without a session check: [2: missing the phrase \"The session checks\", 2: no omhl command]"
+        ]
     );
 }
 
 #[test]
 fn it_should_reject_a_workflow_skill_whose_steps_cannot_be_read() {
-    let without_frontmatter = "# X\n\n1. Rode. A sessão confere com `omhl get work-items.<id>`.\n";
+    let without_frontmatter =
+        "# X\n\n1. Run. The session checks with `omhl get work-items.<id>`.\n";
 
     let found = session_checks(without_frontmatter);
 
     assert_eq!(
         found,
-        ["passos sem conferência: [sem passo numerado após o frontmatter]"]
+        ["steps without a session check: [no numbered step after the frontmatter]"]
     );
 }
 
 #[test]
 fn it_should_reject_a_session_check_that_cites_a_leaf_the_cli_lacks() {
     let skill =
-        "---\nname: x\n---\n# X\n\n1. Rode. A sessão confere com `omhl frobnicate --now`.\n";
+        "---\nname: x\n---\n# X\n\n1. Run. The session checks with `omhl frobnicate --now`.\n";
 
     let found = session_checks(skill);
 
     assert_eq!(
         found,
-        ["passos sem conferência: [1: folha inexistente frobnicate]"]
+        ["steps without a session check: [1: unknown leaf frobnicate]"]
     );
 }
 
@@ -560,12 +622,12 @@ fn borrowed(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
 #[test]
 fn it_should_reject_a_who_uses_row_the_views_do_not_project() {
     let found = rejected_page(
-        &WHO_USES_PAGE.replace("| sessao |", "| critic | 3 | `omhl list` |\n| sessao |"),
+        &WHO_USES_PAGE.replace("| session |", "| critic | 3 | `omhl list` |\n| session |"),
     );
 
     assert_eq!(
         found,
-        ["quem usa da página list: [sobra: critic | 3 | omhl list]"]
+        ["who-uses of page list: [extra: critic | 3 | omhl list]"]
     );
 }
 
@@ -576,7 +638,7 @@ fn it_should_reject_a_projected_row_missing_from_the_page() {
     assert_eq!(
         found,
         [
-            "quem usa da página list: [falta: scribe | 2, 3 | omhl list --type premise --where work_item=work-items.<id>]"
+            "who-uses of page list: [missing: scribe | 2, 3 | omhl list --type premise --where work_item=work-items.<id>]"
         ]
     );
 }
@@ -588,7 +650,7 @@ fn it_should_reject_a_session_row_the_workflow_skills_do_not_cite() {
     assert_eq!(
         found,
         [
-            "quem usa da página list: [sobra: sessao | plan-consensus 1 | omhl list --type premise --where work_item=work-items.<id>]"
+            "who-uses of page list: [extra: session | plan-consensus 1 | omhl list --type premise --where work_item=work-items.<id>]"
         ]
     );
 }
@@ -605,7 +667,7 @@ fn it_should_reject_a_projection_class_the_anchor_does_not_expect() {
 
     assert_eq!(
         found,
-        ["classe divergente da âncora: [list: esperado RolesOnly, projetado Session]"]
+        ["class diverging from the anchor: [list: expected RolesOnly, projected Session]"]
     );
 }
 
@@ -619,7 +681,7 @@ fn it_should_reject_a_migrated_page_missing_from_the_anchor() {
         ],
     );
 
-    assert_eq!(found, ["folhas fora da âncora: [verify]"]);
+    assert_eq!(found, ["leaves outside the anchor: [verify]"]);
 }
 
 #[test]
@@ -633,7 +695,7 @@ fn it_should_reject_an_anchor_entry_with_no_cli_leaf() {
         ],
     );
 
-    assert_eq!(found, ["âncora sem folha na CLI: [render]"]);
+    assert_eq!(found, ["anchor without a CLI leaf: [render]"]);
 }
 
 #[test]
@@ -682,7 +744,7 @@ fn marker_files() -> Vec<(String, String)> {
 
 fn marker_item(marker: &Marker) -> String {
     format!(
-        "{} em {}: {}",
+        "{} in {}: {}",
         marker.rule, marker.file, marker.fragments[0]
     )
 }
@@ -733,8 +795,8 @@ fn it_should_require_the_marker_fragments_on_one_line() {
         file: "skills/x/SKILL.md",
         fragments: &["alpha", "beta"],
     };
-    let together = [("skills/x/SKILL.md", "um alpha e beta juntos\n")];
-    let apart = [("skills/x/SKILL.md", "so alpha\nso beta\n")];
+    let together = [("skills/x/SKILL.md", "an alpha and beta together\n")];
+    let apart = [("skills/x/SKILL.md", "only alpha\nonly beta\n")];
 
     let accepted = phrase_markers(std::slice::from_ref(&marker), &together);
     let rejected = phrase_markers(std::slice::from_ref(&marker), &apart);
@@ -742,7 +804,7 @@ fn it_should_require_the_marker_fragments_on_one_line() {
     assert_eq!(accepted, Vec::<String>::new());
     assert_eq!(
         rejected,
-        ["frases marcadoras ausentes: [AC-X em skills/x/SKILL.md: alpha]"]
+        ["marker phrases missing: [AC-X in skills/x/SKILL.md: alpha]"]
     );
 }
 
@@ -758,6 +820,6 @@ fn it_should_reject_a_marker_whose_file_is_not_given() {
 
     assert_eq!(
         found,
-        ["frases marcadoras ausentes: [AC-X em skills/x/SKILL.md: alpha]"]
+        ["marker phrases missing: [AC-X in skills/x/SKILL.md: alpha]"]
     );
 }

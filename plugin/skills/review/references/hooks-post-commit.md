@@ -1,36 +1,36 @@
 # omhl hooks post-commit
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-Nenhuma etapa do ciclo a roda.
+No stage of the cycle runs it.
 
-Quem o chama é o hook de git do clone, não uma etapa do ciclo.
+Whoever calls it is the clone's git hook, not a stage of the cycle.
 
-## Quando usar
+## When to use
 
-Quem chama é o hook `post-commit` que o `omhl hooks install` grava; você raramente o roda à mão. Na branch `develop`, depois de um commit, ele consome a marca da `develop` (o arquivo `omhl-develop-mark` na pasta do git), para o próximo commit direto exigir uma marca nova. Em outra branch ele não faz nada.
+Whoever calls it is the `post-commit` hook that `omhl hooks install` writes; you rarely run it by hand. On the `develop` branch, after a commit, it consumes the `develop` mark (the `omhl-develop-mark` file in the git folder), so the next direct commit requires a new mark. On another branch it does nothing.
 
-## Entradas
+## Inputs
 
-- Sem argumentos posicionais. Usa a branch e a pasta do git do diretório atual.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
-- `--format json`: opção global, o único formato deste comando, que só imprime JSON. `agent` e `human` saem com erro de uso (saída 2), antes de o comando rodar.
+- No positional arguments. It uses the branch and the git folder of the current directory.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
+- `--format json`: global option, the only format of this command, which only prints JSON. `agent` and `human` exit with a usage error (exit 2), before the command runs.
 
-## Saída
+## Output
 
-Uma linha JSON no stdout, saída 0: `consumed`, que é `true` quando a marca existia na `develop` e foi apagada, e `false` quando não havia marca ou a branch não é a `develop`. Chamar de novo depois de consumida devolve `false`: o comando é idempotente. O `omhl check run --event before-commit` e um commit abortado nunca gastam a marca.
+A JSON line on stdout, exit 0: `consumed`, which is `true` when the mark existed on `develop` and was deleted, and `false` when there was no mark or the branch is not `develop`. Calling again after it was consumed returns `false`: the command is idempotent. `omhl check run --event before-commit` and an aborted commit never spend the mark.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, numa linha JSON, com saída 1. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
+An error goes to stderr, as a JSON line, with exit 1. An unknown option or a missing argument is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
-- `probe-failed` (saída 1): o git não respondeu (fora de um repositório). Rode dentro de um clone.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `probe-failed` (exit 1): git did not answer (outside a repository). Run inside a clone.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Consome a marca depois de um commit na `develop`. A segunda chamada já não encontra a marca:
+Consumes the mark after a commit on `develop`. The second call no longer finds the mark:
 
 ```omhl-example fixture=develop-mark
 $ omhl hooks post-commit

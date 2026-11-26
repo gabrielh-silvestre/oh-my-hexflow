@@ -1,41 +1,41 @@
 # omhl report sessions
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-Nenhuma etapa do ciclo a roda.
+No stage of the cycle runs it.
 
-## Quando usar
+## When to use
 
-Para listar as sessões reais do Claude Code que gravaram no banco do projeto, por exemplo para escolher as sessões de uma mineração que olha vários work items. Cada gravação do `omhl` guarda o id da sessão que a fez, e este é o único comando que o mostra. É somente leitura.
+To list the real Claude Code sessions that recorded in the project database, for example to choose the sessions of a mining that looks at several work items. Each `omhl` record keeps the id of the session that made it, and this is the only command that shows it. It is read-only.
 
-## Entradas
+## Inputs
 
-- `--work-item <id>`: restringe às sessões que gravaram ao menos um registro do work item, como `work-items.w1`. É repetível: com mais de um, vale a união, sem repetir sessão. Cada work item precisa existir (aberto ou fechado). A linha de uma sessão filtrada continua mostrando os totais e os work items da sessão inteira. Sem a opção, o comando lista todas as sessões.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco, fora da pasta do projeto; o `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
+- `--work-item <id>`: restricts to the sessions that recorded at least one record of the work item, like `work-items.w1`. It is repeatable: with more than one, the union applies, without repeating a session. Each work item must exist (open or closed). The line of a filtered session still shows the totals and the work items of the whole session. Without the option, the command lists all sessions.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database, outside the project folder; `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0: `✔ report sessions · N sessions` e uma linha por sessão, na ordem do primeiro registro de cada uma. Sem sessão real nenhuma sai `✔ report sessions · none`. Registros gravados fora do Claude Code (marcador `outside-claude-code`) e registros antigos, sem sessão, não têm linha nem somam em nenhuma. Com `--format json` é uma linha JSON, `{"sessions": [...]}`, e cada sessão traz:
+Text on stdout, exit 0: `✔ report sessions · N sessions` and one line per session, in the order of the first record of each. With no real session at all it prints `✔ report sessions · none`. Records made outside Claude Code (marker `outside-claude-code`) and old records, without a session, have no line and add to none. With `--format json` it is a JSON line, `{"sessions": [...]}`, and each session carries:
 
-- `id`: o id da sessão. No texto ele sai depois da palavra `session`, numa linha só, sem caracteres de controle; o JSON traz o valor exato, que é o que um programa deve consumir.
-- `first` e `last`: a data do primeiro e a do último registro que a sessão gravou, no formato de `at` do `omhl get`.
-- `nodes` e `relations`: quantos records de node e de relation a sessão gravou. Toda gravação conta, inclusive revisões e retiradas.
-- `work_items`: os work items que a sessão tocou (no texto, `work items ...` ou `no work items`). O de um nó é o `work_item` dos dados; o de um nó de work item ou de pull request é o próprio id; diretiva, check e nó nativo não têm. Uma retirada herda o do registro anterior do mesmo nó ou da mesma relation. Uma relation pertence aos work items que as duas pontas tinham quando ela foi gravada; a retirada dela não relê as pontas, mesmo que elas tenham mudado de work item depois.
+- `id`: the session id. In the text it comes after the word `session`, on a single line, without control characters; the JSON carries the exact value, which is what a program should consume.
+- `first` and `last`: the date of the first and of the last record the session recorded, in the `at` format of `omhl get`.
+- `nodes` and `relations`: how many node and relation records the session recorded. Every record counts, revisions and retirements included.
+- `work_items`: the work items the session touched (in the text, `work items ...` or `no work items`). That of a node is the `work_item` of the data; that of a work item or pull request node is its own id; guideline, check and native node have none. A retirement inherits that of the previous record of the same node or relation. A relation belongs to the work items that its two ends had when it was recorded; its retirement does not reread the ends, even if they changed work item later.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). Uma opção desconhecida é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). An unknown option is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](errors.md).
 
-- `work-item-not-found` (saída 1): um `--work-item` não existe. O ponteiro é `/work_item`. Confira o id com `omhl get <id>`.
-- `INVALID_INPUT` (saída 1): um `--work-item` tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `work-item-not-found` (exit 1): a `--work-item` does not exist. The pointer is `/work_item`. Check the id with `omhl get <id>`.
+- `INVALID_INPUT` (exit 1): a `--work-item` has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Num banco gravado só fora do Claude Code, a lista é vazia:
+In a database recorded only outside Claude Code, the list is empty:
 
 ```omhl-example fixture=project
 $ omhl report sessions
@@ -44,7 +44,7 @@ $ omhl report sessions --work-item work-items.w1 --format json
 {"sessions":[]}
 ```
 
-Recusa: o work item não existe:
+Refusal: the work item does not exist:
 
 ```omhl-example fixture=project
 $ omhl report sessions --work-item work-items.zz
@@ -53,7 +53,7 @@ $ omhl report sessions --work-item work-items.zz
 # exit 1
 ```
 
-Duas sessões: a primeira gravou uma decisão e a relation que a liga à premissa de `work-items.w1`, a segunda gravou um gap do mesmo work item. A decisão não tem `work_item`; o da primeira sessão vem da ponta da relation. O work item e a premissa foram gravados fora do Claude Code e não têm linha:
+Two sessions: the first recorded a decision and the relation that links it to the premise of `work-items.w1`, the second recorded a gap of the same work item. The decision has no `work_item`; that of the first session comes from the end of the relation. The work item and the premise were recorded outside Claude Code and have no line:
 
 ```omhl-example fixture=sessions
 $ omhl report sessions

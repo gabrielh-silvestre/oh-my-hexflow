@@ -65,6 +65,13 @@ fn it_should_omit_the_marketplace_entry_version_or_repeat_the_plugin_manifest_on
 const PLUGIN_ROOT_ARG: &str = "${CLAUDE_PLUGIN_ROOT}/hooks/omhl-hook.sh";
 const TARBALL: &str = "omhl-x86_64-unknown-linux-musl.tar.gz";
 const TARBALL_SHA256: &str = "omhl-x86_64-unknown-linux-musl.tar.gz.sha256";
+const HOOK_NAMES: [&str; 5] = [
+    "spec-lock",
+    "agent-role",
+    "session-start",
+    "version-check",
+    "subagent-start",
+];
 const NO_PROJECT_DIR: (&str, &str) = ("CLAUDE_PROJECT_DIR", "");
 
 /// A entrada de hook (de qualquer evento) cujo segundo argumento é o nome do hook.
@@ -91,10 +98,10 @@ fn event_group<'a>(hooks: &'a Value, event: &str, matcher: &str) -> &'a Value {
 }
 
 #[test]
-fn it_should_wire_the_four_hooks_in_exec_form_through_the_hook_script() {
+fn it_should_wire_the_five_hooks_in_exec_form_through_the_hook_script() {
     let hooks = plugin_file("hooks/hooks.json");
 
-    for name in ["spec-lock", "agent-role", "session-start", "version-check"] {
+    for name in HOOK_NAMES {
         let entry = entry_for(&hooks, name);
 
         assert_eq!(entry["command"], json!("sh"), "{name}");
@@ -106,7 +113,7 @@ fn it_should_wire_the_four_hooks_in_exec_form_through_the_hook_script() {
 fn it_should_not_chain_any_hook_command_with_a_shell_operator() {
     let hooks = plugin_file("hooks/hooks.json");
 
-    for name in ["spec-lock", "agent-role", "session-start", "version-check"] {
+    for name in HOOK_NAMES {
         let command = entry_for(&hooks, name)["command"].as_str().unwrap();
 
         assert!(!command.contains("||"), "{name}: {command}");
@@ -158,6 +165,40 @@ fn it_should_wire_the_agent_role_hook_on_four_tool_matchers_beside_the_spec_lock
             &json!("Edit|Write|MultiEdit"),
             &json!("Bash|Monitor|Agent|Task")
         ]
+    );
+}
+
+#[test]
+fn it_should_wire_the_subagent_start_hook_for_the_plugin_agents_with_a_ten_second_timeout() {
+    let hooks = plugin_file("hooks/hooks.json");
+
+    let group = event_group(&hooks, "SubagentStart", "^oh-my-hexflow:");
+
+    assert_eq!(group["hooks"][0]["args"][1], json!("subagent-start"));
+    assert_eq!(group["hooks"][0]["timeout"], json!(10));
+}
+
+#[test]
+fn it_should_declare_an_optional_text_language_option() {
+    let manifest = plugin_file(".claude-plugin/plugin.json");
+
+    let option = &manifest["userConfig"]["language"];
+
+    assert_eq!(option["type"], json!("string"));
+    assert!(
+        option["title"]
+            .as_str()
+            .is_some_and(|title| !title.is_empty())
+    );
+    assert!(
+        option["description"]
+            .as_str()
+            .is_some_and(|text| !text.is_empty())
+    );
+    assert!(
+        option
+            .get("required")
+            .is_none_or(|required| required == &json!(false))
     );
 }
 
@@ -299,6 +340,46 @@ fn it_should_let_the_json_denial_of_omhl_through_with_exit_zero() {
 
     assert_eq!(run.code, Some(0));
     assert_eq!(run.stdout.trim_end(), denial);
+}
+
+#[test]
+fn it_should_pass_stdin_and_stdout_through_to_omhl_for_the_subagent_start_hook() {
+    let run = run_with_fake_omhl(
+        "subagent-start",
+        &format!("{ECHO_INPUT}exit 0\n"),
+        "{\"a\":1}\nsecond line\n",
+    );
+
+    assert_eq!(run.code, Some(0));
+    assert_eq!(
+        run.stdout,
+        "args:hook subagent-start\nin:{\"a\":1}\nin:second line\n"
+    );
+    assert!(run.stderr.is_empty(), "stderr stays empty");
+}
+
+#[test]
+fn it_should_stay_silent_and_exit_zero_when_omhl_does_not_know_the_subagent_start_subcommand() {
+    let run = run_with_fake_omhl(
+        "subagent-start",
+        "echo 'usage: omhl' >&2\necho junk\nexit 2\n",
+        "",
+    );
+
+    assert_eq!(run.code, Some(0));
+    assert!(run.stdout.is_empty(), "stdout stays empty");
+    assert!(run.stderr.is_empty(), "stderr stays empty");
+}
+
+#[test]
+fn it_should_stay_silent_and_exit_zero_for_the_subagent_start_hook_without_omhl() {
+    let cwd = project(true);
+
+    let run = run_without_omhl("subagent-start", cwd.path(), &[], "");
+
+    assert_eq!(run.code, Some(0));
+    assert!(run.stdout.is_empty(), "stdout stays empty");
+    assert!(run.stderr.is_empty(), "stderr stays empty");
 }
 
 /// Pasta de projeto; com `marked` ela traz o `.omhl.toml`.

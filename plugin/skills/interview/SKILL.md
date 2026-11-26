@@ -1,42 +1,42 @@
 ---
 name: interview
-description: Protocolo da entrevista de negócio com o dono, antes de gravar o work item. Use ao começar um work item `feat` ou `fix` (obrigatória) e, a pedido do dono, nos prefixos `refactor`, `tests`, `bugfix`, `chore` e `docs`, para esclarecer o pedido em rodadas de perguntas, medir a ambiguidade e gravar o work item e as premissas de negócio confirmadas.
+description: Protocol of the business interview with the owner, before the work item is recorded. Use when starting a `feat` or `fix` work item (mandatory) and, at the owner's request, in the `refactor`, `tests`, `bugfix`, `chore` and `docs` prefixes, to clarify the request in rounds of questions, measure the ambiguity and record the work item and the confirmed business premises.
 ---
 
-# Entrevista de negócio
+# Business interview
 
-Esta skill exige a `directives-flow`. Se não estiver carregada, carregue-a. Ela traz as regras de gravação e o ciclo ([cycle.md](../directives-flow/references/cycle.md)). As rodadas de perguntas vêm antes do passo 1 do ciclo: cada premissa de negócio nasce numa rodada, redigida por você e confirmada pelo dono na hora, e só no fim o work item e as premissas são gravados; a [plan-consensus](../plan-consensus/SKILL.md) cobre só o técnico.
+This skill requires `directives-flow`. If it is not loaded, load it. It carries the recording rules and the cycle ([cycle.md](../directives-flow/references/cycle.md)). The rounds of questions come before step 1 of the cycle: each business premise is born in a round, drafted by you and confirmed by the owner on the spot, and only at the end are the work item and the premises recorded; [plan-consensus](../plan-consensus/SKILL.md) covers only the technical side.
 
-Você é a sessão principal e conduz a entrevista sozinha. Não escreve spec: a spec é do planner (passo 4 do ciclo).
+You are the main session and you run the interview alone. You do not write the spec: the spec belongs to the planner (step 4 of the cycle).
 
-## Quando usar
+## When to use
 
-- **Obrigatória** em `feat` e `fix`: a entrevista vem antes do work item, e nada é gravado no banco antes de ela terminar.
-- **Opcional** em `refactor`, `tests`, `bugfix`, `chore` e `docs`: só roda a pedido do dono. Sem o pedido, siga direto pela `directives-flow`.
+- **Mandatory** in `feat` and `fix`: the interview comes before the work item, and nothing is recorded in the database before it ends.
+- **Optional** in `refactor`, `tests`, `bugfix`, `chore` and `docs`: it runs only at the owner's request. Without the request, go straight through `directives-flow`.
 
-## As rodadas de perguntas
+## The rounds of questions
 
-- **Rodada 0.** Antes da primeira pergunta, liste as partes do objetivo do dono e peça que ele confirme, junte, divida ou adie cada uma. A lista vai para a seção `Partes` da nota e fica travada: a reescrita da nota a cada rodada não a altera. Parte adiada sai da cobertura.
-- **Nome do dono.** Peça o nome dele (`person:<nome>`) na Rodada 0 ou na rodada 1, antes de a primeira premissa montar o `confirmed_by`.
-- **Placar.** A cada resposta, dê uma nota de 0 a 1 a cada dimensão e calcule `ambiguidade = 1 - (objetivo × 0,35 + restrições × 0,25 + critério de sucesso × 0,25 + contexto × 0,15)`. Contexto é o quanto se entende do sistema existente para mexer nele com segurança. Mostre ao dono a tabela curta (dimensão, nota, lacuna) e a ambiguidade em %.
-- **Parada.** A entrevista termina só com ambiguidade de **20% ou menos** e com cada parte ativa da Rodada 0 coberta por ao menos uma premissa de negócio confirmada. O limiar é fixo, sem configuração. Da rodada 3 em diante o dono pode encerrar antes: avise a ambiguidade que sobra e as partes sem premissa. Na rodada 10, pergunte se segue; na 20, pare com a clareza que houver.
-- **Cobertura.** A cada rodada, registre na nota qual parte ativa já tem premissa confirmada e qual não tem; a retomada depois de compactação lê dali.
-- **Pergunta.** Uma por mensagem, sobre a dimensão mais fraca (diga qual e por quê, em uma frase), com 2 a 4 opções, a recomendada primeiro, de modo que "sim" a aceite. Pergunte as suposições do dono, não uma lista de funcionalidades.
-- **Premissa da rodada.** Com a resposta, redija a premissa de negócio que ela sustenta, mostre-a em português e peça que o dono a confirme ou corrija na mesma rodada. A premissa confirmada espera na nota até o fim: nada vai ao banco antes.
-- **Prova da confirmação.** O `confirmed_by` da premissa leva em `question` a premissa como você a redigiu e em `answer` a confirmação ou a correção literal do dono, cada texto com até 2000 caracteres (o schema recusa mais). A pergunta da rodada e a resposta, inteiras, ficam só na nota.
-- **Fato do código.** Leia você mesma, antes de perguntar, e cite o arquivo ou o símbolo que motivou a pergunta. Não há agente de busca no plugin.
-- **Estado.** Fica em `.omhl/notes/interview-<slug>.md`, no checkout principal, reescrito a cada rodada: a pergunta e a resposta literais da rodada, inteiras, o placar, a dimensão mais fraca, a premissa redigida e a cobertura; a seção `Partes` não muda. Se a sessão cair, retome dali. O estado não vira registro: nenhuma rodada, nota ou placar vai ao banco, e a pasta fica fora de `.omhl/specs/`, para o `spec-lock` não congelar. O `<slug>` é provisório até o passo 1; se o do work item diferir, renomeie o arquivo.
+- **Round 0.** Before the first question, list the parts of the owner's goal and ask them to confirm, merge, split or postpone each one. The list goes to the `Parts` section of the note and stays locked: rewriting the note at each round does not change it. A postponed part leaves the coverage.
+- **Owner's name.** Ask for their name (`person:<name>`) in Round 0 or in round 1, before the first premise assembles the `confirmed_by`.
+- **Scoreboard.** At each answer, give each dimension a score from 0 to 1 and compute `ambiguity = 1 - (goal × 0.35 + constraints × 0.25 + success criterion × 0.25 + context × 0.15)`. Context is how much is understood about the existing system to change it safely. Show the owner the short table (dimension, score, gap) and the ambiguity in %.
+- **Stop.** The interview ends only with ambiguity of **20% or less** and with each active part of Round 0 covered by at least one confirmed business premise. The threshold is fixed, with no configuration. From round 3 on the owner may end early: state the remaining ambiguity and the parts with no premise. At round 10, ask whether to continue; at round 20, stop with whatever clarity there is.
+- **Coverage.** At each round, record in the note which active part already has a confirmed premise and which does not; resuming after compaction reads from there.
+- **Question.** One per message, about the weakest dimension (say which and why, in one sentence), with 2 to 4 options, the recommended one first, so that "yes" accepts it. Ask about the owner's assumptions, not a list of features.
+- **Round premise.** With the answer, draft the business premise it supports, show it in the language of the conversation and ask the owner to confirm or correct it in the same round. The confirmed premise waits in the note until the end: nothing goes to the database before then.
+- **Proof of confirmation.** The premise's `confirmed_by` carries in `question` the premise as you drafted it and in `answer` the owner's literal confirmation or correction, each text up to 2000 characters (the schema rejects more). The round's question and answer, in full, stay only in the note.
+- **Code facts.** Read them yourself, before asking, and cite the file or the symbol that motivated the question. There is no search agent in the plugin.
+- **State.** It lives in `.omhl/notes/interview-<slug>.md`, in the main checkout, rewritten at each round: the round's literal question and answer, in full, the scoreboard, the weakest dimension, the drafted premise and the coverage; the `Parts` section does not change. If the session dies, resume from there. The state does not become a record: no round, note or scoreboard goes to the database, and the folder stays outside `.omhl/specs/`, so `spec-lock` does not freeze it. The `<slug>` is provisional until step 1; if the work item's differs, rename the file.
 
-## Modos de desafio (só quando o dono pedir)
+## Challenge modes (only when the owner asks)
 
-Cada modo muda o ângulo da pergunta e roda no máximo uma vez.
+Each mode changes the angle of the question and runs at most once.
 
-- **Contrarian:** "e se o oposto fosse verdade?". Testa se o enquadramento é do projeto ou só hábito.
-- **Simplifier:** "qual é a versão mais simples que ainda tem valor?". Separa a restrição necessária da suposta.
-- **Ontologist:** "o que isto é, de fato?". Pergunta qual entidade é o núcleo e quais são apoio.
+- **Contrarian:** "what if the opposite were true?". Tests whether the framing belongs to the project or is just habit.
+- **Simplifier:** "what is the simplest version that still has value?". Separates the necessary constraint from the supposed one.
+- **Ontologist:** "what is this, really?". Asks which entity is the core and which are support.
 
-## Os passos
+## The steps
 
-1. Mostre ao dono o resumo do que a entrevista esclareceu (objetivo, restrições, critério de sucesso, contexto) e proponha o prefixo, o id e o slug; a branch será `tipo/wi-<id>__<slug>`. A sessão confere com `omhl get work-items.<id>` (o id está livre).
-2. Grave o work item (lote 1, como `claude`, com `omhl append` e uma `key` de idempotência; o formato está em [gravar.md](references/gravar.md)): `work-items.<id>`, `title` e `status` `open`. A sessão confere com `omhl get work-items.<id>` (existe e está `open`).
-3. Grave as premissas já confirmadas nas rodadas (lote 2) num `omhl append`, com `key` de idempotência e **sem** nova rodada de confirmação em lote: cada uma leva `status` `confirmed`, `kind` `business`, o `work_item` e o `confirmed_by` da rodada, e o `text` em inglês. Se o lote 2 falhar, corrija o que a recusa apontou e regrave só ele (mesma `key` se o conteúdo não mudou, `key` nova se mudou); o lote 1 já está gravado. Depois chame a [plan-consensus](../plan-consensus/SKILL.md). A sessão confere com `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed`.
+1. Show the owner the summary of what the interview clarified (goal, constraints, success criterion, context) and propose the prefix, the id and the slug; the branch will be `type/wi-<id>__<slug>`. The session checks with `omhl get work-items.<id>` (the id is free).
+2. Record the work item (batch 1, as `claude`, with `omhl append` and an idempotency `key`; the format is in [gravar.md](references/gravar.md)): `work-items.<id>`, `title` and `status` `open`. The session checks with `omhl get work-items.<id>` (it exists and is `open`).
+3. Record the premises already confirmed in the rounds (batch 2) in one `omhl append`, with an idempotency `key` and **without** a new batch confirmation round: each one carries `status` `confirmed`, `kind` `business`, the `work_item` and the round's `confirmed_by`, and the `text` in English. If batch 2 fails, fix what the refusal pointed at and record only it again (same `key` if the content did not change, new `key` if it did); batch 1 is already recorded. Then call [plan-consensus](../plan-consensus/SKILL.md). The session checks with `omhl list --type premise --where work_item=work-items.<id> --where status=confirmed`.

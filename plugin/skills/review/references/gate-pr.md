@@ -1,48 +1,48 @@
 # omhl gate-pr
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review 8, review regras | `omhl gate-pr` |
+| session | review 8, review rules | `omhl gate-pr` |
 
-## Quando usar
+## When to use
 
-Antes de abrir ou mergear o pull request de um work item, para saber se tudo o que o gate cobra já está registrado. É somente leitura: não grava nada e vale para work item aberto ou fechado. O gate cobra o **commit atual** (`HEAD`): depois de qualquer commit novo, os checks precisam ser atestados de novo. O `omhl close` roda esse mesmo gate e grava o resultado.
+Before opening or merging the pull request of a work item, to know whether everything the gate asks for is already recorded. It is read-only: it records nothing and holds for an open or closed work item. The gate charges the **current commit** (`HEAD`): after any new commit, the checks need to be attested again. `omhl close` runs this same gate and records the result.
 
-## Entradas
+## Inputs
 
-- `<WORK_ITEM>`: o id do work item, como `work-items.w1`. Precisa existir.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando. O padrão é `agent`; `human` mostra os mesmos fatos em blocos; `json` é a saída para máquinas.
-- Precisa de um repositório git com a árvore limpa: o gate lê o `HEAD` e a árvore dele.
+- `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
+- It needs a git repository with a clean tree: the gate reads `HEAD` and its tree.
 
-## Saída
+## Output
 
-Texto no stdout, saída 0, **mesmo com o gate reprovado**: o símbolo do cabeçalho diz o resultado (`✔ gate-pr · pull-request · passed · 7 questions` quando passa, `✘ gate-pr · pull-request · not passed · 7 questions · 4 failed` quando reprova). Cada pergunta ganha uma linha `✔` ou `✘` com o `label`, o `kind` (omitido quando repete o `label`), `matched N` (quantos registros a respondem) e, quando há, `failing <ids>` (os ids que reprovam) e `N omitted` (quantos o relatório deixou de listar). O `next_step` da primeira pergunta que reprova e traz um vai no `Next:`; o das demais fica no campo `next_step` abaixo da própria linha. Com `--format json` é uma linha JSON com `gate` (`pull-request`), `passed`, `questions` e `chain_head`; cada pergunta traz `label`, `kind`, `passed`, `matched`, `failing`, `omitted` e, quando reprova uma pergunta de âncora, `next_step`. O gate passa quando todas as perguntas passam, na ordem:
+Text on stdout, exit 0, **even with the gate failed**: the header symbol says the result (`✔ gate-pr · pull-request · passed · 7 questions` when it passes, `✘ gate-pr · pull-request · not passed · 7 questions · 4 failed` when it fails). Each question gets a `✔` or `✘` line with the `label`, the `kind` (omitted when it repeats the `label`), `matched N` (how many records answer it) and, when there are any, `failing <ids>` (the ids that fail) and `N omitted` (how many the report left unlisted). The `next_step` of the first failing question that carries one goes in the `Next:`; that of the others stays in the `next_step` field below its own line. With `--format json` it is a JSON line with `gate` (`pull-request`), `passed`, `questions` and `chain_head`; each question carries `label`, `kind`, `passed`, `matched`, `failing`, `omitted` and, when an anchor question fails, `next_step`. The gate passes when all the questions pass, in order:
 
-- uma pergunta `occurred` por check obrigatório: precisa existir uma attestation com `ok: true` para o par check e work item, presa ao `HEAD` (à árvore do `HEAD`, para um check com `snapshot` de árvore). Os obrigatórios são os checks nativos `checks.run-tests` (`before-commit`) e `checks.ci-green-before-merge` (`before-merge`), mais os checks do projeto com `blocking = true` e evento `before-commit`, `before-pr` ou `before-merge`. Um check mecânico do projeto no mesmo evento substitui o nativo daquele evento;
-- para um check com `run`, a pergunta `spec-digest-match:<check>`: a attestation precisa ter sido gravada com a definição atual do check (se você editou o TOML depois do `check run`, rode `omhl load` e o check de novo);
-- `no-open-contradiction`: nenhuma decisão do work item contradiz outra;
-- `decisions-anchored` e `anchors-confirmed`: toda decisão do work item se apoia (`rests-on`) em uma diretiva ou premissa confirmada.
+- one `occurred` question per required check: there must be an attestation with `ok: true` for the check and work item pair, tied to `HEAD` (to the tree of `HEAD`, for a check with a tree `snapshot`). The required ones are the native checks `checks.run-tests` (`before-commit`) and `checks.ci-green-before-merge` (`before-merge`), plus the project checks with `blocking = true` and event `before-commit`, `before-pr` or `before-merge`. A mechanical project check on the same event replaces the native one of that event;
+- for a check with `run`, the question `spec-digest-match:<check>`: the attestation must have been recorded with the check's current definition (if you edited the TOML after `check run`, run `omhl load` and the check again);
+- `no-open-contradiction`: no decision of the work item contradicts another;
+- `decisions-anchored` and `anchors-confirmed`: every decision of the work item rests (`rests-on`) on a confirmed guideline or premise.
 
-Um check que reprovou no `check run` não conta: a pergunta dele sai com `matched 0`, como se nunca tivesse rodado; a causa está em `omhl byproduct`. Um check **manual** (sem `run`) recebe o desfecho de `omhl attest`; um check com `run`, de `omhl check run`. Um check de `blocking = false` não entra no gate.
+A check that failed in `check run` does not count: its question comes out with `matched 0`, as if it had never run; the cause is in `omhl byproduct`. A **manual** check (without `run`) gets the outcome of `omhl attest`; a check with `run`, of `omhl check run`. A check with `blocking = false` does not enter the gate.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`; com `--format json`, numa linha JSON). A falta do `<WORK_ITEM>` é erro de uso do clap, com saída 2 e sem código. Um gate reprovado **não** é erro. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
+An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). A missing `<WORK_ITEM>` is a clap usage error, with exit 2 and no code. A failed gate is **not** an error. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
-- `work-item-not-found` (saída 1): o work item não existe (ou o id é de outro tipo de node). O ponteiro é `/work_item`. Confira o id.
-- `INVALID_INPUT` (saída 1): o id tem forma inválida (`semantic-id-format`). O `path` do detalhe diz qual argumento.
-- `snapshot-dirty` (saída 1): a árvore tem mudança não commitada. Commite e repita.
-- `probe-failed` (saída 1): o git não respondeu (fora de um repositório, por exemplo). Rode dentro de um checkout.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `work-item-not-found` (exit 1): the work item does not exist (or the id belongs to another node type). The pointer is `/work_item`. Check the id.
+- `INVALID_INPUT` (exit 1): the id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
+- `snapshot-dirty` (exit 1): the tree has an uncommitted change. Commit and repeat.
+- `probe-failed` (exit 1): git did not answer (outside a repository, for example). Run inside a checkout.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Sem nenhuma attestation, o gate reprova. Cada check obrigatório aparece com `matched 0`:
+With no attestation at all, the gate fails. Each required check appears with `matched 0`:
 
 ```omhl-example fixture=checks
 $ omhl gate-pr work-items.w1
@@ -56,14 +56,14 @@ $ omhl gate-pr work-items.w1
 ✔ anchors-confirmed · anchored · matched 0
 ```
 
-O mesmo gate, em JSON (o `passed` e os campos de cada pergunta que o texto resume):
+The same gate, in JSON (the `passed` and the fields of each question that the text summarizes):
 
 ```omhl-example fixture=checks
 $ omhl gate-pr work-items.w1 --format json
 {"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]}
 ```
 
-Com os dois checks nativos atestados à mão e o check mecânico rodado, no mesmo commit, o gate passa:
+With the two native checks attested by hand and the mechanical check run, on the same commit, the gate passes:
 
 ```omhl-example fixture=checks
 $ omhl attest checks.run-tests work-items.w1 --outcome passed
@@ -83,7 +83,7 @@ $ omhl gate-pr work-items.w1
 ✔ anchors-confirmed · anchored · matched 0
 ```
 
-Recusa: o work item não existe e o id tem forma inválida:
+Refusal: the work item does not exist and the id has an invalid form:
 
 ```omhl-example fixture=checks
 $ omhl gate-pr work-items.zz
@@ -96,7 +96,7 @@ $ omhl gate-pr Bad_Id
 # exit 1
 ```
 
-Recusa: árvore com mudança não commitada (a fixture deixa o arquivo `notes.txt` sem commit):
+Refusal: a tree with an uncommitted change (the fixture leaves the file `notes.txt` uncommitted):
 
 ```omhl-example fixture=dirty-checks
 $ omhl gate-pr work-items.w1
@@ -105,7 +105,7 @@ $ omhl gate-pr work-items.w1
 # exit 1
 ```
 
-Recusa: fora de um repositório git (a fixture `project` não tem git):
+Refusal: outside a git repository (the `project` fixture has no git):
 
 ```omhl-example fixture=project
 $ omhl gate-pr work-items.w1

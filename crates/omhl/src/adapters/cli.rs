@@ -37,7 +37,7 @@ pub struct Cli {
 pub enum Command {
     #[command(flatten)]
     Action(ActionCommand),
-    /// Run a hook of the `omhl hook` group: the Claude Code events (`session-start`, `spec-lock`, `agent-role`) or the `wt` hook (`wt-post-start`).
+    /// Run one hook of the `omhl hook` group (see the subcommands).
     Hook {
         #[command(subcommand)]
         event: HookEvent,
@@ -234,7 +234,7 @@ pub enum ReportCommand {
 }
 
 #[derive(Debug, Subcommand)]
-// O grupo tem dois contratos. Os eventos do Claude Code (`session-start`, `spec-lock`, `agent-role`) leem o evento no stdin e nunca saem com 2; em erro interno `session-start` e `agent-role` liberam, e o `spec-lock` libera só antes de reconhecer a spec (depois dela, falha de git ou de leitura nega com `spec-lock-unavailable`). Quem decide o código de saída que bloqueia é o `omhl-hook.sh`, cujo ramo sem o binário sai com `exit 0` fora de projeto marcado (`docs/directives-flow.md`). O `wt-post-start` não lê stdin, é silencioso em segundo plano e sai 1 em pasta de spec que é link simbólico.
+// Os eventos do Claude Code leem o evento no stdin; o `wt-post-start` não lê. Quem decide o código de saída que bloqueia é o `omhl-hook.sh`, cujo ramo sem o binário sai com `exit 0` fora de projeto marcado (`docs/directives-flow.md`).
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,
@@ -242,6 +242,8 @@ pub enum HookEvent {
     SpecLock,
     /// Impose the role matrix on the Bash and Monitor tools of plugin agents and deny a plugin agent call that carries `name`; reads the PreToolUse event on stdin.
     AgentRole,
+    /// Print the conversation language of the person as context for a plugin subagent; reads the SubagentStart event on stdin, never blocks, and prints nothing without a language.
+    SubagentStart,
     /// Write the freeze mark in every spec folder of the work item of a new branch (the `post-start` hook of `wt`); does not read stdin, prints JSON, and stays silent without a project marker.
     WtPostStart {
         /// Name of the new branch.
@@ -292,6 +294,9 @@ pub fn run(
             // Os grupos vêm do clap: o hook não mantém uma segunda lista de folhas.
             hook::agent_role(stdin, out, err, env, &command_groups(&Cli::command()))
         }
+        Command::Hook {
+            event: HookEvent::SubagentStart,
+        } => hook::subagent_start(stdin, out, env),
         Command::Hook {
             event: HookEvent::WtPostStart { branch },
         } => {
@@ -519,6 +524,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::HookSessionStart => "hook session-start",
         CommandKey::HookSpecLock => "hook spec-lock",
         CommandKey::HookAgentRole => "hook agent-role",
+        CommandKey::HookSubagentStart => "hook subagent-start",
         CommandKey::HookWtPostStart => "hook wt-post-start",
     }
 }
@@ -535,6 +541,9 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Hook {
             event: HookEvent::AgentRole,
         } => CommandKey::HookAgentRole,
+        Command::Hook {
+            event: HookEvent::SubagentStart,
+        } => CommandKey::HookSubagentStart,
         Command::Hook {
             event: HookEvent::WtPostStart { .. },
         } => CommandKey::HookWtPostStart,

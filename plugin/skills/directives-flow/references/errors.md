@@ -1,22 +1,22 @@
-# Erros comuns a todos os comandos
+# Errors common to all commands
 
-Vale para todo comando do `omhl`. A página de cada comando lista só os erros dele.
+This holds for every `omhl` command. The page of each command lists only its own errors.
 
-## Erros
+## Errors
 
-Um erro sai no stderr, com saída 1, em texto (`✘ código · mensagem`); com `--format json`, numa linha JSON. Os comandos lidos por máquina (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hooks post-commit` e `gate-worktree`) só imprimem JSON, também no erro. Um erro de uso do clap (opção desconhecida, argumento que falta) sai com saída 2 e sem código.
+An error goes to stderr, with exit 1, as text (`✘ code · message`); with `--format json`, as a JSON line. The machine-read commands (`hook session-start`, `hook spec-lock`, `hook agent-role`, `hooks post-commit` and `gate-worktree`) print only JSON, on error too. A clap usage error (unknown option, missing argument) exits with 2 and no code.
 
-A ordem das checagens é: uso do clap; argumentos e entrada do comando; `OMHL_ROLE`; existência do `--project-dir`; marcador; `--db`. O primeiro que falha é o que você vê.
+The order of the checks is: clap usage; arguments and input of the command; `OMHL_ROLE`; existence of `--project-dir`; marker; `--db`. The first one that fails is the one you see.
 
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
-- `role-unknown` (saída 1): o `OMHL_ROLE` tem um valor fora dos sete papéis, ou foi definido fora do Claude Code. Corrija ou remova a variável.
-- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor (`path` vazio). Remova a variável ou rode o `omhl` numa sessão do Claude Code.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `db-inside-project` (saída 1): o `--db` aponta para dentro do projeto. Use um caminho fora dele.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
+- `role-unknown` (exit 1): `OMHL_ROLE` has a value outside the seven roles, or was set outside Claude Code. Fix or remove the variable.
+- `invalid-session-id` (exit 1): `CLAUDE_CODE_SESSION_ID` is set but empty, is not UTF-8, exceeds 100 UTF-16 units or equals the `outside-claude-code` marker; nothing is recorded and the error does not show the value (empty `path`). Remove the variable or run `omhl` in a Claude Code session.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
 
-## Exemplos
+## Examples
 
-Recusa: `--project-dir` que não existe:
+Refusal: a `--project-dir` that does not exist:
 
 ```omhl-example fixture=project
 $ omhl append --project-dir /nonexistent <<'EOF'

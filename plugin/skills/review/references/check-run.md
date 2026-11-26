@@ -1,75 +1,75 @@
 # omhl check run
 
-## Quem usa, em qual etapa e com qual filtro
+## Who uses it, at which stage and with which filter
 
-| Papel | Etapa | Comando |
+| Role | Stage | Command |
 |---|---|---|
-| sessao | review regras | `omhl check run` |
-| sessao | review 8 | `omhl check run --event before-merge` |
+| session | review rules | `omhl check run` |
+| session | review 8 | `omhl check run --event before-merge` |
 
-## Quando usar
+## When to use
 
-Para rodar os checks mecânicos (os que têm `run`) de um evento, ou um check só, e gravar a attestation de cada um para o work item da branch atual. Os hooks do git chamam o comando sozinhos (`--event before-commit` no `pre-commit`, `--event before-pr --pre-push` no `pre-push`). À mão, use `--event before-merge` para registrar o status do CI, ou `--check <id>` para repetir um check. Só roda no Linux. Se mexeu num check, rode `omhl load` antes.
+To run the mechanical checks (those with `run`) of an event, or a single check, and record the attestation of each one for the work item of the current branch. The git hooks call the command on their own (`--event before-commit` in `pre-commit`, `--event before-pr --pre-push` in `pre-push`). By hand, use `--event before-merge` to record the CI status, or `--check <id>` to repeat a check. It only runs on Linux. If you touched a check, run `omhl load` first.
 
-## Entradas
+## Inputs
 
-- Exatamente um de `--event` (`before-commit`, `before-pr` ou `before-merge`) e `--check <id>` (por exemplo `checks.ok`). O `--check` precisa apontar para um check com `run`.
-- `--format <agent|human|json>`: opção global, vale antes ou depois do subcomando; o formato da saída, `agent` por padrão (hoje `human` imprime o mesmo texto). Qualquer outro valor, inclusive `text`, é erro de uso do clap, com saída 2. Os hooks do git rodam sem `--format` e mostram o texto `agent`; para ler a saída por código, passe `--format json`.
-- `--pre-push`: modo do hook `pre-push`, que lê as linhas do git no stdin. Só vale com `--event before-pr`.
-- O work item vem do nome da branch: `tipo/wi-<id>__<slug>`. Na `develop` nada é gravado (`recorded` é `false`); na `main` o comando recusa.
-- Precisa de um repositório git. No `before-pr` e no `before-merge` a árvore tem de estar limpa.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. Um `--db` com caminho novo cria o banco; o `--project-dir` precisa existir.
+- Exactly one of `--event` (`before-commit`, `before-pr` or `before-merge`) and `--check <id>` (for example `checks.ok`). `--check` must point to a check with `run`.
+- `--format <agent|human|json>`: global option, valid before or after the subcommand; the output format, `agent` by default (today `human` prints the same text). Any other value, including `text`, is a clap usage error, with exit 2. The git hooks run without `--format` and show the `agent` text; to read the output from code, pass `--format json`.
+- `--pre-push`: mode of the `pre-push` hook, which reads git's lines on stdin. It only holds with `--event before-pr`.
+- The work item comes from the branch name: `type/wi-<id>__<slug>`. On `develop` nothing is recorded (`recorded` is `false`); on `main` the command refuses.
+- It needs a git repository. In `before-pr` and `before-merge` the tree must be clean.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
 
-## Saída
+## Output
 
-O padrão é o texto `agent`, em inglês, sem cor nem sequência ANSI. Com `--format json` a saída é o JSON de uma linha, descrito mais abaixo. O código de saída é o mesmo nos dois formatos.
+The default is the `agent` text, in English, with no color or ANSI sequence. With `--format json` the output is the one-line JSON, described further below. The exit code is the same in both formats.
 
-No sucesso, o texto sai no stdout, com saída 0 quando nenhum check bloqueante reprovou:
+On success, the text goes to stdout, with exit 0 when no blocking check failed:
 
-- A primeira linha traz o evento, o work item e se a attestation foi gravada: `✔ before-pr · work-items.w1 · recorded (git-commit 1a2b3c4)`. O trecho entre parênteses é o tipo do snapshot e os 7 primeiros caracteres do id (`git-tree` no `before-commit`, `git-commit` nos demais); some quando não há snapshot. Na `develop` a linha diz `not recorded`.
-- Cada check tem uma linha, na ordem do JSON: o ícone (`✔` passou, `⚠` passou com aviso, `✘` reprovou), o id, `concern/variant` quando o check os declara, o desfecho e a duração (`12ms`). Notas entre parênteses marcam `non-blocking`, `exit N`, `timed out` e `truncated`.
-- Cada aviso tem uma linha própria com a ação a tomar: `no-checks-for-event` (nenhum check planejado para o evento, o que não é uma aprovação), `check-orphaned` (o arquivo do check foi apagado, então ele não rodou) e `output-stored` (um check `passed_with_warning` gravado: o aviso traz `check`, `work_item` e o comando `omhl byproduct <check> <work-item> --tail 40` que lê a saída guardada; não sai em `passed`, em `failed` nem na `develop`, onde nada é gravado).
-- A última linha diz que nada foi bloqueado e o próximo passo: `Nothing blocked. Next: go on with the push.` (ou o commit, ou o merge).
-- No `--pre-push` sem nada a atestar (o push só apaga refs ou só envia tags), sai uma linha só: `✔ before-pr · nothing to attest in this push; no check ran`.
+- The first line carries the event, the work item and whether the attestation was recorded: `✔ before-pr · work-items.w1 · recorded (git-commit 1a2b3c4)`. The part in parentheses is the snapshot type and the first 7 characters of the id (`git-tree` in `before-commit`, `git-commit` in the others); it disappears when there is no snapshot. On `develop` the line says `not recorded`.
+- Each check has one line, in the order of the JSON: the icon (`✔` passed, `⚠` passed with warning, `✘` failed), the id, `concern/variant` when the check declares them, the outcome and the duration (`12ms`). Notes in parentheses mark `non-blocking`, `exit N`, `timed out` and `truncated`.
+- Each warning has a line of its own with the action to take: `no-checks-for-event` (no check planned for the event, which is not a pass), `check-orphaned` (the check file was deleted, so it did not run) and `output-stored` (a `passed_with_warning` check recorded: the warning carries `check`, `work_item` and the command `omhl byproduct <check> <work-item> --tail 40` that reads the stored output; it does not come out on `passed`, on `failed` or on `develop`, where nothing is recorded).
+- The last line says nothing was blocked and the next step: `Nothing blocked. Next: go on with the push.` (or the commit, or the merge).
+- On a `--pre-push` with nothing to attest (the push only deletes refs or only sends tags), a single line comes out: `✔ before-pr · nothing to attest in this push; no check ran`.
 
-Na falha `checks-failed`, o texto sai no stderr, com saída 1:
+On the `checks-failed` failure, the text goes to stderr, with exit 1:
 
-- A primeira linha diz que o evento está bloqueado e quantos checks reprovaram, separando os bloqueantes dos não bloqueantes: `✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 1 not run`. O trecho `non-blocking failed` some quando é zero. Na `develop` o work item vira `no work item`.
-- Cada check reprovado traz uma linha com o id, `concern/variant` (se declarados), `blocking` ou `non-blocking`, `timeout Ns` (o limite do check), `exit N` ou `timed out`, a duração e `truncated` (se a saída foi cortada). A duração sai em `NNNms` abaixo de 1 segundo e em `N.Ns` a partir dele. Abaixo vêm o `command:` (o `run` do check) e o `how to read the output:` com o `omhl byproduct` exato. Na `develop` não há `byproduct`: o texto mostra a cauda da saída, e só ela.
-- Quando mostra saída de check, o texto avisa que ela pode ter segredos e não deve ser copiada nem repetida ao usuário. Fecha com `Next:`.
+- The first line says the event is blocked and how many checks failed, separating the blocking from the non-blocking: `✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 1 not run`. The `non-blocking failed` part disappears when it is zero. On `develop` the work item becomes `no work item`.
+- Each failed check carries a line with the id, `concern/variant` (if declared), `blocking` or `non-blocking`, `timeout Ns` (the check's limit), `exit N` or `timed out`, the duration and `truncated` (if the output was cut). The duration comes out as `NNNms` below 1 second and as `N.Ns` from there. Below come the `command:` (the check's `run`) and the `how to read the output:` with the exact `omhl byproduct`. On `develop` there is no `byproduct`: the text shows the tail of the output, and only it.
+- When it shows check output, the text warns that it may hold secrets and must not be copied or repeated to the user. It closes with `Next:`.
 
-Os demais erros saem no stderr, também em texto, com saída 1 (ou a saída de hoje): `✘ <código> · <mensagem>`, uma linha por detalhe (`- <código> at <caminho>`) e, quando o JSON os traz, o `kind`, o check, a causa, o `hint` e o próximo passo.
+The other errors go to stderr, also as text, with exit 1 (or today's exit): `✘ <code> · <message>`, one line per detail (`- <code> at <path>`) and, when the JSON carries them, the `kind`, the check, the cause, the `hint` and the next step.
 
-Com `--format json`, a saída é uma linha no stdout: `event`, `work_item`, `recorded`, `snapshot` (`git-tree` no `before-commit`, `git-commit` nos demais), `results` e `blocked`. Cada item de `results` traz `check`, `blocking`, `outcome` (`passed`, `passed_with_warning` ou `failed`), `ok`, `exit_code`, `duration_ms`, `timed_out` e `truncated`, mais `concern` e `variant` quando o check os declara. A saída completa do comando fica guardada; leia-a com `omhl byproduct`. No começo de cada execução o comando também apaga, em silêncio e no máximo uma vez por dia, as saídas guardadas com mais de 7 dias que nenhuma attestation viva usa ([byproduct-prune.md](byproduct-prune.md)). Um evento sem check no banco sai 0 com `checks_planned: 0` e o aviso `no-checks-for-event`. Um check cujo arquivo foi apagado da árvore vira aviso `check-orphaned` e não roda. O desfecho de um snapshot é imutável: repetir o comando na mesma árvore devolve o desfecho gravado.
+With `--format json`, the output is one line on stdout: `event`, `work_item`, `recorded`, `snapshot` (`git-tree` in `before-commit`, `git-commit` in the others), `results` and `blocked`. Each item of `results` carries `check`, `blocking`, `outcome` (`passed`, `passed_with_warning` or `failed`), `ok`, `exit_code`, `duration_ms`, `timed_out` and `truncated`, plus `concern` and `variant` when the check declares them. The command's full output is stored; read it with `omhl byproduct`. At the start of each run the command also deletes, silently and at most once a day, the stored outputs older than 7 days that no live attestation uses ([byproduct-prune.md](byproduct-prune.md)). An event with no check in the database exits 0 with `checks_planned: 0` and the warning `no-checks-for-event`. A check whose file was deleted from the tree becomes a `check-orphaned` warning and does not run. The outcome of a snapshot is immutable: repeating the command on the same tree returns the recorded outcome.
 
-## Erros
+## Errors
 
-Um erro sai no stderr com saída 1: texto por padrão, uma linha JSON com `--format json`. Os códigos abaixo valem nos dois formatos. Uma opção desconhecida ou um argumento que falta é erro de uso do clap, com saída 2 e sem código. Isso inclui faltar `--event` e `--check`, e usar `--pre-push` sem `--event before-pr`. Os erros comuns a todos os comandos estão em [errors.md](../../directives-flow/references/errors.md).
+An error goes to stderr with exit 1: text by default, a JSON line with `--format json`. The codes below hold in both formats. An unknown option or a missing argument is a clap usage error, with exit 2 and no code. That includes missing both `--event` and `--check`, and using `--pre-push` without `--event before-pr`. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
-- `checks-failed` (saída 1): um check bloqueante reprovou. Cada `details` com `failed` diz como ler a saída (`omhl byproduct <check> <work-item> --tail 40`). Na `develop` não há `byproduct`: a cauda vem em `context.output_tail`. No JSON, o `error.context` traz `event`, `work_item` (ausente na `develop`) e `summary` (`planned`, `passed`, `failed`, `blocking_failed` e `not_run`; `failed` conta todo reprovado, e `blocking_failed` só os bloqueantes), e o `context` de cada `details` com `failed` traz `blocking`, `concern` e `variant` (se declarados), `run`, `timeout_secs`, `exit_code` (ausente sem código), `duration_ms`, `timed_out` e `truncated`. Corrija o código e repita. A saída (inclusive `context.output_tail`) pode ter segredos: não a copie para PR, issue, commit, `--note` nem `omhl append`, e não a repita ao usuário (regra em [byproduct.md](byproduct.md)).
-- `check-not-run` (saída 1): um problema impediu o veredito, e nada foi gravado para o check. Cada `details` traz o motivo e um `context.kind`: `spawn-failed` (o binário do `run` não existe no `PATH` do git: `context.kind` `spawn-not-found`; sem permissão para executá-lo: `spawn-permission-denied`), `spec-stale` (o TOML diverge do banco: rode `omhl load`), `spec-invalid`, `command-changed-tree` (o check alterou a árvore: mantenha-o somente leitura) ou `not-run` (o check restante não rodou). Siga o `hint` do contexto e repita.
-- `attestation-refused` (saída 1): a gravação foi recusada, pela guarda ou pela sessão do ambiente. O detalhe `outcome-immutable` diz que o mesmo snapshot já tem outro desfecho: mude a árvore (um novo commit) para um veredito novo. Outros motivos: `snapshot-tree-mismatch` e `snapshot-dirty` (não faça stage durante o hook), `work-item-closed`, `probe-failed`.
-- `invalid-session-id` (saída 1): `CLAUDE_CODE_SESSION_ID` está definida mas vazia, não é UTF-8, passa de 100 unidades UTF-16 ou é igual ao marcador `outside-claude-code`; nada é gravado e o erro não mostra o valor. Só aparece como detalhe de `attestation-refused`: o comando do primeiro check planejado já rodou, e os demais não rodam. Remova a variável ou rode o `omhl` numa sessão do Claude Code.
-- `attestation-not-recorded` (saída 1): o banco ficou travado ou falhou ao gravar depois do comando. O veredito foi calculado e não gravado: repita o mesmo comando.
-- `check-not-found` (saída 1): o `--check` não existe no banco. Confira o id e rode `omhl load`.
-- `check-not-mechanical` (saída 1): o `--check` aponta para um check manual, sem `run`. Quem grava o desfecho dele é `omhl attest`.
-- `unsupported-platform`: o sistema não é Linux. Rode no Linux ou no WSL.
-- `probe-failed`: o git não respondeu (fora de um repositório, git anterior à 2.31). Rode `git status` e corrija o estado.
-- `branch-name-invalid`: a branch não segue `tipo/wi-<id>__<slug>`. Renomeie com `git branch -m`.
-- `branch-protected`: a branch é a `main`, ou o push tem a `main` como destino. Crie uma branch de work item e abra um pull request.
-- `head-ambiguous`: o `HEAD` está solto e zero ou várias branches o contêm. Volte para a sua branch com `git switch`.
-- `work-item-not-found` (saída 1): o work item da branch não existe. Grave-o antes.
-- `work-item-closed` (saída 1): o work item já foi fechado. Use outra branch.
-- `develop-mark-missing`: `before-commit` na `develop` sem a marca. Crie a marca com o command `/oh-my-hexflow:omhl-develop-mark`.
-- `worktree-differs-from-index`: no `before-commit`, a árvore difere do índice. Faça o stage, ignore ou apague o arquivo.
-- `worktree-dirty`: no `before-pr` ou no `before-merge`, a árvore está suja. Faça commit, ignore ou apague o arquivo.
-- `push-ref-not-checked-out` e `push-input-invalid`: problemas do `--pre-push`. O primeiro aparece quando o `lsha` de uma ref não é o `HEAD` do checkout, o segundo quando uma linha do git não tem quatro campos. Empurre só a branch do checkout.
-- `no-marker` (saída 1): não há `.omhl.toml` na pasta nem acima dela. Rode dentro do projeto; numa branch anterior ao marcador, rebaseie sobre a `main`.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `checks-failed` (exit 1): a blocking check failed. Each `details` with `failed` says how to read the output (`omhl byproduct <check> <work-item> --tail 40`). On `develop` there is no `byproduct`: the tail comes in `context.output_tail`. In the JSON, `error.context` carries `event`, `work_item` (absent on `develop`) and `summary` (`planned`, `passed`, `failed`, `blocking_failed` and `not_run`; `failed` counts every failure, and `blocking_failed` only the blocking ones), and the `context` of each `details` with `failed` carries `blocking`, `concern` and `variant` (if declared), `run`, `timeout_secs`, `exit_code` (absent with no code), `duration_ms`, `timed_out` and `truncated`. Fix the code and repeat. The output (including `context.output_tail`) may hold secrets: do not copy it to a PR, issue, commit, `--note` or `omhl append`, and do not repeat it to the user (rule in [byproduct.md](byproduct.md)).
+- `check-not-run` (exit 1): a problem prevented the verdict, and nothing was recorded for the check. Each `details` carries the reason and a `context.kind`: `spawn-failed` (the `run` binary does not exist in git's `PATH`: `context.kind` `spawn-not-found`; no permission to execute it: `spawn-permission-denied`), `spec-stale` (the TOML diverges from the database: run `omhl load`), `spec-invalid`, `command-changed-tree` (the check changed the tree: keep it read-only) or `not-run` (the remaining check did not run). Follow the context's `hint` and repeat.
+- `attestation-refused` (exit 1): the recording was refused, by the guard or by the environment's session. The detail `outcome-immutable` says the same snapshot already has another outcome: change the tree (a new commit) for a new verdict. Other reasons: `snapshot-tree-mismatch` and `snapshot-dirty` (do not stage during the hook), `work-item-closed`, `probe-failed`.
+- `invalid-session-id` (exit 1): `CLAUDE_CODE_SESSION_ID` is set but empty, is not UTF-8, exceeds 100 UTF-16 units or equals the marker `outside-claude-code`; nothing is recorded and the error does not show the value. It only appears as a detail of `attestation-refused`: the command of the first planned check already ran, and the others do not run. Remove the variable or run `omhl` in a Claude Code session.
+- `attestation-not-recorded` (exit 1): the database was locked or failed to record after the command. The verdict was computed and not recorded: repeat the same command.
+- `check-not-found` (exit 1): the `--check` does not exist in the database. Check the id and run `omhl load`.
+- `check-not-mechanical` (exit 1): the `--check` points to a manual check, without `run`. Whoever records its outcome is `omhl attest`.
+- `unsupported-platform`: the system is not Linux. Run on Linux or WSL.
+- `probe-failed`: git did not answer (outside a repository, git older than 2.31). Run `git status` and fix the state.
+- `branch-name-invalid`: the branch does not follow `type/wi-<id>__<slug>`. Rename with `git branch -m`.
+- `branch-protected`: the branch is `main`, or the push has `main` as its destination. Create a work item branch and open a pull request.
+- `head-ambiguous`: `HEAD` is detached and zero or several branches contain it. Go back to your branch with `git switch`.
+- `work-item-not-found` (exit 1): the branch's work item does not exist. Record it first.
+- `work-item-closed` (exit 1): the work item was already closed. Use another branch.
+- `develop-mark-missing`: `before-commit` on `develop` without the mark. Create the mark with the command `/oh-my-hexflow:omhl-develop-mark`.
+- `worktree-differs-from-index`: in `before-commit`, the tree differs from the index. Stage, ignore or delete the file.
+- `worktree-dirty`: in `before-pr` or `before-merge`, the tree is dirty. Commit, ignore or delete the file.
+- `push-ref-not-checked-out` and `push-input-invalid`: `--pre-push` problems. The first appears when the `lsha` of a ref is not the checkout's `HEAD`, the second when a git line does not have four fields. Push only the checkout's branch.
+- `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-Roda o evento `before-pr` (um check passa), depois o `before-merge` (sem check mecânico: o aviso `no-checks-for-event`) e, por fim, um check pelo id. Sem `--format`, a saída é o texto `agent`:
+Runs the `before-pr` event (one check passes), then `before-merge` (no mechanical check: the `no-checks-for-event` warning) and, finally, a check by id. Without `--format`, the output is the `agent` text:
 
 ```omhl-example fixture=checks
 $ omhl check run --event before-pr
@@ -86,7 +86,7 @@ $ omhl check run --check checks.ok
 Nothing blocked. Next: go on with the push.
 ```
 
-Os mesmos três comandos com `--format json`:
+The same three commands with `--format json`:
 
 ```omhl-example fixture=checks
 $ omhl check run --event before-pr --format json
@@ -97,7 +97,7 @@ $ omhl check run --check checks.ok --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 ```
 
-Recusas: check que não existe e check manual (sem `run`):
+Refusals: a check that does not exist and a manual check (without `run`):
 
 ```omhl-example fixture=checks
 $ omhl check run --check checks.nope --format json
@@ -108,7 +108,7 @@ $ omhl check run --check checks.review --format json
 # exit 1
 ```
 
-Um check bloqueante que reprova: stdout vazio, saída 1 e o comando exato para ler a causa. O check desta fixture imprime `first` e `second` no stdout, `boom` no stderr e sai 1. O texto sai no stderr:
+A blocking check that fails: empty stdout, exit 1 and the exact command to read the cause. This fixture's check prints `first` and `second` on stdout, `boom` on stderr and exits 1. The text goes to stderr:
 
 ```omhl-example fixture=failing-check
 $ omhl check run --event before-pr
@@ -121,7 +121,7 @@ $ omhl check run --event before-pr
 # exit 1
 ```
 
-O mesmo erro com `--format json`, com o resumo em `error.context` e os fatos do check no `context` do detalhe:
+The same error with `--format json`, with the summary in `error.context` and the check's facts in the detail's `context`:
 
 ```omhl-example fixture=failing-check
 $ omhl check run --event before-pr --format json
@@ -129,14 +129,14 @@ $ omhl check run --event before-pr --format json
 # exit 1
 ```
 
-Um check **não bloqueante** que reprova **não** falha o comando: sai 0, e só o `ok: false` do item de `results` mostra a reprovação. Leia `results`, não só o código de saída:
+A **non-blocking** check that fails does **not** fail the command: it exits 0, and only the `ok: false` of the `results` item shows the failure. Read `results`, not just the exit code:
 
 ```omhl-example fixture=soft-check
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":false,"check":"checks.soft","duration_ms":12,"exit_code":1,"ok":false,"outcome":"failed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 ```
 
-Recusa: árvore suja no `before-pr` (a fixture deixa o arquivo `notes.txt` sem commit). Primeiro o texto, depois o JSON:
+Refusal: a dirty tree in `before-pr` (the fixture leaves the file `notes.txt` uncommitted). First the text, then the JSON:
 
 ```omhl-example fixture=dirty-checks
 $ omhl check run --event before-pr
@@ -153,7 +153,7 @@ $ omhl check run --event before-pr --format json
 # exit 1
 ```
 
-Recusa: o binário do `run` não existe, então não há veredito e nada é gravado (`check-not-run`). Primeiro o texto, depois o JSON:
+Refusal: the `run` binary does not exist, so there is no verdict and nothing is recorded (`check-not-run`). First the text, then the JSON:
 
 ```omhl-example fixture=missing-binary
 $ omhl check run --event before-pr
@@ -174,7 +174,7 @@ $ omhl check run --event before-pr --format json
 # exit 1
 ```
 
-Um `--pre-push` que só envia uma tag não tem nada a atestar: sai 0, nenhum check roda e nada é gravado. O stdin é o que o git entrega ao hook, uma linha por ref (ref local, sha local, ref remota, sha remoto):
+A `--pre-push` that only sends a tag has nothing to attest: it exits 0, no check runs and nothing is recorded. The stdin is what git hands the hook, one line per ref (local ref, local sha, remote ref, remote sha):
 
 ```omhl-example fixture=checks
 $ omhl check run --event before-pr --pre-push <<'EOF'

@@ -1,64 +1,64 @@
 # omhl gate-worktree
 
-## Quando usar
+## When to use
 
-Antes de `wt switch -c <branch>`, para conferir se a worktree da branch pode nascer. O `wt` roda o mesmo comando num hook `pre-switch`; rodá-lo antes mostra a recusa e o que falta sem criar nada. Só depois de ele sair 0 rode o `wt switch -c`. Nunca contorne uma recusa com `--no-hooks`: o bypass é decisão do dono.
+Before `wt switch -c <branch>`, to check whether the worktree of the branch can be born. `wt` runs the same command in a `pre-switch` hook; running it first shows the refusal and what is missing without creating anything. Only after it exits 0 run `wt switch -c`. Never get around a refusal with `--no-hooks`: the bypass is the owner's decision.
 
-## Entradas
+## Inputs
 
-- `--branch <nome>`: o nome da branch, no formato `tipo/wi-<id>__<slug>` (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` ou `docs`). Obrigatório; aceita valor com hífen inicial e a forma `--branch=<valor>`.
-- `--db <caminho>` e `--project-dir <pasta>`: como nos demais comandos. O `--project-dir` precisa existir.
-- `--format json`: opção global, o único formato deste comando, que só imprime JSON. `agent` e `human` saem com erro de uso (saída 2), antes de o comando rodar.
-- O que cada prefixo exige vem de `.omhl/workflow.toml` (a matriz está em [matrix.md](matrix.md)): `feat` e `fix` pedem uma premissa de negócio confirmada e uma spec válida; `refactor` e `tests` pedem uma premissa técnica confirmada; `bugfix` pede uma premissa do agente; `chore` e `docs` não pedem nada.
+- `--branch <name>`: the branch name, in the format `type/wi-<id>__<slug>` (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` or `docs`). Required; accepts a value with a leading hyphen and the form `--branch=<value>`.
+- `--db <path>` and `--project-dir <dir>`: as in the other commands. `--project-dir` must exist.
+- `--format json`: global option, the only format of this command, which prints only JSON. `agent` and `human` exit with a usage error (exit 2), before the command runs.
+- What each prefix requires comes from `.omhl/workflow.toml` (the matrix is in [matrix.md](matrix.md)): `feat` and `fix` ask for a confirmed business premise and a valid spec; `refactor` and `tests` ask for a confirmed technical premise; `bugfix` asks for an agent premise; `chore` and `docs` ask for nothing.
 
-## Saída
+## Output
 
-Sem o marcador `.omhl.toml` acima do diretório, a CLI sai 0 e não imprime nada (o hook roda em qualquer repositório). Com o marcador, uma linha JSON no stdout, saída 0: `allowed: true`, `branch` e `reason`, que é `exempt-branch` (`develop` e `main`), `worktree-exists` (a branch local já tem worktree) ou `matrix-satisfied` (o prefixo foi satisfeito).
+Without the `.omhl.toml` marker above the directory, the CLI exits 0 and prints nothing (the hook runs in any repository). With the marker, a JSON line on stdout, exit 0: `allowed: true`, `branch` and `reason`, which is `exempt-branch` (`develop` and `main`), `worktree-exists` (the local branch already has a worktree) or `matrix-satisfied` (the prefix was satisfied).
 
-## Erros
+## Errors
 
-Um erro sai no stderr, numa linha JSON, com saída 1. A falta do `--branch` é erro de uso do clap, com saída 2 e sem código. Os erros comuns a todos os comandos estão em [errors.md](errors.md).
+An error goes to stderr, as a JSON line, with exit 1. A missing `--branch` is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](errors.md).
 
-- `worktree-gate-refused` (saída 1): a matriz do prefixo não foi satisfeita. O `context` traz `missing` (os átomos que faltam: `business-premise`, `spec`, `technical-premise-confirmed`, `agent-premise`), `prefix`, `work_item` e `main_dir`. Registre e confirme o que falta, ou escreva e valide a spec, e repita o gate. A violação da spec não sai aqui: rode `omhl spec validate`.
-- `work-item-not-found` (saída 1): o prefixo abre o banco e o work item da branch não existe. O ponteiro é `/branch`. Grave o work item com `omhl append`, ou corrija o id da branch.
-- `work-item-closed` (saída 1): o work item da branch já foi fechado. Use um work item aberto.
-- `prefix-not-allowed` (saída 1): o nome não segue `tipo/wi-<id>__<slug>`, ou o `tipo` não está na tabela de prefixos. `pr:N` e `dependabot/...` caem aqui. Corrija o nome.
-- `main-dir-unknown` (saída 1): o git não achou o diretório principal (repositório bare, por exemplo). Rode num checkout comum.
-- `spec-store-unusable` (saída 1): o prefixo pede spec e a pasta da spec do work item não pode ser lida, ou há mais de uma pasta `wi-<id>__*`. Corrija a pasta no diretório principal.
-- `invalid-workflow-config` (saída 1): o `.omhl/workflow.toml` é inválido. Corrija o arquivo.
-- `invalid-project-dir` (saída 1): o `--project-dir` não existe. A CLI não sobe até um projeto de um diretório acima: corrija o caminho.
+- `worktree-gate-refused` (exit 1): the matrix of the prefix was not satisfied. The `context` carries `missing` (the atoms that are missing: `business-premise`, `spec`, `technical-premise-confirmed`, `agent-premise`), `prefix`, `work_item` and `main_dir`. Record and confirm what is missing, or write and validate the spec, and repeat the gate. The spec violation does not come out here: run `omhl spec validate`.
+- `work-item-not-found` (exit 1): the prefix opens the database and the work item of the branch does not exist. The pointer is `/branch`. Record the work item with `omhl append`, or fix the branch id.
+- `work-item-closed` (exit 1): the work item of the branch is already closed. Use an open work item.
+- `prefix-not-allowed` (exit 1): the name does not follow `type/wi-<id>__<slug>`, or the `type` is not in the prefix table. `pr:N` and `dependabot/...` fall here. Fix the name.
+- `main-dir-unknown` (exit 1): git did not find the main directory (a bare repository, for example). Run in a regular checkout.
+- `spec-store-unusable` (exit 1): the prefix asks for a spec and the spec folder of the work item cannot be read, or there is more than one `wi-<id>__*` folder. Fix the folder in the main directory.
+- `invalid-workflow-config` (exit 1): `.omhl/workflow.toml` is invalid. Fix the file.
+- `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
-## Exemplos
+## Examples
 
-`develop` e `main` passam sem checar mais nada:
+`develop` and `main` pass without checking anything else:
 
 ```omhl-example fixture=git
 $ omhl gate-worktree --branch develop
 {"allowed":true,"branch":"develop","reason":"exempt-branch"}
 ```
 
-Uma branch que já tem worktree (a fixture está em `feat/wi-w1__x`):
+A branch that already has a worktree (the fixture is on `feat/wi-w1__x`):
 
 ```omhl-example fixture=git
 $ omhl gate-worktree --branch feat/wi-w1__x
 {"allowed":true,"branch":"feat/wi-w1__x","reason":"worktree-exists"}
 ```
 
-Um prefixo sem exigência (`chore/`) não abre o banco e passa:
+A prefix with no requirement (`chore/`) does not open the database and passes:
 
 ```omhl-example fixture=git
 $ omhl gate-worktree --branch chore/wi-w1__tidy
 {"allowed":true,"branch":"chore/wi-w1__tidy","reason":"matrix-satisfied"}
 ```
 
-Com a spec criada e válida, a branch `feat/` nova passa:
+With the spec created and valid, the new `feat/` branch passes:
 
 ```omhl-example fixture=spec
 $ omhl gate-worktree --branch feat/wi-w1__y
 {"allowed":true,"branch":"feat/wi-w1__y","reason":"matrix-satisfied"}
 ```
 
-Recusa: `feat/` sem spec (a premissa de negócio da fixture está confirmada, falta só a spec):
+Refusal: `feat/` without a spec (the business premise of the fixture is confirmed, only the spec is missing):
 
 ```omhl-example fixture=git
 $ omhl gate-worktree --branch feat/wi-w1__y
@@ -66,7 +66,7 @@ $ omhl gate-worktree --branch feat/wi-w1__y
 # exit 1
 ```
 
-Recusa: `refactor/` sem premissa técnica confirmada:
+Refusal: `refactor/` without a confirmed technical premise:
 
 ```omhl-example fixture=git
 $ omhl gate-worktree --branch refactor/wi-w1__z
@@ -74,7 +74,7 @@ $ omhl gate-worktree --branch refactor/wi-w1__z
 # exit 1
 ```
 
-Recusa: o work item da branch não existe:
+Refusal: the work item of the branch does not exist:
 
 ```omhl-example fixture=git
 $ omhl gate-worktree --branch feat/wi-zz__y
@@ -82,7 +82,7 @@ $ omhl gate-worktree --branch feat/wi-zz__y
 # exit 1
 ```
 
-Recusa: nome fora do formato:
+Refusal: name outside the format:
 
 ```omhl-example fixture=git
 $ omhl gate-worktree --branch pr:12
@@ -90,7 +90,7 @@ $ omhl gate-worktree --branch pr:12
 # exit 1
 ```
 
-Recusa: `--project-dir` que não existe sai 1, ao contrário da falta do marcador, que sai 0 calada:
+Refusal: a `--project-dir` that does not exist exits 1, unlike a missing marker, which exits 0 silently:
 
 ```omhl-example fixture=git
 $ omhl gate-worktree --branch develop --project-dir /nonexistent

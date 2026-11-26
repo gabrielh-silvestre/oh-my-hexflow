@@ -17,11 +17,11 @@ const BRANCH: &str = "feat/wi-w1__login";
 const DEFAULT_SPECS: &str = ".omhl/specs";
 const PART_DIR: &str = "wi-w1__login";
 const SECTIONS: [&str; 5] = [
-    "## Objetivo",
-    "## Diretivas e premissas aplicáveis",
-    "## Comportamentos",
-    "## Critérios de aceitação",
-    "## Fora de escopo",
+    "## Objective",
+    "## Applicable directives and premises",
+    "## Behaviors",
+    "## Acceptance criteria",
+    "## Out of scope",
 ];
 const CUSTOM_WORKFLOW: &str = "version = 1\n\n[specs]\ndir = \"docs/team-specs\"\n";
 const WORKFLOW_PATH: &str = ".omhl/workflow.toml";
@@ -118,14 +118,14 @@ impl Fixture {
         self.main_dir()
             .join(specs_dir)
             .join(PART_DIR)
-            .join("parte-01.md")
+            .join("part-01.md")
     }
 
     /// Pasta de spec de outro work item, já com uma parte, direto no diretório principal.
     fn seed_spec_dir(&self, name: &str) {
         let dir = self.project.dir().join(DEFAULT_SPECS).join(name);
         fs::create_dir_all(&dir).expect("spec directory is created");
-        fs::write(dir.join("parte-01.md"), "seed\n").expect("part is written");
+        fs::write(dir.join("part-01.md"), "seed\n").expect("part is written");
     }
 
     fn seed_other_work_items(&self, count: usize) {
@@ -535,4 +535,33 @@ fn it_should_keep_the_tree_clean_when_the_specs_dir_is_custom() {
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(porcelain(fixture.project.dir()), "");
+}
+
+#[test]
+fn it_should_name_the_first_part_part_01_md_in_the_json_output() {
+    let fixture = Fixture::new();
+
+    let output = fixture.init_from_linked(WORK_ITEM, SLUG);
+
+    let printed = json_line(&output.stdout)["path"].clone();
+    assert!(
+        printed
+            .as_str()
+            .is_some_and(|path| path.ends_with(&format!("{PART_DIR}/part-01.md"))),
+        "path: {printed}"
+    );
+}
+
+#[test]
+fn it_should_not_create_a_portuguese_named_part() {
+    let fixture = Fixture::new();
+
+    fixture.init_from_linked(WORK_ITEM, SLUG);
+
+    let portuguese = fixture
+        .main_dir()
+        .join(DEFAULT_SPECS)
+        .join(PART_DIR)
+        .join("parte-01.md");
+    assert!(!portuguese.exists());
 }

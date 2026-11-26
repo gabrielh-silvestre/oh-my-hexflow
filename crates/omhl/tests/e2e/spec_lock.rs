@@ -2816,3 +2816,101 @@ fn it_should_deny_an_edit_whose_old_text_only_fits_the_marker_after_the_crlf_is_
 
     marker_reason(&output, &path);
 }
+
+// Famílias de nome: `part-`/`amendment-` e `parte-`/`emenda-`
+
+#[test]
+fn it_should_allow_the_first_english_amendment_in_a_folder_with_part_01() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "part-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("amendment-01.md"));
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_deny_a_portuguese_amendment_in_a_folder_with_part_01_and_name_the_english_one() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "part-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("emenda-01.md"));
+
+    let reason = denied_reason(&output);
+    let expected = repo.spec_file("amendment-01.md");
+    assert!(reason.contains(FROZEN), "reason: {reason}");
+    assert!(
+        reason.contains(&expected.to_string_lossy().into_owned()),
+        "reason: {reason}"
+    );
+}
+
+#[test]
+fn it_should_deny_a_new_english_part_in_a_folder_with_part_01() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "part-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("part-02.md"));
+
+    assert!(denied_reason(&output).contains(FROZEN));
+}
+
+#[test]
+fn it_should_deny_an_english_amendment_in_a_folder_with_parte_01_and_name_the_portuguese_one() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("amendment-01.md"));
+
+    let reason = denied_reason(&output);
+    let expected = repo.spec_file("emenda-01.md");
+    assert!(
+        reason.contains(&expected.to_string_lossy().into_owned()),
+        "reason: {reason}"
+    );
+}
+
+#[test]
+fn it_should_deny_a_new_portuguese_part_in_a_folder_with_parte_01() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "parte-01.md");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("parte-02.md"));
+
+    assert!(denied_reason(&output).contains(FROZEN));
+}
+
+#[test]
+fn it_should_count_both_families_for_the_next_amendment_number() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "part-01.md");
+    repo.seed(DEFAULT_SPECS, "amendment-01.md");
+    repo.seed(DEFAULT_SPECS, "emenda-02.md");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("amendment-03.md"));
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_deny_an_english_amendment_that_reuses_a_number_of_the_other_family() {
+    let repo = Repo::new();
+    repo.branch(BRANCH);
+    repo.seed(DEFAULT_SPECS, "part-01.md");
+    repo.seed(DEFAULT_SPECS, "emenda-02.md");
+
+    let output = repo.hook_in_main("Write", &repo.spec_file("amendment-02.md"));
+
+    let reason = denied_reason(&output);
+    let expected = repo.spec_file("amendment-03.md");
+    assert!(
+        reason.contains(&expected.to_string_lossy().into_owned()),
+        "reason: {reason}"
+    );
+}

@@ -1,14 +1,14 @@
 #!/bin/sh
-# Envolve os hooks do plugin: sem o omhl no PATH ele avisa em vez de travar o trabalho.
-# O ramo sem omhl usa só builtins do shell, porque o PATH do hook pode não ter nada.
+# Wraps the plugin hooks: without omhl on the PATH it warns instead of blocking the work.
+# The branch without omhl uses only shell builtins, because the hook PATH may have nothing.
 
 hook=$1
 
-# Texto já escapado para JSON (aspas como \" e quebras como \n), pronto para ir dentro de uma string.
+# Text already escaped for JSON (quotes as \" and line breaks as \n), ready to go inside a string.
 INSTALL_CMD='[ \"$(uname -sm)\" = \"Linux x86_64\" ] && mkdir -p ~/.local/bin && (cd \"$(mktemp -d)\" && curl -fsSLO https://github.com/gabrielh-silvestre/oh-my-hexflow/releases/latest/download/omhl-x86_64-unknown-linux-musl.tar.gz && curl -fsSLO https://github.com/gabrielh-silvestre/oh-my-hexflow/releases/latest/download/omhl-x86_64-unknown-linux-musl.tar.gz.sha256 && sha256sum -c omhl-x86_64-unknown-linux-musl.tar.gz.sha256 && tar -xzf omhl-x86_64-unknown-linux-musl.tar.gz -C ~/.local/bin omhl)'
 INSTALL_HELP='The prebuilt binary exists only for Linux x86_64; the command above downloads nothing elsewhere. Make sure ~/.local/bin is on the PATH of the Claude Code process, then restart the session. On other platforms build from source with `cargo build --release`.'
 
-# Lê X.Y.Z (sufixo de pré-lançamento ignorado) em $major, $minor e $patch; só aceita caracteres que cabem num JSON sem escape.
+# Reads X.Y.Z (pre-release suffix ignored) into $major, $minor and $patch; accepts only characters that fit in JSON without escaping.
 parse_version() {
   case $1 in '' | *[!0-9A-Za-z.+-]*) return 1 ;; esac
   core=${1%%[-+]*}
@@ -18,13 +18,13 @@ parse_version() {
   unset IFS
   [ $# -eq 3 ] || return 1
   for part in "$@"; do
-    # Zero à esquerda viraria octal na aritmética do shell.
+    # A leading zero would turn octal in shell arithmetic.
     case $part in '' | 0?*) return 1 ;; esac
   done
   major=$1 minor=$2 patch=$3
 }
 
-# $1.$2.$3 é mais velha que $4.$5.$6, comparando major, minor e patch nessa ordem.
+# $1.$2.$3 is older than $4.$5.$6, comparing major, minor and patch in that order.
 is_older() {
   [ "$1" -ne "$4" ] && {
     [ "$1" -lt "$4" ]
@@ -37,7 +37,7 @@ is_older() {
   [ "$3" -lt "$6" ]
 }
 
-# Qualquer leitura que falhe deixa o aviso de fora: sem versão legível não há o que comparar.
+# Any read that fails leaves the warning out: without a readable version there is nothing to compare.
 version_check() {
   case $0 in
     */*) min_file=${0%/*}/min-omhl-version ;;
@@ -58,17 +58,24 @@ version_check() {
   printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$warning" "$warning"
 }
 
+# Always exits 0: an omhl older than lang1 lacks the subcommand and exits 2, and Claude Code would show a hook error on every subagent.
+subagent_start() {
+  output=$(omhl hook subagent-start 2>/dev/null) || return 0
+  [ -z "$output" ] || printf '%s\n' "$output"
+}
+
 if command -v omhl >/dev/null 2>&1; then
   case $hook in
     version-check) version_check ;;
     spec-lock) omhl hook spec-lock || exit 2 ;;
     agent-role) omhl hook agent-role || exit 1 ;;
     session-start) exec omhl hook session-start ;;
+    subagent-start) subagent_start ;;
   esac
   exit 0
 fi
 
-# Sobe a partir do diretório procurando o marcador, sem olhar dentro de pastas .omhl/.
+# Climbs from the directory looking for the marker, without looking inside .omhl/ folders.
 has_marker() {
   d=$1
   while :; do
@@ -83,7 +90,7 @@ has_marker() {
   done
 }
 
-# Só aceita um "cwd" absoluto e sem barra invertida; o stdin é reserva para quando CLAUDE_PROJECT_DIR falta.
+# Accepts only an absolute "cwd" with no backslash; stdin is the fallback for when CLAUDE_PROJECT_DIR is missing.
 project_dir() {
   if [ -n "$CLAUDE_PROJECT_DIR" ]; then
     printf '%s' "$CLAUDE_PROJECT_DIR"
