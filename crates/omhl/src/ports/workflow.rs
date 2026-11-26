@@ -32,3 +32,6 @@ pub fn policy_dir(root: &Path) -> PathBuf {
 pub fn read_policy(root: &Path) -> Result<WorkflowConfig, ProjectError> {
     read_workflow(&policy_dir(root))
 }
+
+#[cfg(test)]
+mod tests;

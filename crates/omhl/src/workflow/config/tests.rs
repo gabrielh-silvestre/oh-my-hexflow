@@ -467,3 +467,164 @@ fn it_should_not_echo_the_file_content_in_any_refusal() {
         "messages repeat the file content: {leaked:?}"
     );
 }
+
+// Ativação dos checks nativos: `[native] checks`
+
+const RUN_TESTS: &str = "checks.run-tests";
+const CI_GREEN: &str = "checks.ci-green-before-merge";
+const ANCHORING: &str = "checks.verify-review-comment-anchoring";
+
+fn native_checks_text(list: &str) -> String {
+    lines(&["version = 1", "[native]", &format!("checks = {list}")])
+}
+
+fn enabled(text: &str) -> Vec<&'static str> {
+    accepted(text).native.checks.into_iter().collect()
+}
+
+#[test]
+fn it_should_enable_no_native_check_without_the_native_table() {
+    let config = accepted("version = 1\n");
+
+    assert!(config.native.checks.is_empty());
+}
+
+#[test]
+fn it_should_enable_no_native_check_with_an_empty_native_table() {
+    let text = lines(&["version = 1", "[native]"]);
+
+    let config = accepted(&text);
+
+    assert!(config.native.checks.is_empty());
+}
+
+#[test]
+fn it_should_enable_no_native_check_with_an_empty_list() {
+    let found = enabled(&native_checks_text("[]"));
+
+    assert!(found.is_empty());
+}
+
+#[test]
+fn it_should_enable_only_the_listed_native_check_when_each_id_is_alone() {
+    let found: Vec<Vec<&str>> = [RUN_TESTS, CI_GREEN, ANCHORING]
+        .iter()
+        .map(|id| enabled(&native_checks_text(&format!("[\"{id}\"]"))))
+        .collect();
+
+    assert_eq!(
+        found,
+        vec![vec![RUN_TESTS], vec![CI_GREEN], vec![ANCHORING]]
+    );
+}
+
+#[test]
+fn it_should_enable_the_three_native_checks_when_all_ids_are_listed() {
+    let text = native_checks_text(&format!(
+        "[\"{ANCHORING}\", \"{RUN_TESTS}\", \"{CI_GREEN}\"]"
+    ));
+
+    let mut found = enabled(&text);
+
+    found.sort_unstable();
+    assert_eq!(found, vec![CI_GREEN, RUN_TESTS, ANCHORING]);
+}
+
+#[test]
+fn it_should_accept_a_repeated_native_check_id_as_a_single_activation() {
+    let text = native_checks_text(&format!("[\"{RUN_TESTS}\", \"{RUN_TESTS}\"]"));
+
+    let found = enabled(&text);
+
+    assert_eq!(found, vec![RUN_TESTS]);
+}
+
+#[test]
+fn it_should_keep_the_other_keys_when_native_checks_are_enabled() {
+    let text = lines(&[
+        "version = 1",
+        "[specs]",
+        "max_lines = 150",
+        "[native]",
+        &format!("checks = [\"{CI_GREEN}\"]"),
+    ]);
+
+    let config = accepted(&text);
+
+    let mut expected = WorkflowConfig::default();
+    expected.specs.max_lines = 150;
+    expected.native.checks.insert(CI_GREEN);
+    assert_eq!(config, expected);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_native_check_id_with_its_position() {
+    let error = refusal(&native_checks_text("[\"checks.no-such-check\"]"));
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_each_native_guideline_id_in_native_checks_with_its_position() {
+    let errors: Vec<ProjectError> = [
+        "guidelines.one-decision-per-turn",
+        "guidelines.commit-policy",
+    ]
+    .iter()
+    .map(|id| refusal(&native_checks_text(&format!("[\"{id}\"]"))))
+    .collect();
+
+    for error in &errors {
+        assert_refused_at_line(error, 3);
+    }
+}
+
+#[test]
+fn it_should_refuse_a_project_check_id_in_native_checks_with_its_position() {
+    let error = refusal(&native_checks_text("[\"checks.my-project-check\"]"));
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_a_wrong_id_after_a_valid_one_in_native_checks() {
+    let text = native_checks_text(&format!("[\"{RUN_TESTS}\", \"checks.no-such-check\"]"));
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_native_checks_that_is_not_a_list_with_its_position() {
+    let error = refusal(&native_checks_text(&format!("\"{RUN_TESTS}\"")));
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_native_checks_with_a_non_text_item_with_its_position() {
+    let error = refusal(&native_checks_text("[1]"));
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_key_inside_native_with_its_position() {
+    let text = lines(&["version = 1", "[native]", "guidelines = []"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_not_echo_a_refused_native_check_id() {
+    let error = refusal(&native_checks_text(&format!("[\"{CANARY}\"]")));
+
+    assert!(
+        !error.message.contains(CANARY),
+        "the message repeats the file content: {}",
+        error.message
+    );
+}

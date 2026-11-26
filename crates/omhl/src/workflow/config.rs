@@ -1,10 +1,11 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 use std::path::{Component, Path};
 
 use serde::Deserialize;
 use toml::Spanned;
 
+use crate::native::NativeBase;
 use crate::project::ProjectError;
 use crate::project::layout::{
     CHECKS_DIR, DOT_GIT_DIR, GUIDELINES_DIR, OMHL_DIR, PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE,
@@ -18,6 +19,7 @@ pub const INVALID_WORKFLOW_CONFIG: &str = "invalid-workflow-config";
 pub struct WorkflowConfig {
     pub specs: SpecsConfig,
     pub promotion: PromotionConfig,
+    pub native: NativeConfig,
     pub prefixes: BTreeMap<String, Vec<RequireAtom>>,
 }
 
@@ -32,6 +34,12 @@ pub struct SpecsConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromotionConfig {
     pub min_work_items: u32,
+}
+
+/// Os checks nativos ligados pelo projeto; nenhum ligado é o padrão.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NativeConfig {
+    pub checks: BTreeSet<&'static str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -76,6 +84,7 @@ impl Default for WorkflowConfig {
                 cite_business_premise: true,
             },
             promotion: PromotionConfig { min_work_items: 3 },
+            native: NativeConfig::default(),
             prefixes: prefixes
                 .into_iter()
                 .map(|(prefix, atoms)| (prefix.to_owned(), atoms))
@@ -90,6 +99,7 @@ struct RawWorkflow {
     version: Spanned<u32>,
     specs: Option<RawSpecs>,
     promotion: Option<RawPromotion>,
+    native: Option<RawNative>,
     prefix: Option<BTreeMap<String, RawPrefix>>,
 }
 
@@ -106,6 +116,12 @@ struct RawSpecs {
 #[serde(deny_unknown_fields)]
 struct RawPromotion {
     min_work_items: Option<Spanned<u32>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawNative {
+    checks: Option<Vec<Spanned<String>>>,
 }
 
 #[derive(Deserialize)]
@@ -207,6 +223,25 @@ pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, Proje
             ));
         }
         config.promotion.min_work_items = min_work_items.into_inner();
+    }
+    for id in raw
+        .native
+        .and_then(|native| native.checks)
+        .unwrap_or_default()
+    {
+        let Some(check) = NativeBase
+            .checks()
+            .iter()
+            .find(|check| check.id == id.as_ref().as_str())
+        else {
+            return Err(invalid_at(
+                path,
+                text,
+                id.span(),
+                "native.checks must list only native check ids",
+            ));
+        };
+        config.native.checks.insert(check.id);
     }
     for (prefix, table) in raw.prefix.unwrap_or_default() {
         config.prefixes.insert(prefix, table.require);
