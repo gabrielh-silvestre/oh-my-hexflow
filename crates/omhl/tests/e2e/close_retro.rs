@@ -892,7 +892,7 @@ fn typed(mut data: serde_json::Value) -> serde_json::Value {
     data
 }
 
-// Gate reprovado: recusa do `close`, `--force --note` e a paridade com o `gate-pr` (CA-007 a CA-009)
+// Gate reprovado: recusa do `close`, `--force --note` e a paridade com o `gate-pr`
 
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
@@ -1308,7 +1308,7 @@ fn it_should_ask_gate_pr_the_same_failing_questions_and_classes_that_close_refus
     }
 }
 
-// `close --abandon`: fecha sem avaliar o gate (CA-011 a CA-013 e CA-015)
+// `close --abandon`: fecha sem avaliar o gate
 
 const ABANDON_REASON: &str = "the owner dropped the feature";
 const ABANDON_NOTE: &str = "authorized by the owner";
@@ -1769,7 +1769,7 @@ fn it_should_read_a_node_closed_in_the_old_format_with_report_retro() {
     }
 }
 
-// `close --failed-delivery`: fecha o item já mergeado cujo commit ainda reprova (CA-040 a CA-044)
+// `close --failed-delivery`: fecha o item já mergeado cujo commit ainda reprova
 
 const DELIVERY_NOTE: &str = "autorizado";
 const ITEM_BRANCH: &str = "feat/wi-w1__login";

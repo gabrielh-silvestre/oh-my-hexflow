@@ -1115,7 +1115,7 @@ fn it_should_allow_chore_of_a_closed_work_item_because_its_require_never_opens_t
     assert_allowed(&output, "matrix-satisfied");
 }
 
-// CA-002: `require = []` num tipo padrão não tira o átomo de negócio do `feat`
+// `require = []` num tipo padrão não tira o átomo de negócio do `feat`
 #[test]
 fn it_should_still_refuse_feat_with_an_empty_require_list_without_a_business_premise() {
     let fixture = Fixture::seeded();

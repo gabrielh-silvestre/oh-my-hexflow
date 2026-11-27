@@ -67,6 +67,6 @@ fn it_should_refuse_a_removal_of_a_type_that_requires_something() {
 #[test]
 fn it_should_refuse_refactor_to_bugfix_because_the_technical_premise_covers_the_agent_premise_only()
 {
-    // CA-005 lista refactor para bugfix como passando; pela regra do fecho ele afrouxa. Ver o relatório.
+    // Pela regra do fecho, trocar refactor por bugfix afrouxa a matriz.
     assert!(loosens(&atoms_of("refactor"), &atoms_of("bugfix")));
 }

@@ -576,7 +576,7 @@ impl Engine<'_> {
         Ok(prefixes)
     }
 
-    /// CMP-005: a troca do tipo para um tipo que exige menos sai antes da gravação.
+    /// A troca do tipo para um tipo que exige menos sai antes da gravação.
     fn check_type_changes(&mut self, request: &AppendRequest) -> Result<(), AppError> {
         for (index, item) in request.items.iter().enumerate() {
             let ItemBody::Node {

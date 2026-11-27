@@ -120,7 +120,7 @@ pub fn pr_gate_questions(
         .collect()
 }
 
-// Um check mecânico ou o CI verde do merge recusa sem `--force`; o demais é aviso (CMP-006).
+// Um check mecânico ou o CI verde do merge recusa sem `--force`; os demais são aviso.
 fn plain_check_class(check: &SemanticId, mechanical: bool) -> QuestionClass {
     if mechanical || matches!(check.as_str(), CI_GREEN_ID | CONFIG_LOOSENING_REVIEW_ID) {
         QuestionClass::Refuse

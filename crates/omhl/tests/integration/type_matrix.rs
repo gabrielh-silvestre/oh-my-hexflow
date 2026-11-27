@@ -87,7 +87,7 @@ fn type_of(fixture: &AppFixture, id: &str) -> Value {
     fixture.get(id)["data"]["type"].clone()
 }
 
-// CA-003: o tipo do work item e do pull-request
+// O tipo do work item e do pull-request
 
 #[test]
 fn it_should_take_the_recorded_type_over_the_branch_prefix() {
@@ -171,7 +171,7 @@ fn it_should_refuse_a_work_item_with_no_type_and_no_branch() {
     assert_eq!(code_of(&refusal), "work-item-type-unknown");
 }
 
-// CA-004: cada átomo do tipo vira uma pergunta `requires:<átomo>`
+// Cada átomo do tipo vira uma pergunta `requires:<átomo>`
 
 #[test]
 fn it_should_ask_a_requires_question_that_fails_for_each_unmet_atom_of_the_type() {
@@ -246,7 +246,7 @@ fn it_should_not_satisfy_the_business_premise_atom_with_a_late_premise() {
     assert_eq!(question(&gate, BUSINESS)["passed"], json!(false));
 }
 
-// CA-016: a leitura de tipo e matriz usa o `workflow.toml` do diretório principal
+// A leitura de tipo e matriz usa o `workflow.toml` do diretório principal
 
 #[test]
 fn it_should_read_the_main_directory_file_for_the_matrix_of_a_type() {
@@ -297,7 +297,7 @@ fn it_should_refuse_the_close_with_main_dir_unknown_before_a_missing_work_item_w
     );
 }
 
-// CA-005: a troca do tipo recusada na gravação
+// A troca do tipo recusada na gravação
 
 #[test]
 fn it_should_refuse_a_change_from_feat_to_chore_and_keep_the_recorded_type() {
