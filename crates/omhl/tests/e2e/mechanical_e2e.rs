@@ -30,7 +30,7 @@ const CI_DIRECT_RUN: &str = r#"["gh", "pr", "checks"]"#;
 
 const WORK_ITEM: &str = "work-items.w1";
 const WORK_ITEM_BRANCH: &str = "feat/wi-w1__x";
-const OPEN_WORK_ITEM: &str = r#"{"items":[{"body":{"kind":"node","id":"work-items.w1","type":"work-item","data":{"title":"t","status":"open"}}}]}"#;
+const OPEN_WORK_ITEM: &str = r#"{"items":[{"body":{"kind":"node","id":"work-items.w1","type":"work-item","data":{"title":"t","status":"open","type":"chore"}}}]}"#;
 
 const GATE: &str = "checks.gate";
 const PR: &str = "checks.pr";
