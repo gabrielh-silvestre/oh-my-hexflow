@@ -29,7 +29,7 @@ impl Engine<'_> {
             return Err(AppError::check_not_orphaned("/check"));
         }
         if !owner_override {
-            return Err(OmhlError::rule(RuleCode::CheckLooseningRefused, "/check").into());
+            return Err(AppError::check_retire_refused("/check"));
         }
         let item = AppendItem {
             body: ItemBody::Retirement {

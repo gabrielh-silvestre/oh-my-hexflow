@@ -426,6 +426,17 @@ impl AppError {
         )
     }
 
+    pub(crate) fn check_retire_refused(pointer: &str) -> AppError {
+        AppError::refusal(
+            "check-loosening-refused",
+            pointer,
+            Guidance {
+                cause: "retiring a check is the owner's task, not the agent's",
+                next_step: "ask the owner to retire it with --owner-override, run outside Claude Code",
+            },
+        )
+    }
+
     pub(crate) fn guideline_not_found(pointer: &str) -> AppError {
         AppError::refusal(
             "guideline-not-found",

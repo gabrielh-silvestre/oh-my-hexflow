@@ -197,9 +197,13 @@ impl RuleCode {
                 cause: "--base does not name a commit, or it is the same commit as HEAD, so there is no range to review",
                 next_step: "pass --base with the integration branch the pull request targets, such as develop",
             }),
+            RuleCode::TypeChangeLoosens => Some(Guidance {
+                cause: "the new work item type asks for less than the current type, which loosens what the work item must deliver",
+                next_step: "keep the current type, or ask the owner to make the change with --owner-override, run outside Claude Code",
+            }),
             RuleCode::CheckLooseningRefused => Some(Guidance {
                 cause: "the revised check turns blocking off, removes its run or moves a blocking check out of the required events, which loosens a check already stored",
-                next_step: "keep the check blocking, with its run and on a required event, or retire the check and declare a new one",
+                next_step: "keep the check blocking, with its run and on a required event, or ask the owner to retire the check and declare a new one",
             }),
             _ => None,
         }
