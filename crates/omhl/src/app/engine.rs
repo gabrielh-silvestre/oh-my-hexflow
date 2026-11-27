@@ -224,7 +224,9 @@ impl Engine<'_> {
             review_required,
         )?;
         let mut value = output::gate(&report);
-        value["review_base"] = review_base;
+        if !review_base.is_null() {
+            value["review_base"] = review_base;
+        }
 
         Ok(value)
     }
@@ -268,7 +270,9 @@ impl Engine<'_> {
         }
 
         let mut value = output::closed(&closed, retro(&facts).as_ref());
-        value["review_base"] = review_base;
+        if !review_base.is_null() {
+            value["review_base"] = review_base;
+        }
 
         Ok(value)
     }
