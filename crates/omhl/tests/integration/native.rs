@@ -231,7 +231,7 @@ fn it_should_refuse_a_tenant_node_with_each_native_id() {
         .collect();
 
     let summaries: Vec<_> = errors.iter().map(refusal_summary).collect();
-    assert_eq!(summaries, vec![expected; 5]);
+    assert_eq!(summaries, vec![expected; 6]);
 }
 
 #[test]

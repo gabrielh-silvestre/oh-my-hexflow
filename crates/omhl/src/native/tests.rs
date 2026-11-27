@@ -155,7 +155,7 @@ fn it_should_expose_the_guideline_and_check_data_as_non_empty_texts_without_carr
         .copied()
         .filter(|text| text.is_empty() || text.contains('\r'))
         .collect();
-    assert_eq!((texts.len(), malformed), (5, Vec::new()));
+    assert_eq!((texts.len(), malformed), (6, Vec::new()));
 }
 
 #[test]

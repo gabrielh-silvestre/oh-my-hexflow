@@ -1,9 +1,10 @@
 use hexlog::{NativeNode, NativeNodes, RelationTypeName, SemanticId, TypeName};
 
-pub const NATIVE_CATALOG_VERSION: &str = "1.0.0";
+pub const NATIVE_CATALOG_VERSION: &str = "1.1.0";
 
 const RUN_TESTS_ID: &str = "checks.run-tests";
 pub(crate) const CI_GREEN_ID: &str = "checks.ci-green-before-merge";
+pub(crate) const CONFIG_LOOSENING_REVIEW_ID: &str = "checks.config-loosening-review";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeCheck {
@@ -20,7 +21,7 @@ pub struct NativeGuideline {
 }
 
 // A ordem é a do contrato: o plugin nunca remove nem reordena um id nativo.
-static CHECKS: [NativeCheck; 3] = [
+static CHECKS: [NativeCheck; 4] = [
     NativeCheck {
         id: RUN_TESTS_ID,
         event: "before-commit",
@@ -37,6 +38,12 @@ static CHECKS: [NativeCheck; 3] = [
         id: "checks.verify-review-comment-anchoring",
         event: "before-publishing-review-comments",
         how: "compare path, line and side of each inline comment with the diff of the head SHA; post the approved text unchanged",
+        blocking: true,
+    },
+    NativeCheck {
+        id: CONFIG_LOOSENING_REVIEW_ID,
+        event: "before-pr",
+        how: "have oh-my-hexflow:code-reviewer review every loosening of a check, gate or lint configuration in the diff and attest the result before opening the PR",
         blocking: true,
     },
 ];

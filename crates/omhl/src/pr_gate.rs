@@ -12,7 +12,7 @@ use crate::gate::{
     TargetFact,
 };
 use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
-use crate::native::{CI_GREEN_ID, NativeCheck};
+use crate::native::{CI_GREEN_ID, CONFIG_LOOSENING_REVIEW_ID, NativeCheck};
 use crate::workflow::config::{NativeConfig, RequireAtom};
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 use crate::workflow::retro::{FailedQuestion, GateOverride};
@@ -114,7 +114,7 @@ pub fn pr_gate_questions(
 
 // Um check mecânico ou o CI verde do merge recusa sem `--force`; o demais é aviso (CMP-006).
 fn plain_check_class(check: &SemanticId, mechanical: bool) -> QuestionClass {
-    if mechanical || check.as_str() == CI_GREEN_ID {
+    if mechanical || matches!(check.as_str(), CI_GREEN_ID | CONFIG_LOOSENING_REVIEW_ID) {
         QuestionClass::Refuse
     } else {
         QuestionClass::Warn
