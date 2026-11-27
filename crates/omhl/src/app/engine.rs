@@ -27,7 +27,7 @@ use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
 use crate::workflow::config::{NativeConfig, RequireAtom};
 use crate::workflow::matrix::unsatisfied_atoms;
-use crate::workflow::retro::retro;
+use crate::workflow::retro::{Retro, RetroAbandonment, retro};
 use crate::workflow::work_type::{effective_type, loosens};
 
 const DEFAULT_PAGE_LIMIT: u32 = 50;
@@ -274,9 +274,18 @@ impl Engine<'_> {
             &abandonment,
         )?;
 
+        let report = Retro {
+            abandonment: Some(RetroAbandonment {
+                reason: reason.to_owned(),
+                note: note.to_owned(),
+            }),
+            ..Retro::default()
+        };
+
         Ok(json!({
             "outcome": output::appended(&outcome),
             "abandoned": { "reason": reason, "note": note },
+            "retro": output::retro(Some(&report)),
         }))
     }
 

@@ -122,6 +122,9 @@ pub fn retro(report: Option<&Retro>) -> Value {
             "overridden": gate_override.overridden,
         });
     }
+    if let Some(abandonment) = &report.abandonment {
+        value["abandonment"] = json!({ "reason": abandonment.reason, "note": abandonment.note });
+    }
 
     value
 }

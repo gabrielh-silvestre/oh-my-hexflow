@@ -12,7 +12,9 @@ use crate::ports::workflow::read_policy;
 use crate::workflow::config::WorkflowConfig;
 use crate::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_by, gap_state};
 use crate::workflow::recurrence::{Premise, recurrences};
-use crate::workflow::retro::{DivergenceFact, GapFact, GateOverride, RetroFacts, retro};
+use crate::workflow::retro::{
+    DivergenceFact, GapFact, GateOverride, RetroAbandonment, RetroFacts, retro_with_abandonment,
+};
 
 const GAP_RELATIONS: [&str; 3] = ["answers", "supports", "contradicts"];
 
@@ -29,6 +31,15 @@ fn gate_override(data: &Value) -> Option<GateOverride> {
             .iter()
             .filter_map(|label| label.as_str().map(str::to_owned))
             .collect(),
+    })
+}
+
+pub(super) fn abandonment(data: &Value) -> Option<RetroAbandonment> {
+    let abandonment = &data["abandonment"];
+
+    Some(RetroAbandonment {
+        reason: abandonment["reason"].as_str()?.to_owned(),
+        note: abandonment["note"].as_str()?.to_owned(),
     })
 }
 
@@ -55,8 +66,10 @@ impl Engine<'_> {
     pub(super) fn report_retro(&mut self, work_item: &str) -> Result<Value, AppError> {
         let id = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let facts = self.retro_facts(&id)?;
+        let node = self.omhl.find_work_item(&self.tenant, &id)?;
+        let report = retro_with_abandonment(&facts, abandonment(&node.data));
 
-        Ok(json!({ "retro": output::retro(retro(&facts).as_ref()) }))
+        Ok(json!({ "retro": output::retro(report.as_ref()) }))
     }
 
     /// Os fatos da retro não dependem do fechamento: o `close` os lê antes de gravar.

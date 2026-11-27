@@ -96,6 +96,12 @@ pub static RETRO_PROFILE: Profile = Profile {
         Entry::new(Region::Data, "answered_by", Shape::Literal)
             .under("no_criterion")
             .optional(),
+        Entry::new(Region::Data, "reason", Shape::Literal)
+            .under("abandonment")
+            .optional(),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("abandonment")
+            .optional(),
         Entry::new(Region::Data, "gap", Shape::Literal)
             .under("open_gaps")
             .optional(),
@@ -227,6 +233,7 @@ impl Specialization for Retro {
                 usize::from(retro["gate_override"].is_object()),
                 "forced close",
             ),
+            (usize::from(retro["abandonment"].is_object()), "abandonment"),
         ]
         .into_iter()
         .filter(|(count, _)| *count > 0)
@@ -282,7 +289,16 @@ impl Specialization for Retro {
             ])
         });
 
+        let abandoned = retro["abandonment"].is_object().then(|| {
+            dash(vec![
+                "abandoned".to_owned(),
+                text(&retro["abandonment"], "reason"),
+                text(&retro["abandonment"], "note"),
+            ])
+        });
+
         divergences
+            .chain(abandoned)
             .chain(approved)
             .chain(pending)
             .chain(no_criterion)

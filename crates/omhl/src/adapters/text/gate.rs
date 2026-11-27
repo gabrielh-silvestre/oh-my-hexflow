@@ -96,6 +96,12 @@ pub static CLOSE_PROFILE: Profile = Profile {
         Entry::new(Region::Data, "answered_by", Shape::Literal)
             .under("no_criterion")
             .optional(),
+        Entry::new(Region::Data, "reason", Shape::Literal)
+            .under("abandonment")
+            .optional(),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("abandonment")
+            .optional(),
         Entry::new(Region::Data, "gap", Shape::Literal)
             .under("open_gaps")
             .optional(),
@@ -228,6 +234,11 @@ fn closed_header(value: &Value) -> Line {
     }
 }
 
+/// O abandono não avalia o gate: só a retro dele vai ao terminal.
+fn is_abandonment(value: &Value) -> bool {
+    value["abandoned"].is_object()
+}
+
 pub struct Close;
 
 impl Specialization for Close {
@@ -237,6 +248,9 @@ impl Specialization for Close {
 
     /// O work item fecha mesmo com o gate reprovado: o resultado fica gravado.
     fn state(&self, value: &Value) -> State {
+        if is_abandonment(value) {
+            return State::Ok;
+        }
         match gate_passed(&value["report"]) {
             true => State::Ok,
             false => State::Warning,
@@ -244,10 +258,18 @@ impl Specialization for Close {
     }
 
     fn summary(&self, value: &Value) -> Vec<String> {
+        if is_abandonment(value) {
+            return std::iter::once("retro".to_owned())
+                .chain(Retro.summary(value))
+                .collect();
+        }
         gate_summary(&value["report"])
     }
 
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
+        if is_abandonment(value) {
+            return Retro.detail_lines(value);
+        }
         let outcome = &value["outcome"];
         let mut lines = question_lines(&value["report"], None);
         lines.push(closed_header(value));

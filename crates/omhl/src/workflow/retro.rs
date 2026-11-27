@@ -35,7 +35,7 @@ pub struct GapFact {
     pub answered_by: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Retro {
     pub divergences: Vec<DivergenceGroup>,
     pub approved: Vec<ApprovedAmendment>,
@@ -43,6 +43,13 @@ pub struct Retro {
     pub no_criterion: Vec<AnsweredGap>,
     pub open_gaps: Vec<OpenGap>,
     pub gate_override: Option<GateOverride>,
+    pub abandonment: Option<RetroAbandonment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetroAbandonment {
+    pub reason: String,
+    pub note: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,6 +124,22 @@ pub fn retro(facts: &RetroFacts) -> Option<Retro> {
         no_criterion,
         open_gaps,
         gate_override: facts.gate_override.clone(),
+        abandonment: None,
+    })
+}
+
+/// A retro de um nó abandonado sempre existe: ela mostra o motivo e a nota do dono.
+pub fn retro_with_abandonment(
+    facts: &RetroFacts,
+    abandonment: Option<RetroAbandonment>,
+) -> Option<Retro> {
+    let Some(abandonment) = abandonment else {
+        return retro(facts);
+    };
+
+    Some(Retro {
+        abandonment: Some(abandonment),
+        ..retro(facts).unwrap_or_default()
     })
 }
 
