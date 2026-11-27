@@ -738,6 +738,14 @@ fn it_should_declare_the_minimum_as_one_line_equal_to_zero_two_zero_within_the_c
 }
 
 #[test]
+fn it_should_keep_the_minimum_equal_to_the_workspace_version() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugin/hooks/min-omhl-version");
+    let content = fs::read_to_string(path).expect("the minimum is readable");
+
+    assert_eq!(content, format!("{}\n", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
 fn it_should_refuse_a_minimum_above_the_cargo_version_and_malformed_files() {
     assert!(!min_version_is_valid("0.1.1\n", "0.1.0"));
     assert!(min_version_is_valid("0.1.0\n", "0.1.0"));

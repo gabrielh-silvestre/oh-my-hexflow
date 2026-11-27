@@ -799,3 +799,40 @@ fn it_should_not_teach_recreating_the_branch_or_the_worktree_after_the_merge() {
         );
     }
 }
+
+#[test]
+fn it_should_turn_the_loosening_review_on_in_the_workflow_of_this_repository() {
+    let path = repo_root().join(".omhl/workflow.toml");
+    let bytes = std::fs::read(&path).expect("the repository workflow is readable");
+
+    let parsed = parse_workflow(&path, &bytes);
+
+    assert!(parsed.is_ok(), "the workflow is not accepted: {parsed:?}");
+    let table: toml::Table =
+        toml::from_str(&String::from_utf8(bytes).expect("UTF-8")).expect("the workflow is TOML");
+    let checks = table["native"]["checks"].as_array().expect("native checks");
+    assert!(
+        checks
+            .iter()
+            .any(|id| id.as_str() == Some("checks.config-loosening-review"))
+    );
+}
+
+#[test]
+fn it_should_ship_the_command_pages_that_own_the_close_refusals_and_options() {
+    let pages = [
+        "review/references/close.md",
+        "review/references/gate-pr.md",
+        "review/references/load.md",
+        "review/references/check-retire.md",
+        "directives-flow/references/append.md",
+        "directives-flow/references/errors.md",
+    ];
+
+    let missing: Vec<&str> = pages
+        .into_iter()
+        .filter(|page| !skills_dir().join(page).is_file())
+        .collect();
+
+    assert_eq!(missing, Vec::<&str>::new());
+}
