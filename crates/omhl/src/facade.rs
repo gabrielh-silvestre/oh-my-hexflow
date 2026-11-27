@@ -175,6 +175,15 @@ impl<'d> Omhl<'d> {
         Ok(self.hexlog.append_with_session(req, &session)?)
     }
 
+    /// Segundo ponto de escrita: as recusas de encerramento já foram decididas antes daqui.
+    fn append_closing(
+        &mut self,
+        request: &AppendRequest,
+        session: &SessionLabel,
+    ) -> Result<AppendOutcome, OmhlError> {
+        Ok(self.hexlog.append_with_session(request, session)?)
+    }
+
     pub fn get(
         &mut self,
         tenant: &TenantId,
@@ -394,10 +403,7 @@ impl<'d> Omhl<'d> {
             &snapshots.head_commit,
             forcing.as_ref(),
         );
-        let outcome = self
-            .hexlog
-            .append_with_session(&request, &session)
-            .map_err(OmhlError::from)?;
+        let outcome = self.append_closing(&request, &session)?;
 
         Ok(ClosedWorkItem {
             outcome,
@@ -436,10 +442,7 @@ impl<'d> Omhl<'d> {
             &failed,
             delivery,
         );
-        let outcome = self
-            .hexlog
-            .append_with_session(&request, &session)
-            .map_err(OmhlError::from)?;
+        let outcome = self.append_closing(&request, &session)?;
         let closed = ClosedWorkItem {
             outcome,
             report,
@@ -493,7 +496,7 @@ impl<'d> Omhl<'d> {
         let head = self.chain_head(tenant)?;
         let request = abandonment_request(tenant, author, current, head.seq, snapshot, abandonment);
 
-        Ok(self.hexlog.append_with_session(&request, &session)?)
+        self.append_closing(&request, &session)
     }
 
     pub fn find_work_item(

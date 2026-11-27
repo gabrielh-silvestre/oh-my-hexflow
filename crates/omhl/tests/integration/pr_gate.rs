@@ -101,10 +101,12 @@ fn it_should_not_require_a_retired_project_check() {
         )],
     );
     let while_active = gate_of(&mut omhl, &at_head()).questions.len();
-    append_ok(
+    append_as(
         &mut omhl,
+        loader_author(),
         vec![retirement_item("checks.lint-docs", &created.records[0].id)],
-    );
+    )
+    .expect("the loader retires the check");
 
     let after_retirement = gate_of(&mut omhl, &at_head()).questions.len();
 
