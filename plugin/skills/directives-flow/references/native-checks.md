@@ -25,6 +25,8 @@ Keep only the ids the project wants. Any other id (an unknown one, a guideline, 
 
 The file that counts is the one in the working tree of the main directory, never the copy in a worktree or in the commit under review. A change made in a worktree takes effect once it is merged and the main directory has it.
 
+The main directory is the parent of the git common directory. In a clone made with `--separate-git-dir`, in a submodule or in a bare repository with worktrees, that parent is not the working tree, so `omhl` finds no file and no native check is on.
+
 ## Who turns them on and off
 
 - The agent may turn a check on, inside a worktree, as a change of the pull request.
