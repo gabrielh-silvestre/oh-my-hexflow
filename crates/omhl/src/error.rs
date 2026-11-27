@@ -82,6 +82,7 @@ pub enum RuleCode {
     RoleAnswerForbidden,
     RoleRetirementForbidden,
     InvalidSessionId,
+    ReviewBaseInvalid,
 }
 
 impl RuleCode {
@@ -124,6 +125,7 @@ impl RuleCode {
             RuleCode::RoleAnswerForbidden => "role-answer-forbidden",
             RuleCode::RoleRetirementForbidden => "role-retirement-forbidden",
             RuleCode::InvalidSessionId => "invalid-session-id",
+            RuleCode::ReviewBaseInvalid => "review-base-invalid",
         }
     }
 
@@ -188,6 +190,10 @@ impl RuleCode {
             RuleCode::InvalidSessionId => Some(Guidance {
                 cause: "CLAUDE_CODE_SESSION_ID is set but empty, is not UTF-8, is longer than 100 UTF-16 units or equals outside-claude-code",
                 next_step: "unset CLAUDE_CODE_SESSION_ID, or run omhl inside a Claude Code session",
+            }),
+            RuleCode::ReviewBaseInvalid => Some(Guidance {
+                cause: "--base does not name a commit, or it is the same commit as HEAD, so there is no range to review",
+                next_step: "pass --base with the integration branch the pull request targets, such as develop",
             }),
             _ => None,
         }

@@ -50,6 +50,7 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         ),
         (RuleCode::RoleAnswerForbidden, "role-answer-forbidden"),
         (RuleCode::InvalidSessionId, "invalid-session-id"),
+        (RuleCode::ReviewBaseInvalid, "review-base-invalid"),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected

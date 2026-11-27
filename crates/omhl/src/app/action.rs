@@ -36,6 +36,11 @@ pub enum Action {
         work_item: String,
         note: Option<String>,
     },
+    /// `GatePr` or `Close` judged against the integration branch the pull request targets.
+    ReviewBase {
+        base: String,
+        action: Box<Action>,
+    },
     CloseFailedDelivery {
         work_item: String,
         note: String,

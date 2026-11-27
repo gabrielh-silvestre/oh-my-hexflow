@@ -208,3 +208,58 @@ fn it_should_keep_the_config_loosening_review_out_of_the_native_after_pair() {
         from.as_str() != CONFIG_LOOSENING_REVIEW && to.as_str() != CONFIG_LOOSENING_REVIEW
     }));
 }
+
+fn names(paths: &[&str]) -> Vec<String> {
+    paths.iter().map(|path| (*path).to_owned()).collect()
+}
+
+#[test]
+fn it_should_trigger_the_review_for_each_config_path_that_changed() {
+    let changed = names(&[
+        ".omhl/workflow.toml",
+        ".omhl/checks/x.toml",
+        ".omhl/checks/x.md",
+    ]);
+
+    let triggers = crate::native::review_trigger_paths(&changed);
+
+    assert_eq!(triggers, changed);
+}
+
+#[test]
+fn it_should_not_trigger_the_review_for_a_source_file() {
+    let changed = names(&["src/a.rs", "README.md"]);
+
+    let triggers = crate::native::review_trigger_paths(&changed);
+
+    assert!(triggers.is_empty(), "{triggers:?}");
+}
+
+#[test]
+fn it_should_not_trigger_the_review_for_a_nested_file_or_another_extension_in_the_checks_folder() {
+    let changed = names(&[
+        ".omhl/checks/sub/x.toml",
+        ".omhl/checks/x.rs",
+        ".omhl/guidelines/g.toml",
+    ]);
+
+    let triggers = crate::native::review_trigger_paths(&changed);
+
+    assert!(triggers.is_empty(), "{triggers:?}");
+}
+
+#[test]
+fn it_should_trigger_the_review_only_by_the_old_path_of_a_check_moved_out_of_the_folder() {
+    let changed = names(&["docs/x.toml", ".omhl/checks/x.toml"]);
+
+    let triggers = crate::native::review_trigger_paths(&changed);
+
+    assert_eq!(triggers, names(&[".omhl/checks/x.toml"]));
+}
+
+#[test]
+fn it_should_not_trigger_the_review_for_an_empty_change_list() {
+    let triggers = crate::native::review_trigger_paths(&[]);
+
+    assert!(triggers.is_empty(), "{triggers:?}");
+}

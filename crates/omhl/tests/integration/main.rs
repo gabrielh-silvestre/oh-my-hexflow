@@ -47,6 +47,7 @@ mod projection_write;
 mod repo_checks;
 mod report_sessions;
 mod rests_on;
+mod review_base_probe;
 mod session;
 mod spec_store;
 mod type_matrix;

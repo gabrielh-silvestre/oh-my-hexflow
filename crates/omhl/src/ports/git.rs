@@ -230,6 +230,31 @@ impl GitProbe {
         }
     }
 
+    /// `None` quando `base` não resolve a um commit.
+    pub fn merge_base(&self, base: &str) -> Result<Option<String>, ProbeError> {
+        if self.ref_commit(base)?.is_none() {
+            return Ok(None);
+        }
+        self.line(&["merge-base", base, "HEAD"]).map(Some)
+    }
+
+    pub fn changed_names(&self, merge_base: &str) -> Result<Vec<String>, ProbeError> {
+        let stdout = self.run_ok(self.git(&[
+            "diff",
+            "--name-only",
+            "--no-renames",
+            "-z",
+            merge_base,
+            "HEAD",
+        ]))?;
+        let text = utf8_output(stdout)?;
+        Ok(text
+            .split('\0')
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .collect())
+    }
+
     pub fn current_branch(&self) -> Result<Option<String>, ProbeError> {
         let name = self.line(&["branch", "--show-current"])?;
         Ok(Some(name).filter(|name| !name.is_empty()))

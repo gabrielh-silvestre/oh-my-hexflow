@@ -32,6 +32,7 @@ mod output_agent_surface;
 mod repo_checks;
 mod report_answers;
 mod report_recurrences;
+mod review_base;
 mod skills;
 mod spec_amendment;
 mod spec_init;

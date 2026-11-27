@@ -76,7 +76,12 @@ pub enum ActionCommand {
     /// Print the session context.
     Render,
     /// Evaluate the pull-request gate for a work item.
-    GatePr { work_item: String },
+    GatePr {
+        work_item: String,
+        /// The integration branch the pull request targets; it decides whether the config review is required.
+        #[arg(long, allow_hyphen_values = true)]
+        base: Option<String>,
+    },
     /// Decide whether a worktree may be created for a branch; silent without a project marker.
     GateWorktree {
         #[arg(long, allow_hyphen_values = true)]
@@ -96,6 +101,8 @@ pub enum ActionCommand {
         reason: Option<String>,
         #[arg(long, requires = "mode")]
         note: Option<String>,
+        #[arg(long, allow_hyphen_values = true, conflicts_with = "abandon")]
+        base: Option<String>,
     },
     /// Verify the hash chain.
     Verify,
@@ -732,7 +739,7 @@ fn to_action(
             note,
         },
         ActionCommand::Render => Action::Render,
-        ActionCommand::GatePr { work_item } => Action::GatePr { work_item },
+        ActionCommand::GatePr { work_item, base } => with_base(Action::GatePr { work_item }, base),
         ActionCommand::GateWorktree { branch } => Action::GateWorktree { branch },
         ActionCommand::Close {
             work_item,
@@ -752,8 +759,11 @@ fn to_action(
             ..
         } => Action::CloseFailedDelivery { work_item, note },
         ActionCommand::Close {
-            work_item, note, ..
-        } => Action::Close { work_item, note },
+            work_item,
+            note,
+            base,
+            ..
+        } => with_base(Action::Close { work_item, note }, base),
         ActionCommand::Verify => Action::Verify,
         ActionCommand::Load { dry_run } => Action::Load { dry_run },
         ActionCommand::Project => Action::Project,
@@ -849,3 +859,13 @@ fn push_input_refused(kind: &str) -> AppError {
 
 #[cfg(test)]
 mod tests;
+
+fn with_base(action: Action, base: Option<String>) -> Action {
+    match base {
+        Some(base) => Action::ReviewBase {
+            base,
+            action: Box::new(action),
+        },
+        None => action,
+    }
+}

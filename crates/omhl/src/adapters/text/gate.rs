@@ -189,6 +189,23 @@ fn question_lines(report: &Value, action: Option<&str>) -> Vec<Line> {
         .collect()
 }
 
+fn review_base_line(value: &Value) -> Option<Line> {
+    let review = &value["review_base"];
+    if review.is_null() {
+        return None;
+    }
+    let text = match review["base"].as_str() {
+        Some(base) => format!(
+            "base {base}, merge-base {}, triggering paths {}",
+            review["merge_base"].as_str().unwrap_or_default(),
+            joined(review, "paths"),
+        ),
+        None => "no base".to_owned(),
+    };
+
+    Some(field(0, "review_base", text))
+}
+
 pub struct GatePr;
 
 impl Specialization for GatePr {
@@ -208,7 +225,9 @@ impl Specialization for GatePr {
     }
 
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
-        question_lines(value, first_next_step(value).as_deref())
+        let mut lines = question_lines(value, first_next_step(value).as_deref());
+        lines.extend(review_base_line(value));
+        lines
     }
 
     fn closing(&self, value: &Value) -> Closing {
@@ -293,6 +312,7 @@ impl Specialization for Close {
         }
         let outcome = &value["outcome"];
         let mut lines = question_lines(&value["report"], None);
+        lines.extend(review_base_line(value));
         lines.push(closed_header(value));
         if value["note_discarded"] == true {
             lines.push(Line::Header {

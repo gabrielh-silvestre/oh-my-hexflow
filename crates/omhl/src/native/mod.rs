@@ -59,6 +59,27 @@ static GUIDELINES: [NativeGuideline; 2] = [
     },
 ];
 
+/// Os caminhos da lista que mudam a configuração de checks ou de workflow.
+pub fn review_trigger_paths(changed: &[String]) -> Vec<String> {
+    changed
+        .iter()
+        .filter(|path| {
+            path.as_str() == ".omhl/workflow.toml"
+                || path
+                    .strip_prefix(".omhl/checks/")
+                    .is_some_and(|name| !name.contains('/') && is_check_file(name))
+        })
+        .cloned()
+        .collect()
+}
+
+fn is_check_file(name: &str) -> bool {
+    [".toml", ".md"].iter().any(|extension| {
+        name.strip_suffix(extension)
+            .is_some_and(|stem| !stem.is_empty())
+    })
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct NativeBase;
 

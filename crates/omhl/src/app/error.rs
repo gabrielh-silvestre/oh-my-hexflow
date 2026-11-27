@@ -817,6 +817,15 @@ impl AppError {
         AppError::violations_of("amendment-invalid", "amendment", violations)
     }
 
+    /// A base conferida segue na recusa do fechamento, que não devolve o relatório.
+    pub(crate) fn with_review_base(mut self, review_base: &Value) -> AppError {
+        if self.context.is_none() && !review_base.is_null() {
+            self.context = Some(json!({ "review_base": review_base }));
+        }
+
+        self
+    }
+
     /// Único caminho, além de `CheckDetail.context`, por onde `context` entra num detalhe; nunca é gravado.
     pub(crate) fn with_context(mut self, context: Value) -> AppError {
         if let Some(detail) = self.details.last_mut() {
