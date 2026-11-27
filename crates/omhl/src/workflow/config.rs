@@ -36,7 +36,6 @@ pub struct PromotionConfig {
     pub min_work_items: u32,
 }
 
-/// Os checks nativos ligados pelo projeto; nenhum ligado é o padrão.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeConfig {
     pub checks: BTreeSet<&'static str>,

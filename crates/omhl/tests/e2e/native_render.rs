@@ -22,8 +22,6 @@ const LINT_TOML: &str =
     "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
 const WORKFLOW: &str = ".omhl/workflow.toml";
 
-// Apoio
-
 fn in_dir(project: &Project, dir: &Path, args: &[&str]) -> Cmd {
     omhl_json(args).cwd(dir).xdg(project.xdg())
 }
@@ -51,7 +49,6 @@ fn render_of(project: &Project) -> String {
     render_in(project, project.dir())
 }
 
-/// O `additionalContext` do `session-start` do projeto.
 fn session_context(project: &Project) -> String {
     let stdin = json!({
         "hook_event_name": "SessionStart",
@@ -122,7 +119,6 @@ fn append_after(project: &Project, from: &str, to: &str) -> support::child::Outp
         .run()
 }
 
-/// Repositório git com o check de projeto `lint` carregado e as ativações dadas.
 fn repo_with_lint(natives: &[&str]) -> Project {
     let project = Project::new("acme");
     project.enable_natives(natives);

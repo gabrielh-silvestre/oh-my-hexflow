@@ -1,5 +1,4 @@
 #![cfg(target_os = "linux")]
-//! `read_workflow`: o arquivo ausente vale o padrão e o que o `omhl` não aceita é recusado.
 
 use crate::ports::workflow::read_workflow;
 use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};

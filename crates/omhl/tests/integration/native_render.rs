@@ -162,7 +162,7 @@ fn it_should_keep_the_stored_relation_to_a_disabled_native_check_readable() {
     assert_eq!(node["id"], json!("checks.lint"));
 }
 
-// CA-009 e CA-010: o `render` nunca recusa; sem ativação legível vale o conjunto vazio e o aviso
+// CA-009 e CA-010
 
 #[test]
 fn it_should_render_without_a_native_block_and_never_refuse_when_the_main_directory_is_unknown() {

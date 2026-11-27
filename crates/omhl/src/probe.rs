@@ -25,7 +25,7 @@ pub trait DevelopMark: Send + Sync {
     fn consume(&self) -> Result<(), ProbeError>;
 }
 
-/// Lê a ativação dos checks nativos do `.omhl/workflow.toml` da árvore de trabalho do diretório principal, sem fallback.
+/// Resolve quais checks nativos o projeto ligou; recusa em vez de assumir um padrão.
 pub trait NativeResolver: Send + Sync {
     fn resolve(&self) -> Result<NativeConfig, NativeRefusal>;
 }

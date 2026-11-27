@@ -15,14 +15,12 @@ const BASE_LABELS: [&str; 3] = [
     "anchors-confirmed",
 ];
 
-/// O que o projeto mostra ao agente: o `render`, o `additionalContext` do `session-start` e as perguntas do `gate-pr`.
+/// As superfícies que o guard exige vazias de nativo.
 struct Surfaces {
     render: String,
     context: String,
     labels: Vec<String>,
 }
-
-// Apoio
 
 fn json_line(text: &str) -> Value {
     serde_json::from_str(text.trim_end()).expect("the line is JSON")

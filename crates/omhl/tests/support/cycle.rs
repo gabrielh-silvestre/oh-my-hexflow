@@ -112,7 +112,6 @@ pub fn check_repo(checks: &[(&str, &str)]) -> Project {
     repo_with_natives(checks, &[])
 }
 
-/// `check_repo` com os 3 checks nativos ligados no `workflow.toml` do commit base: o fixture do `gate-pr` e do `close`.
 fn gate_repo(checks: &[(&str, &str)]) -> Project {
     repo_with_natives(checks, &ALL_NATIVE_CHECKS)
 }

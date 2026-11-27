@@ -117,7 +117,7 @@ These are project instructions, not enforced; nothing here blocks any action.
 
 #[derive(Default)]
 struct Fixture {
-    /// Sem valor, os 3 checks nativos ligados: o fixture das camadas que não escolhem.
+    /// Sem valor vale `all_enabled()`.
     enabled: Option<NativeConfig>,
     notice: Option<&'static str>,
     checks: Vec<NodeView>,

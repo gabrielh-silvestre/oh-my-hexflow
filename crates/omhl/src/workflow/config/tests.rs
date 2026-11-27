@@ -470,8 +470,6 @@ fn it_should_not_echo_the_file_content_in_any_refusal() {
     );
 }
 
-// Ativação dos checks nativos: `[native] checks`
-
 fn native_checks_text(list: &str) -> String {
     lines(&["version = 1", "[native]", &format!("checks = {list}")])
 }

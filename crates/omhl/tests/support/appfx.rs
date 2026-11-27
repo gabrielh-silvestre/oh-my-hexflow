@@ -57,7 +57,6 @@ impl AppFixture {
         }
     }
 
-    /// Troca o resolvedor injetado, que por padrão liga os 3 checks nativos.
     pub fn with_native(self, native: impl NativeResolver + 'static) -> AppFixture {
         AppFixture {
             native: Some(Box::new(native)),

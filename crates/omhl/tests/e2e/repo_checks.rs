@@ -35,8 +35,6 @@ const GATE_BASE_LABELS: [&str; 3] = [
     "anchors-confirmed",
 ];
 
-// Apoio
-
 /// Roda `omhl` na raiz do repositório com o banco em `xdg`.
 fn load(args: &[&str], xdg: &Path) -> Output {
     omhl_json(args).cwd(&repo_root()).xdg(xdg).run()
@@ -201,8 +199,6 @@ fn it_should_derive_git_tree_only_for_the_before_commit_checks() {
         ]
     );
 }
-
-// Ativação dos checks nativos
 
 fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).expect("the target directory is created");

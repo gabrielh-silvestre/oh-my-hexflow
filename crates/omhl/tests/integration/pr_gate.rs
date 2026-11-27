@@ -63,8 +63,7 @@ fn flow_probe() -> FakeProbe {
     head_probe().with_tree(TreeSource::Index, Ok(ProbeOutcome::Reproducible(tree('c'))))
 }
 
-/// `checks.fmt` (mecânico, `before-commit`) atestado em `tree('c')` pelo `executor`, e `run-tests` e
-/// `ci-green` em `snap('a')`: o gate fecha verde cobrando os três, porque o nativo ligado vale ao lado do mecânico.
+/// Atesta o mecânico e os dois nativos exigidos; o gate fecha verde porque um check do projeto não substitui o nativo ligado.
 fn seed_per_check_flow(omhl: &mut Omhl<'_>) {
     seed_pull_request(omhl);
     let fmt = mechanical_project_check("checks.fmt", "before-commit", true, false);

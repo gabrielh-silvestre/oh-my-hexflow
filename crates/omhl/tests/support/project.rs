@@ -26,7 +26,7 @@ impl Project {
         project
     }
 
-    /// Repositório git com o marcador commitado: o diretório principal resolve e o `render` não traz o aviso `main-dir-unknown`.
+    /// O diretório principal resolve e o `render` não traz o aviso `main-dir-unknown`.
     pub fn with_git(tenant: &str) -> Project {
         let project = Project::new(tenant);
         commit_marker(project.dir());
@@ -34,7 +34,6 @@ impl Project {
         project
     }
 
-    /// Repositório git com o marcador e o `workflow` dado já commitados; sem `workflow`, o arquivo não existe.
     pub fn with_workflow(workflow: Option<&str>) -> Project {
         let project = Project::new("acme");
         if let Some(text) = workflow {
@@ -51,7 +50,7 @@ impl Project {
         fs::write(dir.join("workflow.toml"), text).expect("the workflow file is written");
     }
 
-    /// Escreve o `.omhl/workflow.toml` com `[native] checks`; o `Project::new` não liga nenhum check nativo.
+    /// O `Project::new` não liga nenhum check nativo.
     pub fn enable_natives(&self, ids: &[&str]) {
         let list = ids
             .iter()

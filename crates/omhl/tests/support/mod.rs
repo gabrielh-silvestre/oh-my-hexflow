@@ -232,7 +232,6 @@ impl FakeNative {
         }
     }
 
-    /// Os 3 checks nativos ligados: o fixture das camadas que não escolhem.
     pub fn all_enabled() -> FakeNative {
         FakeNative::enabling(&pr_gate::ALL_NATIVE_CHECKS)
     }

@@ -578,8 +578,6 @@ fn it_should_not_echo_the_spec_or_the_amendment_content_in_the_close_output() {
     );
 }
 
-// `close` recusa um `workflow.toml` inválido antes de gravar, haja ou não retro
-
 const INVALID_WORKFLOW: &str = "version = 1\ncolour = true\n";
 
 #[test]
