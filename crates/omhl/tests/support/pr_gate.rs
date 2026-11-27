@@ -2,7 +2,7 @@ use ::omhl::facade::{ClosedWorkItem, Omhl};
 use ::omhl::gate::{GateReport, QuestionReport};
 use ::omhl::native::NativeCheck;
 use ::omhl::pr_gate::GateSnapshots;
-use ::omhl::workflow::config::NativeConfig;
+use ::omhl::workflow::config::{NativeConfig, WorkflowConfig};
 use hexlog::{
     AppendItem, AppendOutcome, ItemBody, Lineage, NodeView, RecordId, SemanticId, Snapshot,
     SnapshotKind,
@@ -49,6 +49,8 @@ pub const ALL_NATIVE_CHECKS: [&str; 3] = [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING]
 pub fn native_enabled(ids: &[&'static str]) -> NativeConfig {
     NativeConfig {
         checks: ids.iter().copied().collect(),
+        // A tabela que um projeto sem `workflow.toml` lê: a dos padrões do binário.
+        prefixes: WorkflowConfig::default().prefixes,
     }
 }
 
@@ -287,8 +289,14 @@ pub fn gate_with(
     snapshots: &GateSnapshots,
     enabled: &NativeConfig,
 ) -> GateReport {
-    omhl.evaluate_pr_gate(&acme(), &sid(PR_7), snapshots, enabled)
-        .expect("the gate is evaluated")
+    omhl.evaluate_pr_gate(
+        &acme(),
+        &sid(PR_7),
+        snapshots,
+        enabled,
+        &omhl::facade::WorkRequirements::none(),
+    )
+    .expect("the gate is evaluated")
 }
 
 pub fn close(omhl: &mut Omhl<'_>, work_item: &str, snapshots: &GateSnapshots) -> ClosedWorkItem {
@@ -297,6 +305,7 @@ pub fn close(omhl: &mut Omhl<'_>, work_item: &str, snapshots: &GateSnapshots) ->
         &sid(work_item),
         snapshots,
         &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
         &author(),
     )
     .expect("the work item is closed")

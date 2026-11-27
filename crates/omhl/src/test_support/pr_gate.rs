@@ -29,6 +29,7 @@ pub const ALL_NATIVE_CHECKS: [&str; 3] = [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING]
 pub fn enabled(ids: &[&'static str]) -> NativeConfig {
     NativeConfig {
         checks: ids.iter().copied().collect(),
+        ..NativeConfig::default()
     }
 }
 

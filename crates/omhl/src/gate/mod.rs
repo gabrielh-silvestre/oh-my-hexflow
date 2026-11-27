@@ -36,6 +36,10 @@ pub enum Question {
         by: RelationTypeName,
         target: Option<TargetCheck>,
     },
+    /// Um átomo do tipo do work item: a leitura das premissas e da spec já foi feita pelo Engine.
+    Requirement {
+        holds: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -86,6 +90,7 @@ pub enum QuestionKind {
     NoPending,
     NoOpenContradiction,
     Anchored,
+    Requirement,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,6 +183,13 @@ fn evaluate_question<S: GateSource>(
         Question::Anchored { select, by, target } => {
             anchored(source, tenant, label, select, by, target.as_ref())
         }
+        Question::Requirement { holds } => Ok(report(
+            label,
+            QuestionKind::Requirement,
+            *holds,
+            1,
+            Vec::new(),
+        )),
     }?;
 
     Ok(with_next_step(report, entry.next_step))

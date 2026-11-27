@@ -3,6 +3,7 @@
 //! estado vale entre as chamadas, e o `AppFixture` não precisa guardar um empréstimo de si mesmo.
 
 use std::fs;
+use std::path::{Path, PathBuf};
 
 use ::omhl::app::App;
 use ::omhl::app::action::{Action, Caller};
@@ -32,6 +33,7 @@ pub struct AppFixture {
     tree: ExtTree,
     with_root: bool,
     native: Option<Box<dyn NativeResolver>>,
+    root: Option<PathBuf>,
 }
 
 impl AppFixture {
@@ -46,6 +48,7 @@ impl AppFixture {
             tree: ExtTree::new(),
             with_root: true,
             native: Some(Box::new(FakeNative::all_enabled())),
+            root: None,
         }
     }
 
@@ -68,6 +71,14 @@ impl AppFixture {
     pub fn without_native(self) -> AppFixture {
         AppFixture {
             native: None,
+            ..self
+        }
+    }
+
+    /// A raiz de projeto é a pasta dada, em vez da pasta temporária da fixture.
+    pub fn with_project_root(self, root: &Path) -> AppFixture {
+        AppFixture {
+            root: Some(root.to_path_buf()),
             ..self
         }
     }
@@ -317,7 +328,11 @@ impl AppFixture {
         };
 
         if self.with_root {
-            app.with_project_root(self.tree.root())
+            app.with_project_root(
+                self.root
+                    .clone()
+                    .unwrap_or_else(|| self.tree.root().to_path_buf()),
+            )
         } else {
             app
         }

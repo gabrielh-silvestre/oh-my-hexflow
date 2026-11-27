@@ -168,7 +168,7 @@ impl Fixture {
             assert!(output.status.success(), "git {args:?} failed");
         }
         let fixture = Fixture { project };
-        fixture.append(vec![node(W1, "work-item", work_item_data("t"))]);
+        fixture.append(vec![node(W1, "work-item", typed(work_item_data("t")))]);
 
         fixture
     }
@@ -881,4 +881,10 @@ fn it_should_take_an_approved_english_amendment_out_of_pending() {
             "pending": [],
         })
     );
+}
+
+/// Um work item com tipo sem átomo: o `close` não procura o branch, e a fixture não tem um.
+fn typed(mut data: serde_json::Value) -> serde_json::Value {
+    data["type"] = serde_json::json!("chore");
+    data
 }

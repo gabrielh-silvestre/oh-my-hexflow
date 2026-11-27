@@ -3,7 +3,7 @@ use crate::support;
 use serde_json::{Value, json};
 use support::child::{omhl, omhl_json};
 use support::git::git_ok;
-use support::omhl::{RUN_TESTS, work_item_data};
+use support::omhl::{RUN_TESTS, typed_work_item_data};
 use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN};
 use support::project::Project;
 
@@ -69,7 +69,7 @@ fn surfaces(project: &Project) -> Surfaces {
 
 fn open_work_item_request() -> String {
     json!({ "items": [{ "body": {
-        "kind": "node", "id": W1, "type": "work-item", "data": work_item_data("t"),
+        "kind": "node", "id": W1, "type": "work-item", "data": typed_work_item_data("t"),
     } }] })
     .to_string()
 }

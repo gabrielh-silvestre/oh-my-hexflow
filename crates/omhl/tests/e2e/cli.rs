@@ -11,7 +11,7 @@ use support::git::{GitRepo, git_in};
 use support::omhl::{
     FIELD_NOT_TEXT, ID_PREFIX_RULE, LIMIT_RULE, OUTCOME_RULE, TYPE_NOT_DEFINED, WHERE_RULE,
     decision_data, divergence_wires, divergence_work_item_wires, list_refusal, project_dir_refusal,
-    work_item_data,
+    typed_work_item_data,
 };
 use support::project::Project;
 use tempfile::TempDir;
@@ -94,7 +94,7 @@ fn append_in(project: &Project, id: &str, type_name: &str, data: &Value) -> Chil
 }
 
 fn open_work_item(project: &Project) {
-    let appended = append_in(project, W1, "work-item", &work_item_data("t"));
+    let appended = append_in(project, W1, "work-item", &typed_work_item_data("t"));
 
     assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
 }

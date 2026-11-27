@@ -53,7 +53,13 @@ type Outcomes = Vec<(String, bool)>;
 
 fn gate_outcomes(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> Outcomes {
     let report = omhl
-        .evaluate_pr_gate(&acme(), &sid(PR_7), &at_head(), enabled)
+        .evaluate_pr_gate(
+            &acme(),
+            &sid(PR_7),
+            &at_head(),
+            enabled,
+            &omhl::facade::WorkRequirements::none(),
+        )
         .expect("the gate is evaluated");
 
     outcomes(&report)
@@ -61,7 +67,14 @@ fn gate_outcomes(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> Outcomes {
 
 fn close_outcomes(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> (Outcomes, bool) {
     let closed = omhl
-        .close_work_item(&acme(), &sid(PR_7), &at_head(), enabled, &author())
+        .close_work_item(
+            &acme(),
+            &sid(PR_7),
+            &at_head(),
+            enabled,
+            &omhl::facade::WorkRequirements::none(),
+            &author(),
+        )
         .expect("the work item is closed");
 
     (outcomes(&closed.report), closed.report.passed)
@@ -325,7 +338,13 @@ fn it_should_pass_the_gate_with_the_three_method_questions_when_nothing_is_enabl
     let mut omhl = open_pull_request(&harness);
 
     let gate = omhl
-        .evaluate_pr_gate(&acme(), &sid(PR_7), &at_head(), &native_enabled(&[]))
+        .evaluate_pr_gate(
+            &acme(),
+            &sid(PR_7),
+            &at_head(),
+            &native_enabled(&[]),
+            &omhl::facade::WorkRequirements::none(),
+        )
         .expect("the gate is evaluated");
     let (closed, closed_passed) = close_outcomes(&mut omhl, &native_enabled(&[]));
 

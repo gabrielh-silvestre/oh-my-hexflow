@@ -14,11 +14,11 @@ use crate::mechanical::plan::CheckNode;
 use crate::native::NativeBase;
 use crate::pr_gate::{
     GATE_NAME, GateSnapshots, anchor_questions, closing_request, pr_gate_questions,
-    project_checks_filter, required_checks, spec_digests,
+    project_checks_filter, required_checks, requirement_questions, spec_digests,
 };
 use crate::probe::{SnapshotProbe, TreeSource};
 use crate::projection::ProjectionState;
-use crate::workflow::config::NativeConfig;
+use crate::workflow::config::{NativeConfig, RequireAtom};
 use crate::{graphs, guard};
 
 static NATIVE: NativeBase = NativeBase;
@@ -72,6 +72,24 @@ pub struct OmhlDeps<'d> {
     pub ids: &'d dyn IdGenerator,
     pub probe: &'d dyn SnapshotProbe,
     pub session: &'d SessionSource,
+}
+
+/// O que o tipo do work item exige, lido uma vez pelo Engine sob a cabeça `head`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkRequirements {
+    /// Cabeça sob a qual as premissas foram lidas; `None` quando o tipo não exige átomo.
+    pub head: Option<ChainHead>,
+    pub atoms: Vec<(RequireAtom, bool)>,
+}
+
+impl WorkRequirements {
+    /// O tipo sem átomo: nenhuma pergunta de requisito e nenhuma leitura sob cabeça.
+    pub fn none() -> WorkRequirements {
+        WorkRequirements {
+            head: None,
+            atoms: Vec::new(),
+        }
+    }
 }
 
 /// Work item fechado: o que foi gravado e o gate avaliado no fechamento.
@@ -195,10 +213,11 @@ impl<'d> Omhl<'d> {
         work_item: &SemanticId,
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
+        requirements: &WorkRequirements,
     ) -> Result<GateReport, OmhlError> {
         self.find_work_item(tenant, work_item)?;
 
-        self.gate_report(tenant, work_item, snapshots, enabled)
+        self.gate_report(tenant, work_item, snapshots, enabled, requirements)
     }
 
     pub fn read_projection_state(
@@ -262,6 +281,7 @@ impl<'d> Omhl<'d> {
         work_item: &SemanticId,
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
+        requirements: &WorkRequirements,
     ) -> Result<GateReport, OmhlError> {
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
         let (head, reports) = read_consistent(&mut source, tenant, |source| {
@@ -270,9 +290,14 @@ impl<'d> Omhl<'d> {
             let digests = spec_digests(&checks);
             let mut questions = pr_gate_questions(&required, work_item, snapshots, &digests);
             questions.extend(anchor_questions(work_item));
+            questions.extend(requirement_questions(&requirements.atoms));
 
             gate::evaluate(source, tenant, &questions)
         })?;
+        // As premissas lidas pelo Engine têm de ser da mesma cabeça que o gate leu.
+        if requirements.head.as_ref().is_some_and(|read| *read != head) {
+            return Err(OmhlError::rule(RuleCode::GateInconsistent, ""));
+        }
 
         Ok(GateReport::assemble(GATE_NAME, head, reports))
     }
@@ -284,6 +309,7 @@ impl<'d> Omhl<'d> {
         work_item: &SemanticId,
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
+        requirements: &WorkRequirements,
         author: &Author,
     ) -> Result<ClosedWorkItem, OmhlError> {
         let session = self.session.resolve()?;
@@ -299,7 +325,7 @@ impl<'d> Omhl<'d> {
         if let Some(code) = head_commit.or(head_tree) {
             return Err(OmhlError::rule(code, "/snapshot"));
         }
-        let report = self.gate_report(tenant, work_item, snapshots, enabled)?;
+        let report = self.gate_report(tenant, work_item, snapshots, enabled, requirements)?;
         let request = closing_request(tenant, author, current, &report, &snapshots.head_commit);
         let outcome = self.hexlog.append_with_session(&request, &session)?;
 

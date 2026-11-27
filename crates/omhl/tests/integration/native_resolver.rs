@@ -135,8 +135,11 @@ fn it_should_refuse_with_the_invalid_workflow_code_when_the_main_copy_is_not_acc
 // O `gate-pr` e o `close` valem-se da ativação do diretório principal
 
 fn open_work_item(fixture: &AppFixture) {
+    // Um tipo sem átomo: sem `type` gravado o `close` procuraria o branch, e a fixture não tem repositório.
+    let mut data = work_item_data("Ship it");
+    data["type"] = json!("chore");
     let item = json!({ "body": {
-        "kind": "node", "id": W1, "type": "work-item", "data": work_item_data("Ship it"),
+        "kind": "node", "id": W1, "type": "work-item", "data": data,
     } });
     fixture
         .append_as_user(json!({ "items": [item] }))

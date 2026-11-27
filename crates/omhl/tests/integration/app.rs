@@ -249,7 +249,10 @@ fn tree_attestation_action(kind: &str) -> Action {
 }
 
 fn open_work_item(app: &mut App<'_>) {
-    let item = node_wire(W1, "work-item", &work_item_data("Ship it"));
+    // Com tipo gravado o `close` não lê o branch: a fixture não tem raiz de projeto nem repositório.
+    let mut data = work_item_data("Ship it");
+    data["type"] = json!("chore");
+    let item = node_wire(W1, "work-item", &data);
 
     run(app, &append_action(vec![item]));
 }

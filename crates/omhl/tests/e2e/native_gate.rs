@@ -35,7 +35,7 @@ fn json_line(text: &str) -> Value {
 
 fn open_work_item(project: &Project) {
     let request = json!({ "items": [{ "body": {
-        "kind": "node", "id": W1, "type": "work-item", "data": work_item_data("t"),
+        "kind": "node", "id": W1, "type": "work-item", "data": typed(work_item_data("t")),
     } }] });
     let appended = in_project(project, &["append"])
         .stdin(request.to_string())
@@ -273,4 +273,10 @@ fn it_should_keep_refusing_a_loaded_extension_with_a_native_id_while_the_natives
     let details = error_of(&loaded)["details"].to_string();
     assert_eq!(loaded.code, Some(1), "stderr: {}", loaded.stderr);
     assert_eq!(details.matches("reserved-id").count(), 3, "{details}");
+}
+
+/// Um work item com tipo sem átomo: o `close` não procura o branch, e a fixture não tem um.
+fn typed(mut data: serde_json::Value) -> serde_json::Value {
+    data["type"] = serde_json::json!("chore");
+    data
 }

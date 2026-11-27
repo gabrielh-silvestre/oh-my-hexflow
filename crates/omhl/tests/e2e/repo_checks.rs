@@ -11,7 +11,7 @@ use hexlog::SnapshotKind;
 use serde_json::{Value, json};
 use support::child::{Output, omhl_json};
 use support::git::commit_marker;
-use support::omhl::work_item_data;
+use support::omhl::typed_work_item_data;
 use support::pr_gate::{CI_GREEN, VERIFY_ANCHORING};
 use support::project::Project;
 use support::repo_checks::repo_root;
@@ -294,7 +294,7 @@ fn it_should_render_the_repository_with_ci_green_and_anchoring_and_without_run_t
 fn it_should_require_ci_green_and_the_blocking_repository_checks_in_the_gate() {
     let project = project_with_repo_config();
     let work_item = json!({ "items": [{ "body": {
-        "kind": "node", "id": WORK_ITEM, "type": "work-item", "data": work_item_data("t"),
+        "kind": "node", "id": WORK_ITEM, "type": "work-item", "data": typed_work_item_data("t"),
     } }] });
     project_output(&project, &["append"], &work_item.to_string());
 

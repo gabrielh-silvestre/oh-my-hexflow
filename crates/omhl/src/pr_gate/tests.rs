@@ -1,5 +1,6 @@
 use crate::gate::{GateQuestion, Question};
 use crate::native::NativeBase;
+use crate::pr_gate::requirement_questions;
 use crate::pr_gate::{
     GateSnapshots, NATIVE_SNAPSHOT, anchor_questions, pr_gate_questions, required_checks,
 };
@@ -10,6 +11,7 @@ use crate::test_support::pr_gate::{
     required_pairs, snapshots,
 };
 use crate::test_support::{rty, sid, snap, tname};
+use crate::workflow::config::RequireAtom;
 use hexlog::SnapshotKind::{GitCommit, GitTree};
 use hexlog::{FieldName, ListFilter, Scalar, Snapshot, SnapshotKind};
 
@@ -455,4 +457,25 @@ fn it_should_select_the_decisions_of_the_work_item_resting_on_rests_on_in_both_a
             (decisions, rty("rests-on"))
         ]
     );
+}
+
+#[test]
+fn it_should_ask_one_requires_question_per_atom_with_whether_it_holds() {
+    let questions = requirement_questions(&[
+        (RequireAtom::Spec, false),
+        (RequireAtom::AgentPremise, true),
+    ]);
+
+    let labels: Vec<&str> = questions.iter().map(|entry| entry.label.as_str()).collect();
+    assert_eq!(labels, ["requires:spec", "requires:agent-premise"]);
+    assert_eq!(
+        questions[0].question,
+        Question::Requirement { holds: false }
+    );
+    assert_eq!(questions[1].question, Question::Requirement { holds: true });
+}
+
+#[test]
+fn it_should_ask_no_requires_question_for_a_type_with_no_atom() {
+    assert!(requirement_questions(&[]).is_empty());
 }

@@ -1287,3 +1287,57 @@ fn old_decisions_premise() -> Value {
 fn old_decisions_guideline() -> Value {
     json!({ "text": "prefer small modules" })
 }
+
+fn work_item_with_type(type_value: &Value) -> Value {
+    json!({ "title": "Add the catalogs", "status": "open", "type": type_value.clone() })
+}
+
+#[test]
+fn it_should_accept_a_type_on_a_work_item_and_on_a_pull_request() {
+    let typed_pull_request = {
+        let mut data = pull_request(1);
+        data["type"] = json!("feat");
+        data
+    };
+
+    assert!(is_accepted(
+        "work-item",
+        &work_item_with_type(&json!("feat"))
+    ));
+    assert!(is_accepted("pull-request", &typed_pull_request));
+}
+
+#[test]
+fn it_should_reject_an_empty_a_long_or_a_non_text_type_on_both_types() {
+    let too_long = "x".repeat(65);
+    let refused = [json!(""), json!(too_long), json!(7)];
+
+    for type_value in refused {
+        let work_item = work_item_with_type(&type_value);
+        let mut pull_request = pull_request(1);
+        pull_request["type"] = type_value;
+
+        assert!(
+            violations_of("work-item", &work_item)
+                .iter()
+                .any(|found| found.pointer == "/type"),
+            "work-item accepted {work_item}"
+        );
+        assert!(
+            violations_of("pull-request", &pull_request)
+                .iter()
+                .any(|found| found.pointer == "/type"),
+            "pull-request accepted {pull_request}"
+        );
+    }
+}
+
+#[test]
+fn it_should_accept_a_type_of_exactly_sixty_four_characters() {
+    let exact = "t".repeat(64);
+
+    assert!(is_accepted(
+        "work-item",
+        &work_item_with_type(&json!(exact))
+    ));
+}

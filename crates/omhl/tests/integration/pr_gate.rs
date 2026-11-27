@@ -304,6 +304,7 @@ fn it_should_refuse_evaluating_the_gate_for_an_unknown_work_item() {
         &sid("work-items.pr-9"),
         &at_head(),
         &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
     );
 
     assert_eq!(
@@ -366,6 +367,27 @@ fn it_should_close_even_when_the_gate_fails() {
 }
 
 #[test]
+fn it_should_refuse_the_gate_when_the_head_changed_after_the_requirements_were_read() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    let stale = omhl.chain_head(&acme()).expect("the head is read");
+    seed_pull_request(&mut omhl);
+
+    let result = omhl.evaluate_pr_gate(
+        &acme(),
+        &sid(PR_7),
+        &at_head(),
+        &all_native_enabled(),
+        &omhl::facade::WorkRequirements {
+            head: Some(stale),
+            atoms: Vec::new(),
+        },
+    );
+
+    assert_eq!(result.err(), Some(rule(RuleCode::GateInconsistent, "")));
+}
+
+#[test]
 fn it_should_refuse_closing_an_unknown_work_item() {
     let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
@@ -375,6 +397,7 @@ fn it_should_refuse_closing_an_unknown_work_item() {
         &sid("work-items.pr-9"),
         &at_head(),
         &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
         &support::author(),
     );
 
@@ -396,6 +419,7 @@ fn it_should_refuse_closing_a_work_item_already_closed() {
         &sid(PR_7),
         &at_head(),
         &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
         &support::author(),
     );
 
@@ -551,6 +575,7 @@ fn it_should_refuse_closing_when_the_snapshot_is_not_the_probe_head() {
         &sid(PR_7),
         &snapshots(&snap('b'), &tree('c')),
         &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
         &author(),
     );
     let head_after = omhl.chain_head(&acme()).expect("the head is read");
@@ -576,6 +601,7 @@ fn it_should_refuse_closing_when_the_tree_is_dirty() {
         &sid(PR_7),
         &at_head(),
         &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
         &author(),
     );
     let head_after = omhl.chain_head(&acme()).expect("the head is read");
@@ -605,6 +631,7 @@ fn it_should_record_the_caller_author_on_the_closing_revision() {
         &sid(PR_7),
         &at_head(),
         &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
         &closer,
     )
     .expect("the work item is closed");
@@ -674,6 +701,7 @@ fn it_should_refuse_to_close_when_the_head_tree_cannot_be_probed() {
         &sid(PR_7),
         &at_head(),
         &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
         &author(),
     );
 

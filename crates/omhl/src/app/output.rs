@@ -159,6 +159,7 @@ fn question_kind(kind: QuestionKind) -> &'static str {
         QuestionKind::NoPending => "no-pending",
         QuestionKind::NoOpenContradiction => "no-open-contradiction",
         QuestionKind::Anchored => "anchored",
+        QuestionKind::Requirement => "requirement",
     }
 }
 

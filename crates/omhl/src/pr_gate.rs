@@ -10,7 +10,7 @@ use crate::extensions::plan::LOADER_CLIENT;
 use crate::gate::{GateQuestion, GateReport, Predicate, Question, TargetCheck, TargetFact};
 use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
 use crate::native::NativeCheck;
-use crate::workflow::config::NativeConfig;
+use crate::workflow::config::{NativeConfig, RequireAtom};
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 
 pub const GATE_NAME: &str = "pull-request";
@@ -156,6 +156,33 @@ fn decisions_filter(work_item: &SemanticId) -> ListFilter {
             "work_item",
             Scalar::Str(work_item.as_str().to_owned()),
         )],
+    }
+}
+
+/// Um `requires:<átomo>` por átomo do tipo; o Engine já leu a satisfação de cada um.
+pub fn requirement_questions(atoms: &[(RequireAtom, bool)]) -> Vec<GateQuestion> {
+    atoms
+        .iter()
+        .map(|(atom, holds)| GateQuestion {
+            next_step: Some(requirement_next_step(*atom)),
+            ..GateQuestion::new(
+                format!("requires:{}", atom.as_str()),
+                Question::Requirement { holds: *holds },
+            )
+        })
+        .collect()
+}
+
+fn requirement_next_step(atom: RequireAtom) -> &'static str {
+    match atom {
+        RequireAtom::BusinessPremise => {
+            "record a business premise and ask the human to confirm it (premise: status confirmed with confirmed_by), before the work item closes"
+        }
+        RequireAtom::TechnicalPremiseConfirmed => {
+            "record the technical premise of the choice and have it confirmed"
+        }
+        RequireAtom::AgentPremise => "record the agent premise of the technical choice",
+        RequireAtom::Spec => "make the spec valid with omhl spec validate",
     }
 }
 

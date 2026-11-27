@@ -49,3 +49,4 @@ mod report_sessions;
 mod rests_on;
 mod session;
 mod spec_store;
+mod type_matrix;

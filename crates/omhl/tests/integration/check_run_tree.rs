@@ -28,6 +28,13 @@ use support::runner::FakeRunner;
 use support::{FakeNative, FakeProbe, snap, tenant, wi_head_facts};
 use tempfile::TempDir;
 
+/// Um work item com tipo sem átomo: o `close` não procura o branch, e a fixture não tem repositório.
+fn typed_work_item(title: &str) -> serde_json::Value {
+    let mut data = work_item_data(title);
+    data["type"] = serde_json::json!("chore");
+    data
+}
+
 const TREE_ID: &str = "cccccccccccccccccccccccccccccccccccccccc";
 const TREE_ATTESTATION: &str =
     "attestations.cccccccccccccccccccccccccccccccc.cccccccc.checks.fmt.work-items.w1";
@@ -143,7 +150,7 @@ fn received(specs: &Receiver<RunSpec>) -> Vec<Vec<String>> {
 /// Grava `work-items.w1` aberto pela CLI e cada check pelo loader.
 fn seed(app: &mut App<'_>, root: &Path, checks: &[(&str, Value)]) {
     let work_item = Action::Append {
-        request: node_wire(W1, "work-item", &work_item_data("t")),
+        request: node_wire(W1, "work-item", &typed_work_item("t")),
     };
     app.dispatch(&Caller::cli(), &work_item)
         .unwrap_or_else(|error| panic!("the work item is accepted: {error}"));

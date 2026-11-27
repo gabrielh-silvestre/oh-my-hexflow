@@ -36,9 +36,11 @@ pub struct PromotionConfig {
     pub min_work_items: u32,
 }
 
+/// Resultado da resolução do diretório principal: a ativação dos nativos e a tabela efetiva de tipos.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeConfig {
     pub checks: BTreeSet<&'static str>,
+    pub prefixes: BTreeMap<String, Vec<RequireAtom>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -243,7 +245,13 @@ pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, Proje
         config.native.checks.insert(check.id);
     }
     for (prefix, table) in raw.prefix.unwrap_or_default() {
-        config.prefixes.insert(prefix, table.require);
+        // O projeto soma os átomos aos padrões do tipo: uma lista vazia não os tira.
+        let atoms = config.prefixes.entry(prefix).or_default();
+        for atom in table.require {
+            if !atoms.contains(&atom) {
+                atoms.push(atom);
+            }
+        }
     }
 
     Ok(config)

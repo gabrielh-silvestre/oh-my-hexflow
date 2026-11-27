@@ -50,6 +50,8 @@ pub enum RuleCode {
     InvalidTransition,
     WorkItemNotFound,
     WorkItemClosed,
+    WorkItemTypeUnknown,
+    TypeChangeLoosens,
     CheckNotFound,
     AttestationIdMismatch,
     AttestationIdTooLong,
@@ -89,6 +91,8 @@ impl RuleCode {
             RuleCode::UseCloseWorkItem => "use-close-work-item",
             RuleCode::InvalidTransition => "invalid-transition",
             RuleCode::WorkItemNotFound => "work-item-not-found",
+            RuleCode::WorkItemTypeUnknown => "work-item-type-unknown",
+            RuleCode::TypeChangeLoosens => "type-change-loosens",
             RuleCode::WorkItemClosed => "work-item-closed",
             RuleCode::CheckNotFound => "check-not-found",
             RuleCode::AttestationIdMismatch => "attestation-id-mismatch",
@@ -125,6 +129,10 @@ impl RuleCode {
 
     pub fn guidance(self) -> Option<Guidance> {
         match self {
+            RuleCode::WorkItemTypeUnknown => Some(Guidance {
+                cause: "the work item has no type the project's matrix knows",
+                next_step: "record the type with omhl append (field type) on the work item, or name the branch with its prefix in the table",
+            }),
             RuleCode::KindMissing => Some(Guidance {
                 cause: "the guideline has no kind",
                 next_step: "set kind to business or architecture in the item data and append again",

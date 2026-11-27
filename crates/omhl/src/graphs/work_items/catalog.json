@@ -8,6 +8,7 @@
         "required": ["title", "status"],
         "properties": {
           "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "type": {"type": "string", "minLength": 1, "maxLength": 64},
           "status": {"enum": ["open", "closed"]},
           "gate": {
             "type": "object",
@@ -43,6 +44,7 @@
         "required": ["title", "status", "provider", "repo", "number"],
         "properties": {
           "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "type": {"type": "string", "minLength": 1, "maxLength": 64},
           "status": {"enum": ["open", "closed"]},
           "gate": {
             "type": "object",

@@ -7,6 +7,13 @@ use support::guideline_retire::{BRIEF, TONE};
 use support::omhl::{acme, decision_data, work_item_data};
 use support::sid;
 
+/// Um work item com tipo sem átomo: o `close` não procura o branch, e a fixture não tem repositório.
+fn typed_work_item(title: &str) -> serde_json::Value {
+    let mut data = work_item_data(title);
+    data["type"] = serde_json::json!("chore");
+    data
+}
+
 const OLD: &str = "guidelines.old";
 const MID: &str = "guidelines.mid";
 const NEW: &str = "guidelines.new";
@@ -402,7 +409,7 @@ fn it_should_keep_the_chain_valid_after_retiring_a_guideline() {
 fn it_should_retire_a_guideline_that_decisions_rest_on_and_then_fail_the_anchor() {
     let fx = AppFixture::new();
     fx.load_orphaned_guidelines(&["tone"]);
-    let work_item = node_wire(W1, "work-item", &work_item_data("Ship it"));
+    let work_item = node_wire(W1, "work-item", &typed_work_item("Ship it"));
     fx.append_as_user(json!({ "items": [work_item] }))
         .expect("the work item is accepted");
     let decision = node_wire(DECISION, "decision", &decision_data("use sqlite", Some(W1)));

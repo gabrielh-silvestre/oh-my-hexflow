@@ -344,10 +344,10 @@ fn it_should_classify_every_catalog_field_for_where() {
             ],
             &["evidence", "confirmed_by"],
         ),
-        ("work-item", &["title", "status"], &["gate"]),
+        ("work-item", &["title", "status", "type"], &["gate"]),
         (
             "pull-request",
-            &["title", "status", "provider", "repo", "branch"],
+            &["title", "status", "provider", "repo", "branch", "type"],
             &["gate", "number"],
         ),
     ];

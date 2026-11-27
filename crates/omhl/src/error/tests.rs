@@ -9,6 +9,8 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::InvalidTransition, "invalid-transition"),
         (RuleCode::WorkItemNotFound, "work-item-not-found"),
         (RuleCode::WorkItemClosed, "work-item-closed"),
+        (RuleCode::WorkItemTypeUnknown, "work-item-type-unknown"),
+        (RuleCode::TypeChangeLoosens, "type-change-loosens"),
         (RuleCode::CheckNotFound, "check-not-found"),
         (RuleCode::AttestationIdMismatch, "attestation-id-mismatch"),
         (RuleCode::AttestationIdTooLong, "attestation-id-too-long"),
