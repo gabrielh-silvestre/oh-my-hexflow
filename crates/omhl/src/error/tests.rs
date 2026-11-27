@@ -51,6 +51,7 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::RoleAnswerForbidden, "role-answer-forbidden"),
         (RuleCode::InvalidSessionId, "invalid-session-id"),
         (RuleCode::ReviewBaseInvalid, "review-base-invalid"),
+        (RuleCode::CheckLooseningRefused, "check-loosening-refused"),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected
@@ -100,6 +101,7 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
         RuleCode::GuidelineRetireByCommand,
         RuleCode::RoleUnknown,
         RuleCode::InvalidSessionId,
+        RuleCode::CheckLooseningRefused,
     ];
 
     let incomplete: Vec<&str> = new_codes

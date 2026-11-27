@@ -52,6 +52,7 @@ pub enum RuleCode {
     WorkItemClosed,
     WorkItemTypeUnknown,
     TypeChangeLoosens,
+    CheckLooseningRefused,
     CheckNotFound,
     AttestationIdMismatch,
     AttestationIdTooLong,
@@ -94,6 +95,7 @@ impl RuleCode {
             RuleCode::WorkItemNotFound => "work-item-not-found",
             RuleCode::WorkItemTypeUnknown => "work-item-type-unknown",
             RuleCode::TypeChangeLoosens => "type-change-loosens",
+            RuleCode::CheckLooseningRefused => "check-loosening-refused",
             RuleCode::WorkItemClosed => "work-item-closed",
             RuleCode::CheckNotFound => "check-not-found",
             RuleCode::AttestationIdMismatch => "attestation-id-mismatch",
@@ -194,6 +196,10 @@ impl RuleCode {
             RuleCode::ReviewBaseInvalid => Some(Guidance {
                 cause: "--base does not name a commit, or it is the same commit as HEAD, so there is no range to review",
                 next_step: "pass --base with the integration branch the pull request targets, such as develop",
+            }),
+            RuleCode::CheckLooseningRefused => Some(Guidance {
+                cause: "the revised check turns blocking off, removes its run or moves a blocking check out of the required events, which loosens a check already stored",
+                next_step: "keep the check blocking, with its run and on a required event, or retire the check and declare a new one",
             }),
             _ => None,
         }

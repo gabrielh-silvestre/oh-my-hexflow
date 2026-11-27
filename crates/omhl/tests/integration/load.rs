@@ -4,6 +4,7 @@ use std::fs;
 
 use hexlog::{AppendRequest, ErrorCode};
 use omhl::error::OmhlError;
+use omhl::extensions::loosening::check_loosens;
 use omhl::mechanical::spec::{CheckSpec, SpecError};
 use serde_json::{Value, json};
 use support::appfx::AppFixture;
@@ -828,4 +829,180 @@ fn it_should_agree_with_the_catalog_on_the_number_of_expect_rules() {
             )
         )
     );
+}
+
+// Afrouxamento de check já gravado
+
+const RUN_TOML: &str = r#"blocking = true
+how = "Run lint"
+run = ["true"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }]
+[when]
+event = "before-commit"
+"#;
+const NON_BLOCKING_TOML: &str =
+    "blocking = false\nhow = \"Run A\"\n\n[when]\nevent = \"before-commit\"\n";
+const NO_RUN_TOML: &str =
+    "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
+
+fn gate_data(blocking: bool, event: &str, run: Option<Value>) -> Value {
+    let mut data = support::omhl::check_data(event, "Run A", blocking);
+    if let Some(run) = run {
+        data["run"] = run;
+    }
+
+    data
+}
+
+fn refused_code(error: &Value) -> &str {
+    error["error"]["code"]
+        .as_str()
+        .expect("the error has a code")
+}
+
+#[test]
+fn it_should_refuse_a_revision_that_turns_blocking_off() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &check_toml("Run A", &[]));
+    loaded(&fx, false);
+    fx.ext().check("a", NON_BLOCKING_TOML);
+
+    let error = refused(&fx);
+
+    assert_eq!(refused_code(&error), "check-loosening-refused");
+}
+
+#[test]
+fn it_should_refuse_a_revision_that_removes_the_run() {
+    let fx = AppFixture::new();
+    fx.ext().check("lint", RUN_TOML);
+    loaded(&fx, false);
+    fx.ext().check("lint", NO_RUN_TOML);
+
+    let error = refused(&fx);
+
+    assert_eq!(refused_code(&error), "check-loosening-refused");
+}
+
+#[test]
+fn it_should_write_nothing_of_the_batch_when_a_revision_loosens_a_check() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &check_toml("Run A", &[]));
+    loaded(&fx, false);
+    let records_before = total_records(&fx);
+    fx.ext()
+        .check("a", NON_BLOCKING_TOML)
+        .check("b", &check_toml("Run B", &[]));
+
+    refused(&fx);
+
+    assert_eq!(total_records(&fx), records_before);
+}
+
+#[test]
+fn it_should_keep_the_stored_check_when_the_loosening_is_refused() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &check_toml("Run A", &[]));
+    loaded(&fx, false);
+    fx.ext().check("a", NON_BLOCKING_TOML);
+
+    refused(&fx);
+
+    assert_eq!(fx.get("checks.a")["data"], check_data("Run A"));
+}
+
+#[test]
+fn it_should_refuse_the_loosening_on_a_dry_run_too() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &check_toml("Run A", &[]));
+    loaded(&fx, false);
+    fx.ext().check("a", NON_BLOCKING_TOML);
+
+    let error = fx.load(true).expect_err("the dry run is refused");
+
+    assert_eq!(refused_code(&error), "check-loosening-refused");
+}
+
+#[test]
+fn it_should_load_a_new_non_blocking_check() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", NON_BLOCKING_TOML);
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["created"], json!(["checks.a"]));
+}
+
+#[test]
+fn it_should_accept_a_revision_that_turns_blocking_on() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", NON_BLOCKING_TOML);
+    loaded(&fx, false);
+    fx.ext().check("a", &check_toml("Run A", &[]));
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["revised"], json!(["checks.a"]));
+}
+
+#[test]
+fn it_should_accept_a_revision_that_only_changes_the_run() {
+    let fx = AppFixture::new();
+    fx.ext().check("lint", RUN_TOML);
+    loaded(&fx, false);
+    fx.ext()
+        .check("lint", &RUN_TOML.replace("[\"true\"]", "[\"false\"]"));
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(report["revised"], json!(["checks.lint"]));
+}
+
+#[test]
+fn it_should_classify_blocking_turned_off_as_a_loosening() {
+    let before = gate_data(true, "before-commit", None);
+    let after = gate_data(false, "before-commit", None);
+
+    assert!(check_loosens(&before, &after));
+}
+
+#[test]
+fn it_should_classify_the_run_removal_as_a_loosening() {
+    let before = gate_data(true, "before-commit", Some(json!(["true"])));
+    let after = gate_data(true, "before-commit", None);
+
+    assert!(check_loosens(&before, &after));
+}
+
+#[test]
+fn it_should_classify_a_blocking_check_moved_out_of_the_required_events_as_a_loosening() {
+    let before = gate_data(true, "before-commit", None);
+    let after = gate_data(true, "after-merge", None);
+
+    assert!(check_loosens(&before, &after));
+}
+
+#[test]
+fn it_should_not_classify_blocking_turned_on_as_a_loosening() {
+    let before = gate_data(false, "before-commit", None);
+    let after = gate_data(true, "before-commit", None);
+
+    assert!(!check_loosens(&before, &after));
+}
+
+#[test]
+fn it_should_not_classify_a_move_between_required_events_as_a_loosening() {
+    let before = gate_data(true, "before-commit", None);
+    let after = gate_data(true, "before-pr", None);
+
+    assert!(!check_loosens(&before, &after));
+}
+
+#[test]
+fn it_should_not_classify_a_non_blocking_check_moved_out_of_the_required_events_as_a_loosening() {
+    let before = gate_data(false, "before-commit", None);
+    let after = gate_data(false, "after-merge", None);
+
+    assert!(!check_loosens(&before, &after));
 }

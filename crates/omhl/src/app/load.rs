@@ -9,7 +9,9 @@ use super::action::Caller;
 use super::engine::{Engine, require_project_root};
 use super::error::AppError;
 use super::read::all_nodes;
+use crate::error::{OmhlError, RuleCode};
 use crate::extensions::collect::collect;
+use crate::extensions::loosening::check_loosens;
 use crate::extensions::model::{Extension, ExtensionIssue, ExtensionKind};
 use crate::extensions::plan::{
     ExistingNode, ExistingRelation, Plan, PlanInput, PlannedChange, plan,
@@ -66,7 +68,29 @@ fn reconcile(
         native_check_ids: &natives,
     };
 
-    plan(&input).map_err(|issues| AppError::extensions_invalid(&issues, 0))
+    let plan = plan(&input).map_err(|issues| AppError::extensions_invalid(&issues, 0))?;
+    refuse_loosening(&plan, &existing_nodes)?;
+
+    Ok(plan)
+}
+
+fn refuse_loosening(plan: &Plan, existing: &[ExistingNode]) -> Result<(), AppError> {
+    let loosens = |change: &PlannedChange| match change {
+        PlannedChange::ReviseNode {
+            id,
+            type_name,
+            data,
+            ..
+        } if type_name == ExtensionKind::Check.type_name() => existing
+            .iter()
+            .any(|node| node.id == *id && check_loosens(&node.data, data)),
+        _ => false,
+    };
+
+    match plan.changes.iter().any(loosens) {
+        true => Err(OmhlError::rule(RuleCode::CheckLooseningRefused, "").into()),
+        false => Ok(()),
+    }
 }
 
 fn existing_nodes(
