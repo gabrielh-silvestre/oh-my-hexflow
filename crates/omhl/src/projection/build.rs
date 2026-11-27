@@ -183,7 +183,6 @@ fn header_markers(item: &NodeView) -> String {
     lines.join("\n")
 }
 
-/// Só o fechamento forçado tem nota e rótulos gravados.
 fn gate_override_lines(data: &Value) -> Vec<String> {
     let gate = &data["gate"];
     if gate["forced"] != true {

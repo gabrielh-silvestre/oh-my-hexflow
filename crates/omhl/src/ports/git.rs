@@ -35,7 +35,7 @@ pub struct GitProbe {
     index_file: Option<PathBuf>,
 }
 
-/// Um arquivo como o commit o grava; `content` só vem lido até `EXT_FILE_MAX_BYTES`.
+/// `content` só vem lido até `EXT_FILE_MAX_BYTES`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitBlob {
     pub mode: String,

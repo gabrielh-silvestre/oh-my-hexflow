@@ -66,7 +66,6 @@ impl PartialEq for Predicate {
     }
 }
 
-/// Recusa sem saída por `--force` (`Refuse`) ou aviso que o `--force` contorna (`Warn`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuestionClass {
     Refuse,
@@ -214,7 +213,6 @@ fn evaluate_question<S: GateSource>(
     Ok(with_failure_fields(report, entry))
 }
 
-// Pergunta aprovada não tem classe nem próximo passo.
 fn with_failure_fields(report: QuestionReport, entry: &GateQuestion) -> QuestionReport {
     if report.passed {
         return report;

@@ -80,13 +80,11 @@ pub struct OmhlDeps<'d> {
 /// O que o tipo do work item exige, lido uma vez pelo Engine sob a cabeça `head`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkRequirements {
-    /// Cabeça sob a qual as premissas foram lidas; `None` quando o tipo não exige átomo.
     pub head: Option<ChainHead>,
     pub atoms: Vec<(RequireAtom, bool)>,
 }
 
 impl WorkRequirements {
-    /// O tipo sem átomo: nenhuma pergunta de requisito e nenhuma leitura sob cabeça.
     pub fn none() -> WorkRequirements {
         WorkRequirements {
             head: None,
@@ -107,7 +105,7 @@ pub struct Closing<'a> {
     pub note: Option<&'a str>,
 }
 
-/// O `close` falha com erro do hexlog ou do omhl, ou com a recusa do gate, que nada grava.
+/// A recusa do gate nada grava.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CloseError {
     Omhl(OmhlError),

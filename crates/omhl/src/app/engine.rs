@@ -499,7 +499,6 @@ impl Engine<'_> {
         })
     }
 
-    /// Lê uma vez o que o tipo do item exige: o tipo, os átomos e as premissas sob uma mesma cabeça.
     fn work_requirements(
         &mut self,
         work_item: &SemanticId,
@@ -546,7 +545,6 @@ impl Engine<'_> {
         Ok(enabled.prefixes[&name].clone())
     }
 
-    /// Os prefixos dos branches que dão tipo ao item: o do `branch` do pull-request, ou os branches locais do work item.
     fn branch_prefixes(
         &self,
         id: &SemanticId,

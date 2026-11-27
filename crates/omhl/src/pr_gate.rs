@@ -280,37 +280,30 @@ pub(crate) fn project_checks_filter() -> ListFilter {
     }
 }
 
-/// Por que o `close` recusa, com todas as perguntas avaliadas: o erro lista só as reprovadas.
+/// Nem `--force` contorna o `refuse`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CloseRefusal {
-    /// Uma pergunta `refuse` reprovada: nem `--force` contorna.
     Refused(Vec<QuestionReport>),
-    /// Só perguntas `warn` reprovadas, sem `--force --note`.
     Warnings(Vec<QuestionReport>),
-    /// O `--failed-delivery` só serve a quem tem uma pergunta `refuse` reprovada.
     DeliveryUnneeded { only_warn: bool },
 }
 
-/// O motivo e a autorização literal do dono para fechar sem entregar.
 pub struct Abandonment<'a> {
     pub reason: &'a str,
     pub note: &'a str,
 }
 
-/// A ref de integração e o commit dela que contém o commit avaliado.
 pub struct Integration {
     pub reference: String,
     pub commit: String,
 }
 
-/// A autorização literal do dono para fechar um item mergeado cujo commit ainda reprova.
 pub struct FailedDelivery<'a> {
     pub author: &'a Author,
     pub note: &'a str,
     pub integration: &'a Integration,
 }
 
-/// O que o fechamento grava além do gate: a nota do dono, ou só o aviso de que ela foi descartada.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Forcing {
     Discarded,

@@ -59,7 +59,6 @@ static GUIDELINES: [NativeGuideline; 2] = [
     },
 ];
 
-/// Os caminhos da lista que mudam a configuração de checks ou de workflow.
 pub fn review_trigger_paths(changed: &[String]) -> Vec<String> {
     changed
         .iter()

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use super::config::RequireAtom;
 
-/// Os átomos que um conjunto já cobre por implicação: a técnica confirmada cobre o agente.
+/// A técnica confirmada implica a premissa do agente.
 fn closure(atoms: &[RequireAtom]) -> Vec<RequireAtom> {
     let mut closed = atoms.to_vec();
     if closed.contains(&RequireAtom::TechnicalPremiseConfirmed)
@@ -14,7 +14,6 @@ fn closure(atoms: &[RequireAtom]) -> Vec<RequireAtom> {
     closed
 }
 
-/// A troca de `previous` para `next` afrouxa a matriz quando o fecho do antigo não cabe no do novo.
 pub fn loosens(previous: &[RequireAtom], next: &[RequireAtom]) -> bool {
     let next_closed = closure(next);
 

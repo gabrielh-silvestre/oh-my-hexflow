@@ -566,7 +566,6 @@ impl AppError {
                 next_step: question.next_step,
                 ..Detail::new(
                     &format!("/questions/{index}"),
-                    // Sem classe, a pergunta conta como `refuse`, a mais restrita.
                     question.class.unwrap_or(QuestionClass::Refuse).as_str(),
                     QUESTION_FAILED_MESSAGE,
                 )
