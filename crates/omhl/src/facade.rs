@@ -107,7 +107,7 @@ pub struct Closing<'a> {
     pub note: Option<&'a str>,
 }
 
-/// O `close` falha de duas formas: erro do hexlog ou do omhl, ou a recusa do gate, que nada grava.
+/// O `close` falha com erro do hexlog ou do omhl, ou com a recusa do gate, que nada grava.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CloseError {
     Omhl(OmhlError),
