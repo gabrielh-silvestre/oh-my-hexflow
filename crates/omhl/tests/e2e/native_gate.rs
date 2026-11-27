@@ -273,6 +273,7 @@ fn it_should_keep_refusing_a_loaded_extension_with_a_native_id_while_the_natives
         "run-tests",
         "ci-green-before-merge",
         "verify-review-comment-anchoring",
+        "config-loosening-review",
     ] {
         ExtTree::at(project.dir()).check(slug, LINT_TOML);
     }
@@ -281,7 +282,7 @@ fn it_should_keep_refusing_a_loaded_extension_with_a_native_id_while_the_natives
 
     let details = error_of(&loaded)["details"].to_string();
     assert_eq!(loaded.code, Some(1), "stderr: {}", loaded.stderr);
-    assert_eq!(details.matches("reserved-id").count(), 3, "{details}");
+    assert_eq!(details.matches("reserved-id").count(), 4, "{details}");
 }
 
 /// Um work item com tipo sem átomo: o `close` não procura o branch, e a fixture não tem um.

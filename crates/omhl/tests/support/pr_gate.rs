@@ -44,6 +44,7 @@ pub fn native_check(id: &'static str, event: &'static str, blocking: bool) -> Na
 
 pub const VERIFY_ANCHORING: &str = "checks.verify-review-comment-anchoring";
 /// O fixture padrão das camadas que não escolhem liga todos: o nativo desligado some do gate e dos testes.
+pub const CONFIG_LOOSENING_REVIEW: &str = "checks.config-loosening-review";
 pub const ALL_NATIVE_CHECKS: [&str; 3] = [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING];
 
 pub fn native_enabled(ids: &[&'static str]) -> NativeConfig {

@@ -17,10 +17,11 @@ use support::pr_gate::{
 use support::raw::RawHarness;
 use support::{FakeProbe, author, rty, sid, snap, tenant, tname};
 
-const CHECK_IDS: [&str; 3] = [
+const CHECK_IDS: [&str; 4] = [
     "checks.run-tests",
     "checks.ci-green-before-merge",
     "checks.verify-review-comment-anchoring",
+    "checks.config-loosening-review",
 ];
 const GUIDELINE_IDS: [&str; 2] = [
     "guidelines.one-decision-per-turn",
@@ -265,7 +266,7 @@ fn it_should_accept_a_project_check_linked_after_a_native_check() {
             Origin::Tenant,
             Origin::Native,
             EndpointStatus::Current,
-            Some("1.0.0")
+            Some("1.1.0")
         )]
     );
 }

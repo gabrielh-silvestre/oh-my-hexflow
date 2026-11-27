@@ -8,6 +8,7 @@ use crate::workflow::config::{
     PromotionConfig, RequireAtom, SpecsConfig, WorkflowConfig, parse_workflow,
 };
 
+const CONFIG_LOOSENING_REVIEW: &str = "checks.config-loosening-review";
 const WORKFLOW_PATH: &str = "/project/.omhl/workflow.toml";
 const CANARY: &str = "CANARY-7f3a91";
 const ERROR_CODE: &str = "invalid-workflow-config";
@@ -548,6 +549,24 @@ fn it_should_enable_the_three_native_checks_when_all_ids_are_listed() {
 
     found.sort_unstable();
     assert_eq!(found, vec![CI_GREEN, RUN_TESTS, VERIFY_ANCHORING]);
+}
+
+#[test]
+fn it_should_enable_the_config_loosening_review_when_its_id_is_listed() {
+    let text = native_checks_text(&format!("[\"{CONFIG_LOOSENING_REVIEW}\"]"));
+
+    let found = enabled(&text);
+
+    assert_eq!(found, vec![CONFIG_LOOSENING_REVIEW]);
+}
+
+#[test]
+fn it_should_keep_the_other_native_checks_off_when_only_the_config_loosening_review_is_listed() {
+    let text = native_checks_text(&format!("[\"{CONFIG_LOOSENING_REVIEW}\"]"));
+
+    let found = enabled(&text);
+
+    assert!(!found.contains(&RUN_TESTS) && !found.contains(&CI_GREEN));
 }
 
 #[test]

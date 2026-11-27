@@ -580,6 +580,19 @@ fn it_should_set_the_class_of_each_question_family_when_it_builds_it() {
 }
 
 #[test]
+fn it_should_class_the_config_loosening_review_question_as_refuse_when_it_builds_it() {
+    let review = sid("checks.config-loosening-review");
+    let required = vec![(review, GitCommit)];
+
+    let questions = pr_gate_questions(&required, &sid(PR_7), &at_head(), &[]);
+
+    assert_eq!(
+        class_of(&questions, "checks.config-loosening-review"),
+        QuestionClass::Refuse
+    );
+}
+
+#[test]
 fn it_should_class_a_project_check_by_its_run_without_changing_its_label() {
     let text = [project_check("checks.docs", "before-merge", true, false)];
     let mechanical = [mechanical_project_check(
