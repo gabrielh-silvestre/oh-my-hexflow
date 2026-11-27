@@ -7,13 +7,15 @@ use super::engine::{Engine, parse_at};
 use super::error::AppError;
 use super::output;
 use super::read::{all_nodes, nodes_matching};
+use crate::gate::QuestionClass;
 use crate::native::NativeBase;
 use crate::ports::workflow::read_policy;
 use crate::workflow::config::WorkflowConfig;
 use crate::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_by, gap_state};
 use crate::workflow::recurrence::{Premise, recurrences};
 use crate::workflow::retro::{
-    DivergenceFact, GapFact, GateOverride, RetroAbandonment, RetroFacts, retro_with_abandonment,
+    DeliveryFailure, DivergenceFact, FailedQuestion, GapFact, GateOverride, RetroAbandonment,
+    RetroFacts, retro_with_abandonment,
 };
 
 const GAP_RELATIONS: [&str; 3] = ["answers", "supports", "contradicts"];
@@ -31,6 +33,31 @@ fn gate_override(data: &Value) -> Option<GateOverride> {
             .iter()
             .filter_map(|label| label.as_str().map(str::to_owned))
             .collect(),
+    })
+}
+
+fn delivery_failure(data: &Value) -> Option<DeliveryFailure> {
+    let recorded = &data["delivery_failure"];
+    let failed = recorded["failed"]
+        .as_array()?
+        .iter()
+        .map(|question| {
+            let class = match question["class"].as_str()? {
+                "refuse" => QuestionClass::Refuse,
+                "warn" => QuestionClass::Warn,
+                _ => return None,
+            };
+
+            Some(FailedQuestion {
+                label: question["label"].as_str()?.to_owned(),
+                class,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    Some(DeliveryFailure {
+        note: recorded["note"].as_str()?.to_owned(),
+        failed,
     })
 }
 
@@ -65,7 +92,7 @@ impl Engine<'_> {
 
     pub(super) fn report_retro(&mut self, work_item: &str) -> Result<Value, AppError> {
         let id = parse_at(SemanticId::parse, work_item, "/work_item")?;
-        let facts = self.retro_facts(&id)?;
+        let facts = self.retro_facts(&id, false)?;
         let node = self.omhl.find_work_item(&self.tenant, &id)?;
         let report = retro_with_abandonment(&facts, abandonment(&node.data));
 
@@ -73,7 +100,12 @@ impl Engine<'_> {
     }
 
     /// Os fatos da retro não dependem do fechamento: o `close` os lê antes de gravar.
-    pub(super) fn retro_facts(&mut self, work_item: &SemanticId) -> Result<RetroFacts, AppError> {
+    /// `always_retro` lê também as emendas de um fechamento que sempre terá retro e ainda não gravou o motivo.
+    pub(super) fn retro_facts(
+        &mut self,
+        work_item: &SemanticId,
+        always_retro: bool,
+    ) -> Result<RetroFacts, AppError> {
         let node = self.omhl.find_work_item(&self.tenant, work_item)?;
         let filter = work_item_filter(work_item.as_str())?;
         let divergences: Vec<DivergenceFact> =
@@ -93,8 +125,11 @@ impl Engine<'_> {
             .collect();
 
         let gate_override = gate_override(&node.data);
+        let delivery_failure = delivery_failure(&node.data);
         let has_retro = !divergences.is_empty()
             || gate_override.is_some()
+            || delivery_failure.is_some()
+            || always_retro
             || gaps.iter().any(|gap| {
                 matches!(
                     gap.state,
@@ -116,6 +151,7 @@ impl Engine<'_> {
             gaps,
             amendment_files,
             gate_override,
+            delivery_failure,
         })
     }
 

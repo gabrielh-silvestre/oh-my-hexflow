@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use support::child::{Output, omhl, omhl_json};
-use support::git::git_in;
+use support::git::{git_in, git_ok};
 use support::omhl::{PR_7, closed_with_gate, pull_request_data, work_item_data};
 use support::project::Project;
 
@@ -1767,4 +1767,401 @@ fn it_should_read_a_node_closed_in_the_old_format_with_report_retro() {
         assert_eq!(retro.code, Some(0), "{id} stderr: {}", retro.stderr);
         assert_eq!(retro_of(&json_line(&retro.stdout)), Value::Null, "{id}");
     }
+}
+
+// `close --failed-delivery`: fecha o item já mergeado cujo commit ainda reprova (CA-040 a CA-044)
+
+const DELIVERY_NOTE: &str = "autorizado";
+const ITEM_BRANCH: &str = "feat/wi-w1__login";
+const OTHER_ITEM_BRANCH: &str = "feat/wi-w2__other";
+
+impl Fixture {
+    /// Branch do item com um commit próprio, `develop` ainda sem ele.
+    fn unmerged(natives: &[&str]) -> Fixture {
+        let fixture = fixture_with_natives(natives);
+        fixture.git(&["checkout", "-b", ITEM_BRANCH]);
+        fs::write(fixture.project.dir().join("feature.txt"), "feature\n")
+            .expect("the feature file is written");
+        fixture.commit_all();
+        fixture.git(&["branch", "develop", "main"]);
+
+        fixture
+    }
+
+    /// Item mergeado na `develop` com merge commit; o `HEAD` volta para a ponta do item.
+    fn merged(natives: &[&str]) -> Fixture {
+        let fixture = Fixture::unmerged(natives);
+        fixture.git(&["checkout", "develop"]);
+        fixture.git(&["merge", "--no-ff", "-m", "merge the item", ITEM_BRANCH]);
+        fixture.git(&["checkout", ITEM_BRANCH]);
+
+        fixture
+    }
+
+    fn squashed(natives: &[&str]) -> Fixture {
+        let fixture = Fixture::unmerged(natives);
+        fixture.git(&["checkout", "develop"]);
+        fixture.git(&["merge", "--squash", ITEM_BRANCH]);
+        fixture.git(&["commit", "-m", "squash the item"]);
+        fixture.git(&["checkout", ITEM_BRANCH]);
+
+        fixture
+    }
+
+    fn git(&self, args: &[&str]) {
+        git_ok(self.project.dir(), args);
+    }
+
+    fn develop_commit(&self) -> String {
+        git_ok(self.project.dir(), &["rev-parse", "refs/heads/develop"])
+            .trim()
+            .to_owned()
+    }
+
+    fn failed_delivery(&self, id: &str) -> Output {
+        self.run(&["close", id, "--failed-delivery", "--note", DELIVERY_NOTE])
+    }
+
+    fn failed_delivery_text(&self, id: &str) -> Output {
+        omhl(&["close", id, "--failed-delivery", "--note", DELIVERY_NOTE])
+            .cwd(self.project.dir())
+            .xdg(self.project.xdg())
+            .run()
+    }
+
+    fn pull_request_on(&self, branch: &str) {
+        let mut data = pull_request_data("Add gate");
+        data["branch"] = json!(branch);
+        self.append(vec![node(PR_7, "pull-request", data)]);
+    }
+
+    fn assert_refused_with(&self, output: &Output, code: &str, before: &Value) {
+        assert_eq!(
+            (output.code, error_code(output), &self.chain()),
+            (Some(1), json!(code), before),
+            "stderr: {}",
+            output.stderr
+        );
+    }
+}
+
+#[test]
+fn it_should_close_a_merged_work_item_recording_the_failure_and_leaving_the_gate_without_override()
+{
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = fixture.failed_delivery(W1);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let data = fixture.data_of(W1);
+    assert_eq!(data["status"], json!("closed"));
+    assert_eq!(data["gate"]["passed"], json!(false));
+    for key in ["forced", "overridden", "note"] {
+        assert!(data["gate"].get(key).is_none(), "{key} in the gate");
+    }
+}
+
+#[test]
+fn it_should_record_the_note_the_failed_questions_and_the_integration_read() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    fixture.failed_delivery(W1);
+
+    assert_eq!(
+        fixture.data_of(W1)["delivery_failure"],
+        json!({
+            "note": DELIVERY_NOTE,
+            "failed": [
+                { "label": RUN_TESTS, "class": "warn" },
+                { "label": CI_GREEN, "class": "refuse" },
+            ],
+            "integration": { "ref": "develop", "commit": fixture.develop_commit() },
+        })
+    );
+}
+
+#[test]
+fn it_should_close_a_merged_pull_request_recording_the_failure() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.pull_request_on(ITEM_BRANCH);
+
+    let closed = fixture.failed_delivery(PR_7);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let data = fixture.data_of(PR_7);
+    assert_eq!(data["status"], json!("closed"));
+    assert_eq!(data["gate"]["passed"], json!(false));
+    assert_eq!(data["delivery_failure"]["note"], json!(DELIVERY_NOTE));
+    assert_eq!(
+        data["delivery_failure"]["integration"]["commit"],
+        json!(fixture.develop_commit())
+    );
+}
+
+#[test]
+fn it_should_print_the_delivered_with_failure_header() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = fixture.failed_delivery_text(W1);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert!(
+        closed
+            .stdout
+            .lines()
+            .any(|line| line == "⚠ closed · delivered with failure · 2 failed"),
+        "{}",
+        closed.stdout
+    );
+}
+
+#[test]
+fn it_should_record_the_session_of_the_failed_delivery_close() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = omhl_json(&["close", W1, "--failed-delivery", "--note", DELIVERY_NOTE])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .env("CLAUDE_CODE_SESSION_ID", "sess-failed-delivery-1")
+        .run();
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let sessions = fixture.run(&["report", "sessions"]).stdout;
+    assert!(sessions.contains("sess-failed-delivery-1"), "{sessions}");
+}
+
+#[test]
+fn it_should_show_the_note_the_questions_and_the_integration_in_get_report_retro_and_projection() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.failed_delivery(W1);
+    let projection = fixture.run(&["project"]);
+    let dir = json_line(&projection.stdout)["dir"]
+        .as_str()
+        .expect("the projection dir is text")
+        .to_owned();
+    let projected = all_text_under(&fixture.project.dir().join(dir));
+
+    let got = fixture.run(&["get", W1]).stdout;
+    let retro = fixture.report_retro().stdout;
+
+    for shown in [&got, &retro, &projected] {
+        assert!(shown.contains(DELIVERY_NOTE), "{shown}");
+        assert!(shown.contains(CI_GREEN), "{shown}");
+    }
+    assert!(got.contains(&fixture.develop_commit()), "{got}");
+    assert_eq!(fixture.run(&["render"]).code, Some(0));
+}
+
+#[test]
+fn it_should_exit_two_and_write_nothing_for_the_failed_delivery_argument_combinations_that_do_not_hold()
+ {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    let before = fixture.chain();
+
+    for extra in [
+        &["--failed-delivery"][..],
+        &["--failed-delivery", "--note", DELIVERY_NOTE, "--force"],
+        &[
+            "--failed-delivery",
+            "--note",
+            DELIVERY_NOTE,
+            "--abandon",
+            "--reason",
+            "r",
+        ],
+        &[
+            "--failed-delivery",
+            "--note",
+            DELIVERY_NOTE,
+            "--reason",
+            "r",
+        ],
+    ] {
+        let mut args = vec!["close", W1];
+        args.extend_from_slice(extra);
+
+        let output = fixture.run(&args);
+
+        assert_eq!(output.code, Some(2), "{args:?} stderr: {}", output.stderr);
+    }
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_with_failed_delivery_unneeded_when_the_whole_gate_passes() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.attest(RUN_TESTS);
+    fixture.attest(CI_GREEN);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "failed-delivery-unneeded", &before);
+}
+
+#[test]
+fn it_should_refuse_with_failed_delivery_unneeded_pointing_to_force_when_only_a_warn_fails() {
+    let fixture = Fixture::merged(&[RUN_TESTS]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "failed-delivery-unneeded", &before);
+    assert!(
+        json_line(&closed.stderr)["error"]
+            .to_string()
+            .contains("--force --note"),
+        "{}",
+        closed.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_with_snapshot_dirty_first() {
+    let fixture = Fixture::new();
+    fixture.write_workflow(INVALID_WORKFLOW);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(MISSING_WORK_ITEM);
+
+    fixture.assert_refused_with(&closed, "snapshot-dirty", &before);
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_with_invalid_workflow_config_before_a_missing_work_item() {
+    let fixture = Fixture::new();
+    fixture.write_workflow(INVALID_WORKFLOW);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(MISSING_WORK_ITEM);
+
+    fixture.assert_refused_with(&closed, "invalid-workflow-config", &before);
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_with_work_item_not_found() {
+    let fixture = Fixture::new();
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(MISSING_WORK_ITEM);
+
+    fixture.assert_refused_with(&closed, "work-item-not-found", &before);
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_of_a_closed_work_item_with_invalid_transition() {
+    let fixture = Fixture::new();
+    fixture.close_output();
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "invalid-transition", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_integrated_before_the_merge() {
+    let fixture = Fixture::unmerged(&[RUN_TESTS, CI_GREEN]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-integrated", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_integrated_after_a_squash_merge() {
+    let fixture = Fixture::squashed(&[RUN_TESTS, CI_GREEN]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-integrated", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_integrated_when_the_local_develop_does_not_exist() {
+    let fixture = Fixture::unmerged(&[RUN_TESTS, CI_GREEN]);
+    fixture.git(&["branch", "-D", "develop"]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-integrated", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_on_work_item_branch_when_head_is_on_develop() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.git(&["checkout", "develop"]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-on-work-item-branch", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_on_work_item_branch_on_another_work_item_branch() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.git(&["checkout", "-b", OTHER_ITEM_BRANCH]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-on-work-item-branch", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_on_work_item_branch_when_the_pull_request_branch_differs() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.pull_request_on("feat/wi-w1__another-name");
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(PR_7);
+
+    fixture.assert_refused_with(&closed, "delivery-not-on-work-item-branch", &before);
+}
+
+#[test]
+fn it_should_print_the_retro_block_and_the_next_line_when_closing_with_failed_delivery() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = fixture.failed_delivery_text(W1);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert!(closed.stdout.contains("retro"), "{}", closed.stdout);
+    assert!(closed.stdout.contains(CI_GREEN), "{}", closed.stdout);
+    assert!(
+        closed
+            .stdout
+            .lines()
+            .last()
+            .is_some_and(|line| line.starts_with("Next:")),
+        "{}",
+        closed.stdout
+    );
+}
+
+#[test]
+fn it_should_return_a_non_null_retro_when_closing_with_failed_delivery_without_divergence() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = fixture.failed_delivery(W1);
+
+    let retro = retro_of(&json_line(&closed.stdout));
+    assert!(!retro.is_null(), "{}", closed.stdout);
+    assert!(retro.to_string().contains(DELIVERY_NOTE), "{retro}");
+}
+
+#[test]
+fn it_should_print_the_same_retro_in_report_retro_after_the_failed_delivery_close() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    let closed = json_line(&fixture.failed_delivery(W1).stdout);
+
+    let reported = fixture.retro_report();
+
+    assert_eq!(retro_of(&reported), retro_of(&closed));
 }

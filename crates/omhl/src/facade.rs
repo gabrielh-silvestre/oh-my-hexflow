@@ -13,13 +13,15 @@ use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::plan::CheckNode;
 use crate::native::NativeBase;
 use crate::pr_gate::{
-    Abandonment, CloseRefusal, Forcing, GATE_NAME, GateSnapshots, abandonment_request,
-    anchor_questions, close_verdict, closing_request, pr_gate_questions, project_checks_filter,
-    required_checks, requirement_questions, spec_digests,
+    Abandonment, CloseRefusal, FailedDelivery, Forcing, GATE_NAME, GateSnapshots,
+    abandonment_request, anchor_questions, close_verdict, closing_request, delivery_verdict,
+    failed_delivery_request, pr_gate_questions, project_checks_filter, required_checks,
+    requirement_questions, spec_digests,
 };
 use crate::probe::{SnapshotProbe, TreeSource};
 use crate::projection::ProjectionState;
 use crate::workflow::config::{NativeConfig, RequireAtom};
+use crate::workflow::retro::FailedQuestion;
 use crate::{graphs, guard};
 
 static NATIVE: NativeBase = NativeBase;
@@ -347,16 +349,8 @@ impl<'d> Omhl<'d> {
         closing: &Closing<'_>,
     ) -> Result<ClosedWorkItem, CloseError> {
         let session = self.session.resolve()?;
-        let current = self.ensure_open(tenant, work_item)?;
-        let head_commit = guard::probe_refusal(&self.probe.probe(), &snapshots.head_commit);
-        let head_tree = guard::probe_refusal(
-            &self.probe.probe_tree(TreeSource::Head),
-            &snapshots.head_tree,
-        );
-        if let Some(code) = head_commit.or(head_tree) {
-            return Err(OmhlError::rule(code, "/snapshot").into());
-        }
-        let report = self.gate_report(tenant, work_item, snapshots, enabled, requirements)?;
+        let (current, report) =
+            self.evaluate_closing(tenant, work_item, snapshots, enabled, requirements)?;
         // A recusa é decidida antes de gravar: quem recusa não deixa nenhum registro.
         let forcing = close_verdict(&report, closing.note).map_err(CloseError::Refused)?;
         let request = closing_request(
@@ -377,6 +371,63 @@ impl<'d> Omhl<'d> {
             report,
             forcing,
         })
+    }
+
+    /// Fecha o item já mergeado cujo commit ainda reprova uma pergunta `refuse`; devolve as reprovadas.
+    pub fn close_with_failed_delivery(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+        snapshots: &GateSnapshots,
+        enabled: &NativeConfig,
+        requirements: &WorkRequirements,
+        delivery: &FailedDelivery<'_>,
+    ) -> Result<(ClosedWorkItem, Vec<FailedQuestion>), CloseError> {
+        let session = self.session.resolve()?;
+        let (current, report) =
+            self.evaluate_closing(tenant, work_item, snapshots, enabled, requirements)?;
+        let failed = delivery_verdict(&report).map_err(CloseError::Refused)?;
+        let request = failed_delivery_request(
+            tenant,
+            current,
+            &report,
+            &snapshots.head_commit,
+            &failed,
+            delivery,
+        );
+        let outcome = self
+            .hexlog
+            .append_with_session(&request, &session)
+            .map_err(OmhlError::from)?;
+        let closed = ClosedWorkItem {
+            outcome,
+            report,
+            forcing: None,
+        };
+
+        Ok((closed, failed))
+    }
+
+    fn evaluate_closing(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+        snapshots: &GateSnapshots,
+        enabled: &NativeConfig,
+        requirements: &WorkRequirements,
+    ) -> Result<(NodeView, GateReport), CloseError> {
+        let current = self.ensure_open(tenant, work_item)?;
+        let head_commit = guard::probe_refusal(&self.probe.probe(), &snapshots.head_commit);
+        let head_tree = guard::probe_refusal(
+            &self.probe.probe_tree(TreeSource::Head),
+            &snapshots.head_tree,
+        );
+        if let Some(code) = head_commit.or(head_tree) {
+            return Err(OmhlError::rule(code, "/snapshot").into());
+        }
+        let report = self.gate_report(tenant, work_item, snapshots, enabled, requirements)?;
+
+        Ok((current, report))
     }
 
     /// Não avalia o gate: o `snapshot` é o `HEAD` lido pela sonda, sem conferir a árvore.

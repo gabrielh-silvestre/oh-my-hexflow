@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use super::gap::GapState;
 use super::names::FILE_SUFFIX;
 use super::spec::SPEC_STALE;
+use crate::gate::QuestionClass;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetroFacts {
@@ -12,12 +13,24 @@ pub struct RetroFacts {
     pub gaps: Vec<GapFact>,
     pub amendment_files: Vec<String>,
     pub gate_override: Option<GateOverride>,
+    pub delivery_failure: Option<DeliveryFailure>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GateOverride {
     pub note: String,
     pub overridden: Vec<String>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeliveryFailure {
+    pub note: String,
+    pub failed: Vec<FailedQuestion>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailedQuestion {
+    pub label: String,
+    pub class: QuestionClass,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +56,7 @@ pub struct Retro {
     pub no_criterion: Vec<AnsweredGap>,
     pub open_gaps: Vec<OpenGap>,
     pub gate_override: Option<GateOverride>,
+    pub delivery_failure: Option<DeliveryFailure>,
     pub abandonment: Option<RetroAbandonment>,
 }
 
@@ -97,7 +111,11 @@ pub fn retro(facts: &RetroFacts) -> Option<Retro> {
             })
         })
         .collect::<Vec<_>>();
-    if facts.divergences.is_empty() && no_criterion.is_empty() && facts.gate_override.is_none() {
+    if facts.divergences.is_empty()
+        && no_criterion.is_empty()
+        && facts.gate_override.is_none()
+        && facts.delivery_failure.is_none()
+    {
         return None;
     }
     let approved = approved_amendments(&facts.divergences);
@@ -124,6 +142,7 @@ pub fn retro(facts: &RetroFacts) -> Option<Retro> {
         no_criterion,
         open_gaps,
         gate_override: facts.gate_override.clone(),
+        delivery_failure: facts.delivery_failure.clone(),
         abandonment: None,
     })
 }

@@ -16,9 +16,11 @@ use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::{Closing, Omhl, WorkRequirements};
 use crate::graphs::WORK_ITEM_TYPES;
-use crate::mechanical::branch::{branch_prefix, work_item_id};
+use crate::mechanical::branch::{
+    BranchKind, DEVELOP_BRANCH, branch_prefix, classify, work_item_id,
+};
 use crate::ports::git::GitProbe;
-use crate::pr_gate::{Abandonment, Forcing, GateSnapshots};
+use crate::pr_gate::{Abandonment, FailedDelivery, Forcing, GateSnapshots, Integration};
 use crate::probe::{
     DevelopMark, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
 };
@@ -27,7 +29,7 @@ use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
 use crate::workflow::config::{NativeConfig, RequireAtom};
 use crate::workflow::matrix::unsatisfied_atoms;
-use crate::workflow::retro::{Retro, RetroAbandonment, retro};
+use crate::workflow::retro::{DeliveryFailure, Retro, RetroAbandonment, retro};
 use crate::workflow::work_type::{effective_type, loosens};
 
 const DEFAULT_PAGE_LIMIT: u32 = 50;
@@ -114,6 +116,9 @@ impl Engine<'_> {
             }
             Action::GatePr { work_item } => self.gate_pr(work_item),
             Action::Close { work_item, note } => self.close(caller, work_item, note.as_deref()),
+            Action::CloseFailedDelivery { work_item, note } => {
+                self.close_failed_delivery(caller, work_item, note)
+            }
             Action::Abandon {
                 work_item,
                 reason,
@@ -222,7 +227,7 @@ impl Engine<'_> {
         self.omhl.ensure_open(&self.tenant, &work_item)?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
         // Lida antes de gravar: o `close` nunca devolve erro depois do record de fechamento.
-        let mut facts = self.retro_facts(&work_item)?;
+        let mut facts = self.retro_facts(&work_item, false)?;
         let author = caller.author();
         let closing = Closing {
             author: &author,
@@ -245,6 +250,81 @@ impl Engine<'_> {
         }
 
         Ok(output::closed(&closed, retro(&facts).as_ref()))
+    }
+
+    fn close_failed_delivery(
+        &mut self,
+        caller: &Caller,
+        work_item: &str,
+        note: &str,
+    ) -> Result<Value, AppError> {
+        let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
+        bounded_text(note, "/note")?;
+        let snapshots = self.probe_gate_snapshots()?;
+        let enabled = self.resolve_native()?;
+        let node = self.omhl.ensure_open(&self.tenant, &work_item)?;
+        let requirements = self.work_requirements(&work_item, &enabled)?;
+        let integration = self.read_integration(&node, &snapshots)?;
+        let mut facts = self.retro_facts(&work_item, true)?;
+        let author = caller.author();
+        let delivery = FailedDelivery {
+            author: &author,
+            note,
+            integration: &integration,
+        };
+        let (closed, failed) = self
+            .omhl
+            .close_with_failed_delivery(
+                &self.tenant,
+                &work_item,
+                &snapshots,
+                &enabled,
+                &requirements,
+                &delivery,
+            )
+            .map_err(AppError::from)?;
+        facts.delivery_failure = Some(DeliveryFailure {
+            note: note.to_owned(),
+            failed,
+        });
+
+        Ok(output::closed(&closed, retro(&facts).as_ref()))
+    }
+
+    /// O commit avaliado só vale como entregue se o branch do item o tem dentro da `develop` local.
+    fn read_integration(
+        &self,
+        node: &NodeView,
+        snapshots: &GateSnapshots,
+    ) -> Result<Integration, AppError> {
+        let root = require_project_root(self.project_root.as_deref())?;
+        let git = GitProbe::new(root);
+        let probe_failed = |error: ProbeError| AppError::probe_failed(&error.message);
+        let branch = git.current_branch().map_err(probe_failed)?;
+        let on_item_branch = match (node.type_name.as_str(), &branch) {
+            (_, None) => false,
+            ("pull-request", Some(branch)) => node.data["branch"].as_str() == Some(branch),
+            (_, Some(branch)) => classify(branch) == BranchKind::WorkItem(node.id.clone()),
+        };
+        if !on_item_branch {
+            return Err(AppError::delivery_not_on_work_item_branch());
+        }
+        let integration_ref = format!("refs/heads/{DEVELOP_BRANCH}");
+        let commit = git
+            .ref_commit(&integration_ref)
+            .map_err(probe_failed)?
+            .ok_or_else(AppError::delivery_not_integrated)?;
+        if !git
+            .is_ancestor(snapshots.head_commit.id(), &commit)
+            .map_err(probe_failed)?
+        {
+            return Err(AppError::delivery_not_integrated());
+        }
+
+        Ok(Integration {
+            reference: DEVELOP_BRANCH.to_owned(),
+            commit,
+        })
     }
 
     fn abandon(

@@ -122,6 +122,14 @@ pub fn retro(report: Option<&Retro>) -> Value {
             "overridden": gate_override.overridden,
         });
     }
+    if let Some(failure) = &report.delivery_failure {
+        let failed: Vec<Value> = failure
+            .failed
+            .iter()
+            .map(|question| json!({ "label": question.label, "class": question.class.as_str() }))
+            .collect();
+        value["delivery_failure"] = json!({ "note": failure.note, "failed": failed });
+    }
     if let Some(abandonment) = &report.abandonment {
         value["abandonment"] = json!({ "reason": abandonment.reason, "note": abandonment.note });
     }

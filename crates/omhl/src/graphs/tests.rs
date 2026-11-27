@@ -1428,3 +1428,145 @@ fn it_should_reject_a_note_longer_than_five_hundred_characters() {
         "{found:?}"
     );
 }
+
+fn delivery_failure() -> Value {
+    json!({
+        "note": "authorized by the owner",
+        "failed": [{ "label": "checks.ci-green-before-merge", "class": "refuse" }],
+        "integration": { "ref": "develop", "commit": "b".repeat(40) },
+    })
+}
+
+fn failed_delivery(delivery_failure: Value) -> Value {
+    let mut gate = gate();
+    gate["passed"] = json!(false);
+    let mut data = closed_with_gate(&gate);
+    data["delivery_failure"] = delivery_failure;
+
+    data
+}
+
+fn with_field(mut delivery_failure: Value, pointer: &str, value: Value) -> Value {
+    *delivery_failure
+        .pointer_mut(pointer)
+        .expect("the field exists") = value;
+
+    delivery_failure
+}
+
+#[test]
+fn it_should_accept_a_delivery_failure_in_a_work_item() {
+    let data = failed_delivery(delivery_failure());
+
+    assert!(is_accepted("work-item", &data));
+}
+
+#[test]
+fn it_should_accept_a_delivery_failure_in_a_pull_request() {
+    let mut data = failed_delivery(delivery_failure());
+    data["provider"] = json!("github");
+    data["repo"] = json!("owner/repo");
+    data["number"] = json!(7);
+
+    assert!(is_accepted("pull-request", &data));
+}
+
+#[test]
+fn it_should_reject_a_delivery_failure_with_an_empty_failed_list() {
+    let data = failed_delivery(with_field(delivery_failure(), "/failed", json!([])));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/failed", "min-items")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_a_delivery_failure_with_more_than_one_hundred_failed_questions() {
+    let items: Vec<Value> = (0..101)
+        .map(|index| json!({ "label": format!("checks.{index}"), "class": "warn" }))
+        .collect();
+    let data = failed_delivery(with_field(delivery_failure(), "/failed", json!(items)));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/failed", "max-items")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_a_failed_question_whose_class_is_not_refuse_or_warn() {
+    let data = failed_delivery(with_field(
+        delivery_failure(),
+        "/failed/0/class",
+        json!("block"),
+    ));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/failed/0/class", "enum")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_empty_delivery_failure_note() {
+    let data = failed_delivery(with_field(delivery_failure(), "/note", json!("")));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/note", "min-length")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_a_delivery_failure_note_longer_than_five_hundred_characters() {
+    let data = failed_delivery(with_field(
+        delivery_failure(),
+        "/note",
+        json!("n".repeat(501)),
+    ));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/note", "max-length")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_integration_without_ref() {
+    let mut delivery_failure = delivery_failure();
+    delivery_failure["integration"] = json!({ "commit": "b".repeat(40) });
+
+    let found = violations_of("work-item", &failed_delivery(delivery_failure));
+
+    assert!(
+        found.contains(&violation("/delivery_failure/integration/ref", "required")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_integration_without_commit() {
+    let mut delivery_failure = delivery_failure();
+    delivery_failure["integration"] = json!({ "ref": "develop" });
+
+    let found = violations_of("work-item", &failed_delivery(delivery_failure));
+
+    assert!(
+        found.contains(&violation(
+            "/delivery_failure/integration/commit",
+            "required"
+        )),
+        "{found:?}"
+    );
+}

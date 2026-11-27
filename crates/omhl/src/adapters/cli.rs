@@ -82,15 +82,17 @@ pub enum ActionCommand {
         #[arg(long, allow_hyphen_values = true)]
         branch: String,
     },
-    /// Close a work item once the gate is evaluated; `--force --note` closes it past warn questions and `--abandon` closes it without the gate.
-    #[command(group(clap::ArgGroup::new("mode").args(["force", "abandon"]).multiple(true)))]
+    /// Close a work item once the gate is evaluated; `--force --note` closes it past warn questions, `--abandon` closes it without the gate and `--failed-delivery` closes a merged one that still fails.
+    #[command(group(clap::ArgGroup::new("mode").args(["force", "abandon", "failed_delivery"]).multiple(true)))]
     Close {
         work_item: String,
         #[arg(long, requires = "note", conflicts_with = "abandon")]
         force: bool,
         #[arg(long, requires_all = ["reason", "note"])]
         abandon: bool,
-        #[arg(long, requires = "abandon")]
+        #[arg(long, requires = "note", conflicts_with_all = ["force", "abandon"])]
+        failed_delivery: bool,
+        #[arg(long, requires = "abandon", conflicts_with = "failed_delivery")]
         reason: Option<String>,
         #[arg(long, requires = "mode")]
         note: Option<String>,
@@ -743,6 +745,12 @@ fn to_action(
             reason,
             note,
         },
+        ActionCommand::Close {
+            work_item,
+            failed_delivery: true,
+            note: Some(note),
+            ..
+        } => Action::CloseFailedDelivery { work_item, note },
         ActionCommand::Close {
             work_item, note, ..
         } => Action::Close { work_item, note },

@@ -96,6 +96,15 @@ pub static RETRO_PROFILE: Profile = Profile {
         Entry::new(Region::Data, "answered_by", Shape::Literal)
             .under("no_criterion")
             .optional(),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("delivery_failure")
+            .optional(),
+        Entry::new(Region::Data, "label", Shape::Literal)
+            .under("failed")
+            .optional(),
+        Entry::new(Region::Data, "class", Shape::Closed)
+            .under("failed")
+            .optional(),
         Entry::new(Region::Data, "reason", Shape::Literal)
             .under("abandonment")
             .optional(),
@@ -233,6 +242,10 @@ impl Specialization for Retro {
                 usize::from(retro["gate_override"].is_object()),
                 "forced close",
             ),
+            (
+                items(&retro["delivery_failure"], "failed").count(),
+                "failed question",
+            ),
             (usize::from(retro["abandonment"].is_object()), "abandonment"),
         ]
         .into_iter()
@@ -289,6 +302,18 @@ impl Specialization for Retro {
             ])
         });
 
+        let failure = &retro["delivery_failure"];
+        let delivery_note = failure
+            .is_object()
+            .then(|| dash(vec!["delivery failure".to_owned(), text(failure, "note")]));
+        let failed = items(failure, "failed").map(|question| {
+            dash(vec![
+                "failed question".to_owned(),
+                text(question, "label"),
+                text(question, "class"),
+            ])
+        });
+
         let abandoned = retro["abandonment"].is_object().then(|| {
             dash(vec![
                 "abandoned".to_owned(),
@@ -299,6 +324,8 @@ impl Specialization for Retro {
 
         divergences
             .chain(abandoned)
+            .chain(delivery_note)
+            .chain(failed)
             .chain(approved)
             .chain(pending)
             .chain(no_criterion)

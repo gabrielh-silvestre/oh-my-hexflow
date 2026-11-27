@@ -36,6 +36,10 @@ pub enum Action {
         work_item: String,
         note: Option<String>,
     },
+    CloseFailedDelivery {
+        work_item: String,
+        note: String,
+    },
     Abandon {
         work_item: String,
         reason: String,

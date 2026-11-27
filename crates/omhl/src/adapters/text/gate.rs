@@ -96,6 +96,15 @@ pub static CLOSE_PROFILE: Profile = Profile {
         Entry::new(Region::Data, "answered_by", Shape::Literal)
             .under("no_criterion")
             .optional(),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("delivery_failure")
+            .optional(),
+        Entry::new(Region::Data, "label", Shape::Literal)
+            .under("failed")
+            .optional(),
+        Entry::new(Region::Data, "class", Shape::Closed)
+            .under("failed")
+            .optional(),
         Entry::new(Region::Data, "reason", Shape::Literal)
             .under("abandonment")
             .optional(),
@@ -210,8 +219,20 @@ impl Specialization for GatePr {
     }
 }
 
-/// Um fechamento forçado sai com aviso: o dono precisa ver que contornou as perguntas.
+/// Um fechamento forçado ou entregue com falha sai com aviso: o dono precisa ver o que foi contornado.
 fn closed_header(value: &Value) -> Line {
+    let failed = &value["retro"]["delivery_failure"];
+    if failed.is_object() {
+        return Line::Header {
+            state: State::Warning,
+            parts: vec![
+                "closed".to_owned(),
+                "delivered with failure".to_owned(),
+                format!("{} failed", items(failed, "failed").count()),
+            ],
+        };
+    }
+
     if value["forced"].is_object() {
         return Line::Header {
             state: State::Warning,

@@ -15,7 +15,7 @@ use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_diges
 use crate::native::{CI_GREEN_ID, NativeCheck};
 use crate::workflow::config::{NativeConfig, RequireAtom};
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
-use crate::workflow::retro::GateOverride;
+use crate::workflow::retro::{FailedQuestion, GateOverride};
 
 pub const GATE_NAME: &str = "pull-request";
 const ABANDONED_GATE_NAME: &str = "abandoned";
@@ -279,12 +279,27 @@ pub enum CloseRefusal {
     Refused(Vec<QuestionReport>),
     /// Só perguntas `warn` reprovadas, sem `--force --note`.
     Warnings(Vec<QuestionReport>),
+    /// O `--failed-delivery` só serve a quem tem uma pergunta `refuse` reprovada.
+    DeliveryUnneeded { only_warn: bool },
 }
 
 /// O motivo e a autorização literal do dono para fechar sem entregar.
 pub struct Abandonment<'a> {
     pub reason: &'a str,
     pub note: &'a str,
+}
+
+/// A ref de integração e o commit dela que contém o commit avaliado.
+pub struct Integration {
+    pub reference: String,
+    pub commit: String,
+}
+
+/// A autorização literal do dono para fechar um item mergeado cujo commit ainda reprova.
+pub struct FailedDelivery<'a> {
+    pub author: &'a Author,
+    pub note: &'a str,
+    pub integration: &'a Integration,
 }
 
 /// O que o fechamento grava além do gate: a nota do dono, ou só o aviso de que ela foi descartada.
@@ -324,6 +339,29 @@ pub fn close_verdict(
     })))
 }
 
+/// Todas as perguntas reprovadas entram, as `warn` também; sem nenhuma `refuse` o modo não serve.
+pub fn delivery_verdict(report: &GateReport) -> Result<Vec<FailedQuestion>, CloseRefusal> {
+    let failed: Vec<FailedQuestion> = report
+        .questions
+        .iter()
+        .filter(|question| !question.passed)
+        .map(|question| FailedQuestion {
+            label: question.label.clone(),
+            class: question.class.unwrap_or(QuestionClass::Refuse),
+        })
+        .collect();
+    if failed
+        .iter()
+        .all(|question| question.class == QuestionClass::Warn)
+    {
+        return Err(CloseRefusal::DeliveryUnneeded {
+            only_warn: !failed.is_empty(),
+        });
+    }
+
+    Ok(failed)
+}
+
 pub(crate) fn closing_request(
     tenant: &TenantId,
     author: &Author,
@@ -332,12 +370,7 @@ pub(crate) fn closing_request(
     snapshot: &Snapshot,
     forcing: Option<&Forcing>,
 ) -> AppendRequest {
-    let mut gate = json!({
-        "name": GATE_NAME,
-        "passed": report.passed,
-        "chain_head_seq": report.chain_head.seq,
-        "snapshot": snapshot,
-    });
+    let mut gate = gate_json(report, snapshot);
     if let Some(Forcing::Forced(gate_override)) = forcing {
         gate["forced"] = json!(true);
         gate["overridden"] = json!(gate_override.overridden);
@@ -345,6 +378,45 @@ pub(crate) fn closing_request(
     }
 
     closed_request(tenant, author, current, gate, None)
+}
+
+fn gate_json(report: &GateReport, snapshot: &Snapshot) -> Value {
+    json!({
+        "name": GATE_NAME,
+        "passed": report.passed,
+        "chain_head_seq": report.chain_head.seq,
+        "snapshot": snapshot,
+    })
+}
+
+/// O `gate` fica como foi avaliado, sem `forced`: quem fechou foi a nota do dono em `delivery_failure`.
+pub(crate) fn failed_delivery_request(
+    tenant: &TenantId,
+    current: NodeView,
+    report: &GateReport,
+    snapshot: &Snapshot,
+    failed: &[FailedQuestion],
+    delivery: &FailedDelivery<'_>,
+) -> AppendRequest {
+    let recorded = json!({
+        "note": delivery.note,
+        "failed": failed
+            .iter()
+            .map(|question| json!({ "label": question.label, "class": question.class.as_str() }))
+            .collect::<Vec<_>>(),
+        "integration": {
+            "ref": delivery.integration.reference,
+            "commit": delivery.integration.commit,
+        },
+    });
+
+    closed_request(
+        tenant,
+        delivery.author,
+        current,
+        gate_json(report, snapshot),
+        Some(("delivery_failure", recorded)),
+    )
 }
 
 /// O abandono não avalia o gate: o `gate` tem nome próprio e nunca passa.
@@ -364,7 +436,13 @@ pub(crate) fn abandonment_request(
     });
     let recorded = json!({ "reason": abandonment.reason, "note": abandonment.note });
 
-    closed_request(tenant, author, current, gate, Some(recorded))
+    closed_request(
+        tenant,
+        author,
+        current,
+        gate,
+        Some(("abandonment", recorded)),
+    )
 }
 
 fn closed_request(
@@ -372,13 +450,13 @@ fn closed_request(
     author: &Author,
     current: NodeView,
     gate: Value,
-    abandonment: Option<Value>,
+    extra: Option<(&str, Value)>,
 ) -> AppendRequest {
     let mut data = current.data;
     data["status"] = json!("closed");
     data["gate"] = gate;
-    if let Some(abandonment) = abandonment {
-        data["abandonment"] = abandonment;
+    if let Some((field, value)) = extra {
+        data[field] = value;
     }
     let item = AppendItem {
         body: ItemBody::Node {

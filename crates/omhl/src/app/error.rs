@@ -496,11 +496,54 @@ impl AppError {
         }
     }
 
+    pub(crate) fn failed_delivery_unneeded(only_warn: bool) -> AppError {
+        let next_step = match only_warn {
+            true => {
+                "only warn questions failed: close with --force --note, with the owner's authorization"
+            }
+            false => "every question passed: close without --failed-delivery",
+        };
+
+        AppError::refusal(
+            "failed-delivery-unneeded",
+            "/failed_delivery",
+            Guidance {
+                cause: "no refuse question failed, so the failed delivery has nothing to record",
+                next_step,
+            },
+        )
+    }
+
+    pub(crate) fn delivery_not_on_work_item_branch() -> AppError {
+        AppError::refusal(
+            "delivery-not-on-work-item-branch",
+            "/work_item",
+            Guidance {
+                cause: "the current branch is not the branch of the work item",
+                next_step: "check out the branch of the work item and run the close again",
+            },
+        )
+    }
+
+    pub(crate) fn delivery_not_integrated() -> AppError {
+        AppError::refusal(
+            "delivery-not-integrated",
+            "/work_item",
+            Guidance {
+                cause: "the evaluated commit is not in the local integration branch",
+                next_step: "update the local develop from the remote without a new commit, or ask the owner for --abandon",
+            },
+        )
+    }
+
     pub(crate) fn close_refused(refusal: CloseRefusal) -> AppError {
         let (code, message, questions) = match refusal {
             CloseRefusal::Refused(questions) => ("close-refused", CLOSE_REFUSED_MESSAGE, questions),
             CloseRefusal::Warnings(questions) => {
                 ("close-warnings", CLOSE_WARNINGS_MESSAGE, questions)
+            }
+            CloseRefusal::DeliveryUnneeded { only_warn } => {
+                return AppError::failed_delivery_unneeded(only_warn);
             }
         };
         let details = questions
