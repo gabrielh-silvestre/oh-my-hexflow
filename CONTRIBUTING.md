@@ -29,7 +29,15 @@ Este repositório usa o [GitNexus](https://github.com/abhigyanpatwari/GitNexus) 
 | --- | --- | --- |
 | GitNexus `oh-my-hexflow` | produção, testes e documentação | achar os testes que cobrem um símbolo, antes de rodar só o módulo afetado |
 | GitNexus `oh-my-hexflow-prod` | o mesmo, sem os testes | impacto em produção: no grafo completo, o filtro de testes do GitNexus deixa passar testes unitários |
-| Graphify (`graphify-out/`) | código e documentos versionados, sem os testes | saber por que algo existe e qual documento explica |
+| Graphify (`graphify-out/`) | código e documentos versionados, sem os testes | ter uma visão geral, descobrir onde algo está e navegar entre documentos |
+
+Ao consultar:
+
+- Quem chama o quê, e o impacto de uma mudança, são perguntas para o GitNexus. Ele também erra: já ligou chamada da biblioteca padrão ou de dependência a uma função do projeto com o mesmo nome. Confira no código o que for decisivo.
+- Não filtre o GitNexus pela confiança da ligação: na conferência feita aqui, quase todas as ligações por coincidência de nome, de confiança baixa, estavam certas.
+- No Graphify, a falta de uma ligação não prova que a chamada não existe. Ele perde chamadas entre arquivos e liga por engano nomes iguais, inclusive entre crates que não dependem um do outro.
+- Não conte com o Graphify para saber qual documento explica um trecho de código: ele liga pouco os documentos ao código, e muitos documentos viram um nó só.
+- Quando o código muda, o `graphify update` pode trocar o nome de uma comunidade pelo de um símbolo ou arquivo. Para nomear de novo com o Claude, rode no checkout principal `flock .ignore/graph-sync/lock graphify label . --backend=claude-cli --model=sonnet`.
 
 Instale com `npm install -g gitnexus` e `uv tool install graphifyy`. O script também usa o `jq` para ler JSON, o `rsync` para a cópia e o `flock`, do util-linux, para a trava. Na primeira vez, e quando quiser atualizar tudo, inclusive os documentos, rode no checkout principal:
 
