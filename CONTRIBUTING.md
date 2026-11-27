@@ -36,10 +36,10 @@ As camadas que bloqueiam o merge estão na lista "O merge é bloqueado em camada
 Uma worktree nova nasce com o `target/` vazio, então o primeiro `before-commit` e o primeiro `before-pr` dela são frios. Antes do primeiro `git push` numa worktree nova, rode:
 
 ```bash
-cargo check --workspace --all-targets --release --locked
-cargo clippy --workspace --all-targets --release --locked -- -D warnings
-cargo build --workspace --release --locked
-cargo test --workspace --lib --release --locked --no-run
+cargo check --workspace --all-targets --profile checks --locked
+cargo clippy --workspace --all-targets --profile checks --locked -- -D warnings
+cargo build --workspace --profile checks --locked
+cargo test --workspace --lib --profile checks --locked --no-run
 ```
 
 O `cargo test --no-run` sozinho não aquece os outros comandos.

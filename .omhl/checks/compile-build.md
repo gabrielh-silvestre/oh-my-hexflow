@@ -1,1 +1,1 @@
-Runs `cargo build --workspace --release --locked`; it passes when the workspace builds with the locked dependencies.
+Runs `cargo build --workspace --profile checks --locked`; it passes when the workspace builds with the locked dependencies.
