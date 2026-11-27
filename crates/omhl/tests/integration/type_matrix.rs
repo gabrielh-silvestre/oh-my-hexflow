@@ -279,6 +279,24 @@ fn it_should_refuse_the_close_with_invalid_workflow_config_when_the_main_file_is
     assert_eq!(fixture.get(W1)["data"]["status"], json!("open"));
 }
 
+#[test]
+fn it_should_refuse_the_close_with_main_dir_unknown_before_a_missing_work_item_with_and_without_force()
+ {
+    let fixture = AppFixture::new().without_native();
+
+    let plain = fixture
+        .close("work-items.ghost")
+        .expect_err("the main directory is unknown");
+    let forced = fixture
+        .close_forced("work-items.ghost", "owner approved the override")
+        .expect_err("the main directory is unknown");
+
+    assert_eq!(
+        (code_of(&plain), code_of(&forced)),
+        ("main-dir-unknown", "main-dir-unknown")
+    );
+}
+
 // CA-005: a troca do tipo recusada na gravação
 
 #[test]

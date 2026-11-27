@@ -19,6 +19,9 @@ const GAP: &str = "gaps.g1";
 const ANSWER: &str = "premises.p1";
 const DIRECTIVE: &str = "guidelines.d1";
 const CANARY: &str = "CANARY-8f3a1c";
+const MISSING_WORK_ITEM: &str = "work-items.ghost";
+// Sem a linha do prefixo `chore`, o tipo gravado do W1 deixa de estar na tabela.
+const FEAT_ONLY_WORKFLOW: &str = "version = 1\n\n[prefix.feat]\nrequire = []\n";
 
 // Repositório git real: `omhl close` e `omhl report retro`
 
@@ -1150,6 +1153,132 @@ fn it_should_refuse_force_and_note_that_do_not_come_together() {
     assert_ne!(note_alone.code, Some(0), "stderr: {}", note_alone.stderr);
     assert_eq!(fixture.node_data()["status"], json!("open"));
     assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_close_with_snapshot_dirty_with_and_without_force_before_any_gate_question() {
+    let fixture = Fixture::new();
+    fs::write(fixture.project.dir().join("dirty.txt"), "not committed\n")
+        .expect("the dirty file is written");
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", W1]);
+    let forced = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (json!("snapshot-dirty"), json!("snapshot-dirty"), before),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_close_with_invalid_workflow_config_before_a_missing_work_item() {
+    let fixture = Fixture::new();
+    fixture.write_workflow(INVALID_WORKFLOW);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", MISSING_WORK_ITEM]);
+    let forced = fixture.run(&["close", MISSING_WORK_ITEM, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (
+            json!("invalid-workflow-config"),
+            json!("invalid-workflow-config"),
+            before
+        ),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_close_with_work_item_not_found_with_and_without_force() {
+    let fixture = Fixture::new();
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", MISSING_WORK_ITEM]);
+    let forced = fixture.run(&["close", MISSING_WORK_ITEM, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (
+            json!("work-item-not-found"),
+            json!("work-item-not-found"),
+            before
+        ),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_close_of_a_closed_work_item_with_and_without_force() {
+    let fixture = Fixture::new();
+    fixture.close_output();
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", W1]);
+    let forced = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (
+            json!("invalid-transition"),
+            json!("invalid-transition"),
+            before
+        ),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_close_of_a_closed_work_item_whose_type_is_no_longer_in_the_table() {
+    let fixture = Fixture::new();
+    fixture.close_output();
+    fixture.write_workflow(FEAT_ONLY_WORKFLOW);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", W1]);
+    let forced = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (
+            json!("invalid-transition"),
+            json!("invalid-transition"),
+            before
+        ),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_gate_pr_with_invalid_workflow_config_before_a_missing_work_item() {
+    let fixture = Fixture::new();
+    fixture.write_workflow(INVALID_WORKFLOW);
+    fixture.commit_all();
+
+    let gate = fixture.run(&["gate-pr", MISSING_WORK_ITEM]);
+
+    assert_eq!(
+        error_code(&gate),
+        json!("invalid-workflow-config"),
+        "stderr: {}",
+        gate.stderr
+    );
 }
 
 #[test]

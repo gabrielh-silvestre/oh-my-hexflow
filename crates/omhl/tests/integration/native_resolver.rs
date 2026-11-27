@@ -164,10 +164,24 @@ fn it_should_ask_the_native_question_in_gate_pr_and_close_when_only_the_main_dir
     open_work_item(&fixture);
 
     let gate = fixture.gate_pr(W1);
-    let closed = fixture.close(W1).expect("the work item is closed");
+    let refusal = fixture
+        .close(W1)
+        .expect_err("the failing warn question refuses the close without force");
+    let refused_labels: Vec<String> = refusal["error"]["details"]
+        .as_array()
+        .expect("the refusal lists its failing questions")
+        .iter()
+        .map(|detail| {
+            detail["context"]["label"]
+                .as_str()
+                .expect("a label")
+                .to_owned()
+        })
+        .collect();
 
+    assert_eq!(refusal["error"]["code"], json!("close-warnings"));
     assert!(asked(&gate).contains(&RUN_TESTS.to_owned()));
-    assert!(asked(&closed["report"]).contains(&RUN_TESTS.to_owned()));
+    assert!(refused_labels.contains(&RUN_TESTS.to_owned()));
 }
 
 #[test]

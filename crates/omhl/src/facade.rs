@@ -322,6 +322,20 @@ impl<'d> Omhl<'d> {
         Ok(GateReport::assemble(GATE_NAME, head, reports))
     }
 
+    /// Checa a transição antes do tipo: um item fechado pode já não ter tipo válido na tabela.
+    pub fn ensure_open(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+    ) -> Result<NodeView, OmhlError> {
+        let current = self.find_work_item(tenant, work_item)?;
+        if current.data["status"] == "closed" {
+            return Err(OmhlError::rule(RuleCode::InvalidTransition, "/work_item"));
+        }
+
+        Ok(current)
+    }
+
     /// Os snapshots têm de ser o `HEAD` e a árvore dele, de uma árvore limpa, conferidos na sonda antes do gate.
     pub fn close_work_item(
         &mut self,
@@ -333,10 +347,7 @@ impl<'d> Omhl<'d> {
         closing: &Closing<'_>,
     ) -> Result<ClosedWorkItem, CloseError> {
         let session = self.session.resolve()?;
-        let current = self.find_work_item(tenant, work_item)?;
-        if current.data["status"] == "closed" {
-            return Err(OmhlError::rule(RuleCode::InvalidTransition, "/work_item").into());
-        }
+        let current = self.ensure_open(tenant, work_item)?;
         let head_commit = guard::probe_refusal(&self.probe.probe(), &snapshots.head_commit);
         let head_tree = guard::probe_refusal(
             &self.probe.probe_tree(TreeSource::Head),

@@ -231,6 +231,16 @@ impl AppFixture {
         self.run(&Caller::cli(), &action)
     }
 
+    /// O `close` com `--force --note`: a nota é o que o CLI passa ao engine.
+    pub fn close_forced(&self, work_item: &str, note: &str) -> Result<Value, Value> {
+        let action = Action::Close {
+            work_item: work_item.to_owned(),
+            note: Some(note.to_owned()),
+        };
+
+        self.run(&Caller::cli(), &action)
+    }
+
     /// As relations do tipo, inclusive as de extremo aposentado, como pares `(from, to)`.
     pub fn relation_edges(&self, relation_type: &str) -> Vec<(String, String)> {
         let query = RelationQuery {

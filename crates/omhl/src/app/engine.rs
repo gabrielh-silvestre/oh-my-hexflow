@@ -201,6 +201,7 @@ impl Engine<'_> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshots = self.probe_gate_snapshots()?;
         let enabled = self.resolve_native()?;
+        self.omhl.ensure_open(&self.tenant, &work_item)?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
         // Lida antes de gravar: o `close` nunca devolve erro depois do record de fechamento.
         let mut facts = self.retro_facts(&work_item)?;
