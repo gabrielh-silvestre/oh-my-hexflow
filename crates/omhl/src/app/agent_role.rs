@@ -17,6 +17,7 @@ const ASSIGNING_PROGRAMS: [&str; 5] = ["export", "declare", "typeset", "readonly
 const PRINTING_PROGRAMS: [&str; 2] = ["declare", "typeset"];
 const AGENT_FILE_MAX_BYTES: u64 = 64 * 1024;
 const OWNER_OVERRIDE: &str = "--owner-override";
+const MAX_BODY_DEPTH: usize = 3;
 const BLANKS: [char; 2] = [' ', '\t'];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,18 +119,23 @@ impl RoleChange {
     }
 }
 
-/// Só a palavra exata: o `omhl` não aceita abreviação de opção longa; o corpo de `bash -c` é lido por palavras.
+/// Só a palavra exata: o `omhl` não aceita abreviação de opção longa; sem programa resolvido, toda palavra conta.
 fn uses_owner_override(line: &CommandLine) -> bool {
-    line.commands.iter().any(|simple| {
-        let (_, program, args) = simple.split();
-        if !(line.mentions_omhl || program.is_some_and(is_omhl_word)) {
-            return false;
-        }
+    line.mentions_omhl && has_owner_override(line, 0)
+}
 
-        args.iter()
-            .flat_map(|arg| arg.split_whitespace())
-            .any(|word| word == OWNER_OVERRIDE || word.starts_with("--owner-override="))
-    })
+/// Cada palavra é também relida como linha de comando (`bash -c '...'`), até `MAX_BODY_DEPTH` níveis.
+fn has_owner_override(line: &CommandLine, depth: usize) -> bool {
+    line.commands
+        .iter()
+        .flat_map(SimpleCommand::words)
+        .any(|word| {
+            word == OWNER_OVERRIDE
+                || word.starts_with("--owner-override=")
+                || (depth < MAX_BODY_DEPTH
+                    && word.contains(OWNER_OVERRIDE)
+                    && read_command(word).is_ok_and(|body| has_owner_override(&body, depth + 1)))
+        })
 }
 
 /// A primeira mudança de `OMHL_ROLE` que algum comando faz: como prefixo (também depois de embrulho) ou como argumento de `export` e afins.

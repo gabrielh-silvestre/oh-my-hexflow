@@ -1788,6 +1788,22 @@ impl Fixture {
         fixture
     }
 
+    /// Como `merged`, com o `workflow.toml` já na `main`: a faixa a partir dela só toca fonte.
+    fn merged_with_the_workflow_on_main(natives: &[&str]) -> Fixture {
+        let fixture = fixture_with_natives(natives);
+        fixture.commit_all();
+        fixture.git(&["checkout", "-b", ITEM_BRANCH]);
+        fs::write(fixture.project.dir().join("feature.txt"), "feature\n")
+            .expect("the feature file is written");
+        fixture.commit_all();
+        fixture.git(&["branch", "develop", "main"]);
+        fixture.git(&["checkout", "develop"]);
+        fixture.git(&["merge", "--no-ff", "-m", "merge the item", ITEM_BRANCH]);
+        fixture.git(&["checkout", ITEM_BRANCH]);
+
+        fixture
+    }
+
     /// Item mergeado na `develop` com merge commit; o `HEAD` volta para a ponta do item.
     fn merged(natives: &[&str]) -> Fixture {
         let fixture = Fixture::unmerged(natives);
@@ -1920,7 +1936,7 @@ const REVIEW: &str = "checks.config-loosening-review";
 #[test]
 fn it_should_leave_the_review_question_out_of_the_failed_ones_when_the_base_range_touches_only_source()
  {
-    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN, REVIEW]);
+    let fixture = Fixture::merged_with_the_workflow_on_main(&[RUN_TESTS, CI_GREEN, REVIEW]);
 
     let closed = fixture.run(&[
         "close",

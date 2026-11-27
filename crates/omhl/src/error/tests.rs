@@ -143,3 +143,24 @@ fn it_should_cover_both_paths_in_the_next_step_of_origin_required() {
 
     assert_eq!(covered, (true, true));
 }
+
+#[test]
+fn it_should_name_the_owner_and_owner_override_in_the_next_step_of_type_change_loosens() {
+    let next_step = RuleCode::TypeChangeLoosens
+        .guidance()
+        .expect("type-change-loosens has guidance")
+        .next_step;
+
+    assert!(next_step.contains("owner"), "{next_step}");
+    assert!(next_step.contains("--owner-override"), "{next_step}");
+}
+
+#[test]
+fn it_should_explain_in_the_cause_of_type_change_loosens_that_the_new_type_asks_for_less() {
+    let cause = RuleCode::TypeChangeLoosens
+        .guidance()
+        .expect("type-change-loosens has guidance")
+        .cause;
+
+    assert!(cause.contains("type"), "{cause}");
+}

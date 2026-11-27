@@ -16,6 +16,7 @@ mod check_run;
 mod check_run_byproduct;
 mod check_run_tree;
 mod clock_ids;
+mod command_pages;
 mod directives_flow_e2e;
 mod error_codes;
 mod ext_scan;

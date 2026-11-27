@@ -789,8 +789,13 @@ fn to_action(
             work_item,
             failed_delivery: true,
             note: Some(note),
+            base,
             ..
-        } => Action::CloseFailedDelivery { work_item, note },
+        } => Action::CloseFailedDelivery {
+            work_item,
+            note,
+            base,
+        },
         ActionCommand::Close {
             work_item,
             note,

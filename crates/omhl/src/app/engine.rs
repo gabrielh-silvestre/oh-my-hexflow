@@ -121,9 +121,11 @@ impl Engine<'_> {
                 note,
                 base,
             } => self.close(caller, work_item, note.as_deref(), base.as_deref()),
-            Action::CloseFailedDelivery { work_item, note } => {
-                self.close_failed_delivery(caller, work_item, note)
-            }
+            Action::CloseFailedDelivery {
+                work_item,
+                note,
+                base,
+            } => self.close_failed_delivery(caller, work_item, note, base.as_deref()),
             Action::Abandon {
                 work_item,
                 reason,
@@ -319,14 +321,15 @@ impl Engine<'_> {
         caller: &Caller,
         work_item: &str,
         note: &str,
+        base: Option<&str>,
     ) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         bounded_text(note, "/note")?;
         let snapshots = self.probe_gate_snapshots()?;
-        let enabled = self.resolve_native()?;
+        let (enabled, _) = self.resolve_native_for_pr(base)?;
         let node = self.omhl.ensure_open(&self.tenant, &work_item)?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
-        let (_, review_required) = self.review_base(None, &enabled)?;
+        let (_, review_required) = self.review_base(base, &enabled)?;
         let integration = self.read_integration(&node, &snapshots)?;
         let mut facts = self.retro_facts(&work_item, true)?;
         let author = caller.author();
@@ -641,7 +644,8 @@ impl Engine<'_> {
             return Ok(None);
         }
 
-        let prefixes = self.branch_prefixes(id, type_name, data)?;
+        let stored = self.omhl.get(&self.tenant, id)?.map(|node| node.data);
+        let prefixes = self.branch_prefixes(id, type_name, stored.as_ref().unwrap_or(data))?;
 
         Ok(match prefixes.as_slice() {
             [only] => Some(only.clone()),

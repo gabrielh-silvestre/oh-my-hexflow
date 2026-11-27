@@ -241,10 +241,10 @@ impl GitProbe {
 
     /// `None` quando `base` não resolve a um commit.
     pub fn merge_base(&self, base: &str) -> Result<Option<String>, ProbeError> {
-        if self.ref_commit(base)?.is_none() {
+        let Some(commit) = self.ref_commit(base)? else {
             return Ok(None);
-        }
-        self.line(&["merge-base", base, "HEAD"]).map(Some)
+        };
+        self.line(&["merge-base", &commit, "HEAD"]).map(Some)
     }
 
     pub fn changed_names(&self, merge_base: &str) -> Result<Vec<String>, ProbeError> {

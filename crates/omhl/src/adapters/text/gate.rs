@@ -1,7 +1,9 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::doc::{Closing, Join, Line, Marker, field, has_items, items, joined, opt_text, text};
+use super::doc::{
+    Closing, Join, Line, Marker, field, has_items, items, joined, one_line, opt_text, text,
+};
 use super::error;
 use super::report::Retro;
 use super::simple::Append;
@@ -196,8 +198,9 @@ fn review_base_line(value: &Value) -> Option<Line> {
     }
     let text = match review["base"].as_str() {
         Some(base) => format!(
-            "base {base}, merge-base {}, triggering paths {}",
-            review["merge_base"].as_str().unwrap_or_default(),
+            "base {}, merge-base {}, triggering paths {}",
+            one_line(base),
+            one_line(review["merge_base"].as_str().unwrap_or_default()),
             joined(review, "paths"),
         ),
         None => "no base".to_owned(),

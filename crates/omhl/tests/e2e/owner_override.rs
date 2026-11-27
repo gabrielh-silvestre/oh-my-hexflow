@@ -240,3 +240,81 @@ fn it_should_exit_2_for_base_outside_gate_pr_and_close() {
         assert_eq!(output.code, Some(2), "{args:?}: {}", output.stderr);
     }
 }
+
+// guidance por comando
+
+fn guidance_of(stderr: &str) -> (String, String) {
+    let error = &json_line(stderr)["error"];
+    let cause = error["message"].as_str().expect("a message").to_owned();
+    let next_step = error["details"][0]["next_step"]
+        .as_str()
+        .expect("a next step")
+        .to_owned();
+
+    (cause, next_step)
+}
+
+#[test]
+fn it_should_say_in_the_cause_that_retiring_a_check_is_the_owners_task() {
+    let p = orphaned_check_project();
+
+    let output = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
+
+    let (cause, _) = guidance_of(&output.stderr);
+    assert!(cause.contains("retiring a check"), "{cause}");
+    assert!(cause.contains("owner"), "{cause}");
+}
+
+#[test]
+fn it_should_name_owner_override_as_the_owners_outside_claude_code_in_the_retire_next_step() {
+    let p = orphaned_check_project();
+
+    let output = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
+
+    let (_, next_step) = guidance_of(&output.stderr);
+    assert!(next_step.contains("--owner-override"), "{next_step}");
+    assert!(next_step.contains("owner"), "{next_step}");
+    assert!(next_step.contains("outside Claude Code"), "{next_step}");
+}
+
+#[test]
+fn it_should_not_tell_the_agent_to_retire_the_check_in_the_retire_next_step() {
+    let p = orphaned_check_project();
+
+    let output = omhl_in(&p, &["check", "retire", "checks.gate"]).run();
+
+    let (cause, next_step) = guidance_of(&output.stderr);
+    assert!(!next_step.contains("retire the check"), "{next_step}");
+    assert!(!cause.contains("revised check"), "{cause}");
+}
+
+#[test]
+fn it_should_keep_the_revised_check_cause_on_the_load_refusal() {
+    let p = loosened_check_project();
+
+    let output = omhl_in(&p, &["load"]).run();
+
+    let (cause, _) = guidance_of(&output.stderr);
+    assert!(cause.contains("revised check"), "{cause}");
+}
+
+#[test]
+fn it_should_give_the_type_change_refusal_a_cause_about_the_type() {
+    let (p, base) = feat_work_item_project();
+
+    let output = change_type_to_chore(&p, &base, &[]);
+
+    let (cause, _) = guidance_of(&output.stderr);
+    assert!(cause.contains("type"), "{cause}");
+}
+
+#[test]
+fn it_should_name_the_owner_and_owner_override_in_the_type_change_next_step() {
+    let (p, base) = feat_work_item_project();
+
+    let output = change_type_to_chore(&p, &base, &[]);
+
+    let (_, next_step) = guidance_of(&output.stderr);
+    assert!(next_step.contains("owner"), "{next_step}");
+    assert!(next_step.contains("--owner-override"), "{next_step}");
+}

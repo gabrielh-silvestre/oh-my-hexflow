@@ -184,6 +184,41 @@ fn it_should_describe_the_config_loosening_review_in_one_english_sentence() {
     assert!(!how.contains('\n'), "{how}");
 }
 
+fn config_loosening_review_how() -> &'static str {
+    NativeBase
+        .checks()
+        .iter()
+        .find(|check| check.id == CONFIG_LOOSENING_REVIEW)
+        .expect("the review check is in the catalog")
+        .how
+}
+
+#[test]
+fn it_should_name_the_two_reviewed_paths_in_the_config_loosening_review_how() {
+    let how = config_loosening_review_how();
+
+    assert!(how.contains(".omhl/workflow.toml"), "{how}");
+    assert!(how.contains(".omhl/checks/"), "{how}");
+}
+
+#[test]
+fn it_should_leave_the_attestation_to_the_human_in_the_config_loosening_review_how() {
+    let how = config_loosening_review_how();
+
+    assert!(how.contains("the human attest"), "{how}");
+}
+
+#[test]
+fn it_should_not_tell_the_agent_to_attest_in_the_config_loosening_review_how() {
+    let how = config_loosening_review_how();
+
+    assert!(!how.contains("attest the result"), "{how}");
+    assert!(
+        !how.contains("any check, gate or lint configuration"),
+        "{how}"
+    );
+}
+
 #[test]
 fn it_should_reserve_the_config_loosening_review_id_as_a_check() {
     let native = NativeBase;
