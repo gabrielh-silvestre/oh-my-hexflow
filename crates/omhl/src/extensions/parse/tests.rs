@@ -1047,3 +1047,225 @@ fn it_should_name_the_one_command_per_check_practice_in_the_two_streams_error() 
     );
     assert!(found[0].message.contains("one command per check"));
 }
+
+mod loosening_criteria {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use super::super::{CheckToml, WhenToml};
+    use crate::native::NativeBase;
+    use crate::workflow::config::{PromotionConfig, RequireAtom, SpecsConfig, WorkflowConfig};
+
+    const REFERENCE: &str = "skills/review/references/config-loosening-review.md";
+    const SECTIONS: [&str; 4] = ["Criteria", "Scope", "Input", "What the reviewer returns"];
+    const WORKFLOW_KEYS: [&str; 8] = [
+        "specs.dir",
+        "specs.max_lines",
+        "specs.placeholders",
+        "specs.cite_business_premise",
+        "promotion.min_work_items",
+        "native.checks",
+        "prefix",
+        "require",
+    ];
+    const CHECK_FIELDS: [&str; 9] = [
+        "blocking",
+        "how",
+        "after",
+        "when",
+        "concern",
+        "variant",
+        "run",
+        "timeout_secs",
+        "expect",
+    ];
+    const WHEN_FIELDS: [&str; 3] = ["event", "matcher", "vocabulary"];
+    const LOOSENING_CASES: [&str; 12] = [
+        "blocking true to false",
+        "removing run",
+        "REQUIRED_EVENTS",
+        "deleting or retiring the check",
+        "rising max_lines",
+        "item leaving placeholders",
+        "cite_business_premise going from true to false",
+        "native activation item going from on to off",
+        "closure",
+        "floor",
+        "transitive",
+        "recorded type",
+    ];
+
+    fn reference_text() -> String {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugin")
+            .join(REFERENCE);
+        fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{} is readable: {error}", path.display()))
+    }
+
+    fn missing_names<'a>(text: &str, names: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
+        names
+            .into_iter()
+            .filter(|name| !text.contains(name))
+            .collect()
+    }
+
+    fn has_section(text: &str, title: &str) -> bool {
+        text.lines()
+            .any(|line| line.starts_with('#') && line.trim_start_matches('#').trim() == title)
+    }
+
+    // Sem `..` e sem braço curinga: um campo, átomo ou chave novo quebra a compilação até entrar na lista.
+    fn required_names() -> Vec<String> {
+        let WorkflowConfig {
+            specs,
+            promotion,
+            native: _,
+            prefixes,
+        } = WorkflowConfig::default();
+        let SpecsConfig {
+            dir: _,
+            max_lines: _,
+            placeholders: _,
+            cite_business_premise: _,
+        } = specs;
+        let PromotionConfig { min_work_items: _ } = promotion;
+        let check: CheckToml =
+            toml::from_str("blocking = true\n[when]\nevent = \"before-pr\"\n").expect("check");
+        let CheckToml {
+            blocking: _,
+            how: _,
+            after: _,
+            when,
+            concern: _,
+            variant: _,
+            run: _,
+            timeout_secs: _,
+            expect: _,
+        } = check;
+        let WhenToml {
+            event: _,
+            matcher: _,
+            vocabulary: _,
+        } = when;
+
+        let atom = |atom: RequireAtom| match atom {
+            RequireAtom::BusinessPremise => "business-premise",
+            RequireAtom::TechnicalPremiseConfirmed => "technical-premise-confirmed",
+            RequireAtom::AgentPremise => "agent-premise",
+            RequireAtom::Spec => "spec",
+        };
+        let atoms = [
+            RequireAtom::BusinessPremise,
+            RequireAtom::TechnicalPremiseConfirmed,
+            RequireAtom::AgentPremise,
+            RequireAtom::Spec,
+        ]
+        .map(atom);
+
+        let default_types = prefixes.keys().map(String::as_str);
+        let native_ids = NativeBase.checks().iter().map(|check| check.id);
+
+        WORKFLOW_KEYS
+            .into_iter()
+            .chain(atoms)
+            .chain(CHECK_FIELDS)
+            .chain(WHEN_FIELDS)
+            .chain(default_types)
+            .chain(native_ids)
+            .chain(LOOSENING_CASES)
+            .map(str::to_owned)
+            .collect()
+    }
+
+    fn names_without(removed: &str) -> String {
+        required_names()
+            .into_iter()
+            .filter(|name| name != removed)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn it_should_find_the_loosening_review_reference_with_its_four_sections() {
+        let text = reference_text();
+
+        let missing: Vec<_> = SECTIONS
+            .into_iter()
+            .filter(|title| !has_section(&text, title))
+            .collect();
+
+        assert_eq!(missing, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn it_should_name_every_key_atom_field_type_and_case_in_the_criteria_text() {
+        let text = reference_text();
+        let names = required_names();
+
+        let missing = missing_names(&text, names.iter().map(String::as_str));
+
+        assert_eq!(missing, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn it_should_list_the_default_types_and_native_ids_as_required_names() {
+        let names = required_names();
+
+        assert!(
+            ["feat", "docs", "checks.config-loosening-review"]
+                .iter()
+                .all(|expected| names.iter().any(|name| name == expected))
+        );
+    }
+
+    #[test]
+    fn it_should_name_a_workflow_key_absent_from_the_text() {
+        let text = names_without("specs.max_lines");
+
+        assert_eq!(
+            missing_names(&text, required_names().iter().map(String::as_str)),
+            vec!["specs.max_lines"]
+        );
+    }
+
+    #[test]
+    fn it_should_name_an_atom_absent_from_the_text() {
+        let text = names_without("agent-premise");
+
+        assert_eq!(
+            missing_names(&text, required_names().iter().map(String::as_str)),
+            vec!["agent-premise"]
+        );
+    }
+
+    #[test]
+    fn it_should_name_a_check_field_absent_from_the_text() {
+        let text = names_without("timeout_secs");
+
+        assert_eq!(
+            missing_names(&text, required_names().iter().map(String::as_str)),
+            vec!["timeout_secs"]
+        );
+    }
+
+    #[test]
+    fn it_should_name_a_default_type_absent_from_the_text() {
+        let text = names_without("bugfix");
+
+        assert_eq!(
+            missing_names(&text, required_names().iter().map(String::as_str)),
+            vec!["bugfix"]
+        );
+    }
+
+    #[test]
+    fn it_should_name_a_loosening_case_absent_from_the_text() {
+        let text = names_without("removing run");
+
+        assert_eq!(
+            missing_names(&text, required_names().iter().map(String::as_str)),
+            vec!["removing run"]
+        );
+    }
+}
