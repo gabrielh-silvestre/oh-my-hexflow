@@ -36,6 +36,11 @@ pub enum Action {
         work_item: String,
         note: Option<String>,
     },
+    Abandon {
+        work_item: String,
+        reason: String,
+        note: String,
+    },
     Verify,
     Load {
         dry_run: bool,

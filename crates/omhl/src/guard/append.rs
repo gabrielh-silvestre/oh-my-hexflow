@@ -226,6 +226,13 @@ impl Guard<'_, '_> {
         if node.field("status") == Some("closed") {
             return Err(node.error(RuleCode::UseCloseWorkItem, "body/data/status"));
         }
+        // O `close` copia os dados atuais para o registro fechado: um campo solto sobreviveria a ele.
+        if let Some(field) = ["abandonment", "delivery_failure"]
+            .into_iter()
+            .find(|field| node.has_field(field))
+        {
+            return Err(node.error(RuleCode::UseCloseWorkItem, &format!("body/data/{field}")));
+        }
         if node.base.is_none() {
             return Ok(());
         }

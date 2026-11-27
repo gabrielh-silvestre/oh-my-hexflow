@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use hexlog::{
     AppendRequest, HexlogError, ItemBody, Limits, Lineage, NodeView, PageRequest, SemanticId,
-    Snapshot, TenantId,
+    Snapshot, SnapshotKind, TenantId,
 };
 use serde_json::{Value, json};
 
@@ -18,7 +18,7 @@ use crate::facade::{Closing, Omhl, WorkRequirements};
 use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::branch::{branch_prefix, work_item_id};
 use crate::ports::git::GitProbe;
-use crate::pr_gate::{Forcing, GateSnapshots};
+use crate::pr_gate::{Abandonment, Forcing, GateSnapshots};
 use crate::probe::{
     DevelopMark, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
 };
@@ -58,6 +58,19 @@ pub(super) fn parse_at<T>(
     pointer: &str,
 ) -> Result<T, AppError> {
     parse(text).map_err(|error| AppError::from(error.at(pointer)))
+}
+
+const ABANDON_TEXT_MAX: usize = 500;
+
+fn bounded_text(text: &str, pointer: &str) -> Result<(), AppError> {
+    match (1..=ABANDON_TEXT_MAX).contains(&text.chars().count()) {
+        true => Ok(()),
+        false => Err(AppError::at_pointer(
+            "INVALID_INPUT",
+            pointer,
+            "must have 1 to 500 characters",
+        )),
+    }
 }
 
 fn reproducible(probed: Result<ProbeOutcome, ProbeError>) -> Result<Snapshot, AppError> {
@@ -101,6 +114,11 @@ impl Engine<'_> {
             }
             Action::GatePr { work_item } => self.gate_pr(work_item),
             Action::Close { work_item, note } => self.close(caller, work_item, note.as_deref()),
+            Action::Abandon {
+                work_item,
+                reason,
+                note,
+            } => self.abandon(caller, work_item, reason, note),
             Action::Verify => {
                 let report = self.omhl.verify_chain(&self.tenant, None)?;
 
@@ -227,6 +245,39 @@ impl Engine<'_> {
         }
 
         Ok(output::closed(&closed, retro(&facts).as_ref()))
+    }
+
+    fn abandon(
+        &mut self,
+        caller: &Caller,
+        work_item: &str,
+        reason: &str,
+        note: &str,
+    ) -> Result<Value, AppError> {
+        let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
+        bounded_text(reason, "/reason")?;
+        bounded_text(note, "/note")?;
+        self.omhl.ensure_open(&self.tenant, &work_item)?;
+        let head = self
+            .probe
+            .head_facts()
+            .ok()
+            .and_then(|facts| facts.head)
+            .and_then(|head| Snapshot::new(SnapshotKind::GitCommit, &head).ok())
+            .ok_or_else(|| AppError::probe_failed("HEAD has no commit"))?;
+        let abandonment = Abandonment { reason, note };
+        let outcome = self.omhl.abandon_work_item(
+            &self.tenant,
+            &work_item,
+            &caller.author(),
+            &head,
+            &abandonment,
+        )?;
+
+        Ok(json!({
+            "outcome": output::appended(&outcome),
+            "abandoned": { "reason": reason, "note": note },
+        }))
     }
 
     fn project(&mut self) -> Result<Value, AppError> {

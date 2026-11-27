@@ -4,7 +4,7 @@ use hexlog::{
     AppendItem, AppendRequest, Author, FieldName, ItemBody, ListFilter, NodeView, RelationTypeName,
     Scalar, SemanticId, Snapshot, SnapshotKind, TenantId, TypeName,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::extensions::plan::LOADER_CLIENT;
 use crate::gate::{
@@ -18,6 +18,7 @@ use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 use crate::workflow::retro::GateOverride;
 
 pub const GATE_NAME: &str = "pull-request";
+const ABANDONED_GATE_NAME: &str = "abandoned";
 pub const REQUIRED_EVENTS: [&str; 3] = RUNNABLE_EVENTS;
 pub const NATIVE_SNAPSHOT: SnapshotKind = SnapshotKind::GitCommit;
 
@@ -280,6 +281,12 @@ pub enum CloseRefusal {
     Warnings(Vec<QuestionReport>),
 }
 
+/// O motivo e a autorização literal do dono para fechar sem entregar.
+pub struct Abandonment<'a> {
+    pub reason: &'a str,
+    pub note: &'a str,
+}
+
 /// O que o fechamento grava além do gate: a nota do dono, ou só o aviso de que ela foi descartada.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Forcing {
@@ -325,18 +332,53 @@ pub(crate) fn closing_request(
     snapshot: &Snapshot,
     forcing: Option<&Forcing>,
 ) -> AppendRequest {
-    let mut data = current.data;
-    data["status"] = json!("closed");
-    data["gate"] = json!({
+    let mut gate = json!({
         "name": GATE_NAME,
         "passed": report.passed,
         "chain_head_seq": report.chain_head.seq,
         "snapshot": snapshot,
     });
     if let Some(Forcing::Forced(gate_override)) = forcing {
-        data["gate"]["forced"] = json!(true);
-        data["gate"]["overridden"] = json!(gate_override.overridden);
-        data["gate"]["note"] = json!(gate_override.note);
+        gate["forced"] = json!(true);
+        gate["overridden"] = json!(gate_override.overridden);
+        gate["note"] = json!(gate_override.note);
+    }
+
+    closed_request(tenant, author, current, gate, None)
+}
+
+/// O abandono não avalia o gate: o `gate` tem nome próprio e nunca passa.
+pub(crate) fn abandonment_request(
+    tenant: &TenantId,
+    author: &Author,
+    current: NodeView,
+    chain_head_seq: u64,
+    snapshot: &Snapshot,
+    abandonment: &Abandonment<'_>,
+) -> AppendRequest {
+    let gate = json!({
+        "name": ABANDONED_GATE_NAME,
+        "passed": false,
+        "chain_head_seq": chain_head_seq,
+        "snapshot": snapshot,
+    });
+    let recorded = json!({ "reason": abandonment.reason, "note": abandonment.note });
+
+    closed_request(tenant, author, current, gate, Some(recorded))
+}
+
+fn closed_request(
+    tenant: &TenantId,
+    author: &Author,
+    current: NodeView,
+    gate: Value,
+    abandonment: Option<Value>,
+) -> AppendRequest {
+    let mut data = current.data;
+    data["status"] = json!("closed");
+    data["gate"] = gate;
+    if let Some(abandonment) = abandonment {
+        data["abandonment"] = abandonment;
     }
     let item = AppendItem {
         body: ItemBody::Node {

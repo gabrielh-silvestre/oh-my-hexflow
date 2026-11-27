@@ -10,6 +10,15 @@
           "title": {"type": "string", "minLength": 1, "maxLength": 200},
           "type": {"type": "string", "minLength": 1, "maxLength": 64},
           "status": {"enum": ["open", "closed"]},
+          "abandonment": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reason", "note"],
+            "properties": {
+              "reason": {"type": "string", "minLength": 1, "maxLength": 500},
+              "note": {"type": "string", "minLength": 1, "maxLength": 500}
+            }
+          },
           "gate": {
             "type": "object",
             "additionalProperties": false,
@@ -49,6 +58,15 @@
           "title": {"type": "string", "minLength": 1, "maxLength": 200},
           "type": {"type": "string", "minLength": 1, "maxLength": 64},
           "status": {"enum": ["open", "closed"]},
+          "abandonment": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reason", "note"],
+            "properties": {
+              "reason": {"type": "string", "minLength": 1, "maxLength": 500},
+              "note": {"type": "string", "minLength": 1, "maxLength": 500}
+            }
+          },
           "gate": {
             "type": "object",
             "additionalProperties": false,

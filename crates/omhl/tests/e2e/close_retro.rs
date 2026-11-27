@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 use support::child::{Output, omhl, omhl_json};
 use support::git::git_in;
-use support::omhl::work_item_data;
+use support::omhl::{PR_7, pull_request_data, work_item_data};
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
@@ -1306,4 +1306,298 @@ fn it_should_ask_gate_pr_the_same_failing_questions_and_classes_that_close_refus
         assert_eq!(gate["passed"], json!(false));
         assert_eq!(asked, refused, "natives {natives:?}");
     }
+}
+
+// `close --abandon`: fecha sem avaliar o gate (CA-011 a CA-013 e CA-015)
+
+const ABANDON_REASON: &str = "the owner dropped the feature";
+const ABANDON_NOTE: &str = "authorized by the owner";
+
+/// Os dois tipos de nó que o `close` aceita: o work item da fixture e um pull-request.
+fn closable_ids() -> [&'static str; 2] {
+    [W1, PR_7]
+}
+
+impl Fixture {
+    fn with_pull_request() -> Fixture {
+        let fixture = Fixture::new();
+        fixture.append(vec![node(
+            PR_7,
+            "pull-request",
+            pull_request_data("Add gate"),
+        )]);
+
+        fixture
+    }
+
+    fn abandon_cmd(&self, id: &str) -> support::child::Cmd {
+        omhl_json(&[
+            "close",
+            id,
+            "--abandon",
+            "--reason",
+            ABANDON_REASON,
+            "--note",
+            ABANDON_NOTE,
+        ])
+        .cwd(self.project.dir())
+        .xdg(self.project.xdg())
+    }
+
+    fn abandon(&self, id: &str) -> Output {
+        self.abandon_cmd(id).run()
+    }
+
+    fn data_of(&self, id: &str) -> Value {
+        json_line(&self.run(&["get", id]).stdout)["node"]["data"].clone()
+    }
+
+    fn head(&self) -> String {
+        let output = git_in(self.project.dir(), &["rev-parse", "HEAD"]);
+
+        String::from_utf8(output.stdout)
+            .expect("the HEAD id is text")
+            .trim()
+            .to_owned()
+    }
+}
+
+#[test]
+fn it_should_abandon_with_a_dirty_tree_and_an_invalid_workflow_and_record_the_closing() {
+    for id in closable_ids() {
+        let fixture = Fixture::with_pull_request();
+        fs::write(fixture.project.dir().join("dirty.txt"), "not committed\n")
+            .expect("the dirty file is written");
+        fixture.write_workflow(INVALID_WORKFLOW);
+
+        let closed = fixture.abandon(id);
+
+        assert_eq!(closed.code, Some(0), "{id} stderr: {}", closed.stderr);
+        let data = fixture.data_of(id);
+        assert_eq!(data["status"], json!("closed"), "{id}");
+        assert_eq!(
+            data["abandonment"],
+            json!({ "reason": ABANDON_REASON, "note": ABANDON_NOTE }),
+            "{id}"
+        );
+        assert_eq!(data["gate"]["name"], json!("abandoned"), "{id}");
+        assert_eq!(data["gate"]["passed"], json!(false), "{id}");
+        assert_eq!(
+            data["gate"]["snapshot"]["kind"],
+            json!("git-commit"),
+            "{id}"
+        );
+        assert_eq!(
+            data["gate"]["snapshot"]["id"],
+            json!(fixture.head()),
+            "{id}"
+        );
+        let abandoned = json_line(&closed.stdout)["abandoned"].clone();
+        assert_eq!(abandoned, data["abandonment"], "{id}");
+    }
+}
+
+#[test]
+fn it_should_record_the_session_of_the_abandonment() {
+    let fixture = Fixture::new();
+
+    let closed = fixture
+        .abandon_cmd(W1)
+        .env("CLAUDE_CODE_SESSION_ID", "sess-abandon-1")
+        .run();
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let sessions = fixture.run(&["report", "sessions"]).stdout;
+    assert!(sessions.contains("sess-abandon-1"), "{sessions}");
+}
+
+#[test]
+fn it_should_refuse_the_abandonment_with_probe_failed_and_write_nothing_without_a_commit() {
+    let project = Project::new("acme");
+    let init = git_in(project.dir(), &["init", "-b", "main"]);
+    assert!(init.status.success(), "git init failed");
+    let fixture = Fixture { project };
+    fixture.append(vec![node(W1, "work-item", typed(work_item_data("t")))]);
+    let before = fixture.chain();
+
+    let closed = fixture.abandon(W1);
+
+    assert_eq!(
+        (closed.code, error_code(&closed), fixture.chain()),
+        (Some(1), json!("probe-failed"), before),
+        "stderr: {}",
+        closed.stderr
+    );
+}
+
+#[test]
+fn it_should_exit_two_for_the_abandon_argument_combinations_that_do_not_hold() {
+    let fixture = Fixture::new();
+    let combinations: [&[&str]; 8] = [
+        &["close", W1, "--abandon", "--note", "n"],
+        &["close", W1, "--abandon", "--reason", "r"],
+        &["close", W1, "--reason", "r"],
+        &["close", W1, "--force"],
+        &["close", W1, "--note", "n"],
+        &[
+            "close",
+            W1,
+            "--abandon",
+            "--force",
+            "--reason",
+            "r",
+            "--note",
+            "n",
+        ],
+        &[
+            "close",
+            W1,
+            "--abandon",
+            "--failed-delivery",
+            "--reason",
+            "r",
+            "--note",
+            "n",
+        ],
+        &[
+            "close",
+            W1,
+            "--abandon",
+            "--base",
+            "main",
+            "--reason",
+            "r",
+            "--note",
+            "n",
+        ],
+    ];
+    let before = fixture.chain();
+
+    for args in combinations {
+        let closed = fixture.run(args);
+
+        assert_eq!(closed.code, Some(2), "{args:?} stderr: {}", closed.stderr);
+    }
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_an_empty_or_too_long_reason_or_note_with_invalid_input() {
+    let fixture = Fixture::new();
+    let long = "x".repeat(501);
+    let invalid: [(&str, &str); 4] = [
+        ("", "n"),
+        ("r", ""),
+        (long.as_str(), "n"),
+        ("r", long.as_str()),
+    ];
+    let before = fixture.chain();
+
+    for (reason, note) in invalid {
+        let closed = fixture.run(&["close", W1, "--abandon", "--reason", reason, "--note", note]);
+
+        assert_eq!(
+            (closed.code, error_code(&closed)),
+            (Some(1), json!("INVALID_INPUT")),
+            "stderr: {}",
+            closed.stderr
+        );
+    }
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_to_abandon_a_closed_item_and_an_unknown_one() {
+    let fixture = Fixture::new();
+    let first = fixture.abandon(W1);
+    assert_eq!(first.code, Some(0), "stderr: {}", first.stderr);
+
+    let again = fixture.abandon(W1);
+    let ghost = fixture.abandon(MISSING_WORK_ITEM);
+
+    assert_eq!(error_code(&again), json!("invalid-transition"));
+    assert_eq!(error_code(&ghost), json!("work-item-not-found"));
+}
+
+#[test]
+fn it_should_refuse_an_append_that_carries_abandonment_or_delivery_failure() {
+    for id in closable_ids() {
+        for (field, value) in [
+            ("abandonment", json!({ "reason": "r", "note": "n" })),
+            ("delivery_failure", json!({ "note": "n" })),
+        ] {
+            let fixture = Fixture::with_pull_request();
+            let mut data = fixture.data_of(id);
+            data[field] = value;
+            let before = fixture.chain();
+            let mut request = json!({});
+            let type_name = if id == W1 {
+                "work-item"
+            } else {
+                "pull-request"
+            };
+            request["items"] = Value::Array(vec![node(id, type_name, data)]);
+
+            let appended = omhl_json(&["append"])
+                .cwd(fixture.project.dir())
+                .xdg(fixture.project.xdg())
+                .stdin(request.to_string())
+                .run();
+
+            assert_eq!(
+                (appended.code, error_code(&appended), fixture.chain()),
+                (Some(1), json!("use-close-work-item"), before),
+                "{id} {field} stderr: {}",
+                appended.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn it_should_list_an_abandoned_item_as_closed_and_refuse_a_second_close() {
+    for id in closable_ids() {
+        let fixture = Fixture::with_pull_request();
+        fixture.abandon(id);
+
+        let listed = fixture.run(&["list", "--where", "status=closed"]);
+        let again = fixture.run(&["close", id, "--force", "--note", "n"]);
+
+        assert!(listed.stdout.contains(id), "{id} {}", listed.stdout);
+        assert_eq!(error_code(&again), json!("invalid-transition"), "{id}");
+    }
+}
+
+#[test]
+fn it_should_exit_two_when_the_close_options_appear_in_another_subcommand() {
+    let fixture = Fixture::new();
+
+    for flag in [
+        "--force",
+        "--abandon",
+        "--failed-delivery",
+        "--reason",
+        "--note",
+    ] {
+        for command in [&["gate-pr", W1][..], &["append"]] {
+            let mut args = command.to_vec();
+            args.push(flag);
+            if matches!(flag, "--reason" | "--note") {
+                args.push("x");
+            }
+
+            let output = fixture.run(&args);
+
+            assert_eq!(output.code, Some(2), "{args:?} stderr: {}", output.stderr);
+        }
+    }
+}
+
+#[test]
+fn it_should_still_accept_force_in_hooks_install() {
+    let fixture = Fixture::new();
+
+    let installed = fixture.run(&["hooks", "install", "--force"]);
+
+    assert_ne!(installed.code, Some(2), "stderr: {}", installed.stderr);
 }

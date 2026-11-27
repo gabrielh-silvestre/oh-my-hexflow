@@ -82,12 +82,17 @@ pub enum ActionCommand {
         #[arg(long, allow_hyphen_values = true)]
         branch: String,
     },
-    /// Close a work item once the gate is evaluated; `--force --note` closes it past warn questions.
+    /// Close a work item once the gate is evaluated; `--force --note` closes it past warn questions and `--abandon` closes it without the gate.
+    #[command(group(clap::ArgGroup::new("mode").args(["force", "abandon"]).multiple(true)))]
     Close {
         work_item: String,
-        #[arg(long)]
+        #[arg(long, requires = "note", conflicts_with = "abandon")]
         force: bool,
-        #[arg(long)]
+        #[arg(long, requires_all = ["reason", "note"])]
+        abandon: bool,
+        #[arg(long, requires = "abandon")]
+        reason: Option<String>,
+        #[arg(long, requires = "mode")]
         note: Option<String>,
     },
     /// Verify the hash chain.
@@ -675,19 +680,6 @@ fn execute(
     run_action(start, db, env, &caller, &action)
 }
 
-/// `--force` e `--note` vêm juntos: a nota é a autorização do dono para contornar os avisos.
-fn close_note(force: bool, note: Option<String>) -> Result<Option<String>, AppError> {
-    match (force, note) {
-        (true, Some(note)) => Ok(Some(note)),
-        (false, None) => Ok(None),
-        (true, None) => Err(AppError::invalid_arguments("", CLOSE_FORCE_NEEDS_NOTE)),
-        (false, Some(_)) => Err(AppError::invalid_arguments("", CLOSE_NOTE_NEEDS_FORCE)),
-    }
-}
-
-const CLOSE_FORCE_NEEDS_NOTE: &str = "--force needs --note with the owner's authorization";
-const CLOSE_NOTE_NEEDS_FORCE: &str = "--note needs --force";
-
 /// Divide no primeiro `=`: o valor pode conter `=`.
 fn split_where(index: usize, pair: &str) -> Result<(String, String), AppError> {
     match pair.split_once('=') {
@@ -742,12 +734,18 @@ fn to_action(
         ActionCommand::GateWorktree { branch } => Action::GateWorktree { branch },
         ActionCommand::Close {
             work_item,
-            force,
-            note,
-        } => Action::Close {
+            abandon: true,
+            reason: Some(reason),
+            note: Some(note),
+            ..
+        } => Action::Abandon {
             work_item,
-            note: close_note(force, note)?,
+            reason,
+            note,
         },
+        ActionCommand::Close {
+            work_item, note, ..
+        } => Action::Close { work_item, note },
         ActionCommand::Verify => Action::Verify,
         ActionCommand::Load { dry_run } => Action::Load { dry_run },
         ActionCommand::Project => Action::Project,

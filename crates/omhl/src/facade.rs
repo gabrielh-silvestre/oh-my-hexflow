@@ -4,7 +4,7 @@ use hexlog::{
     AppendOutcome, AppendRequest, Author, Catalog, ChainHead, ChainReport, Clock, Config, Deps,
     Hash, Hexlog, IdGenerator, Lineage, ListFilter, NodeView, Page, PageRequest, RelationQuery,
     RelationTypeName, RelationView, RevisionView, ScannedRecord, SemanticId, SessionLabel,
-    TenantId, TenantInfo, TypeName,
+    Snapshot, TenantId, TenantInfo, TypeName,
 };
 
 use crate::error::{OmhlError, RuleCode};
@@ -13,9 +13,9 @@ use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::plan::CheckNode;
 use crate::native::NativeBase;
 use crate::pr_gate::{
-    CloseRefusal, Forcing, GATE_NAME, GateSnapshots, anchor_questions, close_verdict,
-    closing_request, pr_gate_questions, project_checks_filter, required_checks,
-    requirement_questions, spec_digests,
+    Abandonment, CloseRefusal, Forcing, GATE_NAME, GateSnapshots, abandonment_request,
+    anchor_questions, close_verdict, closing_request, pr_gate_questions, project_checks_filter,
+    required_checks, requirement_questions, spec_digests,
 };
 use crate::probe::{SnapshotProbe, TreeSource};
 use crate::projection::ProjectionState;
@@ -377,6 +377,23 @@ impl<'d> Omhl<'d> {
             report,
             forcing,
         })
+    }
+
+    /// Não avalia o gate: o `snapshot` é o `HEAD` lido pela sonda, sem conferir a árvore.
+    pub fn abandon_work_item(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+        author: &Author,
+        snapshot: &Snapshot,
+        abandonment: &Abandonment<'_>,
+    ) -> Result<AppendOutcome, OmhlError> {
+        let session = self.session.resolve()?;
+        let current = self.ensure_open(tenant, work_item)?;
+        let head = self.chain_head(tenant)?;
+        let request = abandonment_request(tenant, author, current, head.seq, snapshot, abandonment);
+
+        Ok(self.hexlog.append_with_session(&request, &session)?)
     }
 
     pub fn find_work_item(
