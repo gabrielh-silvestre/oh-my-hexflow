@@ -3,7 +3,7 @@ use hexlog::{NativeNode, NativeNodes, RelationTypeName, SemanticId, TypeName};
 pub const NATIVE_CATALOG_VERSION: &str = "1.0.0";
 
 const RUN_TESTS_ID: &str = "checks.run-tests";
-const CI_GREEN_ID: &str = "checks.ci-green-before-merge";
+pub(crate) const CI_GREEN_ID: &str = "checks.ci-green-before-merge";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeCheck {

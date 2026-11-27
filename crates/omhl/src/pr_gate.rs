@@ -7,9 +7,11 @@ use hexlog::{
 use serde_json::json;
 
 use crate::extensions::plan::LOADER_CLIENT;
-use crate::gate::{GateQuestion, GateReport, Predicate, Question, TargetCheck, TargetFact};
+use crate::gate::{
+    GateQuestion, GateReport, Predicate, Question, QuestionClass, TargetCheck, TargetFact,
+};
 use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
-use crate::native::NativeCheck;
+use crate::native::{CI_GREEN_ID, NativeCheck};
 use crate::workflow::config::{NativeConfig, RequireAtom};
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 
@@ -92,15 +94,28 @@ pub fn pr_gate_questions(
                     GateQuestion::new(
                         format!("{SPEC_DIGEST_LABEL}:{}", check.as_str()),
                         occurred(check, work_item, snapshot, Some(digest)),
+                        QuestionClass::Refuse,
                     )
                 });
-            let plain =
-                GateQuestion::new(check.as_str(), occurred(check, work_item, snapshot, None));
+            let plain = GateQuestion::new(
+                check.as_str(),
+                occurred(check, work_item, snapshot, None),
+                plain_check_class(check, sealed.is_some()),
+            );
 
             once(plain).chain(sealed)
         })
         .chain(once(contradiction_question(work_item)))
         .collect()
+}
+
+// Um check mecânico ou o CI verde do merge recusa sem `--force`; o demais é aviso (CMP-006).
+fn plain_check_class(check: &SemanticId, mechanical: bool) -> QuestionClass {
+    if mechanical || check.as_str() == CI_GREEN_ID {
+        QuestionClass::Refuse
+    } else {
+        QuestionClass::Warn
+    }
 }
 
 fn occurred(
@@ -144,6 +159,7 @@ fn contradiction_question(work_item: &SemanticId) -> GateQuestion {
         Question::NoOpenContradiction {
             of: Some(decisions_filter(work_item)),
         },
+        QuestionClass::Warn,
     )
 }
 
@@ -168,6 +184,7 @@ pub fn requirement_questions(atoms: &[(RequireAtom, bool)]) -> Vec<GateQuestion>
             ..GateQuestion::new(
                 format!("requires:{}", atom.as_str()),
                 Question::Requirement { holds: *holds },
+                QuestionClass::Refuse,
             )
         })
         .collect()
@@ -210,13 +227,21 @@ pub fn anchor_questions(work_item: &SemanticId) -> Vec<GateQuestion> {
             next_step: Some(
                 "record a rests-on from the decision to a confirmed guideline or premise",
             ),
-            ..GateQuestion::new(DECISIONS_ANCHORED_LABEL, anchored(None))
+            ..GateQuestion::new(
+                DECISIONS_ANCHORED_LABEL,
+                anchored(None),
+                QuestionClass::Warn,
+            )
         },
         GateQuestion {
             next_step: Some(
                 "ask the human to confirm the target (premise: set status confirmed with confirmed_by) or rest the decision on a confirmed one",
             ),
-            ..GateQuestion::new(ANCHORS_CONFIRMED_LABEL, anchored(Some(confirmed)))
+            ..GateQuestion::new(
+                ANCHORS_CONFIRMED_LABEL,
+                anchored(Some(confirmed)),
+                QuestionClass::Warn,
+            )
         },
     ]
 }

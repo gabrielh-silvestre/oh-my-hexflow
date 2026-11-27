@@ -66,18 +66,27 @@ impl PartialEq for Predicate {
     }
 }
 
+/// Recusa sem saída por `--force` (`Refuse`) ou aviso que o `--force` contorna (`Warn`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuestionClass {
+    Refuse,
+    Warn,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GateQuestion {
     pub label: String,
     pub question: Question,
+    pub class: QuestionClass,
     pub next_step: Option<&'static str>,
 }
 
 impl GateQuestion {
-    pub fn new(label: impl Into<String>, question: Question) -> GateQuestion {
+    pub fn new(label: impl Into<String>, question: Question, class: QuestionClass) -> GateQuestion {
         GateQuestion {
             label: label.into(),
             question,
+            class,
             next_step: None,
         }
     }
@@ -102,6 +111,7 @@ pub struct QuestionReport {
     pub failing: Vec<SemanticId>,
     pub omitted: usize,
     pub next_step: Option<String>,
+    pub class: Option<QuestionClass>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -192,14 +202,18 @@ fn evaluate_question<S: GateSource>(
         )),
     }?;
 
-    Ok(with_next_step(report, entry.next_step))
+    Ok(with_failure_fields(report, entry))
 }
 
-fn with_next_step(report: QuestionReport, next_step: Option<&'static str>) -> QuestionReport {
-    let next_step = next_step.filter(|_| !report.passed).map(str::to_owned);
+// Pergunta aprovada não tem classe nem próximo passo.
+fn with_failure_fields(report: QuestionReport, entry: &GateQuestion) -> QuestionReport {
+    if report.passed {
+        return report;
+    }
 
     QuestionReport {
-        next_step,
+        next_step: entry.next_step.map(str::to_owned),
+        class: Some(entry.class),
         ..report
     }
 }
@@ -429,6 +443,7 @@ fn report(
         failing,
         omitted,
         next_step: None,
+        class: None,
     }
 }
 

@@ -1,6 +1,7 @@
 use ::omhl::error::OmhlError;
 use ::omhl::gate::{
-    GateQuestion, GateSource, HexlogSource, Question, QuestionKind, QuestionReport, evaluate,
+    GateQuestion, GateSource, HexlogSource, Question, QuestionClass, QuestionKind, QuestionReport,
+    evaluate,
 };
 use hexlog::{
     AppendItem, AppendRequest, Catalog, ChainHead, EndpointStatus, Hash, Hexlog, ItemBody, Lineage,
@@ -14,6 +15,7 @@ use super::{DEFAULT_INSTANT, EmptyNative, author, rty, sid, tenant, tname};
 
 /// Rótulo de toda pergunta montada por `evaluate_one`.
 pub const LABEL: &str = "q";
+const CLASS: QuestionClass = QuestionClass::Refuse;
 
 const RECORD_ID: &str = "acme:0192a000-0000-7000-8000-000000000001";
 
@@ -179,7 +181,7 @@ pub fn relation_view(relation_type: &str, from: &str, to: &str) -> RelationView 
 
 /// Avalia uma pergunta só, com o rótulo `LABEL`, e devolve o relatório dela.
 pub fn evaluate_one(source: &mut FakeSource, question: Question) -> QuestionReport {
-    let questions = [GateQuestion::new(LABEL, question)];
+    let questions = [GateQuestion::new(LABEL, question, CLASS)];
 
     evaluate(source, &tenant("acme"), &questions)
         .expect("the evaluation succeeds")
@@ -202,6 +204,7 @@ pub fn expected_report(
         failing: failing.iter().map(|id| sid(id)).collect(),
         omitted: 0,
         next_step: None,
+        class: (!passed).then_some(CLASS),
     }
 }
 
@@ -329,7 +332,7 @@ pub fn evaluate_on_hexlog(
     page_size: u32,
     question: Question,
 ) -> QuestionReport {
-    let questions = [GateQuestion::new(LABEL, question)];
+    let questions = [GateQuestion::new(LABEL, question, CLASS)];
     let mut source = HexlogSource::new(hexlog, page_size);
 
     evaluate(&mut source, &tenant("acme"), &questions)

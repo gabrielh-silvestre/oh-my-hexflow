@@ -1,7 +1,7 @@
 use crate::error::{OmhlError, RuleCode};
 use crate::gate::{
-    EVIDENCE_CAP, GateReport, Predicate, Question, QuestionKind, TargetCheck, TargetFact,
-    read_consistent,
+    EVIDENCE_CAP, GateReport, Predicate, Question, QuestionClass, QuestionKind, TargetCheck,
+    TargetFact, read_consistent,
 };
 use crate::test_support::gate::{
     FakeSource, all_filter, chain_head, evaluate_one, expected_report, node_view_with, node_views,
@@ -526,4 +526,19 @@ fn it_should_fail_with_gate_inconsistent_when_the_head_moves_during_the_read() {
     let result = read_consistent(&mut source, &tenant("acme"), |_| Ok(42u32));
 
     assert_eq!(result, Err(OmhlError::rule(RuleCode::GateInconsistent, "")));
+}
+
+#[test]
+fn it_should_leave_the_class_off_a_passed_question_and_carry_it_on_a_failed_one() {
+    let passed = evaluate_one(
+        &mut FakeSource::new(),
+        Question::Requirement { holds: true },
+    );
+    let failed = evaluate_one(
+        &mut FakeSource::new(),
+        Question::Requirement { holds: false },
+    );
+
+    assert_eq!(passed.class, None);
+    assert_eq!(failed.class, Some(QuestionClass::Refuse));
 }

@@ -6,7 +6,7 @@ use hexlog::{
 use omhl::app::RUNNABLE_EVENTS;
 use omhl::error::{OmhlError, RuleCode};
 use omhl::facade::{Omhl, OmhlDeps};
-use omhl::gate::{GateQuestion, GateReport, Question};
+use omhl::gate::{GateQuestion, GateReport, Question, QuestionClass};
 use omhl::mechanical::spec_digest;
 use omhl::pr_gate::{GATE_NAME, GateSnapshots, REQUIRED_EVENTS, required_checks};
 use omhl::probe::{ProbeOutcome, TreeSource};
@@ -548,6 +548,7 @@ fn it_should_refuse_an_evaluation_with_more_than_eight_where_eq_pairs() {
             },
             min: 1,
         },
+        QuestionClass::Warn,
     )];
 
     let result = omhl.evaluate(&acme(), "custom-gate", &questions);
