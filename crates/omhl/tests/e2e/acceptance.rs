@@ -156,7 +156,18 @@ fn it_should_run_a_full_session_across_hook_and_cli() {
     );
     let after = hook_context(dir, xdg);
     append_node(dir, xdg, W1, "work-item", &typed_work_item_data("t"));
-    let closed = at(dir, xdg, &["close", W1]).run();
+    let closed = at(
+        dir,
+        xdg,
+        &[
+            "close",
+            W1,
+            "--force",
+            "--note",
+            "owner approved the override",
+        ],
+    )
+    .run();
     let verified = at(dir, xdg, &["verify"]).run();
     let fetched = at(dir, xdg, &["get", W1]).run();
 

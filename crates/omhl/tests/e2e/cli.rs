@@ -421,10 +421,10 @@ fn it_should_print_the_render_json() {
 // Fluxo do pull request num repositório real
 
 #[test]
-fn it_should_evaluate_and_close_a_pull_request_in_a_real_repo() {
+fn it_should_evaluate_and_refuse_to_close_a_pull_request_in_a_real_repo() {
     let project = Project::new("acme");
     project.enable_natives(&[RUN_TESTS, CI_GREEN]);
-    let head = commit_marker(&project);
+    commit_marker(&project);
     open_work_item(&project);
 
     let gate = in_project(&project, &["gate-pr", W1]).run();
@@ -432,12 +432,17 @@ fn it_should_evaluate_and_close_a_pull_request_in_a_real_repo() {
     let fetched = in_project(&project, &["get", W1]).run();
 
     let node = json_line(&fetched.stdout)["node"].clone();
-    assert_eq!([gate.code, close.code, fetched.code], [Some(0); 3]);
+    assert_eq!(
+        [gate.code, close.code, fetched.code],
+        [Some(0), Some(1), Some(0)]
+    );
     assert_eq!(json_line(&gate.stdout)["gate"], json!("pull-request"));
     assert_eq!(json_line(&gate.stdout)["passed"], json!(false));
-    assert_eq!(json_line(&close.stdout)["report"]["passed"], json!(false));
-    assert_eq!(node["data"]["status"], json!("closed"));
-    assert_eq!(node["data"]["gate"]["snapshot"]["id"], json!(head));
+    assert_eq!(
+        json_line(&close.stderr)["error"]["code"],
+        json!("close-refused")
+    );
+    assert_eq!(node["data"]["status"], json!("open"));
 }
 
 #[test]

@@ -20,7 +20,7 @@ use support::omhl::{
     premise_data, pull_request_data, refusal, request, retirement_item, revision_item,
     seed_pull_request, with_snapshot, work_item_data,
 };
-use support::pr_gate::{close, snapshots};
+use support::pr_gate::{attest_required, close, snapshots};
 use support::raw::RawHarness;
 use support::{
     FakeProbe, agent_author, cli_author, executor_attestation_data, executor_author, loader_author,
@@ -853,6 +853,7 @@ fn it_should_refuse_reopening_a_closed_work_item_through_a_retirement() {
     );
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
+    attest_required(&mut omhl, &snap('a'));
     let closed = close(&mut omhl, PR_7, &snapshots(&snap('a'), &tree('c')));
     let retired = append_ok(
         &mut omhl,
@@ -1407,6 +1408,7 @@ fn closable_harness() -> OmhlHarness {
 }
 
 fn close_pull_request(omhl: &mut Omhl<'_>) {
+    attest_required(omhl, &snap('a'));
     close(omhl, PR_7, &snapshots(&snap('a'), &tree('c')));
 }
 

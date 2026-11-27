@@ -888,3 +888,293 @@ fn typed(mut data: serde_json::Value) -> serde_json::Value {
     data["type"] = serde_json::json!("chore");
     data
 }
+
+// Gate reprovado: recusa do `close`, `--force --note` e a paridade com o `gate-pr` (CA-007 a CA-009)
+
+const RUN_TESTS: &str = "checks.run-tests";
+const CI_GREEN: &str = "checks.ci-green-before-merge";
+const OWNER_NOTE: &str = "owner approved the override";
+
+/// Repositório com os nativos dados ligados: o gate reprova pelas perguntas deles.
+fn fixture_with_natives(natives: &[&str]) -> Fixture {
+    let fixture = Fixture::new();
+    fixture.project.enable_natives(natives);
+
+    fixture
+}
+
+impl Fixture {
+    /// Commita o que foi escrito e roda o `close` com os argumentos extras, sem exigir saída 0.
+    fn close_with(&self, extra: &[&str]) -> Output {
+        self.commit_all();
+        let mut args = vec!["close", W1];
+        args.extend_from_slice(extra);
+
+        self.run(&args)
+    }
+
+    /// Atesta o check no `HEAD` atual, sem commitar: o `close` seguinte precisa da árvore como está.
+    fn attest(&self, check: &str) {
+        let attested = self.run(&["attest", check, W1, "--outcome", "passed"]);
+        assert_eq!(attested.code, Some(0), "stderr: {}", attested.stderr);
+    }
+
+    fn gate_pr(&self) -> Value {
+        let gate = self.run(&["gate-pr", W1]);
+        assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
+
+        json_line(&gate.stdout)
+    }
+
+    fn node_data(&self) -> Value {
+        json_line(&self.run(&["get", W1]).stdout)["node"]["data"].clone()
+    }
+}
+
+/// Todos os arquivos sob `dir`, concatenados: a projeção é uma árvore de arquivos.
+fn all_text_under(dir: &std::path::Path) -> String {
+    let mut text = String::new();
+    for entry in fs::read_dir(dir).expect("the directory is read") {
+        let path = entry.expect("the entry is read").path();
+        if path.is_dir() {
+            text.push_str(&all_text_under(&path));
+        } else {
+            text.push_str(&fs::read_to_string(&path).unwrap_or_default());
+        }
+    }
+
+    text
+}
+
+#[test]
+fn it_should_refuse_the_close_with_close_warnings_when_only_a_warn_question_fails() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.run(&["close", W1]);
+
+    assert_eq!(closed.code, Some(1), "stdout: {}", closed.stdout);
+    assert_eq!(closed.stdout, "");
+    let error = json_line(&closed.stderr)["error"].clone();
+    assert_eq!(error["code"], json!("close-warnings"));
+    assert!(
+        error["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("--force --note"))
+    );
+    assert_eq!(error["details"][0]["code"], json!("warn"));
+    assert_eq!(error["details"][0]["context"]["label"], json!(RUN_TESTS));
+    assert_eq!(fixture.node_data()["status"], json!("open"));
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_the_close_with_close_refused_when_a_refuse_question_fails_with_a_warn_one() {
+    let fixture = fixture_with_natives(&[RUN_TESTS, CI_GREEN]);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.run(&["close", W1]);
+
+    assert_eq!(closed.code, Some(1), "stdout: {}", closed.stdout);
+    let error = json_line(&closed.stderr)["error"].clone();
+    assert_eq!(error["code"], json!("close-refused"));
+    let message = error["message"].as_str().expect("the message is text");
+    assert!(message.contains("--abandon"), "{message}");
+    assert!(message.contains("--failed-delivery --note"), "{message}");
+    assert!(!message.contains("new commit"), "{message}");
+    assert_eq!(error["details"][0]["code"], json!("warn"));
+    assert_eq!(error["details"][1]["code"], json!("refuse"));
+    assert_eq!(error["details"][1]["context"]["label"], json!(CI_GREEN));
+    assert_eq!(fixture.node_data()["status"], json!("open"));
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_close_with_exit_zero_once_the_refused_questions_pass() {
+    let fixture = fixture_with_natives(&[RUN_TESTS, CI_GREEN]);
+    fixture.commit_all();
+    let refused = fixture.run(&["close", W1]);
+    assert_eq!(refused.code, Some(1), "stderr: {}", refused.stderr);
+    fixture.attest(RUN_TESTS);
+    fixture.attest(CI_GREEN);
+
+    let closed = fixture.run(&["close", W1]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(fixture.node_data()["status"], json!("closed"));
+    assert!(fixture.node_data()["gate"].get("forced").is_none());
+}
+
+#[test]
+fn it_should_close_with_exit_zero_when_the_whole_gate_passes() {
+    let fixture = Fixture::new();
+
+    let closed = fixture.close_with(&[]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(fixture.node_data()["status"], json!("closed"));
+}
+
+#[test]
+fn it_should_record_the_forced_close_with_the_note_and_the_overridden_labels() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+
+    let closed = fixture.close_with(&["--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(
+        json_line(&closed.stdout)["forced"],
+        json!({ "overridden": [RUN_TESTS], "note": OWNER_NOTE })
+    );
+    let gate = fixture.node_data()["gate"].clone();
+    assert_eq!(gate["passed"], json!(false));
+    assert_eq!(gate["forced"], json!(true));
+    assert_eq!(gate["overridden"], json!([RUN_TESTS]));
+    assert_eq!(gate["note"], json!(OWNER_NOTE));
+}
+
+#[test]
+fn it_should_print_the_forced_header_for_the_forced_close() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+    fixture.commit_all();
+
+    let closed = omhl(&["close", W1, "--force", "--note", OWNER_NOTE])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .run();
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert!(
+        closed
+            .stdout
+            .lines()
+            .any(|line| line == "⚠ closed · forced · 1 overridden"),
+        "{}",
+        closed.stdout
+    );
+}
+
+#[test]
+fn it_should_show_the_note_and_the_labels_in_the_retro_and_the_projection() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+    fixture.close_with(&["--force", "--note", OWNER_NOTE]);
+
+    let retro = retro_of(&fixture.retro_report());
+    let projection = fixture.run(&["project"]);
+    assert_eq!(projection.code, Some(0), "stderr: {}", projection.stderr);
+    let dir = json_line(&projection.stdout)["dir"]
+        .as_str()
+        .expect("the projection dir is text")
+        .to_owned();
+
+    assert_eq!(
+        retro["gate_override"],
+        json!({ "note": OWNER_NOTE, "overridden": [RUN_TESTS] })
+    );
+    let written = all_text_under(&fixture.project.dir().join(dir));
+    assert!(
+        written.contains(&format!("- note: {OWNER_NOTE}")),
+        "{written}"
+    );
+    assert!(
+        written.contains(&format!("- overridden: {RUN_TESTS}")),
+        "{written}"
+    );
+}
+
+#[test]
+fn it_should_refuse_the_forced_close_and_write_nothing_when_a_refuse_question_fails() {
+    let fixture = fixture_with_natives(&[RUN_TESTS, CI_GREEN]);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(closed.code, Some(1), "stdout: {}", closed.stdout);
+    assert_eq!(
+        json_line(&closed.stderr)["error"]["code"],
+        json!("close-refused")
+    );
+    assert_eq!(fixture.node_data()["status"], json!("open"));
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_discard_the_note_and_record_nothing_forced_when_the_gate_passes() {
+    let fixture = Fixture::new();
+    fixture.commit_all();
+
+    let closed = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(json_line(&closed.stdout)["note_discarded"], json!(true));
+    let gate = fixture.node_data()["gate"].clone();
+    assert!(gate.get("forced").is_none());
+    assert!(gate.get("note").is_none());
+    assert!(gate.get("overridden").is_none());
+}
+
+#[test]
+fn it_should_print_the_discarded_note_warning_when_the_gate_passes() {
+    let fixture = Fixture::new();
+    fixture.commit_all();
+
+    let closed = omhl(&["close", W1, "--force", "--note", OWNER_NOTE])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .run();
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert!(
+        closed
+            .stdout
+            .lines()
+            .any(|line| line == "⚠ note discarded · gate passed"),
+        "{}",
+        closed.stdout
+    );
+}
+
+#[test]
+fn it_should_refuse_force_and_note_that_do_not_come_together() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let force_alone = fixture.run(&["close", W1, "--force"]);
+    let note_alone = fixture.run(&["close", W1, "--note", OWNER_NOTE]);
+
+    assert_ne!(force_alone.code, Some(0), "stderr: {}", force_alone.stderr);
+    assert_ne!(note_alone.code, Some(0), "stderr: {}", note_alone.stderr);
+    assert_eq!(fixture.node_data()["status"], json!("open"));
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_ask_gate_pr_the_same_failing_questions_and_classes_that_close_refuses() {
+    for natives in [&[RUN_TESTS][..], &[RUN_TESTS, CI_GREEN][..]] {
+        let fixture = fixture_with_natives(natives);
+        fixture.commit_all();
+
+        let gate = fixture.gate_pr();
+        let closed = fixture.run(&["close", W1]);
+
+        let asked: Vec<Value> = gate["questions"]
+            .as_array()
+            .expect("the questions are a list")
+            .iter()
+            .filter(|question| question["passed"] == json!(false))
+            .map(|question| json!([question["label"], question["class"]]))
+            .collect();
+        let refused: Vec<Value> = json_line(&closed.stderr)["error"]["details"]
+            .as_array()
+            .expect("the details are a list")
+            .iter()
+            .map(|detail| json!([detail["context"]["label"], detail["code"]]))
+            .collect();
+        assert_eq!(gate["passed"], json!(false));
+        assert_eq!(asked, refused, "natives {natives:?}");
+    }
+}

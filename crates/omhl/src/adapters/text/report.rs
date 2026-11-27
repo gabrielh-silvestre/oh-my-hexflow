@@ -66,6 +66,12 @@ pub static RETRO_PROFILE: Profile = Profile {
     label: "report retro",
     nodes: None,
     success: &[
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("gate_override")
+            .optional(),
+        Entry::new(Region::Data, "overridden", Shape::Literal)
+            .under("gate_override")
+            .optional(),
         Entry::new(Region::Data, "kind", Shape::Closed)
             .under("divergences")
             .optional(),
@@ -217,6 +223,10 @@ impl Specialization for Retro {
             ),
             (items(retro, "no_criterion").count(), "no-criterion gap"),
             (items(retro, "open_gaps").count(), "open gap"),
+            (
+                usize::from(retro["gate_override"].is_object()),
+                "forced close",
+            ),
         ]
         .into_iter()
         .filter(|(count, _)| *count > 0)
@@ -264,11 +274,20 @@ impl Specialization for Retro {
             ])
         });
 
+        let forced = retro["gate_override"].is_object().then(|| {
+            dash(vec![
+                "forced".to_owned(),
+                text(&retro["gate_override"], "note"),
+                joined(&retro["gate_override"], "overridden"),
+            ])
+        });
+
         divergences
             .chain(approved)
             .chain(pending)
             .chain(no_criterion)
             .chain(open_gaps)
+            .chain(forced)
             .collect()
     }
 

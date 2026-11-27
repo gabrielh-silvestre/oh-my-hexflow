@@ -170,8 +170,11 @@ fn it_should_ask_the_native_questions_in_gate_pr_and_close_from_a_worktree_when_
 
     assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
     assert_eq!(labels_of(&gate)[..2], [RUN_TESTS, CI_GREEN]);
-    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
-    assert_eq!(json_line(&closed.stdout)["report"]["passed"], json!(false));
+    assert_eq!(closed.code, Some(1), "stdout: {}", closed.stdout);
+    let error = &json_line(&closed.stderr)["error"];
+    assert_eq!(error["code"], json!("close-refused"));
+    assert_eq!(error["details"][0]["context"]["label"], json!(RUN_TESTS));
+    assert_eq!(error["details"][1]["context"]["label"], json!(CI_GREEN));
     fs::remove_dir_all(linked).expect("the worktree is removed");
 }
 
@@ -243,7 +246,13 @@ fn it_should_read_and_evaluate_the_history_of_disabled_natives_without_error() {
         &["report", "retro", W1],
         &["report", "sessions"],
         &["gate-pr", W1],
-        &["close", W1],
+        &[
+            "close",
+            W1,
+            "--force",
+            "--note",
+            "owner approved the override",
+        ],
     ] {
         succeeds(&project, args);
     }

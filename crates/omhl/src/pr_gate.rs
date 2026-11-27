@@ -8,12 +8,14 @@ use serde_json::json;
 
 use crate::extensions::plan::LOADER_CLIENT;
 use crate::gate::{
-    GateQuestion, GateReport, Predicate, Question, QuestionClass, TargetCheck, TargetFact,
+    GateQuestion, GateReport, Predicate, Question, QuestionClass, QuestionReport, TargetCheck,
+    TargetFact,
 };
 use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
 use crate::native::{CI_GREEN_ID, NativeCheck};
 use crate::workflow::config::{NativeConfig, RequireAtom};
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
+use crate::workflow::retro::GateOverride;
 
 pub const GATE_NAME: &str = "pull-request";
 pub const REQUIRED_EVENTS: [&str; 3] = RUNNABLE_EVENTS;
@@ -269,12 +271,59 @@ pub(crate) fn project_checks_filter() -> ListFilter {
     }
 }
 
+/// Por que o `close` recusa, com todas as perguntas avaliadas: o erro lista só as reprovadas.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloseRefusal {
+    /// Uma pergunta `refuse` reprovada: nem `--force` contorna.
+    Refused(Vec<QuestionReport>),
+    /// Só perguntas `warn` reprovadas, sem `--force --note`.
+    Warnings(Vec<QuestionReport>),
+}
+
+/// O que o fechamento grava além do gate: a nota do dono, ou só o aviso de que ela foi descartada.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Forcing {
+    Discarded,
+    Forced(GateOverride),
+}
+
+/// Um `--force` só contorna perguntas `warn`; uma pergunta sem classe conta como `refuse`.
+pub fn close_verdict(
+    report: &GateReport,
+    note: Option<&str>,
+) -> Result<Option<Forcing>, CloseRefusal> {
+    let failing: Vec<QuestionReport> = report
+        .questions
+        .iter()
+        .filter(|question| !question.passed)
+        .cloned()
+        .collect();
+    if failing.is_empty() {
+        return Ok(note.map(|_| Forcing::Discarded));
+    }
+    if failing
+        .iter()
+        .any(|question| question.class != Some(QuestionClass::Warn))
+    {
+        return Err(CloseRefusal::Refused(report.questions.clone()));
+    }
+    let Some(note) = note else {
+        return Err(CloseRefusal::Warnings(report.questions.clone()));
+    };
+
+    Ok(Some(Forcing::Forced(GateOverride {
+        note: note.to_owned(),
+        overridden: failing.into_iter().map(|question| question.label).collect(),
+    })))
+}
+
 pub(crate) fn closing_request(
     tenant: &TenantId,
     author: &Author,
     current: NodeView,
     report: &GateReport,
     snapshot: &Snapshot,
+    forcing: Option<&Forcing>,
 ) -> AppendRequest {
     let mut data = current.data;
     data["status"] = json!("closed");
@@ -284,6 +333,11 @@ pub(crate) fn closing_request(
         "chain_head_seq": report.chain_head.seq,
         "snapshot": snapshot,
     });
+    if let Some(Forcing::Forced(gate_override)) = forcing {
+        data["gate"]["forced"] = json!(true);
+        data["gate"]["overridden"] = json!(gate_override.overridden);
+        data["gate"]["note"] = json!(gate_override.note);
+    }
     let item = AppendItem {
         body: ItemBody::Node {
             id: current.id,

@@ -20,6 +20,9 @@ pub static GATE_PR_PROFILE: Profile = Profile {
         Entry::new(Region::Data, "failing", Shape::Derived)
             .under("questions")
             .optional(),
+        Entry::new(Region::Data, "class", Shape::Closed)
+            .under("questions")
+            .optional(),
         Entry::new(Region::Data, "omitted", Shape::Derived).under("questions"),
         Entry::new(Region::Data, "next_step", Shape::Closed)
             .under("questions")
@@ -44,12 +47,28 @@ pub static CLOSE_PROFILE: Profile = Profile {
         Entry::new(Region::Data, "failing", Shape::Derived)
             .under("questions")
             .optional(),
+        Entry::new(Region::Data, "class", Shape::Closed)
+            .under("questions")
+            .optional(),
         Entry::new(Region::Data, "omitted", Shape::Derived).under("questions"),
         Entry::new(Region::Data, "next_step", Shape::Closed)
             .under("questions")
             .optional(),
         Entry::new(Region::Data, "seq", Shape::Noise).under("chain_head"),
         Entry::new(Region::Data, "hash", Shape::Noise).under("chain_head"),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("gate_override")
+            .optional(),
+        Entry::new(Region::Data, "overridden", Shape::Literal)
+            .under("gate_override")
+            .optional(),
+        Entry::new(Region::Data, "overridden", Shape::Literal)
+            .under("forced")
+            .optional(),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("forced")
+            .optional(),
+        Entry::new(Region::Root, "note_discarded", Shape::Derived).optional(),
         Entry::new(Region::Data, "id", Shape::Literal).under("records"),
         Entry::new(Region::Data, "seq", Shape::Literal).under("records"),
         Entry::new(Region::Data, "replayed", Shape::Derived).under("outcome"),
@@ -126,6 +145,9 @@ fn question_lines(report: &Value, action: Option<&str>) -> Vec<Line> {
             let label = text(question, "label");
             let kind = text(question, "kind");
             let mut parts = vec![label.clone()];
+            if question["passed"] != true && question["class"].is_string() {
+                parts.push(text(question, "class"));
+            }
             // Nas perguntas sem check o `kind` repete o `label`.
             if kind != label {
                 parts.push(kind);
@@ -182,6 +204,30 @@ impl Specialization for GatePr {
     }
 }
 
+/// Um fechamento forçado sai com aviso: o dono precisa ver que contornou as perguntas.
+fn closed_header(value: &Value) -> Line {
+    if value["forced"].is_object() {
+        return Line::Header {
+            state: State::Warning,
+            parts: vec![
+                "closed".to_owned(),
+                "forced".to_owned(),
+                format!(
+                    "{} overridden",
+                    items(&value["forced"], "overridden").count()
+                ),
+            ],
+        };
+    }
+
+    Line::Header {
+        state: State::Ok,
+        parts: std::iter::once("closed".to_owned())
+            .chain(Append.summary(&value["outcome"]))
+            .collect(),
+    }
+}
+
 pub struct Close;
 
 impl Specialization for Close {
@@ -204,12 +250,13 @@ impl Specialization for Close {
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
         let outcome = &value["outcome"];
         let mut lines = question_lines(&value["report"], None);
-        lines.push(Line::Header {
-            state: State::Ok,
-            parts: std::iter::once("closed".to_owned())
-                .chain(Append.summary(outcome))
-                .collect(),
-        });
+        lines.push(closed_header(value));
+        if value["note_discarded"] == true {
+            lines.push(Line::Header {
+                state: State::Warning,
+                parts: vec!["note discarded".to_owned(), "gate passed".to_owned()],
+            });
+        }
         lines.extend(Append.detail_lines(outcome));
         if !value["retro"].is_null() {
             lines.push(Line::Header {

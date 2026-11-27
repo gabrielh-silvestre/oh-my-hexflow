@@ -34,6 +34,7 @@ pub enum Action {
     },
     Close {
         work_item: String,
+        note: Option<String>,
     },
     Verify,
     Load {

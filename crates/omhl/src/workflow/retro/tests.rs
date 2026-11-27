@@ -64,6 +64,7 @@ fn pure_retro(
         divergences,
         gaps,
         amendment_files: names(amendment_files),
+        gate_override: None,
     })
 }
 

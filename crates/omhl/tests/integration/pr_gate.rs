@@ -5,10 +5,10 @@ use hexlog::{
 };
 use omhl::app::RUNNABLE_EVENTS;
 use omhl::error::{OmhlError, RuleCode};
-use omhl::facade::{Omhl, OmhlDeps};
+use omhl::facade::{CloseError, Omhl, OmhlDeps};
 use omhl::gate::{GateQuestion, GateReport, Question, QuestionClass};
 use omhl::mechanical::spec_digest;
-use omhl::pr_gate::{GATE_NAME, GateSnapshots, REQUIRED_EVENTS, required_checks};
+use omhl::pr_gate::{CloseRefusal, GATE_NAME, GateSnapshots, REQUIRED_EVENTS, required_checks};
 use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::json;
 use support::legacy::seed_unconfirmed_guideline;
@@ -346,24 +346,30 @@ fn it_should_close_a_work_item_recording_the_passing_result_snapshot_and_chain_h
 }
 
 #[test]
-fn it_should_close_even_when_the_gate_fails() {
+fn it_should_refuse_closing_when_the_gate_fails_without_force() {
     let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     let head_before = head_seq(&mut omhl);
 
-    let closed = close(&mut omhl, PR_7, &at_head());
-
-    assert!(!closed.report.passed);
-    assert_eq!(
-        data_of(&mut omhl, PR_7),
-        closed_data(
-            pull_request_data("Add gate"),
-            false,
-            head_before,
-            &snap('a')
-        )
+    let result = omhl.close_work_item(
+        &acme(),
+        &sid(PR_7),
+        &at_head(),
+        &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
+        &omhl::facade::Closing {
+            author: &author(),
+            note: None,
+        },
     );
+
+    assert!(matches!(
+        result,
+        Err(CloseError::Refused(CloseRefusal::Refused(_)))
+    ));
+    assert_eq!(data_of(&mut omhl, PR_7)["status"], json!("open"));
+    assert_eq!(head_seq(&mut omhl), head_before);
 }
 
 #[test]
@@ -398,12 +404,18 @@ fn it_should_refuse_closing_an_unknown_work_item() {
         &at_head(),
         &all_native_enabled(),
         &omhl::facade::WorkRequirements::none(),
-        &support::author(),
+        &omhl::facade::Closing {
+            author: &support::author(),
+            note: None,
+        },
     );
 
     assert_eq!(
         result.err(),
-        Some(rule(RuleCode::WorkItemNotFound, "/work_item"))
+        Some(omhl::facade::CloseError::Omhl(rule(
+            RuleCode::WorkItemNotFound,
+            "/work_item"
+        )))
     );
 }
 
@@ -412,6 +424,7 @@ fn it_should_refuse_closing_a_work_item_already_closed() {
     let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
+    attest_required(&mut omhl, &snap('a'));
     close(&mut omhl, PR_7, &at_head());
 
     let result = omhl.close_work_item(
@@ -420,17 +433,23 @@ fn it_should_refuse_closing_a_work_item_already_closed() {
         &at_head(),
         &all_native_enabled(),
         &omhl::facade::WorkRequirements::none(),
-        &support::author(),
+        &omhl::facade::Closing {
+            author: &support::author(),
+            note: None,
+        },
     );
 
     assert_eq!(
         result.err(),
-        Some(rule(RuleCode::InvalidTransition, "/work_item"))
+        Some(omhl::facade::CloseError::Omhl(rule(
+            RuleCode::InvalidTransition,
+            "/work_item"
+        )))
     );
 }
 
 #[test]
-fn it_should_close_a_pull_request_and_a_plain_work_item_the_same_way() {
+fn it_should_refuse_closing_a_pull_request_and_a_plain_work_item_the_same_way() {
     let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
@@ -442,25 +461,39 @@ fn it_should_close_a_pull_request_and_a_plain_work_item_the_same_way() {
             work_item_data("Ship the feature"),
         )],
     );
-    let pr_head = head_seq(&mut omhl);
-    close(&mut omhl, PR_7, &at_head());
-    let feature_head = head_seq(&mut omhl);
+    let head_before = head_seq(&mut omhl);
 
-    close(&mut omhl, FEATURE_1, &at_head());
+    let pull_request = close_without_force(&mut omhl, PR_7);
+    let work_item = close_without_force(&mut omhl, FEATURE_1);
 
-    assert_eq!(
-        data_of(&mut omhl, PR_7),
-        closed_data(pull_request_data("Add gate"), false, pr_head, &snap('a'))
-    );
-    assert_eq!(
-        data_of(&mut omhl, FEATURE_1),
-        closed_data(
-            work_item_data("Ship the feature"),
-            false,
-            feature_head,
-            &snap('a')
-        )
-    );
+    assert!(matches!(
+        pull_request,
+        Err(CloseError::Refused(CloseRefusal::Refused(_)))
+    ));
+    assert!(matches!(
+        work_item,
+        Err(CloseError::Refused(CloseRefusal::Refused(_)))
+    ));
+    assert_eq!(data_of(&mut omhl, PR_7)["status"], json!("open"));
+    assert_eq!(data_of(&mut omhl, FEATURE_1)["status"], json!("open"));
+    assert_eq!(head_seq(&mut omhl), head_before);
+}
+
+fn close_without_force(
+    omhl: &mut Omhl<'_>,
+    work_item: &str,
+) -> Result<omhl::facade::ClosedWorkItem, CloseError> {
+    omhl.close_work_item(
+        &acme(),
+        &sid(work_item),
+        &at_head(),
+        &all_native_enabled(),
+        &omhl::facade::WorkRequirements::none(),
+        &omhl::facade::Closing {
+            author: &author(),
+            note: None,
+        },
+    )
 }
 
 #[test]
@@ -468,6 +501,7 @@ fn it_should_refuse_reopening_a_closed_work_item() {
     let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
+    attest_required(&mut omhl, &snap('a'));
     let closed = close(&mut omhl, PR_7, &at_head());
     let reopening = revision_item(
         PR_7,
@@ -489,6 +523,7 @@ fn it_should_refuse_an_attestation_for_a_closed_work_item() {
     let harness = OmhlHarness::new(head_probe());
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
+    attest_required(&mut omhl, &snap('a'));
     close(&mut omhl, PR_7, &at_head());
 
     let error = refusal(
@@ -577,14 +612,20 @@ fn it_should_refuse_closing_when_the_snapshot_is_not_the_probe_head() {
         &snapshots(&snap('b'), &tree('c')),
         &all_native_enabled(),
         &omhl::facade::WorkRequirements::none(),
-        &author(),
+        &omhl::facade::Closing {
+            author: &author(),
+            note: None,
+        },
     );
     let head_after = omhl.chain_head(&acme()).expect("the head is read");
 
     assert_eq!(
         (result.err(), head_after),
         (
-            Some(rule(RuleCode::SnapshotNotHead, "/snapshot")),
+            Some(omhl::facade::CloseError::Omhl(rule(
+                RuleCode::SnapshotNotHead,
+                "/snapshot"
+            ))),
             head_before
         )
     );
@@ -603,14 +644,20 @@ fn it_should_refuse_closing_when_the_tree_is_dirty() {
         &at_head(),
         &all_native_enabled(),
         &omhl::facade::WorkRequirements::none(),
-        &author(),
+        &omhl::facade::Closing {
+            author: &author(),
+            note: None,
+        },
     );
     let head_after = omhl.chain_head(&acme()).expect("the head is read");
 
     assert_eq!(
         (result.err(), head_after),
         (
-            Some(rule(RuleCode::SnapshotDirty, "/snapshot")),
+            Some(omhl::facade::CloseError::Omhl(rule(
+                RuleCode::SnapshotDirty,
+                "/snapshot"
+            ))),
             head_before
         )
     );
@@ -627,13 +674,17 @@ fn it_should_record_the_caller_author_on_the_closing_revision() {
         client: "closing-client".to_owned(),
     };
 
+    attest_required(&mut omhl, &snap('a'));
     omhl.close_work_item(
         &acme(),
         &sid(PR_7),
         &at_head(),
         &all_native_enabled(),
         &omhl::facade::WorkRequirements::none(),
-        &closer,
+        &omhl::facade::Closing {
+            author: &closer,
+            note: None,
+        },
     )
     .expect("the work item is closed");
     let stored = omhl
@@ -703,10 +754,19 @@ fn it_should_refuse_to_close_when_the_head_tree_cannot_be_probed() {
         &at_head(),
         &all_native_enabled(),
         &omhl::facade::WorkRequirements::none(),
-        &author(),
+        &omhl::facade::Closing {
+            author: &author(),
+            note: None,
+        },
     );
 
-    assert_eq!(result.err(), Some(rule(RuleCode::ProbeFailed, "/snapshot")));
+    assert_eq!(
+        result.err(),
+        Some(omhl::facade::CloseError::Omhl(rule(
+            RuleCode::ProbeFailed,
+            "/snapshot"
+        )))
+    );
     assert_eq!(data_of(&mut omhl, PR_7)["status"], json!("open"));
     assert_eq!(head_seq(&mut omhl), head_before);
 }

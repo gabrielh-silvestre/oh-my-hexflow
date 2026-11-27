@@ -11,6 +11,13 @@ pub struct RetroFacts {
     pub divergences: Vec<DivergenceFact>,
     pub gaps: Vec<GapFact>,
     pub amendment_files: Vec<String>,
+    pub gate_override: Option<GateOverride>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateOverride {
+    pub note: String,
+    pub overridden: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +42,7 @@ pub struct Retro {
     pub pending: Vec<String>,
     pub no_criterion: Vec<AnsweredGap>,
     pub open_gaps: Vec<OpenGap>,
+    pub gate_override: Option<GateOverride>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,7 +90,7 @@ pub fn retro(facts: &RetroFacts) -> Option<Retro> {
             })
         })
         .collect::<Vec<_>>();
-    if facts.divergences.is_empty() && no_criterion.is_empty() {
+    if facts.divergences.is_empty() && no_criterion.is_empty() && facts.gate_override.is_none() {
         return None;
     }
     let approved = approved_amendments(&facts.divergences);
@@ -108,6 +116,7 @@ pub fn retro(facts: &RetroFacts) -> Option<Retro> {
         pending,
         no_criterion,
         open_gaps,
+        gate_override: facts.gate_override.clone(),
     })
 }
 

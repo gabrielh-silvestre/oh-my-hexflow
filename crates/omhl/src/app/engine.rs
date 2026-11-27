@@ -14,11 +14,11 @@ use super::wire::append_request;
 use super::{context, output, work_item};
 use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
-use crate::facade::{Omhl, WorkRequirements};
+use crate::facade::{Closing, Omhl, WorkRequirements};
 use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::branch::{branch_prefix, work_item_id};
 use crate::ports::git::GitProbe;
-use crate::pr_gate::GateSnapshots;
+use crate::pr_gate::{Forcing, GateSnapshots};
 use crate::probe::{
     DevelopMark, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
 };
@@ -100,7 +100,7 @@ impl Engine<'_> {
                 context::render_context(&mut self.omhl, &self.tenant, native)
             }
             Action::GatePr { work_item } => self.gate_pr(work_item),
-            Action::Close { work_item } => self.close(caller, work_item),
+            Action::Close { work_item, note } => self.close(caller, work_item, note.as_deref()),
             Action::Verify => {
                 let report = self.omhl.verify_chain(&self.tenant, None)?;
 
@@ -192,21 +192,38 @@ impl Engine<'_> {
         Ok(output::gate(&report))
     }
 
-    fn close(&mut self, caller: &Caller, work_item: &str) -> Result<Value, AppError> {
+    fn close(
+        &mut self,
+        caller: &Caller,
+        work_item: &str,
+        note: Option<&str>,
+    ) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshots = self.probe_gate_snapshots()?;
         let enabled = self.resolve_native()?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
         // Lida antes de gravar: o `close` nunca devolve erro depois do record de fechamento.
-        let facts = self.retro_facts(&work_item)?;
-        let closed = self.omhl.close_work_item(
-            &self.tenant,
-            &work_item,
-            &snapshots,
-            &enabled,
-            &requirements,
-            &caller.author(),
-        )?;
+        let mut facts = self.retro_facts(&work_item)?;
+        let author = caller.author();
+        let closing = Closing {
+            author: &author,
+            note,
+        };
+        let closed = self
+            .omhl
+            .close_work_item(
+                &self.tenant,
+                &work_item,
+                &snapshots,
+                &enabled,
+                &requirements,
+                &closing,
+            )
+            .map_err(AppError::from)?;
+        // A retro mostra a nota que acabou de ser gravada, que os fatos lidos antes ainda não têm.
+        if let Some(Forcing::Forced(gate_override)) = &closed.forcing {
+            facts.gate_override = Some(gate_override.clone());
+        }
 
         Ok(output::closed(&closed, retro(&facts).as_ref()))
     }

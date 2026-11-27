@@ -72,6 +72,22 @@ impl Fixture {
         fixture
     }
 
+    fn close_work_item(&self, work_item: &str) {
+        let closed = self.run_in(self.project.dir(), &["close", work_item]);
+
+        assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    }
+
+    /// Como `seeded`, com o `W1` já fechado: o `close` passa com a premissa e a spec que o tipo exige.
+    fn seeded_closed() -> Fixture {
+        let fixture = Fixture::seeded();
+        fixture.premise("premises.b1", W1, "business", true);
+        fixture.write_valid_spec(W1, "premises.b1");
+        fixture.close_work_item(W1);
+
+        fixture
+    }
+
     fn run_in(&self, cwd: &Path, args: &[&str]) -> Child {
         omhl(args).cwd(cwd).xdg(self.project.xdg()).run()
     }
@@ -124,12 +140,6 @@ impl Fixture {
         let path = self.linked.join(".omhl/workflow.toml");
         fs::create_dir_all(path.parent().expect("the file has a parent")).expect("parent");
         fs::write(path, toml).expect("workflow.toml is written");
-    }
-
-    fn close_work_item(&self, work_item: &str) {
-        let closed = self.run_in(self.project.dir(), &["close", work_item]);
-
-        assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
     }
 
     fn main_dir(&self) -> String {
@@ -1098,8 +1108,7 @@ fn it_should_refuse_feat_of_a_work_item_that_is_not_in_the_database_with_work_it
 
 #[test]
 fn it_should_allow_chore_of_a_closed_work_item_because_its_require_never_opens_the_database() {
-    let fixture = Fixture::seeded();
-    fixture.close_work_item(W1);
+    let fixture = Fixture::seeded_closed();
 
     let output = fixture.gate("chore/wi-w1__new");
 

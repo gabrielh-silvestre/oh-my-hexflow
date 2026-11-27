@@ -1341,3 +1341,90 @@ fn it_should_accept_a_type_of_exactly_sixty_four_characters() {
         &work_item_with_type(&json!(exact))
     ));
 }
+
+/// O gate do fechamento forçado: reprovado, com os campos que o `--force --note` grava.
+fn forced_gate(fields: &Value) -> Value {
+    let mut gate = gate();
+    gate["passed"] = json!(false);
+    for (key, value) in fields.as_object().expect("the fields are an object") {
+        gate[key.as_str()] = value.clone();
+    }
+
+    gate
+}
+
+fn closed_with_gate(gate: &Value) -> Value {
+    json!({ "title": "Ship the catalogs", "status": "closed", "gate": gate })
+}
+
+#[test]
+fn it_should_accept_a_forced_gate_with_its_note_and_overridden_labels() {
+    let gate = forced_gate(&json!({
+        "forced": true,
+        "overridden": ["checks.run-tests"],
+        "note": "owner approved the override",
+    }));
+
+    assert!(is_accepted("work-item", &closed_with_gate(&gate)));
+}
+
+#[test]
+fn it_should_reject_a_forced_flag_other_than_true() {
+    let gate = forced_gate(&json!({ "forced": false }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/forced", "const")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_overridden_label_that_is_not_text() {
+    let gate = forced_gate(&json!({ "forced": true, "overridden": [1] }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/overridden/0", "type")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_more_than_one_hundred_overridden_labels() {
+    let labels: Vec<String> = (0..101).map(|index| format!("checks.{index}")).collect();
+    let gate = forced_gate(&json!({ "forced": true, "overridden": labels }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/overridden", "max-items")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_empty_note() {
+    let gate = forced_gate(&json!({ "forced": true, "note": "" }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/note", "min-length")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_a_note_longer_than_five_hundred_characters() {
+    let gate = forced_gate(&json!({ "forced": true, "note": "n".repeat(501) }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/note", "max-length")),
+        "{found:?}"
+    );
+}

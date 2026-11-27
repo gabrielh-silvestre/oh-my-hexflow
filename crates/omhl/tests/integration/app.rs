@@ -208,6 +208,7 @@ fn gate_pr_action() -> Action {
 fn close_action() -> Action {
     Action::Close {
         work_item: W1.to_owned(),
+        note: None,
     }
 }
 
@@ -1455,6 +1456,8 @@ fn it_should_refuse_to_attest_for_a_closed_work_item() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();
     open_work_item(&mut app);
+    run(&mut app, &attest_action(RUN_TESTS, "passed", None));
+    run(&mut app, &attest_action(CI_GREEN, "passed", None));
     run(&mut app, &close_action());
 
     let error = refuse(&mut app, &attest_action(RUN_TESTS, "passed", None));
@@ -1480,17 +1483,17 @@ fn it_should_revise_with_the_same_outcome_and_refuse_a_different_one() {
 }
 
 #[test]
-fn it_should_close_a_work_item_even_when_the_gate_fails() {
+fn it_should_refuse_closing_a_work_item_when_the_gate_fails_without_force() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();
     open_work_item(&mut app);
 
-    let closed = run(&mut app, &close_action());
+    let error = refuse(&mut app, &close_action());
     let node = node_of(&mut app, W1);
 
-    assert_eq!(closed["report"]["passed"], json!(false));
-    assert_eq!(node["data"]["status"], json!("closed"));
-    assert_eq!(node["data"]["gate"]["passed"], json!(false));
+    assert_eq!(error.code(), "close-refused");
+    assert_eq!(node["data"]["status"], json!("open"));
+    assert!(node["data"].get("gate").is_none());
 }
 
 #[test]
@@ -1551,6 +1554,8 @@ fn it_should_still_refuse_a_git_tree_snapshot_in_the_work_item_gate() {
     let fixture = Fixture::new(tree_probe(true));
     let mut app = fixture.open();
     open_work_item(&mut app);
+    run(&mut app, &attest_action(RUN_TESTS, "passed", None));
+    run(&mut app, &attest_action(CI_GREEN, "passed", None));
 
     let error = refuse(&mut app, &close_action());
     let node = node_of(&mut app, W1);

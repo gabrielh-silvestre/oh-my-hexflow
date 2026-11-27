@@ -73,6 +73,15 @@ pub enum QuestionClass {
     Warn,
 }
 
+impl QuestionClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            QuestionClass::Refuse => "refuse",
+            QuestionClass::Warn => "warn",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GateQuestion {
     pub label: String,

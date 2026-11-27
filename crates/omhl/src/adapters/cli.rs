@@ -82,8 +82,14 @@ pub enum ActionCommand {
         #[arg(long, allow_hyphen_values = true)]
         branch: String,
     },
-    /// Close a work item once the gate is evaluated.
-    Close { work_item: String },
+    /// Close a work item once the gate is evaluated; `--force --note` closes it past warn questions.
+    Close {
+        work_item: String,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        note: Option<String>,
+    },
     /// Verify the hash chain.
     Verify,
     /// Load the project extensions into the tenant.
@@ -669,6 +675,19 @@ fn execute(
     run_action(start, db, env, &caller, &action)
 }
 
+/// `--force` e `--note` vêm juntos: a nota é a autorização do dono para contornar os avisos.
+fn close_note(force: bool, note: Option<String>) -> Result<Option<String>, AppError> {
+    match (force, note) {
+        (true, Some(note)) => Ok(Some(note)),
+        (false, None) => Ok(None),
+        (true, None) => Err(AppError::invalid_arguments("", CLOSE_FORCE_NEEDS_NOTE)),
+        (false, Some(_)) => Err(AppError::invalid_arguments("", CLOSE_NOTE_NEEDS_FORCE)),
+    }
+}
+
+const CLOSE_FORCE_NEEDS_NOTE: &str = "--force needs --note with the owner's authorization";
+const CLOSE_NOTE_NEEDS_FORCE: &str = "--note needs --force";
+
 /// Divide no primeiro `=`: o valor pode conter `=`.
 fn split_where(index: usize, pair: &str) -> Result<(String, String), AppError> {
     match pair.split_once('=') {
@@ -721,7 +740,14 @@ fn to_action(
         ActionCommand::Render => Action::Render,
         ActionCommand::GatePr { work_item } => Action::GatePr { work_item },
         ActionCommand::GateWorktree { branch } => Action::GateWorktree { branch },
-        ActionCommand::Close { work_item } => Action::Close { work_item },
+        ActionCommand::Close {
+            work_item,
+            force,
+            note,
+        } => Action::Close {
+            work_item,
+            note: close_note(force, note)?,
+        },
         ActionCommand::Verify => Action::Verify,
         ActionCommand::Load { dry_run } => Action::Load { dry_run },
         ActionCommand::Project => Action::Project,

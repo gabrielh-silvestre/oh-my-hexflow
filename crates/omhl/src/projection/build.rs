@@ -179,7 +179,30 @@ fn header_markers(item: &NodeView) -> String {
     ];
     lines.extend(data_fields(&item.data, &["title", "status", "gate"]));
     lines.extend(gate_line(&item.data));
+    lines.extend(gate_override_lines(&item.data));
     lines.join("\n")
+}
+
+/// Só o fechamento forçado tem nota e rótulos gravados.
+fn gate_override_lines(data: &Value) -> Vec<String> {
+    let gate = &data["gate"];
+    if gate["forced"] != true {
+        return Vec::new();
+    }
+    let overridden: Vec<&str> = gate["overridden"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+
+    vec![
+        format!("- overridden: {}", escape(&overridden.join(", "), &[])),
+        format!(
+            "- note: {}",
+            escape(gate["note"].as_str().unwrap_or_default(), &[])
+        ),
+    ]
 }
 
 fn gate_line(data: &Value) -> Option<String> {

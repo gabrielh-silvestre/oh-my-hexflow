@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use support::child::{Cmd, Output, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::{git_in, git_ok, git_with_env, write_executable};
-use support::omhl::work_item_data;
+use support::omhl::{typed_work_item_data, work_item_data};
 use support::project::Project;
 use tempfile::TempDir;
 
@@ -228,6 +228,19 @@ impl HookRepo {
         let output = self
             .omhl_in(&["append"])
             .stdin(json!({ "items": items }).to_string())
+            .run();
+        assert_eq!(output.code, Some(0), "append stderr: {}", output.stderr);
+
+        self
+    }
+
+    fn chore_work_item(&self, id: &str) -> &HookRepo {
+        let item = json!({
+            "body": { "kind": "node", "id": id, "type": "work-item", "data": typed_work_item_data("t") }
+        });
+        let output = self
+            .omhl_in(&["append"])
+            .stdin(json!({ "items": [item] }).to_string())
             .run();
         assert_eq!(output.code, Some(0), "append stderr: {}", output.stderr);
 
@@ -1015,10 +1028,12 @@ fn it_should_answer_work_item_closed_for_a_branch_whose_work_item_was_closed_aft
     let others: Vec<String> = (1..=60).map(|n| format!("work-items.o{n:02}")).collect();
     let others: Vec<&str> = others.iter().map(String::as_str).collect();
     repo.work_items(&others[..30]).work_items(&others[30..]);
-    repo.work_items(&[WI_W1]).check("green").seed();
+    repo.chore_work_item(WI_W1).check("green").seed();
     repo.installed();
     repo.git(&["switch", "-c", W1]);
+    repo.commit_f();
     repo.omhl_in(&["close", WI_W1]).run();
+    let attested_before = repo.attestations();
 
     let commit = repo.commit_f();
 
@@ -1033,7 +1048,7 @@ fn it_should_answer_work_item_closed_for_a_branch_whose_work_item_was_closed_aft
         "stderr: {}",
         stderr(&commit)
     );
-    assert_eq!(repo.attestations(), Vec::<Value>::new());
+    assert_eq!(repo.attestations(), attested_before);
 }
 
 #[test]

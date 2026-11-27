@@ -12,9 +12,25 @@ use crate::ports::workflow::read_policy;
 use crate::workflow::config::WorkflowConfig;
 use crate::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_by, gap_state};
 use crate::workflow::recurrence::{Premise, recurrences};
-use crate::workflow::retro::{DivergenceFact, GapFact, RetroFacts, retro};
+use crate::workflow::retro::{DivergenceFact, GapFact, GateOverride, RetroFacts, retro};
 
 const GAP_RELATIONS: [&str; 3] = ["answers", "supports", "contradicts"];
+
+fn gate_override(data: &Value) -> Option<GateOverride> {
+    let gate = &data["gate"];
+    if gate["forced"] != true {
+        return None;
+    }
+
+    Some(GateOverride {
+        note: gate["note"].as_str()?.to_owned(),
+        overridden: gate["overridden"]
+            .as_array()?
+            .iter()
+            .filter_map(|label| label.as_str().map(str::to_owned))
+            .collect(),
+    })
+}
 
 impl Engine<'_> {
     pub(super) fn report_answers(&mut self, work_item: Option<&str>) -> Result<Value, AppError> {
@@ -45,7 +61,7 @@ impl Engine<'_> {
 
     /// Os fatos da retro não dependem do fechamento: o `close` os lê antes de gravar.
     pub(super) fn retro_facts(&mut self, work_item: &SemanticId) -> Result<RetroFacts, AppError> {
-        self.omhl.find_work_item(&self.tenant, work_item)?;
+        let node = self.omhl.find_work_item(&self.tenant, work_item)?;
         let filter = work_item_filter(work_item.as_str())?;
         let divergences: Vec<DivergenceFact> =
             nodes_matching(&mut self.omhl, &self.tenant, "divergence", filter.clone())?
@@ -63,7 +79,9 @@ impl Engine<'_> {
             })
             .collect();
 
+        let gate_override = gate_override(&node.data);
         let has_retro = !divergences.is_empty()
+            || gate_override.is_some()
             || gaps.iter().any(|gap| {
                 matches!(
                     gap.state,
@@ -84,6 +102,7 @@ impl Engine<'_> {
             divergences,
             gaps,
             amendment_files,
+            gate_override,
         })
     }
 

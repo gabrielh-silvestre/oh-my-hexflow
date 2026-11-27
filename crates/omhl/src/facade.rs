@@ -13,8 +13,9 @@ use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::plan::CheckNode;
 use crate::native::NativeBase;
 use crate::pr_gate::{
-    GATE_NAME, GateSnapshots, anchor_questions, closing_request, pr_gate_questions,
-    project_checks_filter, required_checks, requirement_questions, spec_digests,
+    CloseRefusal, Forcing, GATE_NAME, GateSnapshots, anchor_questions, close_verdict,
+    closing_request, pr_gate_questions, project_checks_filter, required_checks,
+    requirement_questions, spec_digests,
 };
 use crate::probe::{SnapshotProbe, TreeSource};
 use crate::projection::ProjectionState;
@@ -96,6 +97,25 @@ impl WorkRequirements {
 pub struct ClosedWorkItem {
     pub outcome: AppendOutcome,
     pub report: GateReport,
+    pub forcing: Option<Forcing>,
+}
+
+pub struct Closing<'a> {
+    pub author: &'a Author,
+    pub note: Option<&'a str>,
+}
+
+/// O `close` falha de duas formas: erro do hexlog ou do omhl, ou a recusa do gate, que nada grava.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloseError {
+    Omhl(OmhlError),
+    Refused(CloseRefusal),
+}
+
+impl From<OmhlError> for CloseError {
+    fn from(error: OmhlError) -> CloseError {
+        CloseError::Omhl(error)
+    }
 }
 
 pub struct Omhl<'d> {
@@ -310,12 +330,12 @@ impl<'d> Omhl<'d> {
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
         requirements: &WorkRequirements,
-        author: &Author,
-    ) -> Result<ClosedWorkItem, OmhlError> {
+        closing: &Closing<'_>,
+    ) -> Result<ClosedWorkItem, CloseError> {
         let session = self.session.resolve()?;
         let current = self.find_work_item(tenant, work_item)?;
         if current.data["status"] == "closed" {
-            return Err(OmhlError::rule(RuleCode::InvalidTransition, "/work_item"));
+            return Err(OmhlError::rule(RuleCode::InvalidTransition, "/work_item").into());
         }
         let head_commit = guard::probe_refusal(&self.probe.probe(), &snapshots.head_commit);
         let head_tree = guard::probe_refusal(
@@ -323,13 +343,29 @@ impl<'d> Omhl<'d> {
             &snapshots.head_tree,
         );
         if let Some(code) = head_commit.or(head_tree) {
-            return Err(OmhlError::rule(code, "/snapshot"));
+            return Err(OmhlError::rule(code, "/snapshot").into());
         }
         let report = self.gate_report(tenant, work_item, snapshots, enabled, requirements)?;
-        let request = closing_request(tenant, author, current, &report, &snapshots.head_commit);
-        let outcome = self.hexlog.append_with_session(&request, &session)?;
+        // A recusa é decidida antes de gravar: quem recusa não deixa nenhum registro.
+        let forcing = close_verdict(&report, closing.note).map_err(CloseError::Refused)?;
+        let request = closing_request(
+            tenant,
+            closing.author,
+            current,
+            &report,
+            &snapshots.head_commit,
+            forcing.as_ref(),
+        );
+        let outcome = self
+            .hexlog
+            .append_with_session(&request, &session)
+            .map_err(OmhlError::from)?;
 
-        Ok(ClosedWorkItem { outcome, report })
+        Ok(ClosedWorkItem {
+            outcome,
+            report,
+            forcing,
+        })
     }
 
     pub fn find_work_item(

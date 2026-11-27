@@ -26,7 +26,10 @@
                   "kind": {"const": "git-commit"},
                   "id": {"type": "string", "minLength": 40, "maxLength": 64}
                 }
-              }
+              },
+              "forced": {"const": true},
+              "overridden": {"type": "array", "maxItems": 100, "items": {"type": "string"}},
+              "note": {"type": "string", "minLength": 1, "maxLength": 500}
             }
           }
         },
@@ -62,7 +65,10 @@
                   "kind": {"const": "git-commit"},
                   "id": {"type": "string", "minLength": 40, "maxLength": 64}
                 }
-              }
+              },
+              "forced": {"const": true},
+              "overridden": {"type": "array", "maxItems": 100, "items": {"type": "string"}},
+              "note": {"type": "string", "minLength": 1, "maxLength": 500}
             }
           },
           "provider": {"enum": ["github"]},

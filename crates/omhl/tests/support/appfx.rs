@@ -225,6 +225,7 @@ impl AppFixture {
     pub fn close(&self, work_item: &str) -> Result<Value, Value> {
         let action = Action::Close {
             work_item: work_item.to_owned(),
+            note: None,
         };
 
         self.run(&Caller::cli(), &action)

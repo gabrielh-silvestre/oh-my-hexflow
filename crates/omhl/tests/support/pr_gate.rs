@@ -306,7 +306,10 @@ pub fn close(omhl: &mut Omhl<'_>, work_item: &str, snapshots: &GateSnapshots) ->
         snapshots,
         &all_native_enabled(),
         &omhl::facade::WorkRequirements::none(),
-        &author(),
+        &omhl::facade::Closing {
+            author: &author(),
+            note: None,
+        },
     )
     .expect("the work item is closed")
 }
