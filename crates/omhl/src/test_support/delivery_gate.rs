@@ -1,7 +1,7 @@
+use crate::delivery_gate::{GateSnapshots, RequiredCheck};
 use crate::native::NativeCheck;
-use crate::pr_gate::GateSnapshots;
-use crate::workflow::config::NativeConfig;
-use hexlog::{NodeView, RecordId, SemanticId, Snapshot, SnapshotKind};
+use crate::workflow::config::{NativeConfig, NativeRun};
+use hexlog::{NodeView, RecordId, Snapshot, SnapshotKind};
 use serde_json::json;
 
 use super::omhl::{RUN_TESTS, check_data};
@@ -72,8 +72,33 @@ pub fn mechanical_project_check(id: &str, event: &str, blocking: bool, shadowed:
     }
 }
 
-pub fn required_pairs(pairs: &[(&str, SnapshotKind)]) -> Vec<(SemanticId, SnapshotKind)> {
-    pairs.iter().map(|(id, kind)| (sid(id), *kind)).collect()
+/// O que `required_checks` devolve, sem digests: `(id, kind)` na ordem dada.
+pub fn required_pairs(pairs: &[(&str, SnapshotKind)]) -> Vec<RequiredCheck> {
+    pairs
+        .iter()
+        .map(|(id, kind)| RequiredCheck {
+            id: sid(id),
+            kind: *kind,
+            digests: Vec::new(),
+        })
+        .collect()
+}
+
+/// Comando de nativo com o `expect` padrão já preenchido.
+pub fn native_run(argv: &[&str]) -> NativeRun {
+    NativeRun {
+        run: argv.iter().map(|arg| (*arg).to_owned()).collect(),
+        timeout_secs: 60,
+        expect: json!([{ "exit": 0, "outcome": "passed" }]),
+    }
+}
+
+/// Declaração com os nativos `ids` ligados e o comando `argv` declarado para `id`.
+pub fn enabled_with_run(ids: &[&'static str], id: &str, argv: &[&str]) -> NativeConfig {
+    let mut config = enabled(ids);
+    config.run.insert(id.to_owned(), native_run(argv));
+
+    config
 }
 
 pub fn snapshots(commit: &Snapshot, tree: &Snapshot) -> GateSnapshots {

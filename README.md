@@ -8,7 +8,7 @@ O vocabulário (record, tenant, node, gate, extension, projection) está em
 
 ### Obrigatório
 
-- `git` 2.31 ou mais novo no `PATH`, porque `attest`, `gate-pr` e `close` leem o commit atual. O `omhl` usa `git rev-parse --path-format=absolute`, que nasceu no 2.31.
+- `git` 2.31 ou mais novo no `PATH`, porque `attest`, `gate-delivery` e `close` leem o commit atual. O `omhl` usa `git rev-parse --path-format=absolute`, que nasceu no 2.31.
 - Um `sh` POSIX, que roda o script dos hooks do plugin.
 - `HOME` ou `XDG_DATA_HOME` definido, para o `omhl` achar o banco.
 - Linux, para os checks mecânicos.
@@ -67,7 +67,7 @@ Skills de orquestração dos agentes, em `plugin/skills/`:
 |---|---|
 | `interview` | A entrevista de negócio com o dono, antes do work item: placar de ambiguidade, rodadas de perguntas e a gravação do work item e das premissas confirmadas. |
 | `plan-consensus` | O consenso do plano: chama o analyst, o planner, o architect e o critic em sequência, limita as voltas, escala o impasse ao dono e retira os `contradicts` resolvidos antes do `spec validate`. |
-| `review` | A revisão da entrega: chama o code-reviewer, o security-reviewer e o verifier, grava os achados, monta a tabela do PR e confere o `gate-pr`. Traz também a referência dos checks mecânicos e do fechamento do work item. |
+| `review` | A revisão da entrega: chama o code-reviewer, o security-reviewer e o verifier, grava os achados, monta a tabela do PR e confere o `gate-delivery`. Traz também a referência dos checks mecânicos e do fechamento do work item. |
 
 As skills `role-*` não são chamadas pela sessão: são as vistas por papel, pré-carregadas pelos agentes do plugin.
 
@@ -195,6 +195,19 @@ rode `omhl load`. Detalhes em
 
 Uma entrada por mudança que exige ação de quem atualiza, a mais nova primeiro.
 
+### Os checks viram a interface do projeto
+
+O evento, o comando e o gate agora se chamam `before-push`, `gate-delivery` e `delivery`. O que muda para quem atualiza:
+
+1. Rode `omhl hooks install` uma vez por usuário: o `pre-push` instalado precisa ser reescrito. Os scripts dos hooks ficam numa pasta por usuário que todo clone usa, então uma rodada conserta todos.
+2. Rode `omhl load` depois de atualizar, para os checks guardados tomarem os nomes novos de evento.
+3. As 2 guidelines `one-decision-per-turn` e `commit-policy` saem do plugin. Quem as cita as declara em `.omhl/guidelines/`.
+4. As 5 variáveis de toolchain do Rust (`RUSTFLAGS`, `RUSTC_WRAPPER`, `RUSTC_WORKSPACE_WRAPPER`, `CARGO_ENCODED_RUSTFLAGS`, `CARGO_BUILD_RUSTFLAGS`) ficam no ambiente do check. Um check `cargo` que dependia de elas serem removidas põe `env -u` no seu `run`.
+5. O limiar e os pesos da entrevista vivem em `[interview]`.
+6. O comando do nativo `checks.run-tests` vive em `[native.run]`. Depois do merge de uma mudança desse comando, ou de uma ativação com comando, as outras worktrees abertas falham no `spec-digest-match` do nativo até o próximo commit ali rodar `check run`.
+7. O binário anterior recusa `[interview]`, `[native.run]` e `before-push`.
+8. Plugin e binário se atualizam juntos: o `plugin/hooks/min-omhl-version` agora é `0.3.0`, igual à versão do workspace.
+
 ### O `close` recusa mais e o `require` acrescenta
 
 O que cada comando recusa e com qual código está na página do comando, em `plugin/skills/directives-flow/references/`. O que muda para quem atualiza:
@@ -210,11 +223,11 @@ O que cada comando recusa e com qual código está na página do comando, em `pl
 
 O que cada check nativo pede e como ligá-lo está em [native-checks.md](plugin/skills/directives-flow/references/native-checks.md). O que muda para quem atualiza:
 
-1. Um projeto sem `[native]` no `.omhl/workflow.toml` passa a ter os checks nativos desligados: o `render` não os imprime e o `gate-pr` e o `close` não perguntam por eles.
+1. Um projeto sem `[native]` no `.omhl/workflow.toml` passa a ter os checks nativos desligados: o `render` não os imprime e o `gate-delivery` e o `close` não perguntam por eles.
 2. Quem quiser manter algum declara o id em `[native] checks`.
 3. `checks.run-tests` e `checks.ci-green-before-merge` declarados são cobrados mesmo com um check próprio no mesmo momento: o check do projeto deixa de substituir o nativo.
-4. Um projeto com `.omhl.toml` e sem repositório git mostra a linha `main-dir-unknown` a cada início de sessão, e `gate-pr` e `close` recusam ali com `probe-failed`. O `git init` tira a linha da sessão, mas `gate-pr` e `close` precisam também de um primeiro commit com a árvore limpa, porque a sonda recusa um repositório sem commits.
-5. O binário anterior recusa um `workflow.toml` com `[native]`. Com o binário novo, um arquivo que ele não aceita faz `gate-pr` e `close` recusarem com `invalid-workflow-config`, salvo o `--abandon` e o PR de reparo.
+4. Um projeto com `.omhl.toml` e sem repositório git mostra a linha `main-dir-unknown` a cada início de sessão, e `gate-delivery` e `close` recusam ali com `probe-failed`. O `git init` tira a linha da sessão, mas `gate-delivery` e `close` precisam também de um primeiro commit com a árvore limpa, porque a sonda recusa um repositório sem commits.
+5. O binário anterior recusa um `workflow.toml` com `[native]`. Com o binário novo, um arquivo que ele não aceita faz `gate-delivery` e `close` recusarem com `invalid-workflow-config`, salvo o `--abandon` e o PR de reparo.
 6. Plugin e binário se atualizam juntos.
 
 ### A pasta `.omhl/notes/` nasce com um `.gitignore` próprio

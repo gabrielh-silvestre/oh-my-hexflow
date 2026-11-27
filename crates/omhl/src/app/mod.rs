@@ -30,7 +30,7 @@ pub mod runtime;
 
 pub use crate::byproduct::read_command as byproduct_read_command;
 pub use crate::extensions::model::ExtensionKind;
-pub use crate::mechanical::RUNNABLE_EVENTS;
+pub use crate::mechanical::{EVENTS, INSTRUCTION_EVENT, RUNNABLE_EVENTS};
 pub use crate::workflow::config::INVALID_WORKFLOW_CONFIG;
 pub use crate::workflow::lock::{EditInput, Replacement, Tool, Verdict};
 pub use crate::workflow::omhl_leaf::Group;

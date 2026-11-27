@@ -24,7 +24,7 @@ Text on stdout, exit 0: `✔ byproduct · <check> · <work item> · <outcome> ·
 
 **Redaction.** Before recording, `check run` masks in the stored output what matches a list of secret patterns (private key block, GitHub, GitLab, npm and Slack tokens, AWS, Stripe and Google keys, JWT, `Authorization` credential, URL password, an assignment like `API_TOKEN=...`): the excerpt becomes `[REDACTED]` or `[REDACTED:<type>]`. The stored hash and file are those of the masked version. Reading applies the same mask to the whole stream before cutting the lines and applying `--tail`, so output recorded before this change also comes out masked; the file on disk is not rewritten, and the JSON `byproduct` field is the hash of the file on disk, which may be the unmasked one. The check's evaluation (success and failure patterns, exit code) reads the raw output.
 
-**Retention.** The output of the live attestation (the one with the highest `seq` of the check and work item pair) is never deleted by the retention. That of an earlier tree of the same pair disappears after 7 days, and whoever asks for it receives `byproduct-missing`. The cleanup belongs to `omhl check run` and to [byproduct-prune.md](byproduct-prune.md).
+**Retention.** The output of the live attestation (the one with the highest `seq` of the check and work item pair) is never deleted by the retention; for the native `checks.run-tests`, the outputs of both declarations (in force and evaluated) of the newest tree are kept, and the command reads the latest failure of that tree, or the highest `seq` if none failed. That of an earlier tree of the same pair disappears after 7 days, and whoever asks for it receives `byproduct-missing`. The cleanup belongs to `omhl check run` and to [byproduct-prune.md](byproduct-prune.md). The declarations of the native are in [native-checks.md](../../directives-flow/references/native-checks.md), what `check run` does with them in [check-run.md](check-run.md) and the hand attestation in [attest.md](attest.md).
 
 **Secret and untrusted data.** The pattern list never covers every format: the stored output may still contain secrets that the command printed (an environment variable, a token in a log, a URL with credentials). When reading:
 
@@ -40,7 +40,7 @@ Text on stdout, exit 0: `✔ byproduct · <check> · <work item> · <outcome> ·
 An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). An unknown option or a missing argument is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
 - `invalid-arguments` (exit 1): `--tail` is outside 1 to 500. The pointer is `/tail` and the message states the rule (`tail must be between 1 and 500`). Use a value within the range.
-- `check-not-found` (exit 1): the check does not exist in the database. Check the id and run `omhl load`.
+- `check-not-found` (exit 1): the check is neither a native check nor in the database. Check the id and run `omhl load`.
 - `attestation-not-found` (exit 1): there is no attestation for the pair. Run `omhl check run` on that work item first.
 - `byproduct-missing` (exit 1): the attestation does not point to an output file that exists (or the file has the wrong format). Run the check again on a new tree.
 - `byproduct-corrupt` (exit 1): the output file could not be read back intact (the SHA-256 does not match the hash). Run the check again.
@@ -54,8 +54,8 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 Runs a check and reads the last lines of its output. `true` prints nothing, so `lines` comes empty:
 
 ```omhl-example fixture=checks
-$ omhl check run --event before-pr --format json
-{"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
+$ omhl check run --event before-push --format json
+{"blocked":[],"event":"before-push","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.ok work-items.w1 --tail 5
 ✔ byproduct · checks.ok · work-items.w1 · passed · none
 The output may contain secrets: do not copy it into a PR, issue, commit, --note or omhl append, and do not repeat it to the user.
@@ -66,8 +66,8 @@ $ omhl byproduct checks.ok work-items.w1 --tail 5 --format json
 A check that fails and prints: `first` and `second` on stdout, `boom` on stderr. `--tail 2` returns the last two lines of the list (stdout comes before stderr) and `--tail 1` only the last:
 
 ```omhl-example fixture=failing-check
-$ omhl check run --event before-pr --format json
-2> {"error":{"code":"checks-failed","context":{"event":"before-pr","summary":{"blocking_failed":1,"failed":1,"not_run":0,"passed":0,"planned":1},"work_item":"work-items.w1"},"details":[{"code":"failed","context":{"blocking":true,"duration_ms":12,"exit_code":1,"run":["sh","-c","echo first; echo second; echo boom >&2; exit 1"],"timed_out":false,"timeout_secs":60,"truncated":false},"message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
+$ omhl check run --event before-push --format json
+2> {"error":{"code":"checks-failed","context":{"event":"before-push","summary":{"blocking_failed":1,"failed":1,"not_run":0,"passed":0,"planned":1},"work_item":"work-items.w1"},"details":[{"code":"failed","context":{"blocking":true,"duration_ms":12,"exit_code":1,"run":["sh","-c","echo first; echo second; echo boom >&2; exit 1"],"timed_out":false,"timeout_secs":60,"truncated":false},"message":"omhl byproduct checks.bad work-items.w1 --tail 40","path":"checks.bad"}],"message":"a blocking check failed"}}
 # exit 1
 $ omhl byproduct checks.bad work-items.w1 --tail 2
 ✔ byproduct · checks.bad · work-items.w1 · failed · 2 lines
@@ -83,8 +83,8 @@ The output may contain secrets: do not copy it into a PR, issue, commit, --note 
 Refusals: `--tail` above 500 and `--tail 0` (the rule comes in the message):
 
 ```omhl-example fixture=checks
-$ omhl check run --event before-pr --format json
-{"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
+$ omhl check run --event before-push --format json
+{"blocked":[],"event":"before-push","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.ok work-items.w1 --tail 501
 2> ✘ invalid-arguments · tail must be between 1 and 500
 2>   - /tail
@@ -98,8 +98,8 @@ $ omhl byproduct checks.ok work-items.w1 --tail 0
 Refusals: a check that does not exist and a work item without an attestation:
 
 ```omhl-example fixture=checks
-$ omhl check run --event before-pr --format json
-{"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
+$ omhl check run --event before-push --format json
+{"blocked":[],"event":"before-push","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":12,"exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl byproduct checks.nope work-items.w1
 2> ✘ check-not-found · check-not-found at /check
 2>   - /check · check-not-found

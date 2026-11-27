@@ -359,7 +359,7 @@ fn it_should_keep_the_closing_outcome_and_gate_report_next_to_the_retro() {
             closed["outcome"]["records"].as_array().map(Vec::len),
             closed["report"]["gate"].clone(),
         ),
-        (Some(1), json!("pull-request"))
+        (Some(1), json!("delivery"))
     );
 }
 
@@ -892,7 +892,7 @@ fn typed(mut data: serde_json::Value) -> serde_json::Value {
     data
 }
 
-// Gate reprovado: recusa do `close`, `--force --note` e a paridade com o `gate-pr`
+// Gate reprovado: recusa do `close`, `--force --note` e a paridade com o `gate-delivery`
 
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
@@ -922,8 +922,8 @@ impl Fixture {
         assert_eq!(attested.code, Some(0), "stderr: {}", attested.stderr);
     }
 
-    fn gate_pr(&self) -> Value {
-        let gate = self.run(&["gate-pr", W1]);
+    fn gate_delivery(&self) -> Value {
+        let gate = self.run(&["gate-delivery", W1]);
         assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
 
         json_line(&gate.stdout)
@@ -1266,12 +1266,12 @@ fn it_should_refuse_close_of_a_closed_work_item_whose_type_is_no_longer_in_the_t
 }
 
 #[test]
-fn it_should_refuse_gate_pr_with_invalid_workflow_config_before_a_missing_work_item() {
+fn it_should_refuse_gate_delivery_with_invalid_workflow_config_before_a_missing_work_item() {
     let fixture = Fixture::new();
     fixture.write_workflow(INVALID_WORKFLOW);
     fixture.commit_all();
 
-    let gate = fixture.run(&["gate-pr", MISSING_WORK_ITEM]);
+    let gate = fixture.run(&["gate-delivery", MISSING_WORK_ITEM]);
 
     assert_eq!(
         error_code(&gate),
@@ -1282,12 +1282,12 @@ fn it_should_refuse_gate_pr_with_invalid_workflow_config_before_a_missing_work_i
 }
 
 #[test]
-fn it_should_ask_gate_pr_the_same_failing_questions_and_classes_that_close_refuses() {
+fn it_should_ask_gate_delivery_the_same_failing_questions_and_classes_that_close_refuses() {
     for natives in [&[RUN_TESTS][..], &[RUN_TESTS, CI_GREEN][..]] {
         let fixture = fixture_with_natives(natives);
         fixture.commit_all();
 
-        let gate = fixture.gate_pr();
+        let gate = fixture.gate_delivery();
         let closed = fixture.run(&["close", W1]);
 
         let asked: Vec<Value> = gate["questions"]
@@ -1579,7 +1579,7 @@ fn it_should_exit_two_when_the_close_options_appear_in_another_subcommand() {
         "--reason",
         "--note",
     ] {
-        for command in [&["gate-pr", W1][..], &["append"]] {
+        for command in [&["gate-delivery", W1][..], &["append"]] {
             let mut args = command.to_vec();
             args.push(flag);
             if matches!(flag, "--reason" | "--note") {

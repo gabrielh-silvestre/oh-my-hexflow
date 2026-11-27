@@ -5,15 +5,16 @@ use hexlog::{
     HexlogError, ItemBody, NativeNode, NativeNodes, Origin, RelationQuery, RelationView,
     SemanticId, Snapshot, SnapshotKind,
 };
+use omhl::delivery_gate::{REQUIRED_EVENTS, required_checks};
 use omhl::graphs;
-use omhl::native::{NativeBase, NativeCheck, NativeGuideline};
-use omhl::pr_gate::{REQUIRED_EVENTS, required_checks};
+use omhl::native::{NATIVE_CATALOG_VERSION, NativeBase, NativeCheck};
 use omhl::probe::{ProbeOutcome, TreeSource};
+use omhl::workflow::config::NativeConfig;
 use serde_json::{Value, json};
-use support::omhl::{OmhlHarness, check_data, seed_pull_request};
-use support::pr_gate::{
+use support::delivery_gate::{
     all_native_enabled, attest, expected_outcomes, gate_of, outcomes, required_pairs, snapshots,
 };
+use support::omhl::{OmhlHarness, check_data, seed_pull_request};
 use support::raw::RawHarness;
 use support::{FakeProbe, author, rty, sid, snap, tenant, tname};
 
@@ -23,7 +24,7 @@ const CHECK_IDS: [&str; 4] = [
     "checks.verify-review-comment-anchoring",
     "checks.config-loosening-review",
 ];
-const GUIDELINE_IDS: [&str; 2] = [
+const FORMER_GUIDELINE_IDS: [&str; 2] = [
     "guidelines.one-decision-per-turn",
     "guidelines.commit-policy",
 ];
@@ -31,16 +32,10 @@ const GUIDELINE_IDS: [&str; 2] = [
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 const LINT_DOCS: &str = "checks.lint-docs";
-// Exceção documentada (ADR 0003): o evento `before-publishing-review-comments` deste check nativo está fora do
-// enum de eventos do tipo `check`; ele não passa pelo catálogo e não tem schema próprio.
-const REVIEW_CHECK_EVENT_EXCEPTION: &str = "checks.verify-review-comment-anchoring";
 
-/// Os cinco ids nativos na ordem do contrato, com o tipo de cada um.
+/// Os ids nativos na ordem do contrato, todos do tipo check.
 fn native_ids_with_types() -> Vec<(&'static str, &'static str)> {
-    let checks = CHECK_IDS.iter().map(|id| (*id, "check"));
-    let guidelines = GUIDELINE_IDS.iter().map(|id| (*id, "guideline"));
-
-    checks.chain(guidelines).collect()
+    CHECK_IDS.iter().map(|id| (*id, "check")).collect()
 }
 
 fn catalog() -> Catalog {
@@ -141,7 +136,6 @@ fn after_relations(hexlog: &mut Hexlog<'_>) -> Vec<RelationView> {
 /// Tudo que o nativo expõe, copiado para comparar antes e depois de uma escrita do projeto.
 type NativeContent = (
     Vec<NativeCheck>,
-    Vec<NativeGuideline>,
     Vec<Option<NativeNode>>,
     Vec<(SemanticId, SemanticId)>,
 );
@@ -154,14 +148,13 @@ fn native_content(native: &NativeBase) -> NativeContent {
 
     (
         native.checks().to_vec(),
-        native.guidelines().to_vec(),
         looked_up,
         native.native_relations(&rty("after")),
     )
 }
 
 #[test]
-fn it_should_validate_every_native_check_but_the_review_one_against_the_check_type() {
+fn it_should_validate_every_native_check_against_the_check_type() {
     let native = NativeBase;
     let catalog = catalog();
 
@@ -177,36 +170,7 @@ fn it_should_validate_every_native_check_but_the_review_one_against_the_check_ty
         })
         .collect();
 
-    assert_eq!(
-        rejected,
-        vec![(
-            REVIEW_CHECK_EVENT_EXCEPTION,
-            vec![DataViolation {
-                pointer: "/when/event".to_owned(),
-                code: "enum".to_owned()
-            }]
-        )]
-    );
-}
-
-#[test]
-fn it_should_validate_every_native_guideline_against_the_guideline_type() {
-    let native = NativeBase;
-    let catalog = catalog();
-
-    let rejected: Vec<(&str, Vec<DataViolation>)> = native
-        .guidelines()
-        .iter()
-        .filter_map(|guideline| {
-            let data = guideline_data(guideline.text);
-            catalog
-                .validate_data(&tname("guideline"), &data)
-                .err()
-                .map(|violations| (guideline.id, violations))
-        })
-        .collect();
-
-    assert_eq!(rejected, Vec::new());
+    assert!(rejected.is_empty(), "{rejected:?}");
 }
 
 #[test]
@@ -222,16 +186,13 @@ fn it_should_refuse_a_tenant_node_with_each_native_id() {
     let errors: Vec<HexlogError> = native_ids_with_types()
         .iter()
         .map(|(id, type_name)| {
-            let data = match *type_name {
-                "check" => check_data("before-commit", "run the linter", true),
-                _ => guideline_data("a project guideline"),
-            };
+            let data = check_data("before-commit", "run the linter", true);
             refusal(&mut hexlog, vec![node_item(id, type_name, data)])
         })
         .collect();
 
     let summaries: Vec<_> = errors.iter().map(refusal_summary).collect();
-    assert_eq!(summaries, vec![expected; 6]);
+    assert_eq!(summaries, vec![expected; 4]);
 }
 
 #[test]
@@ -266,7 +227,7 @@ fn it_should_accept_a_project_check_linked_after_a_native_check() {
             Origin::Tenant,
             Origin::Native,
             EndpointStatus::Current,
-            Some("1.1.0")
+            Some(NATIVE_CATALOG_VERSION)
         )]
     );
 }
@@ -392,7 +353,13 @@ fn it_should_keep_the_native_review_check_in_the_catalog_and_out_of_the_required
         .find(|check| check.id == "checks.verify-review-comment-anchoring")
         .expect("the review check is in the catalog");
 
-    let required = required_checks(checks, &all_native_enabled(), &[], false);
+    let required = required_checks(
+        checks,
+        &all_native_enabled(),
+        &NativeConfig::default(),
+        &[],
+        false,
+    );
 
     assert_eq!(ids, CHECK_IDS.to_vec());
     assert_eq!(
@@ -407,4 +374,19 @@ fn it_should_keep_the_native_review_check_in_the_catalog_and_out_of_the_required
             (CI_GREEN, SnapshotKind::GitCommit),
         ])
     );
+}
+
+#[test]
+fn it_should_accept_a_tenant_node_with_each_former_native_guideline_id() {
+    let harness = RawHarness::new();
+    let native = NativeBase;
+    let mut hexlog = open(&harness, &native);
+    let items = FORMER_GUIDELINE_IDS
+        .iter()
+        .map(|id| node_item(id, "guideline", guideline_data("a project guideline")))
+        .collect();
+
+    let result = hexlog.append(&request(items));
+
+    assert!(result.is_ok(), "{:?}", result.err());
 }

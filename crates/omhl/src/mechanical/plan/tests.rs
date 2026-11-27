@@ -54,11 +54,11 @@ fn plan_ids(plan: &[PlannedCheck]) -> Vec<SemanticId> {
 fn it_should_select_only_checks_of_the_event() {
     let nodes = [
         node("checks.a", run_data("before-commit", true), false),
-        node("checks.b", run_data("before-pr", true), false),
+        node("checks.b", run_data("before-push", true), false),
         node("checks.c", run_data("before-merge", true), false),
     ];
 
-    let plan = plan_run("before-pr", &nodes, &[]);
+    let plan = plan_run("before-push", &nodes, &[]);
 
     assert_eq!(plan_ids(&plan), [id("checks.b")]);
 }
@@ -66,11 +66,11 @@ fn it_should_select_only_checks_of_the_event() {
 #[test]
 fn it_should_skip_text_only_checks() {
     let nodes = [
-        node("checks.a", text_data("before-pr", true), false),
-        node("checks.b", run_data("before-pr", true), false),
+        node("checks.a", text_data("before-push", true), false),
+        node("checks.b", run_data("before-push", true), false),
     ];
 
-    let plan = plan_run("before-pr", &nodes, &[]);
+    let plan = plan_run("before-push", &nodes, &[]);
 
     assert_eq!(plan_ids(&plan), [id("checks.b")]);
 }
@@ -78,11 +78,11 @@ fn it_should_skip_text_only_checks() {
 #[test]
 fn it_should_skip_shadowed_checks() {
     let nodes = [
-        node("checks.a", run_data("before-pr", true), true),
-        node("checks.b", run_data("before-pr", true), false),
+        node("checks.a", run_data("before-push", true), true),
+        node("checks.b", run_data("before-push", true), false),
     ];
 
-    let plan = plan_run("before-pr", &nodes, &[]);
+    let plan = plan_run("before-push", &nodes, &[]);
 
     assert_eq!(plan_ids(&plan), [id("checks.b")]);
 }
@@ -90,11 +90,11 @@ fn it_should_skip_shadowed_checks() {
 #[test]
 fn it_should_keep_the_blocking_flag_per_planned_check() {
     let nodes = [
-        node("checks.a", run_data("before-pr", true), false),
-        node("checks.b", run_data("before-pr", false), false),
+        node("checks.a", run_data("before-push", true), false),
+        node("checks.b", run_data("before-push", false), false),
     ];
 
-    let plan = plan_run("before-pr", &nodes, &[]);
+    let plan = plan_run("before-push", &nodes, &[]);
 
     let flags: Vec<_> = plan
         .iter()
@@ -109,10 +109,10 @@ fn it_should_carry_the_derived_snapshot_kind_in_each_planned_check() {
         node("checks.a", run_data("before-commit", true), false),
         node("checks.b", two_streams_data("before-commit", true), false),
     ];
-    let pr_nodes = [node("checks.c", run_data("before-pr", true), false)];
+    let pr_nodes = [node("checks.c", run_data("before-push", true), false)];
 
     let commit_plan = plan_run("before-commit", &commit_nodes, &[]);
-    let pr_plan = plan_run("before-pr", &pr_nodes, &[]);
+    let pr_plan = plan_run("before-push", &pr_nodes, &[]);
 
     let snapshots = |plan: &[PlannedCheck]| -> Vec<(SemanticId, SnapshotKind)> {
         plan.iter()
@@ -135,13 +135,13 @@ fn it_should_carry_the_derived_snapshot_kind_in_each_planned_check() {
 #[test]
 fn it_should_keep_a_check_whose_stored_spec_is_invalid_in_the_plan_with_its_error() {
     let nodes = [
-        node("checks.a", run_data("before-pr", true), false),
-        node("checks.b", two_streams_data("before-pr", true), false),
-        node("checks.c", run_data("before-pr", true), false),
+        node("checks.a", run_data("before-push", true), false),
+        node("checks.b", two_streams_data("before-push", true), false),
+        node("checks.c", run_data("before-push", true), false),
     ];
     let after = [(id("checks.a"), id("checks.c"))];
 
-    let plan = plan_run("before-pr", &nodes, &after);
+    let plan = plan_run("before-push", &nodes, &after);
 
     assert_eq!(
         plan_ids(&plan),

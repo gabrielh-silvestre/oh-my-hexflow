@@ -4,7 +4,7 @@ When to consult: before calling a plugin agent (what to pass it), when reading i
 
 ## The matrix
 
-The matrix of commands, node types, relations and retirements of each role is in a single table, in the section "A matriz por papel" of [directives-flow.md](https://github.com/gabrielh-silvestre/oh-my-hexflow/blob/main/docs/directives-flow.md#a-matriz-por-papel). This page does not copy it. The matrix of the installed version is in the frontmatter (`omhl-allow`) of each agent in `plugin/agents/`, for example [critic.md](../../../agents/critic.md). Reading (`omhl list`, `omhl get` and the others) holds for the seven roles; `attest`, `load`, `close`, `gate-pr` and `gate-worktree` hold for none.
+The matrix of commands, node types, relations and retirements of each role is in a single table, in the section "A matriz por papel" of [directives-flow.md](https://github.com/gabrielh-silvestre/oh-my-hexflow/blob/main/docs/directives-flow.md#a-matriz-por-papel). This page does not copy it. The matrix of the installed version is in the frontmatter (`omhl-allow`) of each agent in `plugin/agents/`, for example [critic.md](../../../agents/critic.md). Reading (`omhl list`, `omhl get` and the others) holds for the seven roles; `attest`, `load`, `close`, `gate-delivery` and `gate-worktree` hold for none.
 
 ## What the main session passes to each agent
 
@@ -38,7 +38,7 @@ Every answer ends with two fixed fields:
 
 ## The anchor
 
-Every `decision` (of the architect, the critic or a reviewer) carries `rests-on` to a confirmed guideline or premise, including the premise that the critic confirmed. Without the anchor, `omhl gate-pr` fails `decisions-anchored`. The reviewer who reports a violation records their `decision` with `rests-on` and links a `contradicts` to the violated target.
+Every `decision` (of the architect, the critic or a reviewer) carries `rests-on` to a confirmed guideline or premise, including the premise that the critic confirmed. Without the anchor, `omhl gate-delivery` fails `decisions-anchored`. The reviewer who reports a violation records their `decision` with `rests-on` and links a `contradicts` to the violated target.
 
 ## The retirement
 
@@ -46,3 +46,5 @@ Every `decision` (of the architect, the critic or a reviewer) carries `rests-on`
 - The verifier retires in two calls to `omhl append` and gives the reason in its message, because the graph keeps only the retirement. Do not pass it a pair it should not retire.
 - The owner (`user`) is the CLI outside Claude Code, so the owner retires a `contradicts` only in an external terminal, outside Claude Code. `! omhl ...` inside Claude Code records `claude` and is refused. The recipe (`retirement` body and the `base` in two calls) is in [append.md](append.md#inputs). Since the main session does not know the ids, pass the owner the `from`/`to` pair copied from the `contradicts: <from> -> <to>` lines or from the `## Relations` section of the projection.
 - Among the agents, only the verifier moves a reviewer `divergence` out of `open`, to `code-fixed`, with new evidence. `accepted` and `spec-stale` are answers of the human: the main session records them, with their answer.
+
+The `model:` line of each agent is the default; whoever calls the agent may pass another model.

@@ -8,9 +8,9 @@ use omhl::ports::git::GitProbe;
 use omhl::probe::{NativeRefusal, NativeResolver};
 use serde_json::{Value, json};
 use support::appfx::AppFixture;
+use support::delivery_gate::ALL_NATIVE_CHECKS;
 use support::git::GitRepo;
 use support::omhl::{RUN_TESTS, acme, work_item_data};
-use support::pr_gate::ALL_NATIVE_CHECKS;
 use support::{FakeNative, FakeProbe};
 use tempfile::TempDir;
 
@@ -132,7 +132,7 @@ fn it_should_refuse_with_the_invalid_workflow_code_when_the_main_copy_is_not_acc
     assert_eq!(error.code, INVALID_WORKFLOW_CONFIG);
 }
 
-// O `gate-pr` e o `close` valem-se da ativação do diretório principal
+// O `gate-delivery` e o `close` valem-se da ativação do diretório principal
 
 fn open_work_item(fixture: &AppFixture) {
     // Um tipo sem átomo: sem `type` gravado o `close` procuraria o branch, e a fixture não tem repositório.
@@ -156,14 +156,14 @@ fn asked(report: &Value) -> Vec<String> {
 }
 
 #[test]
-fn it_should_ask_the_native_question_in_gate_pr_and_close_when_only_the_main_directory_enables_it()
-{
+fn it_should_ask_the_native_question_in_gate_delivery_and_close_when_only_the_main_directory_enables_it()
+ {
     let repo = repo_with(ENABLING);
     let linked = linked_worktree(&repo, DISABLING);
     let fixture = AppFixture::new().with_native(GitProbe::new(&linked.path().join("linked")));
     open_work_item(&fixture);
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
     let refusal = fixture
         .close(W1)
         .expect_err("the failing warn question refuses the close without force");
@@ -185,14 +185,14 @@ fn it_should_ask_the_native_question_in_gate_pr_and_close_when_only_the_main_dir
 }
 
 #[test]
-fn it_should_not_ask_the_native_question_in_gate_pr_and_close_when_only_the_worktree_copy_enables_it()
+fn it_should_not_ask_the_native_question_in_gate_delivery_and_close_when_only_the_worktree_copy_enables_it()
  {
     let repo = repo_with(DISABLING);
     let linked = linked_worktree(&repo, ENABLING);
     let fixture = AppFixture::new().with_native(GitProbe::new(&linked.path().join("linked")));
     open_work_item(&fixture);
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
     let closed = fixture.close(W1).expect("the work item is closed");
 
     assert!(!asked(&gate).contains(&RUN_TESTS.to_owned()));
@@ -200,14 +200,14 @@ fn it_should_not_ask_the_native_question_in_gate_pr_and_close_when_only_the_work
 }
 
 #[test]
-fn it_should_ask_no_native_question_in_gate_pr_and_close_without_the_workflow_file() {
+fn it_should_ask_no_native_question_in_gate_delivery_and_close_without_the_workflow_file() {
     let repo = GitRepo::init();
     repo.write("tracked.txt", "one\n");
     repo.commit_all("initial");
     let fixture = AppFixture::new().with_native(GitProbe::new(repo.path()));
     open_work_item(&fixture);
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
     let closed = fixture.close(W1).expect("the work item is closed");
 
     for report in [&gate, &closed["report"]] {
@@ -221,7 +221,7 @@ fn it_should_ask_no_native_question_in_gate_pr_and_close_without_the_workflow_fi
     }
 }
 
-// CMP-009 e CMP-010: um arquivo que o `omhl` não aceita recusa `gate-pr` e `close`
+// um arquivo que o `omhl` não aceita recusa `gate-delivery` e `close`
 
 fn chain_seq(fixture: &AppFixture) -> u64 {
     fixture
@@ -236,7 +236,9 @@ fn assert_refused_with_invalid_workflow(repo: &GitRepo) {
     open_work_item(&fixture);
     let head_before = chain_seq(&fixture);
 
-    let gate = fixture.try_gate_pr(W1).expect_err("gate-pr is refused");
+    let gate = fixture
+        .try_gate_delivery(W1)
+        .expect_err("gate-delivery is refused");
     let closed = fixture.close(W1).expect_err("close is refused");
 
     for error in [&gate, &closed] {
@@ -247,29 +249,29 @@ fn assert_refused_with_invalid_workflow(repo: &GitRepo) {
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_has_a_syntax_error() {
+fn it_should_refuse_gate_delivery_and_close_when_the_workflow_file_has_a_syntax_error() {
     assert_refused_with_invalid_workflow(&repo_with("version = 1\n[native\n"));
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_has_an_unknown_top_level_key() {
+fn it_should_refuse_gate_delivery_and_close_when_the_workflow_file_has_an_unknown_top_level_key() {
     assert_refused_with_invalid_workflow(&repo_with("version = 1\ncolour = true\n"));
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_lists_a_wrong_native_id() {
+fn it_should_refuse_gate_delivery_and_close_when_the_workflow_file_lists_a_wrong_native_id() {
     let workflow = "version = 1\n[native]\nchecks = [\"checks.lint\"]\n";
 
     assert_refused_with_invalid_workflow(&repo_with(workflow));
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_has_an_unsupported_version() {
+fn it_should_refuse_gate_delivery_and_close_when_the_workflow_file_has_an_unsupported_version() {
     assert_refused_with_invalid_workflow(&repo_with("version = 2\n"));
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_is_not_utf8() {
+fn it_should_refuse_gate_delivery_and_close_when_the_workflow_file_is_not_utf8() {
     let repo = repo_with(DISABLING);
     fs::write(repo.path().join(WORKFLOW), [0xff, 0xfe, 0x00]).expect("the bytes are written");
 
@@ -277,7 +279,7 @@ fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_is_not_utf8() {
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_is_a_symlink() {
+fn it_should_refuse_gate_delivery_and_close_when_the_workflow_file_is_a_symlink() {
     let repo = repo_with(DISABLING);
     let target = repo.path().join("elsewhere.toml");
     fs::write(&target, DISABLING).expect("the target is written");
@@ -288,7 +290,7 @@ fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_is_a_symlink() {
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_is_above_the_size_cap() {
+fn it_should_refuse_gate_delivery_and_close_when_the_workflow_file_is_above_the_size_cap() {
     let repo = repo_with(DISABLING);
     let oversized = format!("version = 1\n#{}\n", "x".repeat(65_536));
     fs::write(repo.path().join(WORKFLOW), oversized).expect("the file is written");
@@ -297,7 +299,7 @@ fn it_should_refuse_gate_pr_and_close_when_the_workflow_file_is_above_the_size_c
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_when_the_workflow_path_is_a_directory() {
+fn it_should_refuse_gate_delivery_and_close_when_the_workflow_path_is_a_directory() {
     let repo = repo_with(DISABLING);
     fs::remove_file(repo.path().join(WORKFLOW)).expect("the file is removed");
     fs::create_dir(repo.path().join(WORKFLOW)).expect("the directory is created");
@@ -311,7 +313,9 @@ fn it_should_name_the_file_and_the_next_step_in_the_refusal() {
     let fixture = AppFixture::new().with_native(GitProbe::new(repo.path()));
     open_work_item(&fixture);
 
-    let gate = fixture.try_gate_pr(W1).expect_err("gate-pr is refused");
+    let gate = fixture
+        .try_gate_delivery(W1)
+        .expect_err("gate-delivery is refused");
     let closed = fixture.close(W1).expect_err("close is refused");
 
     for error in [&gate, &closed] {
@@ -330,13 +334,16 @@ fn it_should_name_the_file_and_the_next_step_in_the_refusal() {
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_with_main_dir_unknown_when_the_resolver_cannot_find_it() {
+fn it_should_refuse_gate_delivery_and_close_with_main_dir_unknown_when_the_resolver_cannot_find_it()
+{
     let fixture =
         AppFixture::new().with_native(FakeNative::refusing(NativeRefusal::MainDirUnknown));
     open_work_item(&fixture);
     let head_before = chain_seq(&fixture);
 
-    let gate = fixture.try_gate_pr(W1).expect_err("gate-pr is refused");
+    let gate = fixture
+        .try_gate_delivery(W1)
+        .expect_err("gate-delivery is refused");
     let closed = fixture.close(W1).expect_err("close is refused");
 
     for error in [&gate, &closed] {
@@ -352,7 +359,9 @@ fn it_should_refuse_with_main_dir_unknown_for_a_directory_outside_a_repository()
     let fixture = AppFixture::new().with_native(GitProbe::new(outside.path()));
     open_work_item(&fixture);
 
-    let gate = fixture.try_gate_pr(W1).expect_err("gate-pr is refused");
+    let gate = fixture
+        .try_gate_delivery(W1)
+        .expect_err("gate-delivery is refused");
 
     assert_eq!(gate["error"]["code"], json!("main-dir-unknown"));
 }
@@ -364,7 +373,9 @@ fn it_should_keep_the_probe_error_when_the_probe_fails_before_the_resolver_runs(
         .with_native(FakeNative::refusing(NativeRefusal::MainDirUnknown));
     open_work_item(&fixture);
 
-    let gate = fixture.try_gate_pr(W1).expect_err("gate-pr is refused");
+    let gate = fixture
+        .try_gate_delivery(W1)
+        .expect_err("gate-delivery is refused");
     let closed = fixture.close(W1).expect_err("close is refused");
 
     for error in [&gate, &closed] {
@@ -377,7 +388,9 @@ fn it_should_refuse_with_main_dir_unknown_when_no_resolver_was_injected() {
     let fixture = AppFixture::new().without_native();
     open_work_item(&fixture);
 
-    let gate = fixture.try_gate_pr(W1).expect_err("gate-pr is refused");
+    let gate = fixture
+        .try_gate_delivery(W1)
+        .expect_err("gate-delivery is refused");
 
     assert_eq!(gate["error"]["code"], json!("main-dir-unknown"));
 }

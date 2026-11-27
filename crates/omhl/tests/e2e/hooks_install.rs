@@ -34,7 +34,7 @@ fn script(p: &str, command: &str) -> String {
 fn script_command(name: &str) -> &'static str {
     match name {
         "pre-commit" | "pre-merge-commit" => "check run --event before-commit",
-        "pre-push" => "check run --event before-pr --pre-push",
+        "pre-push" => "check run --event before-push --pre-push",
         "post-commit" => "hooks post-commit >/dev/null",
         other => panic!("unknown hook script {other}"),
     }
@@ -196,14 +196,14 @@ impl HookRepo {
         let (run, event) = match slug {
             "green" => (r#"["true"]"#.to_owned(), "before-commit"),
             "touch" => (format!(r#"["touch", "{scratch}/ran"]"#), "before-commit"),
-            "green-pr" => (r#"["true"]"#.to_owned(), "before-pr"),
-            "red-pr" => (r#"["false"]"#.to_owned(), "before-pr"),
+            "green-pr" => (r#"["true"]"#.to_owned(), "before-push"),
+            "red-pr" => (r#"["false"]"#.to_owned(), "before-push"),
             "count-pr" => {
                 write_executable(
                     &self.scratch().join("count.sh"),
                     &format!("#!/bin/sh\necho run >> \"{scratch}/runs.log\"\n"),
                 );
-                (format!(r#"["{scratch}/count.sh"]"#), "before-pr")
+                (format!(r#"["{scratch}/count.sh"]"#), "before-push")
             }
             other => panic!("unknown check {other}"),
         };

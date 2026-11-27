@@ -16,7 +16,7 @@ const PART_DIR: &str = "wi-w1__login";
 const WORKFLOW_PATH: &str = ".omhl/workflow.toml";
 const BUSINESS_PREMISE: &str = "premises.login-rule";
 const DIVERGENCE: &str = "divergences.login-cmp-001";
-const NATIVE_DIRECTIVE: &str = "guidelines.one-decision-per-turn";
+const FORMER_NATIVE_DIRECTIVE: &str = "guidelines.one-decision-per-turn";
 
 // Linhas das fixtures: o índice no vetor é a linha menos um.
 const PART_OBJECTIVE_LINE: usize = 3;
@@ -350,9 +350,14 @@ fn it_should_accept_a_cited_directive_loaded_from_an_extension() {
 }
 
 #[test]
-fn it_should_accept_a_cited_native_directive() {
+fn it_should_accept_a_cited_former_native_directive_once_loaded_as_a_tenant_guideline() {
     let fixture = Fixture::new();
-    let citation = format!("- {NATIVE_DIRECTIVE}");
+    ExtTree::at(fixture.project.dir()).guideline(
+        "one-decision-per-turn",
+        "kind = \"business\"\ntext = \"t\"\n",
+    );
+    let loaded = fixture.run(&["load"]);
+    let citation = format!("- {FORMER_NATIVE_DIRECTIVE}");
     fixture.write(
         "parte-01.md",
         &with_line(valid_part(), PART_SECOND_CITATION_LINE, &citation),
@@ -360,7 +365,22 @@ fn it_should_accept_a_cited_native_directive() {
 
     let output = fixture.validate();
 
+    assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
     assert_valid(&output);
+}
+
+#[test]
+fn it_should_refuse_a_cited_former_native_directive_that_is_not_loaded() {
+    let fixture = Fixture::new();
+    let citation = format!("- {FORMER_NATIVE_DIRECTIVE}");
+    fixture.write(
+        "parte-01.md",
+        &with_line(valid_part(), PART_SECOND_CITATION_LINE, &citation),
+    );
+
+    let output = fixture.validate();
+
+    assert_ne!(output.code, Some(0), "stdout: {}", output.stdout);
 }
 
 // CLI: premissa de negócio do próprio work item

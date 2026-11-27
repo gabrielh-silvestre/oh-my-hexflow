@@ -116,17 +116,21 @@ fn it_should_reject_a_native_check_id() {
 }
 
 #[test]
-fn it_should_reject_a_native_guideline_id() {
+fn it_should_collect_the_two_former_native_guideline_ids_as_tenant_guidelines() {
     let tree = ExtTree::new();
-    tree.guideline("commit-policy", VALID_GUIDELINE);
+    tree.guideline("commit-policy", VALID_GUIDELINE)
+        .guideline("one-decision-per-turn", VALID_GUIDELINE);
 
     let collected = collect(tree.root());
 
+    assert!(collected.errors.is_empty(), "{:?}", collected.errors);
     assert_eq!(
-        summary(&collected.errors),
-        vec![at(".omhl/guidelines/commit-policy.toml", "reserved-id")]
+        ids(&collected.extensions),
+        vec![
+            "guidelines.commit-policy",
+            "guidelines.one-decision-per-turn"
+        ]
     );
-    assert!(collected.extensions.is_empty(), "extensions must be empty");
 }
 
 #[test]

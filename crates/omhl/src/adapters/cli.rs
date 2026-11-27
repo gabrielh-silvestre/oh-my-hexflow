@@ -79,8 +79,8 @@ pub enum ActionCommand {
     },
     /// Print the session context.
     Render,
-    /// Evaluate the pull-request gate for a work item.
-    GatePr {
+    /// Evaluate the delivery gate for a work item.
+    GateDelivery {
         work_item: String,
         /// The integration branch the pull request targets; it decides whether the config review is required.
         #[arg(long, allow_hyphen_values = true)]
@@ -163,7 +163,9 @@ pub enum ActionCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum CheckCommand {
-    /// Run the mechanical checks of an event, or one check, and attest them for the work item of the current branch.
+    /// Run the mechanical checks of an event, or one check, and attest them.
+    ///
+    /// Events: before-commit (git pre-commit and pre-merge-commit hooks), before-push (git pre-push hook), before-merge (by hand, no hook), before-publishing-review-comments (an instruction to the agent; `--event` does not take it).
     Run(CheckRunArgs),
     /// Kill the processes that escaped from an earlier check run whose omhl already exited.
     Sweep,
@@ -390,10 +392,10 @@ fn pre_push_misuse(cli: &Cli) -> Option<clap::Error> {
         return None;
     };
 
-    (args.pre_push && args.event.as_deref() != Some("before-pr")).then(|| {
+    (args.pre_push && args.event.as_deref() != Some("before-push")).then(|| {
         Cli::command().error(
             ErrorKind::ArgumentConflict,
-            "--pre-push is only valid with --event before-pr",
+            "--pre-push is only valid with --event before-push",
         )
     })
 }
@@ -533,7 +535,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::Append => "append",
         CommandKey::Attest => "attest",
         CommandKey::Render => "render",
-        CommandKey::GatePr => "gate-pr",
+        CommandKey::GateDelivery => "gate-delivery",
         CommandKey::GateWorktree => "gate-worktree",
         CommandKey::Close => "close",
         CommandKey::Verify => "verify",
@@ -584,7 +586,7 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Action(ActionCommand::Append { .. }) => CommandKey::Append,
         Command::Action(ActionCommand::Attest { .. }) => CommandKey::Attest,
         Command::Action(ActionCommand::Render) => CommandKey::Render,
-        Command::Action(ActionCommand::GatePr { .. }) => CommandKey::GatePr,
+        Command::Action(ActionCommand::GateDelivery { .. }) => CommandKey::GateDelivery,
         Command::Action(ActionCommand::GateWorktree { .. }) => CommandKey::GateWorktree,
         Command::Action(ActionCommand::Close { .. }) => CommandKey::Close,
         Command::Action(ActionCommand::Verify) => CommandKey::Verify,
@@ -772,7 +774,7 @@ fn to_action(
             note,
         },
         ActionCommand::Render => Action::Render,
-        ActionCommand::GatePr { work_item, base } => Action::GatePr { work_item, base },
+        ActionCommand::GateDelivery { work_item, base } => Action::GateDelivery { work_item, base },
         ActionCommand::GateWorktree { branch } => Action::GateWorktree { branch },
         ActionCommand::Close {
             work_item,
@@ -896,7 +898,7 @@ fn read_pre_push_input(stdin: &mut impl Read) -> Result<String, AppError> {
 }
 
 fn push_input_refused(kind: &str) -> AppError {
-    AppError::push_input_invalid("").with_context(json!({ "kind": kind, "event": "before-pr" }))
+    AppError::push_input_invalid("").with_context(json!({ "kind": kind, "event": "before-push" }))
 }
 
 #[cfg(test)]

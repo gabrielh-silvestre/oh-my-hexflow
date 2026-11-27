@@ -50,7 +50,7 @@ fn error(code: &str, message: &str, details: Vec<Value>) -> Value {
 fn checks_failed(details: Vec<Value>) -> Value {
     let mut value = error("checks-failed", "a blocking check failed", details);
     value["error"]["context"] = json!({
-        "event": "before-pr", "work_item": "work-items.w1",
+        "event": "before-push", "work_item": "work-items.w1",
         "summary": { "planned": 3, "passed": 1, "failed": 1, "blocking_failed": 1, "not_run": 1 }
     });
 
@@ -89,7 +89,7 @@ fn pre_check_errors() -> Vec<Value> {
             "push-input-invalid at ",
             vec![json!({
                 "code": "push-input-invalid", "message": "the pre-push input is invalid", "path": "",
-                "context": { "kind": "push-input-invalid", "event": "before-pr", "hint": "the pre-push input needs four fields per line; run git push again" }
+                "context": { "kind": "push-input-invalid", "event": "before-push", "hint": "the pre-push input needs four fields per line; run git push again" }
             })],
         ),
     ]
@@ -109,7 +109,7 @@ fn refusals() -> Vec<Value> {
             "the working tree has uncommitted changes",
             vec![json!({
                 "code": "worktree-dirty", "message": "the working tree has uncommitted changes", "path": "",
-                "context": { "branch": "feat/wi-w1__x", "event": "before-pr", "kind": "worktree-dirty", "work_item": "work-items.w1" }
+                "context": { "branch": "feat/wi-w1__x", "event": "before-push", "kind": "worktree-dirty", "work_item": "work-items.w1" }
             })],
         ),
         error(
@@ -117,7 +117,7 @@ fn refusals() -> Vec<Value> {
             "the branch is protected",
             vec![json!({
                 "code": "branch-protected", "message": "the branch is protected", "path": "",
-                "context": { "kind": "push-to-main", "event": "before-pr", "rref": "refs/heads/main", "hint": "main receives no direct pushes; open a pull request" }
+                "context": { "kind": "push-to-main", "event": "before-push", "rref": "refs/heads/main", "hint": "main receives no direct pushes; open a pull request" }
             })],
         ),
         error(
@@ -127,7 +127,7 @@ fn refusals() -> Vec<Value> {
                 "code": "spawn-failed", "message": "the command could not run", "path": "checks.ghost",
                 "context": {
                     "argv": ["omhl-ghost-binary"], "branch": "feat/wi-w1__x", "check": "checks.ghost", "cwd": "/repo",
-                    "event": "before-pr", "kind": "spawn-not-found",
+                    "event": "before-push", "kind": "spawn-not-found",
                     "hint": "`omhl-ghost-binary` was not found; install it or add it to the PATH that git hooks see, then run the same `omhl check run` again",
                     "os_error": "omhl-ghost-binary did not start: No such file or directory (os error 2)",
                     "snapshot": { "id": COMMIT, "kind": "git-commit" }, "work_item": "work-items.w1"
@@ -163,7 +163,7 @@ fn refusals() -> Vec<Value> {
 
 fn every_rendering() -> Vec<String> {
     let ok = success(
-        "before-pr",
+        "before-push",
         vec![result("checks.ok", "passed", true, 0, 12)],
     );
     let mut texts = vec![
@@ -185,7 +185,7 @@ fn every_rendering() -> Vec<String> {
 #[test]
 fn it_should_open_the_success_text_with_event_work_item_and_snapshot_prefix() {
     let value = success(
-        "before-pr",
+        "before-push",
         vec![result("checks.ok", "passed", true, 0, 12)],
     );
 
@@ -194,7 +194,7 @@ fn it_should_open_the_success_text_with_event_work_item_and_snapshot_prefix() {
     assert_eq!(
         rendered.lines().next(),
         Some(
-            format!("{SYMBOL_OK} before-pr · work-items.w1 · recorded (git-commit c43356d)")
+            format!("{SYMBOL_OK} before-push · work-items.w1 · recorded (git-commit c43356d)")
                 .as_str()
         )
     );
@@ -203,7 +203,7 @@ fn it_should_open_the_success_text_with_event_work_item_and_snapshot_prefix() {
 #[test]
 fn it_should_render_one_line_per_check_in_json_order_telling_passed_from_passed_with_warning() {
     let value = success(
-        "before-pr",
+        "before-push",
         vec![
             result("checks.fmt", "passed", true, 0, 12),
             result("checks.lint", "passed_with_warning", true, 2, 1500),
@@ -215,7 +215,7 @@ fn it_should_render_one_line_per_check_in_json_order_telling_passed_from_passed_
     assert_eq!(
         rendered,
         format!(
-            "{SYMBOL_OK} before-pr · work-items.w1 · recorded (git-commit c43356d)\n  {SYMBOL_OK} checks.fmt passed 12ms\n  {SYMBOL_WARNING} checks.lint passed_with_warning 1500ms (exit 2)\n{NOTHING_BLOCKED} {NEXT_LABEL} go on with the push."
+            "{SYMBOL_OK} before-push · work-items.w1 · recorded (git-commit c43356d)\n  {SYMBOL_OK} checks.fmt passed 12ms\n  {SYMBOL_WARNING} checks.lint passed_with_warning 1500ms (exit 2)\n{NOTHING_BLOCKED} {NEXT_LABEL} go on with the push."
         )
     );
 }
@@ -224,7 +224,7 @@ fn it_should_render_one_line_per_check_in_json_order_telling_passed_from_passed_
 fn it_should_flag_a_non_blocking_failure_in_a_successful_run() {
     let mut soft = result("checks.soft", "failed", false, 1, 12);
     soft["truncated"] = json!(true);
-    let value = success("before-pr", vec![soft]);
+    let value = success("before-push", vec![soft]);
 
     let rendered = render_success(&value);
 
@@ -237,7 +237,7 @@ fn it_should_flag_a_non_blocking_failure_in_a_successful_run() {
 fn it_should_flag_a_timed_out_check() {
     let mut slow = result("checks.slow", "failed", false, 0, 60000);
     slow["timed_out"] = json!(true);
-    let value = success("before-pr", vec![slow]);
+    let value = success("before-push", vec![slow]);
 
     let rendered = render_success(&value);
 
@@ -283,7 +283,7 @@ fn it_should_warn_with_an_action_when_the_event_has_no_check() {
 
 #[test]
 fn it_should_warn_with_the_check_and_its_hint_when_a_check_is_orphaned() {
-    let mut value = success("before-pr", vec![]);
+    let mut value = success("before-push", vec![]);
     value["warnings"] = json!([{
         "code": "check-orphaned", "check": "checks.gone", "hint": "the check file is missing in this working tree; rebase it onto main"
     }]);
@@ -297,13 +297,13 @@ fn it_should_warn_with_the_check_and_its_hint_when_a_check_is_orphaned() {
 
 #[test]
 fn it_should_say_in_one_line_that_a_push_had_nothing_to_attest() {
-    let value = json!({ "event": "before-pr", "push": "nothing-to-attest", "results": [] });
+    let value = json!({ "event": "before-push", "push": "nothing-to-attest", "results": [] });
 
     let rendered = render_success(&value);
 
     assert_eq!(
         rendered,
-        format!("{SYMBOL_OK} before-pr · nothing to attest in this push; no check ran")
+        format!("{SYMBOL_OK} before-push · nothing to attest in this push; no check ran")
     );
 }
 
@@ -319,7 +319,7 @@ fn it_should_report_a_blocked_event_with_the_failed_check_and_how_to_read_its_ou
     assert_eq!(
         rendered,
         format!(
-            "{SYMBOL_ERROR} BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 passed, 1 not run\n  {SYMBOL_ERROR} checks.bad · test/suite · blocking · timeout 60s · exit 101 · 2.6s\n    command: cargo test\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\n{SECRET_WARNING}\n{NEXT_LABEL} read the output with the command above, fix the cause, then run the same command again."
+            "{SYMBOL_ERROR} BLOCKED · before-push · work-items.w1 · 1 blocking failed, 1 passed, 1 not run\n  {SYMBOL_ERROR} checks.bad · test/suite · blocking · timeout 60s · exit 101 · 2.6s\n    command: cargo test\n    how to read the output: omhl byproduct checks.bad work-items.w1 --tail 40\n{SECRET_WARNING}\n{NEXT_LABEL} read the output with the command above, fix the cause, then run the same command again."
         )
     );
 }
@@ -388,7 +388,7 @@ fn it_should_open_the_blocked_header_without_a_work_item_on_develop() {
 
     assert_eq!(
         rendered.lines().next(),
-        Some(format!("{SYMBOL_ERROR} BLOCKED · before-pr · no work item · 1 blocking failed, 1 passed, 1 not run").as_str())
+        Some(format!("{SYMBOL_ERROR} BLOCKED · before-push · no work item · 1 blocking failed, 1 passed, 1 not run").as_str())
     );
 }
 
@@ -406,7 +406,7 @@ fn it_should_split_the_blocked_header_between_blocking_and_non_blocking_failures
     assert_eq!(
         rendered.lines().next(),
         Some(
-            format!("{SYMBOL_ERROR} BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run").as_str()
+            format!("{SYMBOL_ERROR} BLOCKED · before-push · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run").as_str()
         )
     );
 }
@@ -424,7 +424,7 @@ fn it_should_omit_the_non_blocking_count_from_the_blocked_header_when_it_is_zero
 
     assert_eq!(
         rendered.lines().next(),
-        Some(format!("{SYMBOL_ERROR} BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 0 passed, 0 not run").as_str())
+        Some(format!("{SYMBOL_ERROR} BLOCKED · before-push · work-items.w1 · 1 blocking failed, 0 passed, 0 not run").as_str())
     );
 }
 
@@ -447,12 +447,26 @@ fn it_should_show_concern_and_variant_next_to_the_id_of_a_passed_check() {
     let mut format = result("checks.fmt", "passed", true, 0, 12);
     format["concern"] = json!("style");
     format["variant"] = json!("format");
-    let value = success("before-pr", vec![format]);
+    let value = success("before-push", vec![format]);
 
     let rendered = render_success(&value);
 
     assert!(rendered.contains(&format!(
         "\n  {SYMBOL_OK} checks.fmt style/format passed 12ms\n"
+    )));
+}
+
+#[test]
+fn it_should_show_free_concern_and_variant_labels_as_they_were_stored() {
+    let mut docs = result("checks.docs", "passed", true, 0, 12);
+    docs["concern"] = json!("docs");
+    docs["variant"] = json!("review");
+    let value = success("before-push", vec![docs]);
+
+    let rendered = render_success(&value);
+
+    assert!(rendered.contains(&format!(
+        "\n  {SYMBOL_OK} checks.docs docs/review passed 12ms\n"
     )));
 }
 
@@ -614,7 +628,7 @@ fn it_should_strip_the_escape_byte_from_run_hint_cause_and_message() {
 
 #[test]
 fn it_should_strip_the_escape_byte_from_a_success_text() {
-    let mut value = success("before-pr", vec![]);
+    let mut value = success("before-push", vec![]);
     value["warnings"] = json!([{
         "code": "check-orphaned", "check": "checks.gone", "hint": "\u{1b}[31mrebase it"
     }]);

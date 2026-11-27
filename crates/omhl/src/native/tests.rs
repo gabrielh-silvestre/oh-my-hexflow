@@ -4,25 +4,13 @@ use crate::test_support::{rty, sid, tname};
 use hexlog::NativeNodes;
 use hexlog::{NativeNode, SemanticId};
 
-#[test]
-fn it_should_bump_the_native_catalog_version_for_the_new_check() {
-    let native = NativeBase;
-
-    let versions = (
-        crate::native::NATIVE_CATALOG_VERSION,
-        native.catalog_version(),
-    );
-
-    assert_eq!(versions, ("1.1.0", "1.1.0"));
-}
-
 const CHECK_IDS: [&str; 4] = [
     "checks.run-tests",
     "checks.ci-green-before-merge",
     "checks.verify-review-comment-anchoring",
     CONFIG_LOOSENING_REVIEW,
 ];
-const GUIDELINE_IDS: [&str; 2] = [
+const FORMER_GUIDELINE_IDS: [&str; 2] = [
     "guidelines.one-decision-per-turn",
     "guidelines.commit-policy",
 ];
@@ -31,32 +19,32 @@ const CONFIG_LOOSENING_REVIEW: &str = "checks.config-loosening-review";
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 
-/// Os ids nativos na ordem do contrato, com o tipo de cada um.
-fn native_ids_with_types() -> Vec<(&'static str, &'static str)> {
-    let checks = CHECK_IDS.iter().map(|id| (*id, "check"));
-    let guidelines = GUIDELINE_IDS.iter().map(|id| (*id, "guideline"));
+#[test]
+fn it_should_reserve_each_native_check_id_with_the_check_type() {
+    let native = NativeBase;
+    let expected = vec![
+        Some(NativeNode {
+            type_name: tname("check")
+        });
+        4
+    ];
 
-    checks.chain(guidelines).collect()
+    let found: Vec<Option<NativeNode>> =
+        CHECK_IDS.iter().map(|id| native.lookup(&sid(id))).collect();
+
+    assert_eq!(found, expected);
 }
 
 #[test]
-fn it_should_reserve_each_native_id_with_its_type() {
+fn it_should_not_reserve_the_two_former_native_guideline_ids() {
     let native = NativeBase;
-    let expected: Vec<Option<NativeNode>> = native_ids_with_types()
+
+    let found: Vec<Option<NativeNode>> = FORMER_GUIDELINE_IDS
         .iter()
-        .map(|(_, type_name)| {
-            Some(NativeNode {
-                type_name: tname(type_name),
-            })
-        })
+        .map(|id| native.lookup(&sid(id)))
         .collect();
 
-    let found: Vec<Option<NativeNode>> = native_ids_with_types()
-        .iter()
-        .map(|(id, _)| native.lookup(&sid(id)))
-        .collect();
-
-    assert_eq!(found, expected);
+    assert_eq!(found, vec![None, None]);
 }
 
 #[test]
@@ -91,20 +79,12 @@ fn it_should_return_no_pairs_for_other_relation_types() {
 }
 
 #[test]
-fn it_should_list_the_native_ids_in_the_contract_order() {
+fn it_should_list_the_same_four_native_check_ids_in_the_contract_order() {
     let native = NativeBase;
 
     let check_ids: Vec<&str> = native.checks().iter().map(|check| check.id).collect();
-    let guideline_ids: Vec<&str> = native
-        .guidelines()
-        .iter()
-        .map(|guideline| guideline.id)
-        .collect();
 
-    assert_eq!(
-        (check_ids, guideline_ids),
-        (CHECK_IDS.to_vec(), GUIDELINE_IDS.to_vec())
-    );
+    assert_eq!(check_ids, CHECK_IDS.to_vec());
 }
 
 #[test]
@@ -118,7 +98,7 @@ fn it_should_mark_the_four_native_checks_blocking_with_the_contract_events() {
             "before-publishing-review-comments",
             true,
         ),
-        (CONFIG_LOOSENING_REVIEW, "before-pr", true),
+        (CONFIG_LOOSENING_REVIEW, "before-push", true),
     ];
 
     let found: Vec<(&str, &str, bool)> = native
@@ -130,32 +110,45 @@ fn it_should_mark_the_four_native_checks_blocking_with_the_contract_events() {
     assert_eq!(found, expected);
 }
 
-#[test]
-fn it_should_expose_the_native_catalog_version() {
-    let native = NativeBase;
+// Valor em develop antes da entrega: dois ids nativos saíram e um evento mudou.
+const DEVELOP_CATALOG_VERSION: (u32, u32, u32) = (1, 1, 0);
 
-    let versions = (native.catalog_version(), NATIVE_CATALOG_VERSION);
+fn parse_version(version: &str) -> (u32, u32, u32) {
+    let parts: Vec<u32> = version
+        .split('.')
+        .map(|part| part.parse().expect("numeric version part"))
+        .collect();
 
-    assert_eq!(versions, ("1.1.0", "1.1.0"));
+    (parts[0], parts[1], parts[2])
 }
 
 #[test]
-fn it_should_expose_the_guideline_and_check_data_as_non_empty_texts_without_carriage_returns() {
+fn it_should_raise_the_native_catalog_version_above_the_develop_value() {
     let native = NativeBase;
 
-    let texts: Vec<&str> = native
-        .checks()
-        .iter()
-        .map(|check| check.how)
-        .chain(native.guidelines().iter().map(|guideline| guideline.text))
-        .collect();
+    let versions = (
+        parse_version(native.catalog_version()),
+        parse_version(NATIVE_CATALOG_VERSION),
+    );
+
+    assert!(
+        versions.0 > DEVELOP_CATALOG_VERSION && versions.1 > DEVELOP_CATALOG_VERSION,
+        "{versions:?}"
+    );
+}
+
+#[test]
+fn it_should_expose_the_native_check_data_as_non_empty_texts_without_carriage_returns() {
+    let native = NativeBase;
+
+    let texts: Vec<&str> = native.checks().iter().map(|check| check.how).collect();
 
     let malformed: Vec<&str> = texts
         .iter()
         .copied()
         .filter(|text| text.is_empty() || text.contains('\r'))
         .collect();
-    assert_eq!((texts.len(), malformed), (6, Vec::new()));
+    assert_eq!((texts.len(), malformed), (4, Vec::new()));
 }
 
 #[test]

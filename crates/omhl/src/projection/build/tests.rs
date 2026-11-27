@@ -26,7 +26,7 @@ const RICH_GOLDEN: &str = r#"<!-- omhl: generated file, do not edit -->
 - number: 7
 - provider: "github"
 - repo: "o/r"
-- gate: pr-gate passed=true chain_head_seq=12 snapshot=git-commit:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+- gate: delivery-gate passed=true chain_head_seq=12 snapshot=git-commit:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 ## Premises
 
@@ -221,7 +221,7 @@ fn it_should_match_the_rich_golden() {
             "number": 7,
             "branch": "feat/step6",
             "gate": {
-                "name": "pr-gate",
+                "name": "delivery-gate",
                 "passed": true,
                 "chain_head_seq": 12,
                 "snapshot": { "kind": "git-commit", "id": commit },

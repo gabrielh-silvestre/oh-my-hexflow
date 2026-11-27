@@ -673,7 +673,7 @@ fn it_should_reject_invisible_format_characters() {
 
 #[test]
 fn it_should_write_the_closed_vocabulary_when_parsing_an_extension() {
-    let events = ["before-commit", "before-pr", "before-merge"];
+    let events = ["before-commit", "before-push", "before-merge"];
 
     let written: Vec<_> = events
         .iter()
@@ -701,7 +701,7 @@ fn it_should_reject_a_text_only_extension_whose_event_is_outside_the_closed_list
         vec![ExtensionIssue {
             path: ".omhl/checks/lint.toml".to_owned(),
             code: "event-unsupported",
-            message: "`event` is not one of before-commit, before-pr, before-merge".to_owned(),
+            message: "`event` is not one of before-commit, before-push, before-merge, before-publishing-review-comments".to_owned(),
             next_step: None,
         }]
     );
@@ -709,20 +709,28 @@ fn it_should_reject_a_text_only_extension_whose_event_is_outside_the_closed_list
 }
 
 #[test]
-fn it_should_reject_the_native_review_event_in_an_extension() {
+fn it_should_accept_the_instruction_event_in_an_extension_without_run() {
     let toml = check_toml(CHECK_TOP, "event = \"before-publishing-review-comments\"\n");
 
-    let found = issues(&raw_check(&toml, None));
+    let extension = parsed(&raw_check(&toml, None));
 
     assert_eq!(
-        found.iter().map(|issue| issue.code).collect::<Vec<_>>(),
-        vec!["event-unsupported"]
+        extension.data["when"]["event"],
+        json!("before-publishing-review-comments")
     );
-    assert!(!found[0].message.contains("review"));
 }
 
 #[test]
-fn it_should_keep_the_runnable_events_equal_to_the_catalog_enum() {
+fn it_should_refuse_the_instruction_event_in_an_extension_with_run_as_not_runnable() {
+    let toml = format!(
+        "{CHECK_TOP}run = [\"true\"]\ntimeout_secs = 60\nexpect = [{{ exit = 0, outcome = \"passed\" }}]\n\n[when]\nevent = \"before-publishing-review-comments\"\n"
+    );
+
+    assert_eq!(codes(&raw_check(&toml, None)), vec!["event-not-runnable"]);
+}
+
+#[test]
+fn it_should_keep_the_event_list_equal_to_the_catalog_enum() {
     let catalog = crate::graphs::catalog().expect("the embedded catalogs build");
     let check = catalog
         .type_def(&hexlog::TypeName::parse("check").expect("valid type name"))
@@ -731,10 +739,34 @@ fn it_should_keep_the_runnable_events_equal_to_the_catalog_enum() {
     let listed = &check.schema["properties"]["when"]["properties"]["event"]["enum"];
 
     assert_eq!(
-        crate::mechanical::RUNNABLE_EVENTS,
-        ["before-commit", "before-pr", "before-merge"]
+        crate::mechanical::EVENTS,
+        [
+            "before-commit",
+            "before-push",
+            "before-merge",
+            "before-publishing-review-comments"
+        ]
     );
-    assert_eq!(listed, &json!(crate::mechanical::RUNNABLE_EVENTS));
+    assert_eq!(listed, &json!(crate::mechanical::EVENTS));
+}
+
+#[test]
+fn it_should_run_the_three_events_of_the_list_and_keep_the_instruction_event_apart() {
+    assert_eq!(
+        crate::mechanical::RUNNABLE_EVENTS,
+        ["before-commit", "before-push", "before-merge"]
+    );
+    assert_eq!(
+        crate::mechanical::INSTRUCTION_EVENT,
+        "before-publishing-review-comments"
+    );
+}
+
+#[test]
+fn it_should_refuse_an_event_outside_the_list_in_the_load_parser() {
+    let toml = check_toml(CHECK_TOP, "event = \"before-lunch\"\n");
+
+    assert_eq!(codes(&raw_check(&toml, None)), vec!["event-unsupported"]);
 }
 
 #[test]
@@ -808,7 +840,7 @@ fn mech_toml(over: &[(&str, Option<&str>)]) -> String {
         "timeout_secs = 60",
         "expect = [{ exit = 0, outcome = \"passed\" }]",
         "[when]",
-        "event = \"before-pr\"",
+        "event = \"before-push\"",
     ]
     .map(str::to_owned)
     .to_vec();
@@ -905,34 +937,141 @@ fn it_should_reject_an_invalid_regex_without_echoing_it() {
     assert!(!echoes(&found, "unclosed"));
 }
 
-#[test]
-fn it_should_reject_an_unknown_concern() {
-    let over = [
-        ("concern", Some("\"security\"")),
-        ("variant", Some("\"lint\"")),
-    ];
+const LABEL_FIELDS: [&str; 2] = ["concern", "variant"];
 
-    let found = issues(&mech_raw(&over));
+fn label_raw(field: &str, value: &str) -> RawExtension {
+    let quoted = format!("\"{value}\"");
+    let other = if field == "concern" {
+        "variant"
+    } else {
+        "concern"
+    };
 
-    assert_eq!(code_list(&found), vec!["value-not-allowed"]);
-    assert_eq!(
-        found[0].message,
-        "`concern` is not one of style, test, compile"
-    );
-    assert!(!echoes(&found, "security"));
+    mech_raw(&[(field, Some(&quoted)), (other, Some("\"ok\""))])
+}
+
+fn label_codes(field: &str, value: &str) -> Vec<&'static str> {
+    code_list(&issues(&label_raw(field, value)))
 }
 
 #[test]
-fn it_should_reject_a_variant_that_does_not_belong_to_the_concern() {
-    let over = [
-        ("concern", Some("\"style\"")),
-        ("variant", Some("\"suite\"")),
-    ];
+fn it_should_accept_a_label_of_one_character() {
+    for field in LABEL_FIELDS {
+        let extension = parsed(&label_raw(field, "a"));
 
-    let found = issues(&mech_raw(&over));
+        assert_eq!(extension.data[field], json!("a"));
+    }
+}
+
+#[test]
+fn it_should_accept_a_label_of_40_characters_with_lowercase_digits_and_hyphen() {
+    let label = format!("{}z", "a1-".repeat(13));
+
+    for field in LABEL_FIELDS {
+        let extension = parsed(&label_raw(field, &label));
+
+        assert_eq!(extension.data[field], json!(label));
+    }
+}
+
+#[test]
+fn it_should_accept_labels_outside_the_former_vocabulary() {
+    let extension = parsed(&mech_raw(&[
+        ("concern", Some("\"docs\"")),
+        ("variant", Some("\"review\"")),
+    ]));
+
+    assert_eq!(
+        (&extension.data["concern"], &extension.data["variant"]),
+        (&json!("docs"), &json!("review"))
+    );
+}
+
+#[test]
+fn it_should_refuse_a_label_of_41_characters() {
+    let found: Vec<_> = LABEL_FIELDS
+        .iter()
+        .map(|field| label_codes(field, &"a".repeat(41)))
+        .collect();
+
+    assert_eq!(found, vec![vec!["value-not-allowed"]; 2]);
+}
+
+#[test]
+fn it_should_refuse_an_empty_label() {
+    let found: Vec<_> = LABEL_FIELDS
+        .iter()
+        .map(|field| label_codes(field, ""))
+        .collect();
+
+    assert_eq!(found, vec![vec!["value-not-allowed"]; 2]);
+}
+
+#[test]
+fn it_should_refuse_a_label_with_an_uppercase_letter() {
+    let found: Vec<_> = LABEL_FIELDS
+        .iter()
+        .map(|field| label_codes(field, "Docs"))
+        .collect();
+
+    assert_eq!(found, vec![vec!["value-not-allowed"]; 2]);
+}
+
+#[test]
+fn it_should_refuse_a_label_with_a_space() {
+    let found: Vec<_> = LABEL_FIELDS
+        .iter()
+        .map(|field| label_codes(field, "my docs"))
+        .collect();
+
+    assert_eq!(found, vec![vec!["value-not-allowed"]; 2]);
+}
+
+#[test]
+fn it_should_refuse_a_label_with_an_underscore() {
+    let found: Vec<_> = LABEL_FIELDS
+        .iter()
+        .map(|field| label_codes(field, "my_docs"))
+        .collect();
+
+    assert_eq!(found, vec![vec!["value-not-allowed"]; 2]);
+}
+
+#[test]
+fn it_should_refuse_a_label_with_a_non_ascii_letter() {
+    let found: Vec<_> = LABEL_FIELDS
+        .iter()
+        .map(|field| label_codes(field, "revisão"))
+        .collect();
+
+    assert_eq!(found, vec![vec!["value-not-allowed"]; 2]);
+}
+
+#[test]
+fn it_should_refuse_a_concern_without_a_variant() {
+    let found = issues(&mech_raw(&[("concern", Some("\"docs\""))]));
 
     assert_eq!(code_list(&found), vec!["value-not-allowed"]);
-    assert_eq!(found[0].message, "`variant` does not belong to `concern`");
+}
+
+#[test]
+fn it_should_refuse_a_variant_without_a_concern() {
+    let found = issues(&mech_raw(&[("variant", Some("\"review\""))]));
+
+    assert_eq!(code_list(&found), vec!["value-not-allowed"]);
+}
+
+#[test]
+fn it_should_keep_a_former_pair_valid() {
+    let extension = parsed(&mech_raw(&[
+        ("concern", Some("\"style\"")),
+        ("variant", Some("\"lint\"")),
+    ]));
+
+    assert_eq!(
+        (&extension.data["concern"], &extension.data["variant"]),
+        (&json!("style"), &json!("lint"))
+    );
 }
 
 #[test]
@@ -1054,11 +1193,16 @@ mod loosening_criteria {
 
     use super::super::{CheckToml, WhenToml};
     use crate::native::NativeBase;
-    use crate::workflow::config::{PromotionConfig, RequireAtom, SpecsConfig, WorkflowConfig};
+    use crate::workflow::config::{
+        InterviewConfig, InterviewWeights, PromotionConfig, RequireAtom, SpecsConfig,
+        WorkflowConfig,
+    };
 
     const REFERENCE: &str = "skills/review/references/config-loosening-review.md";
     const SECTIONS: [&str; 4] = ["Criteria", "Scope", "Input", "What the reviewer returns"];
-    const WORKFLOW_KEYS: [&str; 8] = [
+    const WORKFLOW_KEYS: [&str; 10] = [
+        "[native.run]",
+        "[interview]",
         "specs.dir",
         "specs.max_lines",
         "specs.placeholders",
@@ -1121,6 +1265,7 @@ mod loosening_criteria {
             specs,
             promotion,
             native: _,
+            interview,
             prefixes,
         } = WorkflowConfig::default();
         let SpecsConfig {
@@ -1130,8 +1275,18 @@ mod loosening_criteria {
             cite_business_premise: _,
         } = specs;
         let PromotionConfig { min_work_items: _ } = promotion;
+        let InterviewConfig {
+            threshold: _,
+            weights,
+        } = interview;
+        let InterviewWeights {
+            objective: _,
+            constraints: _,
+            success: _,
+            context: _,
+        } = weights;
         let check: CheckToml =
-            toml::from_str("blocking = true\n[when]\nevent = \"before-pr\"\n").expect("check");
+            toml::from_str("blocking = true\n[when]\nevent = \"before-push\"\n").expect("check");
         let CheckToml {
             blocking: _,
             how: _,
@@ -1267,5 +1422,56 @@ mod loosening_criteria {
             missing_names(&text, required_names().iter().map(String::as_str)),
             vec!["removing run"]
         );
+    }
+
+    fn lines_naming<'a>(text: &'a str, anchor: &str) -> Vec<&'a str> {
+        text.lines().filter(|line| line.contains(anchor)).collect()
+    }
+
+    #[test]
+    fn it_should_name_interview_only_as_outside_the_brake_with_no_direction() {
+        let text = reference_text();
+
+        let lines = lines_naming(&text, "[interview]");
+
+        assert!(!lines.is_empty(), "the page names [interview]");
+        assert!(lines.iter().all(|line| line.contains("outside the brake")));
+        assert!(lines.iter().all(|line| !line.contains("loosen")));
+    }
+
+    #[test]
+    fn it_should_not_list_interview_as_a_review_target() {
+        let text = reference_text();
+
+        let rows: Vec<_> = lines_naming(&text, "[interview]")
+            .into_iter()
+            .filter(|line| line.starts_with('|'))
+            .collect();
+
+        assert_eq!(rows, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn it_should_say_that_removing_the_native_command_loosens() {
+        let text = reference_text();
+
+        let lines = lines_naming(&text, "[native.run]");
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("removing") && line.contains("loosens"))
+        );
+    }
+
+    #[test]
+    fn it_should_send_a_changed_native_command_to_the_reviewer_who_judges_if_it_requires_less() {
+        let text = reference_text();
+
+        let lines = lines_naming(&text, "[native.run]");
+
+        assert!(lines.iter().any(|line| line.contains("changing")
+            && line.contains("reviewer")
+            && line.contains("requires less")));
     }
 }

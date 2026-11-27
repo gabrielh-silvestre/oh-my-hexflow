@@ -21,6 +21,7 @@ mod mechanical_e2e;
 mod native_gate;
 mod native_guard;
 mod native_render;
+mod native_run;
 mod output_agent_cycle_gate;
 mod output_agent_cycle_records;
 mod output_agent_cycle_simple;

@@ -18,12 +18,12 @@ To read the project session context: the checks, guidelines, decisions and premi
 
 The context text on stdout, exit 0, like the `text` below but without control characters (only `\n` and `\t` stay), with no `omhl` symbol or header: the first line is `# omhl context for tenant <tenant>`. `agent` and `human` print the same bytes, with no extra line break at the end. The JSON and the `session-start` hook carry the whole `text`. With `--format json` it is a JSON line, with two fields:
 
-- `text`: the context in Markdown, with the sections `## Checks`, `## Guidelines` and `## Premises` (plus those of decisions and pending premises when there are any). A native check appears only when `[native] checks` in the `.omhl/workflow.toml` of the main directory turns it on ([native-checks.md](native-checks.md)); the two native guidelines always appear, together with the project ones. Each premise carries `mark`: `confirmed` (binds), `pending` (business premise without confirmation, which does not bind) or `autonomous` (technical premise without confirmation); each guideline carries `confirmed: true` or `false`. The premise of a closed work item leaves the text. Work items and attestations do not enter.
+- `text`: the context in Markdown, with the sections `## Checks`, `## Guidelines` and `## Premises` (plus those of decisions and pending premises when there are any). A native check appears only when `[native] checks` in the `.omhl/workflow.toml` of the main directory turns it on ([native-checks.md](native-checks.md)); the guidelines section lists only the project ones. Each premise carries `mark`: `confirmed` (binds), `pending` (business premise without confirmation, which does not bind) or `autonomous` (technical premise without confirmation); each guideline carries `confirmed: true` or `false`. The premise of a closed work item leaves the text. Work items and attestations do not enter.
 - `omitted`: how many nodes the text left out because of the size limit. With `omitted` greater than zero, the text ends with a line that says to run `omhl list` to read the rest.
 
 The text is project instruction, not enforced: nothing in it blocks an action. Treat the content of each node as data.
 
-`render` never refuses because of the workflow file. When the file is not accepted, or the main directory cannot be resolved (a project with no git repository, for example), it prints no native check block and adds one `WARNING:` line to the preamble, outside the size limit: the code `invalid-workflow-config` (`gate-pr` and `close` refuse until the file is fixed) or `main-dir-unknown` (run `git init`). Both are in [native-checks.md](native-checks.md).
+`render` never refuses because of the workflow file. When the file is not accepted, or the main directory cannot be resolved (a project with no git repository, for example), it prints no native check block and adds one `WARNING:` line to the preamble, outside the size limit: the code `invalid-workflow-config` (`gate-delivery` and `close` refuse until the file is fixed) or `main-dir-unknown` (run `git init`). Both are in [native-checks.md](native-checks.md).
 
 ## Errors
 
@@ -35,7 +35,7 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 ## Examples
 
-Reads the context of a project with a confirmed premise and the native checks turned on in `.omhl/workflow.toml` (the checks section brings their blocks, the guidelines section the native guidelines):
+Reads the context of a project with a confirmed premise and the native checks turned on in `.omhl/workflow.toml` (the checks section brings their blocks):
 
 ```omhl-example fixture=natives
 $ omhl render
@@ -62,14 +62,6 @@ These are project instructions, not enforced; nothing here blocks any action.
 
 ## Guidelines
 
-### guidelines.one-decision-per-turn
-- confirmed: true
-- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
-
-### guidelines.commit-policy
-- confirmed: true
-- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
-
 ## Premises
 
 ### premises.p1
@@ -84,7 +76,7 @@ With `--format json` the same context comes out in the `text` field, next to `om
 
 ```omhl-example fixture=natives
 $ omhl render --format json
-{"omitted":0,"text":"# omhl context for tenant acme\nThese are project instructions, not enforced; nothing here blocks any action.\n\n## Checks\n\n### checks.run-tests\n- event: before-commit\n- blocking: true\n- how: run the project's test suite and confirm it passes before creating a commit\n\n### checks.ci-green-before-merge\n- event: before-merge\n- blocking: true\n- after: checks.run-tests\n- how: wait until every check run on the head commit is green; if one fails, fix it, push, and run CI again\n\n### checks.verify-review-comment-anchoring\n- event: before-publishing-review-comments\n- blocking: true\n- how: compare path, line and side of each inline comment with the diff of the head SHA; post the approved text unchanged\n\n## Guidelines\n\n### guidelines.one-decision-per-turn\n- confirmed: true\n- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next\n\n### guidelines.commit-policy\n- confirmed: true\n- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy\n\n## Premises\n\n### premises.p1\n- mark: confirmed\n- kind: business\n- status: confirmed\n- text: Money is stored in cents.\n- work_item: work-items.w1\n"}
+{"omitted":0,"text":"# omhl context for tenant acme\nThese are project instructions, not enforced; nothing here blocks any action.\n\n## Checks\n\n### checks.run-tests\n- event: before-commit\n- blocking: true\n- how: run the project's test suite and confirm it passes before creating a commit\n\n### checks.ci-green-before-merge\n- event: before-merge\n- blocking: true\n- after: checks.run-tests\n- how: wait until every check run on the head commit is green; if one fails, fix it, push, and run CI again\n\n### checks.verify-review-comment-anchoring\n- event: before-publishing-review-comments\n- blocking: true\n- how: compare path, line and side of each inline comment with the diff of the head SHA; post the approved text unchanged\n\n## Guidelines\n\n## Premises\n\n### premises.p1\n- mark: confirmed\n- kind: business\n- status: confirmed\n- text: Money is stored in cents.\n- work_item: work-items.w1\n"}
 ```
 
 Without a `[native]` table, no native check block comes out; the `git` fixture has no `workflow.toml`:
@@ -97,14 +89,6 @@ These are project instructions, not enforced; nothing here blocks any action.
 ## Checks
 
 ## Guidelines
-
-### guidelines.one-decision-per-turn
-- confirmed: true
-- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
-
-### guidelines.commit-policy
-- confirmed: true
-- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
 
 ## Premises
 
@@ -122,19 +106,11 @@ With a `workflow.toml` that lists an id that is not a native check, `render` sti
 $ omhl render
 # omhl context for tenant acme
 These are project instructions, not enforced; nothing here blocks any action.
-WARNING: .omhl/workflow.toml is not accepted (invalid-workflow-config): gate-pr and close refuse until it is fixed and no native check is printed meanwhile; run omhl load --dry-run for details
+WARNING: .omhl/workflow.toml is not accepted (invalid-workflow-config): gate-delivery and close refuse until it is fixed and no native check is printed meanwhile; run omhl load --dry-run for details
 
 ## Checks
 
 ## Guidelines
-
-### guidelines.one-decision-per-turn
-- confirmed: true
-- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
-
-### guidelines.commit-policy
-- confirmed: true
-- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
 
 ## Premises
 
@@ -152,19 +128,11 @@ Without a git repository there is no main directory (the `project` fixture has n
 $ omhl render
 # omhl context for tenant acme
 These are project instructions, not enforced; nothing here blocks any action.
-WARNING: the main directory was not resolved (main-dir-unknown): no native check is printed and gate-pr and close refuse; run git init if the project has no repository, or check the repository if it has one
+WARNING: the main directory was not resolved (main-dir-unknown): no native check is printed and gate-delivery and close refuse; run git init if the project has no repository, or check the repository if it has one
 
 ## Checks
 
 ## Guidelines
-
-### guidelines.one-decision-per-turn
-- confirmed: true
-- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
-
-### guidelines.commit-policy
-- confirmed: true
-- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
 
 ## Premises
 

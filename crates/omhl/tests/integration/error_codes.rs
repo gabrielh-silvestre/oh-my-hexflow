@@ -5,21 +5,33 @@ use omhl::extensions::parse::parse;
 use serde_json::Value;
 use support::appfx::AppFixture;
 
+const RUN_ON_INSTRUCTION_EVENT: &str = "blocking = true\nhow = \"x\"\nrun = [\"true\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-publishing-review-comments\"\n";
+
 #[test]
 fn it_should_give_every_new_app_refusal_and_extension_issue_a_next_step() {
     // Lista fechada: cada fatia que cria uma recusa do app ou um issue de extension a acrescenta aqui.
     let tomls = [
         ("kind-missing", "text = \"x\"\n"),
         ("kind-invalid", "kind = \"x\"\ntext = \"x\"\n"),
+        ("event-not-runnable", RUN_ON_INSTRUCTION_EVENT),
     ];
 
     let incomplete: Vec<&str> = tomls
         .iter()
         .filter(|(code, toml)| {
+            let is_check = *code == "event-not-runnable";
             let raw = RawExtension {
-                kind: ExtensionKind::Guideline,
+                kind: if is_check {
+                    ExtensionKind::Check
+                } else {
+                    ExtensionKind::Guideline
+                },
                 slug: "tone".to_owned(),
-                toml_path: ".omhl/guidelines/tone.toml".to_owned(),
+                toml_path: if is_check {
+                    ".omhl/checks/tone.toml".to_owned()
+                } else {
+                    ".omhl/guidelines/tone.toml".to_owned()
+                },
                 toml: (*toml).to_owned(),
                 markdown_path: None,
                 markdown: None,

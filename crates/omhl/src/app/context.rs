@@ -10,8 +10,8 @@ use crate::probe::NativeRefusal;
 use crate::render::{CONTEXT_BUDGET, RenderInput, render};
 use crate::workflow::config::NativeConfig;
 
-const INVALID_WORKFLOW_NOTICE: &str = "WARNING: .omhl/workflow.toml is not accepted (invalid-workflow-config): gate-pr and close refuse until it is fixed and no native check is printed meanwhile; run omhl load --dry-run for details";
-const MAIN_DIR_UNKNOWN_NOTICE: &str = "WARNING: the main directory was not resolved (main-dir-unknown): no native check is printed and gate-pr and close refuse; run git init if the project has no repository, or check the repository if it has one";
+const INVALID_WORKFLOW_NOTICE: &str = "WARNING: .omhl/workflow.toml is not accepted (invalid-workflow-config): gate-delivery and close refuse until it is fixed and no native check is printed meanwhile; run omhl load --dry-run for details";
+const MAIN_DIR_UNKNOWN_NOTICE: &str = "WARNING: the main directory was not resolved (main-dir-unknown): no native check is printed and gate-delivery and close refuse; run git init if the project has no repository, or check the repository if it has one";
 
 /// O `render` nunca recusa: sem ativação legível vale o conjunto vazio e o preâmbulo diz por quê.
 pub(super) fn render_context(

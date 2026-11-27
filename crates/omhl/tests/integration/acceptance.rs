@@ -2,10 +2,10 @@ use crate::support;
 
 use hexlog::{FieldName, ListFilter, Scalar};
 use omhl::gate::{GateQuestion, Question, QuestionClass};
+use support::delivery_gate::{DECISION, PREMISE, relation_item};
 use support::omhl::{
     LINT_DOCS, OmhlHarness, acme, append_ok, check_data, decision_data, node_item, premise_data,
 };
-use support::pr_gate::{DECISION, PREMISE, relation_item};
 use support::{FakeProbe, rty, sid, tname};
 
 fn of_type(type_name: &str) -> ListFilter {

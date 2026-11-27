@@ -49,8 +49,8 @@ fn it_should_list_the_close_codes_on_the_close_page() {
 }
 
 #[test]
-fn it_should_list_the_type_and_base_codes_on_the_gate_pr_page() {
-    let text = page(&format!("{REVIEW}gate-pr.md"));
+fn it_should_list_the_type_and_base_codes_on_the_gate_delivery_page() {
+    let text = page(&format!("{REVIEW}gate-delivery.md"));
 
     let absent = missing(
         &text,
@@ -104,7 +104,7 @@ fn it_should_name_abandon_and_the_repair_pull_request_in_the_native_checks_refus
 
     let line = line_starting(
         &text,
-        "- `gate-pr` and `close` refuse with `invalid-workflow-config`",
+        "- `gate-delivery` and `close` refuse with `invalid-workflow-config`",
     );
 
     let absent = missing(line, &["`--abandon`", "repair pull request"]);
@@ -122,8 +122,8 @@ fn it_should_name_abandon_and_the_repair_pull_request_in_the_close_invalid_confi
 }
 
 #[test]
-fn it_should_name_abandon_and_the_repair_pull_request_in_the_gate_pr_invalid_config_entry() {
-    let text = page(&format!("{REVIEW}gate-pr.md"));
+fn it_should_name_abandon_and_the_repair_pull_request_in_the_gate_delivery_invalid_config_entry() {
+    let text = page(&format!("{REVIEW}gate-delivery.md"));
 
     let line = line_starting(&text, "- `invalid-workflow-config`");
 
@@ -171,8 +171,8 @@ fn it_should_ask_for_how_each_failed_refuse_question_got_past_the_brake_on_the_c
 }
 
 #[test]
-fn it_should_say_close_takes_the_merge_base_that_gate_pr_prints() {
+fn it_should_say_close_takes_the_merge_base_that_gate_delivery_prints() {
     let text = page(&format!("{REVIEW}close.md"));
 
-    assert!(text.contains("the merge-base that `gate-pr` prints"));
+    assert!(text.contains("the merge-base that `gate-delivery` prints"));
 }

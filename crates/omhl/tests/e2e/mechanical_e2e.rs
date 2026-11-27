@@ -19,7 +19,7 @@ use support::git::{
 use tempfile::TempDir;
 
 const BEFORE_COMMIT: &str = "before-commit";
-const BEFORE_PR: &str = "before-pr";
+const BEFORE_PR: &str = "before-push";
 const BEFORE_MERGE: &str = "before-merge";
 
 const RED_RUN: &str = r#"["sh", "-c", "exit 1"]"#;
@@ -433,10 +433,10 @@ struct NoVerifyFlow {
     commit: Output,
     push: Output,
     merge_run: OmhlOutput,
-    gate_pr: OmhlOutput,
+    gate_delivery: OmhlOutput,
 }
 
-/// O Act do cenário de ponta a ponta: commit com `--no-verify`, push pelo hook, `before-merge` e `gate-pr`.
+/// O Act do cenário de ponta a ponta: commit com `--no-verify`, push pelo hook, `before-merge` e `gate-delivery`.
 fn no_verify_flow(e: &E2e) -> NoVerifyFlow {
     e.stage(&e.r, "n", "n\n");
     let commit = e.git(&e.r, &["commit", "--no-verify", "-m", "n"]);
@@ -444,12 +444,12 @@ fn no_verify_flow(e: &E2e) -> NoVerifyFlow {
     let merge_run = e
         .omhl(&["check", "run", "--format", "json", "--event", BEFORE_MERGE])
         .run();
-    let gate_pr = e.omhl(&["gate-pr", WORK_ITEM]).run();
+    let gate_delivery = e.omhl(&["gate-delivery", WORK_ITEM]).run();
     NoVerifyFlow {
         commit,
         push,
         merge_run,
-        gate_pr,
+        gate_delivery,
     }
 }
 
@@ -656,13 +656,13 @@ fn it_should_fail_the_pull_request_gate_for_a_commit_made_with_no_verify() {
         flow.merge_run.stderr
     );
     assert_eq!(
-        flow.gate_pr.code,
+        flow.gate_delivery.code,
         Some(0),
         "stderr: {}",
-        flow.gate_pr.stderr
+        flow.gate_delivery.stderr
     );
-    let report = json_line(&flow.gate_pr.stdout);
-    assert_eq!(report["gate"], json!("pull-request"));
+    let report = json_line(&flow.gate_delivery.stdout);
+    assert_eq!(report["gate"], json!("delivery"));
     assert_eq!(report["passed"], json!(false));
     let tree = e.tree_of_head(&e.r);
     assert!(
@@ -681,14 +681,19 @@ fn it_should_recover_the_missing_attestation_by_running_the_event_manually_on_a_
     let commit_run = e
         .omhl(&["check", "run", "--format", "json", "--event", BEFORE_COMMIT])
         .run();
-    let gate_pr = e.omhl(&["gate-pr", WORK_ITEM]).run();
+    let gate_delivery = e.omhl(&["gate-delivery", WORK_ITEM]).run();
 
     assert_eq!(status, "");
     assert_eq!(commit_run.code, Some(0), "stderr: {}", commit_run.stderr);
     let tree = snapshot("git-tree", &e.tree_of_head(&e.r));
     assert!(has_passed_at(&e.attestations(GATE), &tree));
-    assert_eq!(gate_pr.code, Some(0), "gate-pr: {}", gate_pr.stderr);
-    assert_eq!(json_line(&gate_pr.stdout)["passed"], json!(true));
+    assert_eq!(
+        gate_delivery.code,
+        Some(0),
+        "gate-delivery: {}",
+        gate_delivery.stderr
+    );
+    assert_eq!(json_line(&gate_delivery.stdout)["passed"], json!(true));
 }
 
 #[test]
@@ -701,7 +706,7 @@ fn it_should_pass_the_pull_request_gate_after_the_hooks_attested_the_head_tree_a
     let merge_run = e
         .omhl(&["check", "run", "--format", "json", "--event", BEFORE_MERGE])
         .run();
-    let gate_pr = e.omhl(&["gate-pr", WORK_ITEM]).run();
+    let gate_delivery = e.omhl(&["gate-delivery", WORK_ITEM]).run();
 
     assert_eq!(
         commit.status.code(),
@@ -716,8 +721,13 @@ fn it_should_pass_the_pull_request_gate_after_the_hooks_attested_the_head_tree_a
         text(&push.stderr)
     );
     assert_eq!(merge_run.code, Some(0), "stderr: {}", merge_run.stderr);
-    assert_eq!(gate_pr.code, Some(0), "stderr: {}", gate_pr.stderr);
-    assert_eq!(json_line(&gate_pr.stdout)["passed"], json!(true));
+    assert_eq!(
+        gate_delivery.code,
+        Some(0),
+        "stderr: {}",
+        gate_delivery.stderr
+    );
+    assert_eq!(json_line(&gate_delivery.stdout)["passed"], json!(true));
     let tree = snapshot("git-tree", &e.tree_of_head(&e.r));
     let commit_snap = snapshot("git-commit", &e.head(&e.r));
     assert!(has_passed_at(&e.attestations(GATE), &tree));

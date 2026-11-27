@@ -5,10 +5,10 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use support::child::{Cmd, Output, omhl_json};
+use support::delivery_gate::{CI_GREEN, VERIFY_ANCHORING};
 use support::ext::ExtTree;
 use support::git::git_ok;
 use support::omhl::{RUN_TESTS, work_item_data};
-use support::pr_gate::{CI_GREEN, VERIFY_ANCHORING};
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
@@ -69,7 +69,7 @@ fn it_should_pass_the_gate_with_only_the_three_method_questions_without_a_workfl
     let project = Project::with_workflow(None);
     open_work_item(&project);
 
-    let gate = in_project(&project, &["gate-pr", W1]).run();
+    let gate = in_project(&project, &["gate-delivery", W1]).run();
 
     assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
     assert_eq!(labels_of(&gate), BASE_LABELS);
@@ -90,12 +90,12 @@ fn it_should_close_with_a_passed_gate_without_a_workflow_file() {
 // CA-009 e CA-010: arquivo inválido e sem git
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_with_the_file_path_and_the_next_step_for_an_invalid_workflow()
-{
+fn it_should_refuse_gate_delivery_and_close_with_the_file_path_and_the_next_step_for_an_invalid_workflow()
+ {
     let project = Project::with_workflow(Some("version = 1\ncolour = true\n"));
     open_work_item(&project);
 
-    let gate = in_project(&project, &["gate-pr", W1]).run();
+    let gate = in_project(&project, &["gate-delivery", W1]).run();
     let closed = in_project(&project, &["close", W1]).run();
     let work_item = in_project(&project, &["get", W1]).run();
 
@@ -125,11 +125,11 @@ fn it_should_refuse_gate_pr_and_close_with_the_file_path_and_the_next_step_for_a
 }
 
 #[test]
-fn it_should_refuse_gate_pr_and_close_with_probe_failed_outside_a_repository() {
+fn it_should_refuse_gate_delivery_and_close_with_probe_failed_outside_a_repository() {
     let project = Project::new("acme");
     open_work_item(&project);
 
-    let gate = in_project(&project, &["gate-pr", W1]).run();
+    let gate = in_project(&project, &["gate-delivery", W1]).run();
     let closed = in_project(&project, &["close", W1]).run();
 
     for refused in [&gate, &closed] {
@@ -158,14 +158,14 @@ fn linked_worktree(project: &Project) -> std::path::PathBuf {
 }
 
 #[test]
-fn it_should_ask_the_native_questions_in_gate_pr_and_close_from_a_worktree_when_the_main_directory_enables_them()
+fn it_should_ask_the_native_questions_in_gate_delivery_and_close_from_a_worktree_when_the_main_directory_enables_them()
  {
     let project = Project::with_workflow(None);
     open_work_item(&project);
     project.enable_natives(&[RUN_TESTS, CI_GREEN]);
     let linked = linked_worktree(&project);
 
-    let gate = in_dir(&project, &linked, &["gate-pr", W1]).run();
+    let gate = in_dir(&project, &linked, &["gate-delivery", W1]).run();
     let closed = in_dir(&project, &linked, &["close", W1]).run();
 
     assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
@@ -192,7 +192,7 @@ fn it_should_not_ask_the_native_questions_from_a_worktree_when_only_its_copy_ena
     .expect("the linked copy is written");
     commit_all(&linked, "enable in the linked copy only");
 
-    let gate = in_dir(&project, &linked, &["gate-pr", W1]).run();
+    let gate = in_dir(&project, &linked, &["gate-delivery", W1]).run();
 
     assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
     assert_eq!(labels_of(&gate), BASE_LABELS);
@@ -245,7 +245,7 @@ fn it_should_read_and_evaluate_the_history_of_disabled_natives_without_error() {
         &["render"],
         &["report", "retro", W1],
         &["report", "sessions"],
-        &["gate-pr", W1],
+        &["gate-delivery", W1],
         &[
             "close",
             W1,

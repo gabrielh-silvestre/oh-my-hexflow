@@ -1,3 +1,4 @@
+use crate::guard::Origin;
 use hexlog::SemanticId;
 use serde_json::Value;
 
@@ -20,6 +21,7 @@ pub struct PlannedCheck {
     pub spec_digest: String,
     pub concern: Option<String>,
     pub variant: Option<String>,
+    pub origin: Origin,
 }
 
 pub fn plan_run(
@@ -34,6 +36,7 @@ pub fn plan_run(
             // `Ok(None)` é check só de texto e sai; `Err` fica no plano.
             let spec = CheckSpec::from_data(&node.data).transpose()?;
             Some(PlannedCheck {
+                origin: Origin::InForce,
                 id: node.id.clone(),
                 spec,
                 blocking: node.data["blocking"] == true,

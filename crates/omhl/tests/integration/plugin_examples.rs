@@ -13,6 +13,21 @@ const EXAMPLES_DIR: &str = "plugin/examples";
 const EXAMPLES_README: &str = "README.md";
 const WORKFLOW_FILE: &str = "workflow.toml";
 const LAYOUT: [&str; 3] = ["checks", "guidelines", WORKFLOW_FILE];
+const NATIVE_WORKFLOW_EXAMPLE: &str = "workflows/interview-native-run.toml";
+const RUST_CHECKS: [&str; 3] = [
+    "checks/rust-fmt.toml",
+    "checks/rust-clippy.toml",
+    "checks/rust-test.toml",
+];
+const NODE_CHECKS: [&str; 1] = ["checks/node-test.toml"];
+const PYTHON_CHECKS: [&str; 1] = ["checks/python-test.toml"];
+const TOOLCHAIN_VARIABLES: [&str; 5] = [
+    "RUSTFLAGS",
+    "RUSTC_WRAPPER",
+    "RUSTC_WORKSPACE_WRAPPER",
+    "CARGO_ENCODED_RUSTFLAGS",
+    "CARGO_BUILD_RUSTFLAGS",
+];
 const FORBIDDEN_KEYS: [&str; 7] = [
     "branch",
     "git",
@@ -38,12 +53,42 @@ fn tracked_examples() -> Tree {
         .lines()
         .filter_map(|line| line.strip_prefix(&prefix))
         .filter(|path| *path != EXAMPLES_README)
+        .filter(|path| !path.starts_with("workflows/"))
         .map(|path| {
             let text = fs::read_to_string(repo_root().join(EXAMPLES_DIR).join(path))
                 .unwrap_or_else(|error| panic!("{path} is readable: {error}"));
 
             (path.to_owned(), text)
         })
+        .collect()
+}
+
+/// Lê do disco, não do git, e junto o `.md` com o `how` que o `load` exige.
+fn from_disk(paths: &[&str]) -> Tree {
+    let mut tree = Tree::new();
+    for path in paths {
+        let text = fs::read_to_string(repo_root().join(EXAMPLES_DIR).join(path))
+            .unwrap_or_else(|error| panic!("{path} is readable: {error}"));
+        tree.insert((*path).to_owned(), text);
+        if let Some(stem) = path.strip_suffix(".toml") {
+            let sibling = format!("{stem}.md");
+            if let Ok(how) = fs::read_to_string(repo_root().join(EXAMPLES_DIR).join(&sibling)) {
+                tree.insert(sibling, how);
+            }
+        }
+    }
+
+    tree
+}
+
+fn run_words(tree: &Tree, path: &str) -> Vec<String> {
+    let table: toml::Table = toml::from_str(&tree[path]).expect("valid TOML");
+
+    table["run"]
+        .as_array()
+        .expect("run is an array")
+        .iter()
+        .filter_map(|word| word.as_str().map(str::to_owned))
         .collect()
 }
 
@@ -216,7 +261,7 @@ fn it_should_reject_a_workflow_file_with_an_unknown_key() {
 }
 
 #[test]
-fn it_should_reject_a_check_with_a_variant_outside_its_concern() {
+fn it_should_accept_a_check_with_a_variant_outside_the_former_vocabulary_of_its_concern() {
     let tree = tracked_examples();
     let seeded = edited(
         &tree,
@@ -228,7 +273,7 @@ fn it_should_reject_a_check_with_a_variant_outside_its_concern() {
     let failures = failures_of(&seeded);
 
     assert!(
-        failures.iter().any(|found| found.contains(LINT_CHECK)),
+        !failures.iter().any(|found| found.contains(LINT_CHECK)),
         "{failures:?}"
     );
 }
@@ -402,4 +447,115 @@ fn it_should_not_use_a_key_or_a_program_that_belongs_to_a_later_front() {
         .collect();
     assert_eq!(forbidden_keys, Vec::<&String>::new());
     assert_eq!(forbidden_programs, Vec::<&String>::new());
+}
+
+// Exemplos de linguagem e do workflow
+
+#[test]
+fn it_should_load_the_rust_examples_without_problems() {
+    let tree = from_disk(&RUST_CHECKS);
+
+    assert_eq!(failures_of(&tree), Vec::<String>::new());
+}
+
+#[test]
+fn it_should_load_the_node_example_without_problems() {
+    let tree = from_disk(&NODE_CHECKS);
+
+    assert_eq!(failures_of(&tree), Vec::<String>::new());
+}
+
+#[test]
+fn it_should_load_the_python_example_without_problems() {
+    let tree = from_disk(&PYTHON_CHECKS);
+
+    assert_eq!(failures_of(&tree), Vec::<String>::new());
+}
+
+#[test]
+fn it_should_load_the_workflow_example_with_interview_and_native_run_without_problems() {
+    let tree = from_disk(&[NATIVE_WORKFLOW_EXAMPLE]);
+    let as_workflow = Tree::from([(
+        WORKFLOW_FILE.to_owned(),
+        tree[NATIVE_WORKFLOW_EXAMPLE].clone(),
+    )]);
+
+    assert_eq!(failures_of(&as_workflow), Vec::<String>::new());
+}
+
+#[test]
+fn it_should_turn_the_native_run_tests_on_in_the_workflow_example() {
+    let tree = from_disk(&[NATIVE_WORKFLOW_EXAMPLE]);
+
+    let workflow: toml::Table = toml::from_str(&tree[NATIVE_WORKFLOW_EXAMPLE]).expect("valid TOML");
+
+    assert!(workflow.contains_key("interview"));
+    assert_eq!(
+        workflow["native"]["checks"]
+            .as_array()
+            .expect("native.checks is an array")
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .collect::<Vec<_>>(),
+        vec!["checks.run-tests"]
+    );
+    assert!(workflow["native"]["run"]["checks.run-tests"].is_table());
+}
+
+#[test]
+fn it_should_start_every_rust_example_run_by_clearing_the_five_toolchain_variables() {
+    let tree = from_disk(&RUST_CHECKS);
+    let expected: Vec<String> = ["env"]
+        .into_iter()
+        .chain(TOOLCHAIN_VARIABLES.iter().flat_map(|name| ["-u", *name]))
+        .map(str::to_owned)
+        .collect();
+
+    for path in RUST_CHECKS {
+        let words = run_words(&tree, path);
+
+        assert_eq!(words[..expected.len()], expected[..], "{path}");
+    }
+}
+
+#[test]
+fn it_should_bind_every_example_check_to_one_of_the_four_events() {
+    let tree = tracked_examples();
+
+    let outside: Vec<String> = parsed(&tree, "checks")
+        .into_iter()
+        .filter(|(_, table)| {
+            !table["when"]["event"]
+                .as_str()
+                .is_some_and(|event| omhl::app::EVENTS.contains(&event))
+        })
+        .map(|(path, _)| path)
+        .collect();
+
+    assert_eq!(outside, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_tell_the_reader_that_each_example_is_to_copy_and_adjust() {
+    let readme = fs::read_to_string(repo_root().join(EXAMPLES_DIR).join(EXAMPLES_README))
+        .expect("the examples README is readable");
+
+    assert!(readme.to_lowercase().contains("copy and adjust"));
+}
+
+#[test]
+fn it_should_list_every_new_example_in_the_readme() {
+    let readme = fs::read_to_string(repo_root().join(EXAMPLES_DIR).join(EXAMPLES_README))
+        .expect("the examples README is readable");
+
+    let missing: Vec<&str> = RUST_CHECKS
+        .iter()
+        .chain(&NODE_CHECKS)
+        .chain(&PYTHON_CHECKS)
+        .chain(&[NATIVE_WORKFLOW_EXAMPLE])
+        .copied()
+        .filter(|path| !readme.contains(path))
+        .collect();
+
+    assert_eq!(missing, Vec::<&str>::new());
 }

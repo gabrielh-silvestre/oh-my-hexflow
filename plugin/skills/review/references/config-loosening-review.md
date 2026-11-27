@@ -1,6 +1,6 @@
 # Config loosening review
 
-The review of the project configuration, run by `oh-my-hexflow:code-reviewer` when the pull request gate asks for the native check `checks.config-loosening-review`. The agent may create and adjust checks and the workflow file, but not weaken the brakes they set. The reviewer judges direction: does the PR make anything easier to pass than it was at the base?
+The review of the project configuration, run by `oh-my-hexflow:code-reviewer` when the delivery gate asks for the native check `checks.config-loosening-review`. The agent may create and adjust checks and the workflow file, but not weaken the brakes they set. The reviewer judges direction: does the PR make anything easier to pass than it was at the base?
 
 Rules around the review:
 
@@ -47,7 +47,11 @@ A type the project added (a prefix not in the default table) is judged at every 
 
 The native activation ids are `checks.run-tests`, `checks.ci-green-before-merge`, `checks.verify-review-comment-anchoring` and `checks.config-loosening-review`. Turning off `checks.config-loosening-review` itself is a loosening like any other.
 
-Interview settings stay free.
+The `[interview]` table (threshold and weights) is outside the brake: any edit to it is free.
+
+In `[native.run]`, removing the native command loosens: the native goes back to being an instruction, attested by hand.
+
+In `[native.run]`, changing the command goes to the reviewer, who judges whether the new one requires less than the old one.
 
 ### Check files
 
@@ -58,7 +62,7 @@ For a check file `.omhl/checks/<slug>.toml`, the fields are `blocking`, `how`, `
 | blocking true to false | loosens |
 | removing run | loosens: the check becomes a text check the agent attests alone |
 | deleting or retiring the check | loosens |
-| `event` of a blocking check moved from one in REQUIRED_EVENTS (`before-commit`, `before-pr`, `before-merge`) to one outside it | loosens |
+| `event` of a blocking check moved from one in REQUIRED_EVENTS (`before-commit`, `before-push`, `before-merge`) to one outside it | loosens |
 | `run`, `expect` or `how` changed | read for intent: flag it when the new command, expectation or instruction can pass where the old one failed |
 | `timeout_secs`, `after`, `concern`, `variant`, `matcher`, `vocabulary` changed | read for intent, same test |
 | a new check, not blocking | does not loosen |

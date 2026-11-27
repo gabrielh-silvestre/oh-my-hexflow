@@ -6,7 +6,6 @@ use super::engine::Engine;
 use super::error::AppError;
 use super::read::{all_nodes, nodes_matching};
 use super::report::work_item_filter;
-use crate::native::NativeBase;
 use crate::workflow::gap::{
     GapFacts, GapState, gap_state, is_confirmed_guideline, is_confirmed_premise,
 };
@@ -61,26 +60,16 @@ fn is_late(data: &Value) -> bool {
     text(data, "origin") == Some("late")
 }
 
-fn is_native(id: &str) -> bool {
-    NativeBase
-        .guidelines()
-        .iter()
-        .any(|guideline| guideline.id == id)
-}
-
 fn text<'a>(data: &'a Value, field: &str) -> Option<&'a str> {
     data.get(field).and_then(Value::as_str)
 }
 
 impl SpecFacts for GraphFacts {
     fn exists(&self, id: &str) -> bool {
-        is_native(id) || self.gap.nodes.iter().any(|fact| fact.id == id)
+        self.gap.nodes.iter().any(|fact| fact.id == id)
     }
 
     fn confirmed(&self, id: &str) -> bool {
-        if is_native(id) {
-            return true;
-        }
         let Some(fact) = self.gap.nodes.iter().find(|fact| fact.id == id) else {
             return false;
         };

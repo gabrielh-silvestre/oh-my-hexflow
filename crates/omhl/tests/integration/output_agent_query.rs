@@ -89,7 +89,7 @@ fn it_should_print_event_blocking_and_concern_for_a_check_in_the_agent_list() {
 
     assert_eq!(
         line,
-        "checks.alpha-probe · check · seq 2 · before-pr · blocking · style/format"
+        "checks.alpha-probe · check · seq 2 · before-push · blocking · docs/review"
     );
 }
 
@@ -288,9 +288,9 @@ fn it_should_print_each_node_of_the_human_list_as_a_labeled_block() {
   checks.alpha-probe
     type:     check
     seq:      2
-    event:    before-pr
+    event:    before-push
     blocking: yes
-    concern:  style/format
+    concern:  docs/review
 
 Next: omhl list --after-seq 2 with the same filters for more. One node in full: omhl get <id>.
 "

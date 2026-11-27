@@ -3,12 +3,12 @@ use std::fmt;
 use hexlog::{AppendItem, ErrorCode, HexlogError, ItemBody};
 use serde_json::{Value, json};
 
+use crate::delivery_gate::CloseRefusal;
 use crate::error::{OmhlError, RuleCode};
 use crate::extensions::model::ExtensionIssue;
 use crate::facade::CloseError;
 use crate::gate::QuestionClass;
 use crate::guidance::Guidance;
-use crate::pr_gate::CloseRefusal;
 use crate::project::ProjectError;
 use crate::project::layout::ISSUES_MAX;
 use crate::projection::ProjectionError;
@@ -74,7 +74,7 @@ const CLOSE_REFUSED_MESSAGE: &str = "a refuse question failed, and --force does 
 const CLOSE_WARNINGS_MESSAGE: &str = "only warn questions failed: --force --note closes the work item, with the owner's authorization";
 const QUESTION_FAILED_MESSAGE: &str = "the gate question did not pass";
 
-const INVALID_WORKFLOW_NEXT_STEP: &str =
+pub(super) const INVALID_WORKFLOW_NEXT_STEP: &str =
     "fix the workflow file named in the message; `omhl load --dry-run` details the problem";
 
 /// O texto de erro nunca repete valor de entrada: só códigos, ponteiros e regras.
@@ -416,6 +416,13 @@ impl AppError {
 
     pub(crate) fn check_not_mechanical(path: &str) -> AppError {
         AppError::at_pointer("check-not-mechanical", path, "the check has no command")
+    }
+
+    pub(crate) fn native_check_disabled(path: &str) -> AppError {
+        let mut error = AppError::at_pointer("check-not-found", path, "check-not-found");
+        error.details[0].next_step =
+            Some("enable it in [native] checks of .omhl/workflow.toml".to_owned());
+        error
     }
 
     pub(crate) fn check_not_orphaned(path: &str) -> AppError {

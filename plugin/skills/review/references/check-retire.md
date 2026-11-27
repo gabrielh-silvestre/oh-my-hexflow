@@ -6,7 +6,7 @@ No stage of the cycle runs it.
 
 ## When to use
 
-Retiring a check is the owner's task: the agent never runs it. To discard for good a check whose file was deleted from the tree and whose deletion was already merged. Without this, `omhl load` only lists the id in `orphans`, `omhl check run` warns `check-orphaned` on every run and the pull request gate keeps asking for an attestation nobody records anymore. **The retirement is final** and holds for all clones and branches: the id never comes back. If your branch predates the check (the file did not exist in it yet), do not retire: rebase onto `main` or restore the file.
+Retiring a check is the owner's task: the agent never runs it. To discard for good a check whose file was deleted from the tree and whose deletion was already merged. Without this, `omhl load` only lists the id in `orphans`, `omhl check run` warns `check-orphaned` on every run and the delivery gate keeps asking for an attestation nobody records anymore. **The retirement is final** and holds for all clones and branches: the id never comes back. If your branch predates the check (the file did not exist in it yet), do not retire: rebase onto `main` or restore the file.
 
 ## Inputs
 
@@ -17,7 +17,7 @@ Retiring a check is the owner's task: the agent never runs it. To discard for go
 
 ## Output
 
-Text on stdout, exit 0: `✔ check retire · retired <id>`. With `--format json` it is a JSON line, `{"retired":"<id>"}`. The database is append-only: the command deletes nothing, it records a retirement record (author `loader`) and the chain stays valid. Afterwards, the check disappears from `check run`, from the warning and from the pull request gate. An `omhl load` with the file back reports the id in `skipped` and does not recreate it; to bring the check back, use another file name.
+Text on stdout, exit 0: `✔ check retire · retired <id>`. With `--format json` it is a JSON line, `{"retired":"<id>"}`. The database is append-only: the command deletes nothing, it records a retirement record (author `loader`) and the chain stays valid. Afterwards, the check disappears from `check run`, from the warning and from the delivery gate. An `omhl load` with the file back reports the id in `skipped` and does not recreate it; to bring the check back, use another file name.
 
 ## Errors
 

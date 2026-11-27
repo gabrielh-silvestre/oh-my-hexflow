@@ -26,7 +26,7 @@ pub enum Action {
         note: Option<String>,
     },
     Render,
-    GatePr {
+    GateDelivery {
         work_item: String,
         base: Option<String>,
     },

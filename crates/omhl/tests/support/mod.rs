@@ -6,6 +6,7 @@ pub mod busy;
 pub mod check_run_tree;
 pub mod child;
 pub mod cycle;
+pub mod delivery_gate;
 pub mod directives_flow_e2e;
 pub mod ext;
 pub mod fences;
@@ -20,7 +21,6 @@ pub mod omhl;
 pub mod output_agent_leaves;
 pub mod output_agent_query;
 pub mod output_agent_report;
-pub mod pr_gate;
 pub mod project;
 pub mod query;
 pub mod raw;
@@ -228,12 +228,12 @@ pub struct FakeNative {
 impl FakeNative {
     pub fn enabling(ids: &[&'static str]) -> FakeNative {
         FakeNative {
-            result: Ok(pr_gate::native_enabled(ids)),
+            result: Ok(delivery_gate::native_enabled(ids)),
         }
     }
 
     pub fn all_enabled() -> FakeNative {
-        FakeNative::enabling(&pr_gate::ALL_NATIVE_CHECKS)
+        FakeNative::enabling(&delivery_gate::ALL_NATIVE_CHECKS)
     }
 
     pub fn refusing(refusal: NativeRefusal) -> FakeNative {

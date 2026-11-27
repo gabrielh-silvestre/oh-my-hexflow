@@ -15,14 +15,14 @@
 
 ## When to use
 
-When the work item's work is finished and the pull request gate was already checked with `omhl gate-pr`. `close` runs the gate again, records the closing on the work item and returns the gate result together with the retro. Run it with the PR ready, not before: the closing is recorded in an append-only database.
+When the work item's work is finished and the delivery gate was already checked with `omhl gate-delivery`. `close` runs the gate again, records the closing on the work item and returns the gate result together with the retro. Run it with the PR ready, not before: the closing is recorded in an append-only database.
 
 ## Inputs
 
 - `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist and be open.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
-- `--base <ref>`: the base of the loosening review. Pass the merge-base that `gate-pr` prints, as in [gate-pr.md](gate-pr.md); `close` does not compute it.
+- `--base <ref>`: the base of the loosening review. Pass the merge-base that `gate-delivery` prints, as in [gate-delivery.md](gate-delivery.md); `close` does not compute it.
 - `--force --note <text>`: closes with the gate failed only by warnings; `--force --note` only for `close-warnings`, and the note carries the owner's literal phrase authorizing it. `--force` does not help in `close-refused`. Before asking the owner on `close-warnings`, try to resolve each warning; ask only for what is left, citing each one.
 - `--failed-delivery --note <text>`: closes a work item whose pull request was merged with the gate failed; the note carries the owner's literal phrase. The request for it names the failed `refuse` questions and says the history stays as a failed delivery.
 - `--abandon --reason <text> --note <text>` (`--abandon --reason --note` together): closes a work item that will not be delivered, or whose merge `--failed-delivery` does not cover. The `--reason` says how the merge happened, when there was one. `--abandon` does not evaluate the gate. Before the merge, the request for it says what evidence, premise or spec is missing and proposes the fix first.
@@ -32,14 +32,14 @@ When the work item's work is finished and the pull request gate was already chec
 
 Text on stdout, exit 0, in up to three blocks, in this order:
 
-- the gate: the header `close · pull-request · passed|not passed · N questions` (`✔` with the gate passed, `⚠` with it failed) and one `✔` or `✘` line per question, the same as in [gate-pr.md](gate-pr.md). The `next_step` of each failing question stays in the field below its line;
+- the gate: the header `close · delivery · passed|not passed · N questions` (`✔` with the gate passed, `⚠` with it failed) and one `✔` or `✘` line per question, the same as in [gate-delivery.md](gate-delivery.md). The `next_step` of each failing question stays in the field below its line;
 - what was recorded: `✔ closed · N records` and one `- <id> · seq N` line per record, as in `append`;
 - the retro: `✔ retro · <counts>` and one line per item, as in `omhl report retro`. The block only appears when there is a retro, and the `Next:` (propose one improvement per item to the owner) only when the retro carries some item.
 
 With `--format json` it is a JSON line with three fields:
 
 - `outcome`: what was recorded (`records`, `chain_head`, `replayed`). The recording is a revision of the work item with `status: closed` and, in `gate`, the gate name, `passed`, the `chain_head_seq` and the commit snapshot.
-- `report`: the same report as `omhl gate-pr` (`gate`, `passed`, `questions`, `chain_head`).
+- `report`: the same report as `omhl gate-delivery` (`gate`, `passed`, `questions`, `chain_head`).
 - `retro`: `null` when there is no divergence or gap answered without a criterion; otherwise, the report of `omhl report retro`. The retro reads the facts before recording, so `close` never returns an error after recording.
 
 **With the gate failed, `close` refuses** (`close-refused`, or `close-warnings` when only warnings failed) and records nothing. Closing is the last step, with no commit after the merge: a commit after it asks for the checks again. After the closing, the work item's premise leaves the session context (`omhl render`) and stays in the projection.
@@ -58,7 +58,7 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 - `close-refused` (exit 1): the gate failed. `--force` does not help here: fix each failed question, or the owner decides on `--abandon` or `--failed-delivery`. The request to the owner differs by error code: here, before the merge, say what is missing and propose the fix before asking for `--abandon`; after the merge, name the failed `refuse` questions.
 - `close-warnings` (exit 1): the gate failed only by warnings. Try to resolve each warning first; then close with `--force --note`, only with the owner's phrase.
 - `work-item-type-unknown` (exit 1): the work item has no type the project's matrix knows. Record the type with `omhl append` or name the branch with its prefix.
-- `review-base-invalid` (exit 1): `--base` does not name a commit or is the same commit as `HEAD`. Pass the merge-base that `gate-pr` prints.
+- `review-base-invalid` (exit 1): `--base` does not name a commit or is the same commit as `HEAD`. Pass the merge-base that `gate-delivery` prints.
 - `failed-delivery-unneeded` (exit 1): no `refuse` question failed, so `--failed-delivery` has nothing to record. Close without it, or with `--force --note` when only warnings failed.
 - `delivery-not-on-work-item-branch` (exit 1): the current branch is not the work item's. Check it out and run `close` again.
 - `delivery-not-integrated` (exit 1): the evaluated commit is not in the local integration branch. Update the local `develop` from the remote without a new commit, or ask the owner for `--abandon`.
@@ -110,8 +110,8 @@ $ omhl attest checks.run-tests work-items.w1 --outcome passed
 ✔ attest · checks.run-tests · work-items.w1 · passed · snapshot <snapshot>
 $ omhl attest checks.ci-green-before-merge work-items.w1 --outcome passed
 ✔ attest · checks.ci-green-before-merge · work-items.w1 · passed · snapshot <snapshot>
-$ omhl check run --event before-pr --format json
-{"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":"<ms>","exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
+$ omhl check run --event before-push --format json
+{"blocked":[],"event":"before-push","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":"<ms>","exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl close work-items.w1
 2> ✘ close-refused · a refuse question failed, and --force does not override it: fix its cause before the merge, use --abandon for work that will not be delivered, or --failed-delivery --note when the evaluated commit is already on the integration branch
 2>   - /questions/0 · refuse · the gate question did not pass
@@ -188,3 +188,7 @@ $ omhl close work-items.w1
 2>   - /snapshot · probe-failed
 # exit 1
 ```
+
+A `[native.run."<id>"]` table of a native disabled in its own workflow.toml is ignored, with a `native-run-ignored` warning (`check`, `from`, `hint`). `from` is `main-directory` or `HEAD`.
+
+A workflow.toml that is not valid UTF-8 adds no requirement and warns `evaluated-workflow-unreadable` (`from`, `reason`: `not-utf8`); `from` is `HEAD`.

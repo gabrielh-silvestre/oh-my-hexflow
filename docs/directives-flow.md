@@ -47,6 +47,15 @@ omhl list --type divergence --where work_item=work-items.w1 --where resolution=o
 
 **Skills do plugin.** A skill [`directives-flow`](../plugin/skills/directives-flow/SKILL.md) leva este fluxo ao agente e cobre também os comandos de consulta ao banco. Os checks mecânicos e o fechamento do work item ficam na skill [`review`](../plugin/skills/review/SKILL.md).
 
+Os checks se ligam a um dos eventos abaixo; o momento de cada um está em [events.md](../plugin/skills/review/references/events.md).
+
+| Evento | Disparo |
+| --- | --- |
+| `before-commit` | hooks `pre-commit` e `pre-merge-commit` do git |
+| `before-push` | hook `pre-push` do git |
+| `before-merge` | chamada manual |
+| `before-publishing-review-comments` | instrução ao agente |
+
 ## 3. Confirmação humana (`confirmed_by`)
 
 A confirmação é a aprovação do humano dentro da sessão.
@@ -247,7 +256,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 ### Limites
 
 - Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`.
-- Uma `divergence` aberta não bloqueia o `omhl gate-pr` nem o `omhl close`: o gate não pergunta por divergência. Aceito para a v1; revisar com os dados do piloto.
+- Uma `divergence` aberta não bloqueia o `omhl gate-delivery` nem o `omhl close`: o gate não pergunta por divergência. Aceito para a v1; revisar com os dados do piloto.
 - Uma violação de diretiva não bloqueia o PR. A tabela do PR a lista quando o code-reviewer ou o security-reviewer a gravam como `decision` com `contradicts` vigente (skill `review`, passo 7), com o autor marcado; a violação que nenhum revisor grava só a leitura do PR pelo dono cobre. Aceito para a v1; reavaliar no piloto.
 - A razão de uma retirada de `contradicts` pelo verifier não fica no grafo. A razão fica na mensagem dele e na coluna de evidência da tabela do PR.
 - O hook `agent-role` protege contra o erro do agente, não contra a má-fé.
@@ -285,7 +294,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 O ciclo abaixo é o da seção 1 com os papéis nomeados e a volta de consenso. A sessão principal chama um agente por vez, como `oh-my-hexflow:<papel>`.
 
-**Antes do passo 1.** Em `feat` e `fix`, a sessão principal conduz a entrevista de negócio com o dono (skill [`interview`](../plugin/skills/interview/SKILL.md)): rodadas de perguntas até a ambiguidade chegar a 20% ou menos, e só então o passo 1 grava o work item e as premissas de negócio confirmadas. Nos outros prefixos a entrevista só roda a pedido do dono. O estado das rodadas fica em `.omhl/notes/`, fora do banco e fora da spec.
+**Antes do passo 1.** Em `feat` e `fix`, a sessão principal conduz a entrevista de negócio com o dono (skill [`interview`](../plugin/skills/interview/SKILL.md)): rodadas de perguntas até a ambiguidade chegar a 20% por padrão, e só então o passo 1 grava o work item e as premissas de negócio confirmadas. Nos outros prefixos a entrevista só roda a pedido do dono. O estado das rodadas fica em `.omhl/notes/`, fora do banco e fora da spec.
 
 **Caminho leve (`chore` e `docs`).** Não há spec: o consenso fica nos passos 2 e 3 (o critic só no modo do passo 3), sem planner nem voltas e sem os passos 4 a 7, e o passo 8 se reduz ao `omhl gate-worktree`.
 
@@ -302,7 +311,7 @@ O ciclo abaixo é o da seção 1 com os papéis nomeados e a volta de consenso. 
 7. **Consenso.** A volta 1 são os passos 5 e 6; sem aceite, o architect (e o planner, se a spec muda) revê e o critic julga de novo, em um máximo de voltas no total (o limite está na skill `plan-consensus`). O aceite é o veredito `ACCEPT`; `ACCEPT-WITH-RESERVATIONS` vai ao dono com as reservas. Na última volta permitida sem aceite, a sessão principal para e mostra o impasse ao dono. Os `contradicts` seguem vigentes: o dono os retira num terminal fora do Claude Code, ou manda revisar e o verifier os retira. O veredito do critic circula só na mensagem entre os agentes e não vai ao grafo.
 8. **Spec e worktree.** Com o aceite, o `oh-my-hexflow:verifier` retira os `contradicts` resolvidos; um `FAIL` ou `INCOMPLETE` dele conta como volta sem aceite. Então vêm a conferência final com `omhl spec validate`, o `omhl gate-worktree`, a worktree e a implementação.
 9. **Revisão.** A sessão principal corrige o código das divergências abertas; um desvio que o dono aceita não é correção, e só a resposta dele grava `accepted`.
-10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic; depois vêm `omhl gate-pr` e `omhl close`, pela skill [`review`](../plugin/skills/review/SKILL.md), passo 8.
+10. **PR e fechamento.** O PR leva no corpo a tabela das decisões do critic; depois vêm `omhl gate-delivery` e `omhl close`, pela skill [`review`](../plugin/skills/review/SKILL.md), passo 8.
 
 ```mermaid
 flowchart TD
@@ -324,7 +333,7 @@ flowchart TD
   FIX0 --> V9["9 verifier: fecha divergências e retira contradicts"]
   V9 -- "FAIL" --> FIX0
   V9 -- "ok" --> P10["10 PR com a tabela do critic"]
-  P10 --> GP["gate-pr"]
+  P10 --> GP["gate-delivery"]
   GP --> CL["close"]
 ```
 

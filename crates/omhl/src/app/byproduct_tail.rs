@@ -7,9 +7,10 @@ use super::engine::{Engine, parse_at};
 use super::error::AppError;
 use super::read::nodes_matching;
 use crate::byproduct::{self, ByproductHash};
+use crate::delivery_gate::pair;
 use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::redact::Redactor;
-use crate::pr_gate::pair;
+use crate::native::NativeBase;
 
 const TAIL_MAX: usize = 500;
 const LINE_MAX_CHARS: usize = 2_000;
@@ -31,7 +32,7 @@ impl Engine<'_> {
                 )
             })?;
         let check_id = parse_at(SemanticId::parse, check, "/check")?;
-        if self.omhl.get(&self.tenant, &check_id)?.is_none() {
+        if !is_native(check) && self.omhl.get(&self.tenant, &check_id)?.is_none() {
             return Err(OmhlError::rule(RuleCode::CheckNotFound, "/check").into());
         }
         let attestation = self
@@ -78,8 +79,58 @@ impl Engine<'_> {
 
         let nodes = nodes_matching(&mut self.omhl, &self.tenant, "attestation", where_eq)?;
 
+        if is_native(check) {
+            return Ok(select_native(nodes));
+        }
+
         Ok(latest_per_pair(nodes).into_iter().next())
     }
+}
+
+fn is_native(check: &str) -> bool {
+    NativeBase.checks().iter().any(|native| native.id == check)
+}
+
+/// Do snapshot mais novo do par, a falha mais recente; sem falha, a de maior `seq`.
+fn select_native(nodes: Vec<NodeView>) -> Option<NodeView> {
+    let mut newest = newest_snapshot(nodes);
+    newest.sort_by_key(|node| node.seq);
+    let failed = newest
+        .iter()
+        .rposition(|node| node.data["outcome"].as_str() != Some("passed"));
+
+    match failed {
+        Some(index) => Some(newest.swap_remove(index)),
+        None => newest.pop(),
+    }
+}
+
+/// Toda attestation que o leitor pode escolher: as do snapshot mais novo de cada par (check, work item).
+pub(super) fn selectable_per_pair(nodes: Vec<NodeView>) -> Vec<NodeView> {
+    let mut pairs: BTreeMap<(String, Option<String>), Vec<NodeView>> = BTreeMap::new();
+    for node in nodes {
+        let check = node.data["check"].as_str().unwrap_or_default().to_owned();
+        let work_item = node.data["work_item"].as_str().map(str::to_owned);
+        pairs.entry((check, work_item)).or_default().push(node);
+    }
+
+    pairs.into_values().flat_map(newest_snapshot).collect()
+}
+
+/// As attestations vigentes do snapshot da de maior `seq` do par; ambas as declarações de um nativo ficam.
+fn newest_snapshot(nodes: Vec<NodeView>) -> Vec<NodeView> {
+    let Some(snapshot) = nodes
+        .iter()
+        .max_by_key(|node| node.seq)
+        .map(|node| node.snapshot.clone())
+    else {
+        return Vec::new();
+    };
+
+    nodes
+        .into_iter()
+        .filter(|node| node.snapshot == snapshot)
+        .collect()
 }
 
 /// A attestation de maior `seq` de cada par (check, work item); sem work item forma o par (check, sem work item).

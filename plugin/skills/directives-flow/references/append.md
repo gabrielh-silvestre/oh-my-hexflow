@@ -62,6 +62,7 @@ Each error carries the code (`error.code` in the JSON) and, in the details, the 
 - `confirmation-invalid` (exit 1): the `by` does not start with `person:` or the name has fewer than 3 visible characters (except `"by": "critic"` recorded by `omhl:critic` on a `technical` premise), or the `confirmed_by` came on a record that does not admit it (for example, `confirmed_by` or `amendment` on a divergence that is not in `spec-stale`). Fix the field.
 - `kind-missing` (exit 1): a new or revised guideline without `kind`. Add `business` or `architecture`.
 - `kind-invalid` (exit 1): a guideline `kind` with another value. Use `business` or `architecture`.
+- `check-label-invalid` (exit 1): a `check` `concern` or `variant` with a character outside `a-z`, `0-9` and `-`. Use 1 to 40 characters of those.
 - `origin-invalid` (exit 1): `origin` on a premise that is not a business one (technical or without `kind`). Remove the `origin`, or mark the premise as `business`.
 - `origin-immutable` (exit 1): the revision adds, changes or removes the `origin` of the premise. Keep what it already has, or record a new premise.
 - `origin-required` (exit 1): the work item already has a `decision` and the new business premise does not carry `origin: late`. On creation, add `origin: late` and record again; on a revision that makes the premise a business one, record a new premise with `origin: late`, because adding `origin` in a revision gives `origin-immutable`.

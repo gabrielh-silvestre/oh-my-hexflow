@@ -17,10 +17,6 @@ const NATIVE_CHECKS: [&str; 3] = [
     "checks.ci-green-before-merge",
     "checks.verify-review-comment-anchoring",
 ];
-const NATIVE_GUIDELINES: [&str; 2] = [
-    "guidelines.one-decision-per-turn",
-    "guidelines.commit-policy",
-];
 const CONTEXT_CEILING: usize = 10_000;
 const LINT_TOML: &str =
     "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
@@ -148,14 +144,14 @@ fn it_should_print_one_json_object_with_the_session_start_context() {
 }
 
 #[test]
-fn it_should_inject_the_native_base_and_the_project_nodes() {
+fn it_should_inject_the_native_checks_and_the_project_nodes() {
     let project = Project::with_git("acme");
     project.enable_natives(&NATIVE_CHECKS);
     append_use_wal(&project);
 
     let context = context_of(&hook_for(&project));
 
-    for id in NATIVE_CHECKS.iter().chain(&NATIVE_GUIDELINES) {
+    for id in NATIVE_CHECKS.iter() {
         assert!(context.contains(&format!("### {id}\n")), "missing {id}");
     }
     assert!(context.contains("### decisions.use-wal\n"));
@@ -1069,7 +1065,7 @@ fn it_should_keep_the_context_within_10000_characters_with_60_marked_directives(
     let confirmed = context.matches("- confirmed: true\n").count();
     assert!(context.chars().count() <= CONTEXT_CEILING);
     assert!(shown > 0, "some directives fit");
-    assert_eq!(confirmed, NATIVE_GUIDELINES.len() + shown);
+    assert_eq!(confirmed, shown);
 }
 
 // Idioma da opção do plugin

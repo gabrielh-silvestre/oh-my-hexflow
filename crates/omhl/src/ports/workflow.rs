@@ -43,6 +43,8 @@ impl NativeResolver for GitProbe {
         read_workflow(&main_dir)
             .map(|config| NativeConfig {
                 checks: config.native.checks,
+                run: config.native.run,
+                invalid_run: Default::default(),
                 prefixes: config.prefixes,
             })
             .map_err(NativeRefusal::InvalidWorkflow)

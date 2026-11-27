@@ -9,7 +9,7 @@ use crate::ports::hooks::GitHooks;
 const SCRIPTS: [(&str, &str); 4] = [
     ("pre-commit", "check run --event before-commit"),
     ("pre-merge-commit", "check run --event before-commit"),
-    ("pre-push", "check run --event before-pr --pre-push"),
+    ("pre-push", "check run --event before-push --pre-push"),
     ("post-commit", "hooks post-commit >/dev/null"),
 ];
 const UNWRITABLE_HINT: &str =

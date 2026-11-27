@@ -51,8 +51,8 @@ fn refused(project: &Project, format: Option<&str>, args: &[&str]) -> String {
     output.stderr
 }
 
-fn gate_pr(project: &Project, format: Option<&str>) -> String {
-    printed(project, format, &["gate-pr", WORK_ITEM])
+fn gate_delivery(project: &Project, format: Option<&str>) -> String {
+    printed(project, format, &["gate-delivery", WORK_ITEM])
 }
 
 fn close(project: &Project, format: Option<&str>) -> String {
@@ -75,11 +75,11 @@ fn record_line() -> Regex {
 // ---------------------------------------------------------------- CA-1: sem `--format`, com `human` e com `json`
 
 default_formats!(
-    gate_pr_command,
+    gate_delivery_command,
     cycle::gate_approved(),
-    &["gate-pr", WORK_ITEM],
+    &["gate-delivery", WORK_ITEM],
     cycle::gate_dirty(),
-    &["gate-pr", WORK_ITEM]
+    &["gate-delivery", WORK_ITEM]
 );
 default_formats!(
     close_command,
@@ -89,18 +89,18 @@ default_formats!(
     &["close", WORK_ITEM]
 );
 
-// ---------------------------------------------------------------- `gate-pr`
+// ---------------------------------------------------------------- `gate-delivery`
 
 #[test]
 fn it_should_print_one_line_per_question_with_the_counts_when_the_gate_passes() {
     let project = cycle::gate_approved();
 
-    let text = gate_pr(&project, None);
+    let text = gate_delivery(&project, None);
 
     assert_eq!(
         lines_of(&text),
         [
-            "✔ gate-pr · pull-request · passed · 7 questions",
+            "✔ gate-delivery · delivery · passed · 7 questions",
             "✔ checks.run-tests · occurred · matched 1",
             "✔ checks.ci-green-before-merge · occurred · matched 1",
             "✔ checks.payroll-format · occurred · matched 1",
@@ -116,12 +116,12 @@ fn it_should_print_one_line_per_question_with_the_counts_when_the_gate_passes() 
 fn it_should_print_the_failing_ids_and_the_next_step_of_each_failed_question_in_the_agent_layout() {
     let project = cycle::gate_failed();
 
-    let text = gate_pr(&project, None);
+    let text = gate_delivery(&project, None);
 
     assert_eq!(
         lines_of(&text),
         [
-            "✘ gate-pr · pull-request · not passed · 5 questions · 2 failed".to_owned(),
+            "✘ gate-delivery · delivery · not passed · 5 questions · 2 failed".to_owned(),
             "✔ checks.run-tests · occurred · matched 1".to_owned(),
             "✔ checks.ci-green-before-merge · occurred · matched 1".to_owned(),
             "✔ no-open-contradiction · matched 2".to_owned(),
@@ -139,12 +139,12 @@ fn it_should_print_the_failing_ids_and_the_next_step_of_each_failed_question_in_
 fn it_should_open_a_human_block_for_each_header_list_and_closing_of_a_failed_gate() {
     let project = cycle::gate_failed();
 
-    let text = gate_pr(&project, Some("human"));
+    let text = gate_delivery(&project, Some("human"));
 
     assert_eq!(
         text,
         format!(
-            "✘ gate-pr · pull-request · not passed · 5 questions · 2 failed\n\n✔ checks.run-tests · occurred · matched 1\n✔ checks.ci-green-before-merge · occurred · matched 1\n✔ no-open-contradiction · matched 2\n✘ decisions-anchored · warn · anchored · matched 2 · failing decisions.ledger-split\n\n✘ anchors-confirmed · warn · anchored · matched 2 · failing decisions.bonus-cap\n  next_step: {CONFIRM_STEP}\n\nNext: {RESTS_ON_STEP}.\n"
+            "✘ gate-delivery · delivery · not passed · 5 questions · 2 failed\n\n✔ checks.run-tests · occurred · matched 1\n✔ checks.ci-green-before-merge · occurred · matched 1\n✔ no-open-contradiction · matched 2\n✘ decisions-anchored · warn · anchored · matched 2 · failing decisions.ledger-split\n\n✘ anchors-confirmed · warn · anchored · matched 2 · failing decisions.bonus-cap\n  next_step: {CONFIRM_STEP}\n\nNext: {RESTS_ON_STEP}.\n"
         )
     );
 }
@@ -153,7 +153,7 @@ fn it_should_open_a_human_block_for_each_header_list_and_closing_of_a_failed_gat
 fn it_should_not_suggest_a_next_step_when_the_gate_passes() {
     let project = cycle::gate_approved();
 
-    let text = gate_pr(&project, None);
+    let text = gate_delivery(&project, None);
 
     assert!(!text.contains("Next:"), "{text}");
 }
@@ -162,12 +162,12 @@ fn it_should_not_suggest_a_next_step_when_the_gate_passes() {
 fn it_should_not_suggest_a_next_step_when_the_failed_questions_carry_none() {
     let project = cycle::gate_unattested();
 
-    let text = gate_pr(&project, None);
+    let text = gate_delivery(&project, None);
 
     assert_eq!(
         lines_of(&text),
         [
-            "✘ gate-pr · pull-request · not passed · 5 questions · 2 failed",
+            "✘ gate-delivery · delivery · not passed · 5 questions · 2 failed",
             "✘ checks.run-tests · warn · occurred · matched 0",
             "✘ checks.ci-green-before-merge · refuse · occurred · matched 0",
             "✔ no-open-contradiction · matched 0",
@@ -181,7 +181,7 @@ fn it_should_not_suggest_a_next_step_when_the_failed_questions_carry_none() {
 fn it_should_print_the_failed_gate_with_the_error_symbol_and_exit_zero() {
     let project = cycle::gate_failed();
 
-    let output = run(&project, None, &["gate-pr", WORK_ITEM]);
+    let output = run(&project, None, &["gate-delivery", WORK_ITEM]);
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_text_starting_with(&output.stdout, "✘");
@@ -191,7 +191,7 @@ fn it_should_print_the_failed_gate_with_the_error_symbol_and_exit_zero() {
 fn it_should_not_cite_the_work_item_in_the_gate_header() {
     let project = cycle::gate_failed();
 
-    let text = gate_pr(&project, None);
+    let text = gate_delivery(&project, None);
 
     assert!(!first_line(&text).contains("payroll"), "{text}");
 }
@@ -200,7 +200,7 @@ fn it_should_not_cite_the_work_item_in_the_gate_header() {
 fn it_should_print_the_code_and_the_pointer_when_the_gate_refuses_a_dirty_tree() {
     let project = cycle::gate_dirty();
 
-    let text = refused(&project, None, &["gate-pr", WORK_ITEM]);
+    let text = refused(&project, None, &["gate-delivery", WORK_ITEM]);
 
     assert_eq!(
         lines_of(&text),
@@ -212,16 +212,16 @@ fn it_should_print_the_code_and_the_pointer_when_the_gate_refuses_a_dirty_tree()
 }
 
 #[test]
-fn it_should_keep_the_gate_pr_json_bytes() {
+fn it_should_keep_the_gate_delivery_json_bytes() {
     let project = cycle::gate_failed();
 
-    let text = gate_pr(&project, Some("json"));
+    let text = gate_delivery(&project, Some("json"));
 
     let head = &parsed(&text)["chain_head"];
     assert_eq!(
         text,
         format!(
-            "{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"gate\":\"pull-request\",\"passed\":false,\"questions\":[{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.run-tests\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.ci-green-before-merge\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"no-open-contradiction\",\"label\":\"no-open-contradiction\",\"matched\":2,\"omitted\":0,\"passed\":true}},{{\"class\":\"warn\",\"failing\":[\"decisions.ledger-split\"],\"kind\":\"anchored\",\"label\":\"decisions-anchored\",\"matched\":2,\"next_step\":\"{RESTS_ON_STEP}\",\"omitted\":0,\"passed\":false}},{{\"class\":\"warn\",\"failing\":[\"decisions.bonus-cap\"],\"kind\":\"anchored\",\"label\":\"anchors-confirmed\",\"matched\":2,\"next_step\":\"{CONFIRM_STEP}\",\"omitted\":0,\"passed\":false}}]}}\n",
+            "{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"gate\":\"delivery\",\"passed\":false,\"questions\":[{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.run-tests\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.ci-green-before-merge\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"no-open-contradiction\",\"label\":\"no-open-contradiction\",\"matched\":2,\"omitted\":0,\"passed\":true}},{{\"class\":\"warn\",\"failing\":[\"decisions.ledger-split\"],\"kind\":\"anchored\",\"label\":\"decisions-anchored\",\"matched\":2,\"next_step\":\"{RESTS_ON_STEP}\",\"omitted\":0,\"passed\":false}},{{\"class\":\"warn\",\"failing\":[\"decisions.bonus-cap\"],\"kind\":\"anchored\",\"label\":\"anchors-confirmed\",\"matched\":2,\"next_step\":\"{CONFIRM_STEP}\",\"omitted\":0,\"passed\":false}}]}}\n",
             head["hash"].as_str().expect("the hash is text"),
             head["seq"],
         )
@@ -229,10 +229,10 @@ fn it_should_keep_the_gate_pr_json_bytes() {
 }
 
 #[test]
-fn it_should_keep_the_gate_pr_error_json_bytes() {
+fn it_should_keep_the_gate_delivery_error_json_bytes() {
     let project = cycle::gate_dirty();
 
-    let text = refused(&project, Some("json"), &["gate-pr", WORK_ITEM]);
+    let text = refused(&project, Some("json"), &["gate-delivery", WORK_ITEM]);
 
     assert_eq!(text, DIRTY_ERROR);
 }
@@ -250,7 +250,7 @@ fn it_should_print_the_gate_the_closing_record_and_no_retro_when_the_gate_passes
     assert_eq!(
         lines[..9],
         [
-            "✔ close · pull-request · passed · 7 questions",
+            "✔ close · delivery · passed · 7 questions",
             "✔ checks.run-tests · occurred · matched 1",
             "✔ checks.ci-green-before-merge · occurred · matched 1",
             "✔ checks.payroll-format · occurred · matched 1",
@@ -275,7 +275,7 @@ fn it_should_print_the_warning_symbol_and_every_next_step_as_a_field_when_the_ga
     assert_eq!(
         lines[..9],
         [
-            "⚠ close · pull-request · not passed · 5 questions · 2 failed".to_owned(),
+            "⚠ close · delivery · not passed · 5 questions · 2 failed".to_owned(),
             "✔ checks.run-tests · occurred · matched 1".to_owned(),
             "✔ checks.ci-green-before-merge · occurred · matched 1".to_owned(),
             "✔ no-open-contradiction · matched 2".to_owned(),
@@ -347,7 +347,7 @@ fn it_should_open_a_human_block_for_the_gate_the_closing_record_and_the_retro() 
     assert_eq!(
         ids.replace(&text, "<id>"),
         format!(
-            "✔ close · pull-request · passed · 7 questions\n\n✔ checks.run-tests · occurred · matched 1\n✔ checks.ci-green-before-merge · occurred · matched 1\n✔ checks.payroll-format · occurred · matched 1\n✔ spec-digest-match:checks.payroll-format · occurred · matched 1\n✔ no-open-contradiction · matched 0\n✔ decisions-anchored · anchored · matched 0\n✔ anchors-confirmed · anchored · matched 0\n\n✔ closed · 1 record\n\n- <id>\n\n✔ retro · 2 divergences · 1 no-criterion gap\n\n- divergence · missing · open · divergences.overtime-cap\n- divergence · partial · open · divergences.rounding-drift\n- no criterion · gaps.holiday-calendar · answered by premises.calendar-source\n\nNext: {RETRO_STEP}.\n"
+            "✔ close · delivery · passed · 7 questions\n\n✔ checks.run-tests · occurred · matched 1\n✔ checks.ci-green-before-merge · occurred · matched 1\n✔ checks.payroll-format · occurred · matched 1\n✔ spec-digest-match:checks.payroll-format · occurred · matched 1\n✔ no-open-contradiction · matched 0\n✔ decisions-anchored · anchored · matched 0\n✔ anchors-confirmed · anchored · matched 0\n\n✔ closed · 1 record\n\n- <id>\n\n✔ retro · 2 divergences · 1 no-criterion gap\n\n- divergence · missing · open · divergences.overtime-cap\n- divergence · partial · open · divergences.rounding-drift\n- no criterion · gaps.holiday-calendar · answered by premises.calendar-source\n\nNext: {RETRO_STEP}.\n"
         )
     );
 }
@@ -387,7 +387,7 @@ fn it_should_keep_the_close_json_bytes() {
     assert_eq!(
         text,
         format!(
-            "{{\"forced\":{{\"note\":\"owner approved the override\",\"overridden\":[\"decisions-anchored\",\"anchors-confirmed\"]}},\"outcome\":{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"records\":[{{\"id\":\"{}\",\"seq\":{}}}],\"replayed\":false}},\"report\":{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"gate\":\"pull-request\",\"passed\":false,\"questions\":[{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.run-tests\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.ci-green-before-merge\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"no-open-contradiction\",\"label\":\"no-open-contradiction\",\"matched\":2,\"omitted\":0,\"passed\":true}},{{\"class\":\"warn\",\"failing\":[\"decisions.ledger-split\"],\"kind\":\"anchored\",\"label\":\"decisions-anchored\",\"matched\":2,\"next_step\":\"{RESTS_ON_STEP}\",\"omitted\":0,\"passed\":false}},{{\"class\":\"warn\",\"failing\":[\"decisions.bonus-cap\"],\"kind\":\"anchored\",\"label\":\"anchors-confirmed\",\"matched\":2,\"next_step\":\"{CONFIRM_STEP}\",\"omitted\":0,\"passed\":false}}]}},\"retro\":{{\"amendments\":{{\"approved\":[],\"pending\":[]}},\"divergences\":[],\"gate_override\":{{\"note\":\"owner approved the override\",\"overridden\":[\"decisions-anchored\",\"anchors-confirmed\"]}},\"no_criterion\":[],\"open_gaps\":[]}}}}
+            "{{\"forced\":{{\"note\":\"owner approved the override\",\"overridden\":[\"decisions-anchored\",\"anchors-confirmed\"]}},\"outcome\":{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"records\":[{{\"id\":\"{}\",\"seq\":{}}}],\"replayed\":false}},\"report\":{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"gate\":\"delivery\",\"passed\":false,\"questions\":[{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.run-tests\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.ci-green-before-merge\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"no-open-contradiction\",\"label\":\"no-open-contradiction\",\"matched\":2,\"omitted\":0,\"passed\":true}},{{\"class\":\"warn\",\"failing\":[\"decisions.ledger-split\"],\"kind\":\"anchored\",\"label\":\"decisions-anchored\",\"matched\":2,\"next_step\":\"{RESTS_ON_STEP}\",\"omitted\":0,\"passed\":false}},{{\"class\":\"warn\",\"failing\":[\"decisions.bonus-cap\"],\"kind\":\"anchored\",\"label\":\"anchors-confirmed\",\"matched\":2,\"next_step\":\"{CONFIRM_STEP}\",\"omitted\":0,\"passed\":false}}]}},\"retro\":{{\"amendments\":{{\"approved\":[],\"pending\":[]}},\"divergences\":[],\"gate_override\":{{\"note\":\"owner approved the override\",\"overridden\":[\"decisions-anchored\",\"anchors-confirmed\"]}},\"no_criterion\":[],\"open_gaps\":[]}}}}
 ",
             written["chain_head"]["hash"]
                 .as_str()

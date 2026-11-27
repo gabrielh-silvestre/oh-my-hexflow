@@ -4,8 +4,8 @@ Index of the closing order and of the command pages. The rules that always apply
 
 ## The order
 
-1. Check that the checks of the current commit are attested: `omhl check run` (the hooks already run `before-commit` and `before-pr`; `before-merge` is by hand) and `omhl attest` for the manual checks. A new commit asks for everything again.
-2. `omhl gate-pr <work-item>` and resolve each failed question, the line with `✘` (with `--format json`, `passed: false`; it includes `decisions-anchored`, see `directives-flow`).
+1. Check that the checks of the current commit are attested: `omhl check run` (the hooks already run `before-commit` and `before-push`; `before-merge` is by hand) and `omhl attest` for the manual checks. A new commit asks for everything again.
+2. `omhl gate-delivery <work-item>` and resolve each failed question, the line with `✘` (with `--format json`, `passed: false`; it includes `decisions-anchored`, see `directives-flow`).
 3. Open and merge the PR (with `wt`). `omhl close <work-item>` with the PR ready, not before.
 4. `omhl report retro` and propose improvements, as in "After `close`" below.
 
@@ -30,7 +30,7 @@ Each proposal only becomes a record with the human's confirmation: record it wit
 
 | Command | Page |
 |---|---|
-| Check the PR gate | [gate-pr.md](gate-pr.md) |
+| Check the PR gate | [gate-delivery.md](gate-delivery.md) |
 | Close the work item | [close.md](close.md) |
 | Read the retro | [report-retro.md](report-retro.md) |
 | Common errors | [errors.md](../../directives-flow/references/errors.md) |

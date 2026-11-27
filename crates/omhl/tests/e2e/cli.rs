@@ -23,7 +23,15 @@ const LINT_TOML: &str =
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 const COMMANDS: [&str; 9] = [
-    "list", "get", "append", "attest", "render", "gate-pr", "close", "verify", "hook",
+    "list",
+    "get",
+    "append",
+    "attest",
+    "render",
+    "gate-delivery",
+    "close",
+    "verify",
+    "hook",
 ];
 
 fn run(args: &[&str]) -> Output {
@@ -111,6 +119,14 @@ fn in_project_raw(project: &Project, args: &[&str]) -> Cmd {
 }
 
 // Roteamento e uso
+
+#[test]
+fn it_should_list_gate_delivery_in_help() {
+    let output = omhl(&["--help"]).run();
+
+    let words = first_help_words(&output.stdout);
+    assert!(words.contains(&"gate-delivery"), "help lists gate-delivery");
+}
 
 #[test]
 fn it_should_list_the_commands_in_help() {
@@ -427,7 +443,7 @@ fn it_should_evaluate_and_refuse_to_close_a_pull_request_in_a_real_repo() {
     commit_marker(&project);
     open_work_item(&project);
 
-    let gate = in_project(&project, &["gate-pr", W1]).run();
+    let gate = in_project(&project, &["gate-delivery", W1]).run();
     let close = in_project(&project, &["close", W1]).run();
     let fetched = in_project(&project, &["get", W1]).run();
 
@@ -436,7 +452,7 @@ fn it_should_evaluate_and_refuse_to_close_a_pull_request_in_a_real_repo() {
         [gate.code, close.code, fetched.code],
         [Some(0), Some(1), Some(0)]
     );
-    assert_eq!(json_line(&gate.stdout)["gate"], json!("pull-request"));
+    assert_eq!(json_line(&gate.stdout)["gate"], json!("delivery"));
     assert_eq!(json_line(&gate.stdout)["passed"], json!(false));
     assert_eq!(
         json_line(&close.stderr)["error"]["code"],
@@ -466,7 +482,7 @@ fn it_should_attest_both_required_checks_and_pass_the_gate_in_a_real_repo() {
         ],
     )
     .run();
-    let gate = in_project(&project, &["gate-pr", W1]).run();
+    let gate = in_project(&project, &["gate-delivery", W1]).run();
     let gate_json = json_line(&gate.stdout);
     let questions: Vec<(&str, bool)> = gate_json["questions"]
         .as_array()

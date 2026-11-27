@@ -1,12 +1,12 @@
 //! Cópias dos helpers de `tests/support/` e dos arquivos de `tests/integration` e `tests/e2e` que cada `tests.rs` copia:
 //! uma mudança aqui vale também na origem, e vice-versa. O `ext.rs` daqui não tem o `mkfifo`, que fica fora de `src`.
 
+pub mod delivery_gate;
 pub mod doc_surface;
 pub mod ext;
 pub mod gate;
 pub mod omhl;
 pub mod plugin_labels;
-pub mod pr_gate;
 pub mod role_view;
 pub mod views;
 

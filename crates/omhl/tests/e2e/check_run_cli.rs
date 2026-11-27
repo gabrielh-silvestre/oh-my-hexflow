@@ -24,7 +24,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const RED: &str = r#"blocking = true
@@ -34,7 +34,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const NOISY_RED: &str = r#"blocking = true
@@ -44,7 +44,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const GATE_V1: &str = r#"blocking = true
@@ -54,7 +54,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const GATE_V2: &str = r#"blocking = true
@@ -64,26 +64,26 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const TEXT_ONLY: &str = r#"blocking = true
 how = "Check it by hand."
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 // Apoio
 
-/// TOML de check `before-pr`, bloqueante, com o `expect` do `GREEN`.
+/// TOML de check `before-push`, bloqueante, com o `expect` do `GREEN`.
 fn check_toml(how: &str, run: &[&str], timeout_secs: u64) -> String {
     // Uma string JSON é também uma string básica TOML válida.
     let how = serde_json::to_string(how).expect("the how serializes");
     let run = serde_json::to_string(run).expect("the argv serializes");
 
     format!(
-        "blocking = true\nhow = {how}\nrun = {run}\ntimeout_secs = {timeout_secs}\nexpect = [{{ exit = 0, outcome = \"passed\" }}]\n\n[when]\nevent = \"before-pr\"\n"
+        "blocking = true\nhow = {how}\nrun = {run}\ntimeout_secs = {timeout_secs}\nexpect = [{{ exit = 0, outcome = \"passed\" }}]\n\n[when]\nevent = \"before-push\"\n"
     )
 }
 
@@ -258,7 +258,7 @@ fn it_should_attest_a_before_pr_check_through_the_binary_in_a_real_repository() 
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -268,7 +268,7 @@ fn it_should_attest_a_before_pr_check_through_the_binary_in_a_real_repository() 
     assert_eq!(
         normalized(&output.stdout),
         json!({
-            "event": "before-pr",
+            "event": "before-push",
             "work_item": "work-items.w1",
             "snapshot": { "kind": "git-commit", "id": head },
             "recorded": true,
@@ -320,7 +320,7 @@ fn it_should_print_one_json_line_on_stdout_and_exit_zero_when_every_check_passes
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -359,7 +359,7 @@ fn it_should_exit_one_and_print_the_failing_check_on_stderr_when_a_blocking_chec
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -396,7 +396,7 @@ fn it_should_print_nothing_on_stdout_when_a_blocking_check_fails() {
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -416,7 +416,7 @@ fn it_should_not_echo_the_command_output_in_the_error_json() {
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -454,7 +454,7 @@ fn it_should_exit_two_for_an_unknown_event() {
     assert!(
         output
             .stderr
-            .contains("[possible values: before-commit, before-pr, before-merge]"),
+            .contains("[possible values: before-commit, before-push, before-merge]"),
         "stderr: {}",
         output.stderr
     );
@@ -485,7 +485,7 @@ fn it_should_exit_two_when_both_event_and_check_are_given() {
         "check",
         "run",
         "--event",
-        "before-pr",
+        "before-push",
         "--check",
         "checks.x",
     ])
@@ -504,6 +504,30 @@ fn it_should_exit_two_when_both_event_and_check_are_given() {
 }
 
 #[test]
+fn it_should_not_report_spec_stale_after_load_moves_a_check_to_before_push() {
+    let on_commit = GATE_V1.replace("before-push", "before-commit");
+    let p = cli_repo(&[("gate", &on_commit)]);
+    ExtTree::at(p.dir()).check("gate", GATE_V1);
+    git_ok(p.dir(), &["add", "-A"]);
+    git_ok(p.dir(), &["commit", "-q", "-m", "move gate"]);
+    let loaded = omhl_json_in(&p, &["load"]).run();
+    assert_eq!(loaded.code, Some(0), "load stderr: {}", loaded.stderr);
+
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-push"],
+    )
+    .run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(
+        !output.stderr.contains("spec-stale"),
+        "stderr: {}",
+        output.stderr
+    );
+}
+
+#[test]
 fn it_should_refuse_a_before_pr_run_when_the_committed_file_differs_from_the_stored_definition() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     ExtTree::at(p.dir()).check("gate", GATE_V2);
@@ -512,7 +536,7 @@ fn it_should_refuse_a_before_pr_run_when_the_committed_file_differs_from_the_sto
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -540,7 +564,7 @@ fn it_should_ignore_and_warn_an_orphaned_check_when_its_file_was_deleted() {
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -569,7 +593,7 @@ fn it_should_run_the_live_checks_and_warn_the_orphaned_one_in_the_same_run() {
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -590,7 +614,7 @@ fn it_should_refuse_with_spec_stale_when_the_check_file_no_longer_parses() {
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -603,8 +627,8 @@ fn it_should_refuse_with_spec_stale_when_the_check_file_no_longer_parses() {
 
 #[test]
 fn it_should_refuse_a_before_commit_run_when_the_file_differs_from_the_stored_definition() {
-    let v1 = GATE_V1.replace("before-pr", "before-commit");
-    let v2 = GATE_V2.replace("before-pr", "before-commit");
+    let v1 = GATE_V1.replace("before-push", "before-commit");
+    let v2 = GATE_V2.replace("before-push", "before-commit");
     let p = cli_repo(&[("gate", &v1)]);
     ExtTree::at(p.dir()).check("gate", &v2);
     git_ok(p.dir(), &["add", "-A"]);
@@ -632,7 +656,7 @@ fn it_should_refuse_a_before_commit_run_when_the_file_differs_from_the_stored_de
 
 #[test]
 fn it_should_refuse_a_before_commit_run_when_a_submodule_has_an_untracked_file() {
-    let gate = GATE_V1.replace("before-pr", "before-commit");
+    let gate = GATE_V1.replace("before-push", "before-commit");
     let p = cli_repo(&[("gate", &gate)]);
     let upstream = TempDir::new().expect("the upstream dir is created");
     git_in(upstream.path(), &["init", "-q", "-b", "main"]);
@@ -699,7 +723,7 @@ fn it_should_run_the_new_command_after_load() {
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -718,7 +742,7 @@ fn it_should_fail_a_check_that_exceeds_its_timeout_through_the_binary() {
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -742,7 +766,7 @@ fn it_should_leave_omhl_verify_passing_after_a_check_run() {
     let p = cli_repo(&[("green", GREEN)]);
     let run = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
     assert_eq!(run.code, Some(0), "check run stderr: {}", run.stderr);
@@ -766,7 +790,7 @@ fn it_should_not_let_a_git_index_file_in_the_environment_change_a_before_pr_snap
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .env("GIT_INDEX_FILE", &alt_index)
     .run();
@@ -778,12 +802,87 @@ fn it_should_not_let_a_git_index_file_in_the_environment_change_a_before_pr_snap
 }
 
 #[test]
+fn it_should_hand_the_rust_toolchain_variables_to_the_check_and_still_drop_the_git_ones() {
+    let tmp = TempDir::new().expect("temp dir");
+    let seen = tmp.path().join("seen");
+    let seen_arg = seen.to_str().expect("the path is UTF-8");
+    let toml = check_toml(
+        "Prints the environment.",
+        &[
+            "sh",
+            "-c",
+            "printf '%s|%s|%s' \"${RUSTFLAGS-unset}\" \"${RUSTC_WRAPPER-unset}\" \"${GIT_INDEX_FILE-unset}\" > \"$1\"",
+            "sh",
+            seen_arg,
+        ],
+        60,
+    );
+    let p = cli_repo(&[("env", &toml)]);
+    let alt_index = tmp.path().join("alt-index");
+    fs::copy(p.dir().join(".git").join("index"), &alt_index).expect("the index is copied");
+
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-push"],
+    )
+    .env("RUSTFLAGS", "--cap-lints allow")
+    .env("RUSTC_WRAPPER", "x")
+    .env("GIT_INDEX_FILE", &alt_index)
+    .run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(
+        fs::read_to_string(&seen).expect("the check wrote its environment"),
+        "--cap-lints allow|x|unset"
+    );
+}
+
+#[test]
+fn it_should_pass_a_check_that_removes_the_rust_variables_in_its_own_run() {
+    let toml = check_toml(
+        "Removes the variables itself.",
+        &[
+            "env",
+            "-u",
+            "RUSTFLAGS",
+            "-u",
+            "RUSTC_WRAPPER",
+            "sh",
+            "-c",
+            "test -z \"${RUSTFLAGS+x}\"",
+        ],
+        60,
+    );
+    let p = cli_repo(&[("own-env", &toml)]);
+
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--format", "json", "--event", "before-push"],
+    )
+    .env("RUSTFLAGS", "x")
+    .run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert_eq!(
+        attestation(&p, "checks.own-env")["data"]["outcome"],
+        json!("passed")
+    );
+}
+
+#[test]
 fn it_should_reject_the_removed_work_item_flag() {
     let dir = TempDir::new().expect("temp dir");
 
-    let output = omhl(&["check", "run", "--event", "before-pr", "--work-item", "w1"])
-        .cwd(dir.path())
-        .run();
+    let output = omhl(&[
+        "check",
+        "run",
+        "--event",
+        "before-push",
+        "--work-item",
+        "w1",
+    ])
+    .cwd(dir.path())
+    .run();
 
     assert_eq!(output.code, Some(2), "stderr: {}", output.stderr);
     assert_eq!(output.stdout, "");
@@ -805,7 +904,7 @@ fn it_should_answer_branch_name_invalid_for_a_branch_outside_the_pattern_through
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -844,7 +943,7 @@ fn it_should_leave_no_orphan_and_no_attestation_when_the_binary_is_interrupted()
     let p = cli_repo(&[("interrupted", &interrupted)]);
     let mut child = spawn_omhl(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     );
     let shell = read_pid(&pids, Duration::from_secs(10));
     let sleeper = read_pid(&tmp.path().join("pids.grandchild"), Duration::from_secs(10));
@@ -884,7 +983,7 @@ fn it_should_read_the_pushed_refs_from_stdin_when_the_pre_push_flag_is_given() {
             "--format",
             "json",
             "--event",
-            "before-pr",
+            "before-push",
             "--pre-push",
         ],
     )
@@ -898,7 +997,7 @@ fn it_should_read_the_pushed_refs_from_stdin_when_the_pre_push_flag_is_given() {
             "--format",
             "json",
             "--event",
-            "before-pr",
+            "before-push",
             "--pre-push",
         ],
     )
@@ -948,7 +1047,7 @@ fn it_should_exit_two_when_the_pre_push_flag_comes_without_the_before_pr_event()
         assert!(
             output
                 .stderr
-                .contains("--pre-push is only valid with --event before-pr"),
+                .contains("--pre-push is only valid with --event before-push"),
             "stderr: {}",
             output.stderr
         );
@@ -997,7 +1096,7 @@ fn it_should_refuse_a_pre_push_input_larger_than_the_input_limit() {
             "--format",
             "json",
             "--event",
-            "before-pr",
+            "before-push",
             "--pre-push",
         ],
     )
@@ -1016,9 +1115,9 @@ fn it_should_refuse_a_pre_push_input_larger_than_the_input_limit() {
     assert_eq!(attestations(&p), Vec::<Value>::new());
 }
 
-/// A pergunta do `gate-pr` com o `label` dado.
+/// A pergunta do `gate-delivery` com o `label` dado.
 fn gate_question(p: &Project, label: &str) -> Value {
-    let gate = omhl_json_in(p, &["gate-pr", "work-items.w1"]).run();
+    let gate = omhl_json_in(p, &["gate-delivery", "work-items.w1"]).run();
     json_line(&gate.stdout)["questions"]
         .as_array()
         .expect("the gate has questions")
@@ -1041,7 +1140,7 @@ fn it_should_accept_in_the_gate_an_attestation_sealed_with_the_current_definitio
     let p = cli_repo(&[("gate", GATE_V1)]);
     let run = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
     assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
@@ -1056,7 +1155,7 @@ fn it_should_refuse_in_the_gate_an_attestation_sealed_with_an_old_definition() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     let run = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
     assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
@@ -1148,7 +1247,7 @@ fn it_should_stop_the_gate_from_asking_for_a_retired_check() {
     let p = cli_repo(&[("gate", GATE_V1)]);
     drop_check_file(&p, "gate");
     let asked = |p: &Project| -> Vec<String> {
-        let gate = omhl_json_in(p, &["gate-pr", "work-items.w1"]).run();
+        let gate = omhl_json_in(p, &["gate-delivery", "work-items.w1"]).run();
         json_line(&gate.stdout)["questions"]
             .as_array()
             .expect("the gate has questions")

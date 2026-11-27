@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use super::byproduct_tail::latest_per_pair;
+use super::byproduct_tail::selectable_per_pair;
 use super::engine::Engine;
 use super::error::AppError;
 use super::read::nodes_matching;
@@ -71,12 +71,12 @@ impl Engine<'_> {
         Ok(summary(removed, kept_live, freed_bytes))
     }
 
-    /// Hashes das attestations vigentes de maior `seq` de cada par (check, work item) do tenant.
+    /// Hashes das attestations vigentes que o leitor de byproduct pode escolher em cada par (check, work item) do tenant.
     fn live_hashes(&mut self) -> Result<BTreeSet<String>, AppError> {
         let attestations = nodes_matching(&mut self.omhl, &self.tenant, "attestation", Vec::new())
             .map_err(|_| AppError::byproduct_prune_failed())?;
 
-        Ok(latest_per_pair(attestations)
+        Ok(selectable_per_pair(attestations)
             .iter()
             .filter_map(|node| node.data["byproduct"].as_str().map(str::to_owned))
             .collect())

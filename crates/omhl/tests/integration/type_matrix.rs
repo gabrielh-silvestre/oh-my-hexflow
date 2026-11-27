@@ -96,7 +96,7 @@ fn it_should_take_the_recorded_type_over_the_branch_prefix() {
     let fixture = fixture_for(&repo);
     open(&fixture, W1, &work_item_with_type("Ship it", "refactor"));
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
 
     assert!(labels(&gate).contains(&TECHNICAL.to_owned()));
     assert!(!labels(&gate).contains(&BUSINESS.to_owned()));
@@ -109,7 +109,7 @@ fn it_should_take_the_only_branch_prefix_when_no_type_is_recorded() {
     let fixture = fixture_for(&repo);
     open(&fixture, W1, &work_item_data("Ship it"));
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
 
     assert!(labels(&gate).contains(&BUSINESS.to_owned()));
 }
@@ -130,7 +130,7 @@ fn it_should_take_the_branch_prefix_of_a_pull_request_without_a_type() {
         .append_as_user(json!({ "items": [node(PR7, "pull-request", &pull_request)] }))
         .expect("the pull request is opened");
 
-    let gate = fixture.gate_pr(PR7);
+    let gate = fixture.gate_delivery(PR7);
 
     assert!(labels(&gate).contains(&BUSINESS.to_owned()));
 }
@@ -143,7 +143,9 @@ fn it_should_refuse_a_work_item_with_two_branch_prefixes_and_no_type() {
     let fixture = fixture_for(&repo);
     open(&fixture, W1, &work_item_data("Ship it"));
 
-    let refusal = fixture.try_gate_pr(W1).expect_err("the type is unknown");
+    let refusal = fixture
+        .try_gate_delivery(W1)
+        .expect_err("the type is unknown");
 
     assert_eq!(code_of(&refusal), "work-item-type-unknown");
 }
@@ -166,7 +168,9 @@ fn it_should_refuse_a_work_item_with_no_type_and_no_branch() {
     let fixture = fixture_for(&repo);
     open(&fixture, W1, &work_item_data("Ship it"));
 
-    let refusal = fixture.try_gate_pr(W1).expect_err("the type is unknown");
+    let refusal = fixture
+        .try_gate_delivery(W1)
+        .expect_err("the type is unknown");
 
     assert_eq!(code_of(&refusal), "work-item-type-unknown");
 }
@@ -179,7 +183,7 @@ fn it_should_ask_a_requires_question_that_fails_for_each_unmet_atom_of_the_type(
     let fixture = fixture_for(&repo);
     open(&fixture, W1, &work_item_with_type("Ship it", "feat"));
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
 
     assert_eq!(question(&gate, BUSINESS)["passed"], json!(false));
     assert_eq!(question(&gate, SPEC)["passed"], json!(false));
@@ -191,7 +195,7 @@ fn it_should_ask_no_requires_question_for_a_type_with_no_atom() {
     let fixture = fixture_for(&repo);
     open(&fixture, W1, &work_item_with_type("Ship it", "chore"));
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
 
     assert!(
         labels(&gate)
@@ -226,7 +230,7 @@ fn it_should_satisfy_the_business_premise_atom_with_a_confirmed_main_premise() {
         )
         .expect("the premise is recorded");
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
 
     assert_eq!(question(&gate, BUSINESS)["passed"], json!(true));
 }
@@ -241,7 +245,7 @@ fn it_should_not_satisfy_the_business_premise_atom_with_a_late_premise() {
         .append_as_user(json!({ "items": [node("premises.p1", "premise", &late)] }))
         .expect("the premise is recorded");
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
 
     assert_eq!(question(&gate, BUSINESS)["passed"], json!(false));
 }
@@ -260,7 +264,7 @@ fn it_should_read_the_main_directory_file_for_the_matrix_of_a_type() {
     let fixture = fixture_for(&repo);
     open(&fixture, W1, &work_item_with_type("Ship it", "chore"));
 
-    let gate = fixture.gate_pr(W1);
+    let gate = fixture.gate_delivery(W1);
 
     assert!(labels(&gate).contains(&SPEC.to_owned()));
 }

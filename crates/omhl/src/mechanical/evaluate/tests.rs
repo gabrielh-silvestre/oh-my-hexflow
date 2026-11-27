@@ -27,7 +27,7 @@ fn lint_expect() -> Value {
 }
 
 fn spec(expect: Value) -> CheckSpec {
-    CheckSpec::from_data(&run_data("before-pr", expect))
+    CheckSpec::from_data(&run_data("before-push", expect))
         .expect("decodes")
         .expect("has run")
 }

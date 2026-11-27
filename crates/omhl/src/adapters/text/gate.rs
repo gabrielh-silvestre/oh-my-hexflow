@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
+use super::check_run::warning_line;
 use super::doc::{
     Closing, Join, Line, Marker, field, has_items, items, joined, one_line, opt_text, text,
 };
@@ -9,8 +10,8 @@ use super::report::Retro;
 use super::simple::Append;
 use super::vocab::{State, plural};
 
-pub static GATE_PR_PROFILE: Profile = Profile {
-    label: "gate-pr",
+pub static GATE_DELIVERY_PROFILE: Profile = Profile {
+    label: "gate-delivery",
     nodes: None,
     success: &[
         Entry::new(Region::Root, "gate", Shape::Closed),
@@ -32,6 +33,18 @@ pub static GATE_PR_PROFILE: Profile = Profile {
         // O cabeçalho da cadeia só serve a quem verifica a cadeia (`omhl verify`).
         Entry::new(Region::Data, "seq", Shape::Noise).under("chain_head"),
         Entry::new(Region::Data, "hash", Shape::Noise).under("chain_head"),
+        Entry::new(Region::Data, "code", Shape::Closed)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "check", Shape::Literal)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "from", Shape::Closed)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "hint", Shape::Closed)
+            .under("warnings")
+            .optional(),
     ],
     failure: &error::ENTRIES,
 };
@@ -118,6 +131,18 @@ pub static CLOSE_PROFILE: Profile = Profile {
             .optional(),
         Entry::new(Region::Data, "state", Shape::Closed)
             .under("open_gaps")
+            .optional(),
+        Entry::new(Region::Data, "code", Shape::Closed)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "check", Shape::Literal)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "from", Shape::Closed)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "hint", Shape::Closed)
+            .under("warnings")
             .optional(),
     ],
     failure: &error::ENTRIES,
@@ -214,11 +239,15 @@ fn review_base_line(value: &Value) -> Option<Line> {
     Some(field(0, "review_base", text))
 }
 
-pub struct GatePr;
+fn warning_lines(value: &Value) -> impl Iterator<Item = Line> {
+    items(value, "warnings").map(|warning| warning_line(warning, ""))
+}
 
-impl Specialization for GatePr {
+pub struct GateDelivery;
+
+impl Specialization for GateDelivery {
     fn profile(&self) -> &'static Profile {
-        &GATE_PR_PROFILE
+        &GATE_DELIVERY_PROFILE
     }
 
     fn state(&self, value: &Value) -> State {
@@ -235,6 +264,7 @@ impl Specialization for GatePr {
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
         let mut lines = question_lines(value, first_next_step(value).as_deref());
         lines.extend(review_base_line(value));
+        lines.extend(warning_lines(value));
         lines
     }
 
@@ -321,6 +351,7 @@ impl Specialization for Close {
         let outcome = &value["outcome"];
         let mut lines = question_lines(&value["report"], None);
         lines.extend(review_base_line(value));
+        lines.extend(warning_lines(value));
         lines.push(closed_header(value));
         if value["note_discarded"] == true {
             lines.push(Line::Header {

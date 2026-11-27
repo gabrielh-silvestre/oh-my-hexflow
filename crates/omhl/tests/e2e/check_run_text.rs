@@ -18,7 +18,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const NOISY_RED: &str = r#"blocking = true
@@ -28,7 +28,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const SUITE_RED: &str = r#"blocking = true
@@ -40,7 +40,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const FORMAT_GREEN: &str = r#"blocking = true
@@ -52,7 +52,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const SOFT_RED: &str = r#"blocking = false
@@ -62,7 +62,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const SLOW: &str = r#"blocking = true
@@ -72,7 +72,7 @@ timeout_secs = 1
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
@@ -119,7 +119,7 @@ fn it_should_keep_the_success_json_line_unchanged_with_format_json() {
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--event", "before-pr", "--format", "json"],
+        &["check", "run", "--event", "before-push", "--format", "json"],
     )
     .run();
 
@@ -158,7 +158,7 @@ fn failure_error(stderr: &str) -> Value {
 fn run_pr(p: &Project, format: &str) -> support::child::Output {
     omhl_in(
         p,
-        &["check", "run", "--event", "before-pr", "--format", format],
+        &["check", "run", "--event", "before-push", "--format", format],
     )
     .run()
 }
@@ -227,7 +227,7 @@ fn it_should_carry_the_event_work_item_and_summary_once_in_the_failure_json() {
     assert_eq!(
         failure_error(&output.stderr)["context"],
         json!({
-            "event": "before-pr",
+            "event": "before-push",
             "work_item": "work-items.w1",
             "summary": { "planned": 2, "passed": 1, "failed": 1, "blocking_failed": 1, "not_run": 0 },
         })
@@ -255,7 +255,7 @@ fn it_should_split_the_failure_text_header_between_blocking_and_non_blocking() {
     assert_eq!(
         output.stderr.lines().next(),
         Some(
-            "✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run"
+            "✘ BLOCKED · before-push · work-items.w1 · 1 blocking failed, 1 non-blocking failed, 1 passed, 0 not run"
         )
     );
     assert!(output.stderr.contains(
@@ -299,7 +299,7 @@ fn it_should_leave_work_item_out_of_the_failure_json_on_develop() {
     let output = run_pr(&p, "json");
 
     let error = failure_error(&output.stderr);
-    assert_eq!(error["context"]["event"], json!("before-pr"));
+    assert_eq!(error["context"]["event"], json!("before-push"));
     assert!(
         error["context"].get("work_item").is_none(),
         "no work_item: {error}"
@@ -315,7 +315,7 @@ fn it_should_open_the_failure_text_with_event_work_item_and_summary() {
 
     assert_eq!(
         output.stderr.lines().next(),
-        Some("✘ BLOCKED · before-pr · work-items.w1 · 1 blocking failed, 0 passed, 1 not run")
+        Some("✘ BLOCKED · before-push · work-items.w1 · 1 blocking failed, 0 passed, 1 not run")
     );
 }
 
@@ -328,7 +328,7 @@ fn it_should_open_the_failure_text_without_a_work_item_on_develop() {
 
     assert_eq!(
         output.stderr.lines().next(),
-        Some("✘ BLOCKED · before-pr · no work item · 1 blocking failed, 0 passed, 0 not run")
+        Some("✘ BLOCKED · before-push · no work item · 1 blocking failed, 0 passed, 0 not run")
     );
 }
 
@@ -420,7 +420,7 @@ fn it_should_reject_an_unknown_format_with_a_usage_exit() {
 
     let output = omhl_in(
         &p,
-        &["check", "run", "--event", "before-pr", "--format", "xml"],
+        &["check", "run", "--event", "before-push", "--format", "xml"],
     )
     .run();
 
@@ -453,13 +453,13 @@ fn it_should_reject_the_removed_text_format_with_a_usage_exit() {
 fn it_should_print_the_success_text_on_stdout_by_default() {
     let p = cli_repo(&[("green", GREEN)]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(&p, &["check", "run", "--event", "before-push"]).run();
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(output.stderr, "");
     let lines: Vec<&str> = output.stdout.lines().collect();
     assert!(
-        lines[0].starts_with("✔ before-pr · work-items.w1 · recorded (git-commit "),
+        lines[0].starts_with("✔ before-push · work-items.w1 · recorded (git-commit "),
         "{lines:?}"
     );
     assert!(
@@ -476,12 +476,12 @@ fn it_should_print_the_success_text_on_stdout_by_default() {
 fn it_should_print_the_failure_text_on_stderr_without_the_check_output() {
     let p = cli_repo(&[("red", NOISY_RED)]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(&p, &["check", "run", "--event", "before-push"]).run();
 
     assert_eq!(output.code, Some(1));
     assert_eq!(output.stdout, "");
     assert!(
-        output.stderr.starts_with("✘ BLOCKED · before-pr · "),
+        output.stderr.starts_with("✘ BLOCKED · before-push · "),
         "{}",
         output.stderr
     );
@@ -552,7 +552,7 @@ fn it_should_print_an_error_raised_before_any_check_as_text_on_stderr() {
             "check",
             "run",
             "--event",
-            "before-pr",
+            "before-push",
         ],
     )
     .run();
@@ -570,7 +570,7 @@ fn it_should_print_an_error_raised_before_any_check_as_text_on_stderr() {
 fn it_should_never_put_the_escape_byte_in_the_text_output() {
     let p = cli_repo(&[("red", NOISY_RED)]);
 
-    let failure = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let failure = omhl_in(&p, &["check", "run", "--event", "before-push"]).run();
     let success = omhl_in(&p, &["check", "run", "--event", "before-merge"]).run();
 
     assert!(!failure.stderr.contains('\u{1b}'));
@@ -584,7 +584,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }, { exit = 1, outcome = "passed_with_warning" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const MANUAL: &str = r#"blocking = false
@@ -601,7 +601,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 const STAGER: &str = r#"blocking = true
@@ -675,7 +675,7 @@ fn it_should_print_spec_stale_as_text_when_the_committed_file_differs_from_the_s
     git_ok(p.dir(), &["add", "-A"]);
     git_ok(p.dir(), &["commit", "-q", "-m", "edit green"]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr"]).run();
+    let output = omhl_in(&p, &["check", "run", "--event", "before-push"]).run();
 
     assert_text_refusal(&output, "check-not-run", "spec-stale");
     assert!(output.stderr.contains("omhl load"), "{}", output.stderr);
@@ -686,7 +686,7 @@ fn it_should_print_no_marker_as_text_outside_a_marked_project() {
     let bare = tempfile::TempDir::new().expect("bare directory");
     let xdg = tempfile::TempDir::new().expect("data directory");
 
-    let output = omhl(&["check", "run", "--event", "before-pr"])
+    let output = omhl(&["check", "run", "--event", "before-push"])
         .cwd(bare.path())
         .xdg(xdg.path())
         .run();
@@ -698,9 +698,12 @@ fn it_should_print_no_marker_as_text_outside_a_marked_project() {
 fn it_should_print_push_input_invalid_as_text_for_a_malformed_pre_push_line() {
     let p = cli_repo(&[("green", GREEN)]);
 
-    let output = omhl_in(&p, &["check", "run", "--event", "before-pr", "--pre-push"])
-        .stdin("garbage\n")
-        .run();
+    let output = omhl_in(
+        &p,
+        &["check", "run", "--event", "before-push", "--pre-push"],
+    )
+    .stdin("garbage\n")
+    .run();
 
     assert_text_refusal(&output, "push-input-invalid", "push-input-invalid");
 }
@@ -755,7 +758,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 #[test]
@@ -825,8 +828,8 @@ fn it_should_open_the_success_text_of_both_layouts_with_the_ok_symbol_of_the_voc
     let agent = run_pr(&p, "agent");
     let human = run_pr(&p, "human");
 
-    assert!(agent.stdout.starts_with(&format!("{symbol} before-pr")));
-    assert!(human.stdout.starts_with(&format!("{symbol} before-pr")));
+    assert!(agent.stdout.starts_with(&format!("{symbol} before-push")));
+    assert!(human.stdout.starts_with(&format!("{symbol} before-push")));
 }
 
 #[test]

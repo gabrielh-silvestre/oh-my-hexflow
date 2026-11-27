@@ -10,6 +10,8 @@
 
 To record by hand the outcome of a **manual** check (without the `run` field) on a work item, after the human reviews it. The record belongs to the check and work item pair, tied to the current commit. A check with `run` is mechanical: whoever records its outcome is `omhl check run`, never you (the refusal is `check-run-author`).
 
+**Native with a command.** `attest` reads the evaluated declaration from `HEAD`, like the gate. A requirement of the native that has no command stays an instruction, attested by hand; in a repair PR, where the main-directory file is invalid, no command is in force and `attest` accepts the hand attestation of the instruction requirement. The output of a command is read with [byproduct.md](byproduct.md).
+
 ## Inputs
 
 - `<CHECK>`: the check id, like `checks.review`. The check must exist (run `omhl load` after creating the file in `.omhl/checks/`).
@@ -29,7 +31,7 @@ Text on stdout, exit 0: `✔ attest · <check> · <work item> · <outcome> · sn
 An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). A missing `--outcome` or argument is a clap usage error, with exit 2 and no code. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
 - `invalid-arguments` (exit 1): `--outcome` is not one of the three values. The `/outcome` pointer and the message state the rule. Fix the value.
-- `check-run-author` (exit 1): the check has `run`. Only `omhl check run` records its outcome. Use a manual check or run the check.
+- `check-run-author` (exit 1): the check has `run`, or it is a native whose every requirement has a command (see [native-checks.md](../../directives-flow/references/native-checks.md) and [check-run.md](check-run.md)). Only `omhl check run` records its outcome. Use a manual check or run the check.
 - `check-not-found` (exit 1): the check does not exist in the database. Check the id and run `omhl load`.
 - `work-item-not-found` (exit 1): the work item does not exist. Record it first.
 - `work-item-closed` (exit 1): the work item was already closed. Attest on an open work item.
@@ -58,7 +60,7 @@ With `--format json` the answer carries the attestation `id`, the whole `snapsho
 
 ```omhl-example fixture=checks
 $ omhl attest checks.review work-items.w1 --outcome passed --format json
-{"attestation":{"check":"checks.review","id":"attestations.2dbf9e30bc28b8e377c513c63a9f8cae.a3ca65f3.checks.review.work-items.w1","ok":true,"outcome":"passed","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false}
+{"attestation":{"check":"checks.review","id":"attestations.5c008b85e4c4c8cb1c31b8ab9f9fb681.c2445976.checks.review.work-items.w1","ok":true,"outcome":"passed","snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"},"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false}
 ```
 
 Refusal: the check has `run`, so it is mechanical:

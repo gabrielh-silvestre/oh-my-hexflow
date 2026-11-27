@@ -22,7 +22,7 @@ const NAMED_BEHAVIORS: [&str; 13] = [
     "role hook",
     "session start",
     "native checks",
-    "native guidelines",
+    "`commit-policy`",
     "branch name",
     "prefix",
     "`develop`",

@@ -12,7 +12,7 @@ fn close_value_with_retro(retro: &Value) -> Value {
         },
         "report": {
             "chain_head": { "hash": "h-1", "seq": 3 },
-            "gate": "pull-request",
+            "gate": "delivery",
             "passed": true,
             "questions": [{
                 "failing": [], "kind": "occurred", "label": "checks.run-tests",

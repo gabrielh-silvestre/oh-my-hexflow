@@ -12,11 +12,11 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 
 use super::child::{Cmd, omhl};
+use super::delivery_gate::ALL_NATIVE_CHECKS;
 use super::ext::ExtTree;
 use super::git::{commit_marker, git_ok};
 use super::inproc::run_inproc;
 use super::omhl::typed_work_item_data;
-use super::pr_gate::ALL_NATIVE_CHECKS;
 use super::project::Project;
 use super::sweep_lock::serialize_sweeps;
 
@@ -98,12 +98,12 @@ fn append_work_items(project: &Project, items: &[(&str, &str)]) {
     run_ok(project, &["append"], &json!({ "items": wires }).to_string());
 }
 
-/// TOML de um check `before-pr` bloqueante que roda `command` num shell.
+/// TOML de um check `before-push` bloqueante que roda `command` num shell.
 pub fn check_file(concern: &str, variant: &str, command: &str) -> String {
     let run = serde_json::to_string(&["sh", "-c", command]).expect("the argv serializes");
 
     format!(
-        "blocking = true\nhow = \"Guards the payroll.\"\nconcern = \"{concern}\"\nvariant = \"{variant}\"\nrun = {run}\ntimeout_secs = 60\nexpect = [{{ exit = 0, outcome = \"passed\" }}]\n\n[when]\nevent = \"before-pr\"\n"
+        "blocking = true\nhow = \"Guards the payroll.\"\nconcern = \"{concern}\"\nvariant = \"{variant}\"\nrun = {run}\ntimeout_secs = 60\nexpect = [{{ exit = 0, outcome = \"passed\" }}]\n\n[when]\nevent = \"before-push\"\n"
     )
 }
 
@@ -255,7 +255,7 @@ pub fn byproduct_repo() -> Project {
     ]);
     omhl_succeeds(
         &project,
-        &["--format", "json", "check", "run", "--event", "before-pr"],
+        &["--format", "json", "check", "run", "--event", "before-push"],
         "",
     );
 
@@ -293,7 +293,7 @@ pub fn attest_repo() -> Project {
     check_repo(&[("ledger-review", MANUAL_CHECK_TOML)])
 }
 
-// ---------------------------------------------------------------- `gate-pr` e `close`
+// ---------------------------------------------------------------- `gate-delivery` e `close`
 
 pub const NATIVE_CHECKS: [&str; 2] = ["checks.run-tests", "checks.ci-green-before-merge"];
 pub const DECISION_UNANCHORED: &str = "decisions.ledger-split";
@@ -352,7 +352,7 @@ pub fn gate_approved() -> Project {
     let project = gate_repo(&[("payroll-format", &toml)]);
     omhl_succeeds(
         &project,
-        &["--format", "json", "check", "run", "--event", "before-pr"],
+        &["--format", "json", "check", "run", "--event", "before-push"],
         "",
     );
     attest_natives(&project);
@@ -476,7 +476,7 @@ pub fn sweep_stray() -> (Project, SweepGuard) {
 
     omhl_succeeds(
         &project,
-        &["--format", "json", "check", "run", "--event", "before-pr"],
+        &["--format", "json", "check", "run", "--event", "before-push"],
         "",
     );
 

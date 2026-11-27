@@ -18,7 +18,7 @@ const OLD: &str = "guidelines.old";
 const MID: &str = "guidelines.mid";
 const NEW: &str = "guidelines.new";
 const GHOST: &str = "guidelines.ghost";
-const NATIVE_GUIDELINE: &str = "guidelines.commit-policy";
+const FORMER_NATIVE_GUIDELINE: &str = "guidelines.commit-policy";
 const W1: &str = "work-items.w1";
 const DECISION: &str = "decisions.d1";
 const DECISIONS_ANCHORED: &str = "decisions-anchored";
@@ -94,10 +94,10 @@ fn it_should_keep_the_guideline_current_when_the_toml_file_exists() {
 }
 
 #[test]
-fn it_should_refuse_a_native_guideline_as_not_found() {
+fn it_should_refuse_a_former_native_guideline_as_not_found_when_not_loaded() {
     let fx = AppFixture::new();
 
-    let error = refused(fx.guideline_retire(NATIVE_GUIDELINE, None));
+    let error = refused(fx.guideline_retire(FORMER_NATIVE_GUIDELINE, None));
 
     assert_eq!(
         code_and_pointer(&error),
@@ -418,11 +418,11 @@ fn it_should_retire_a_guideline_that_decisions_rest_on_and_then_fail_the_anchor(
     });
     fx.append_as_user(json!({ "items": [decision, rests_on] }))
         .expect("the decision resting on the guideline is accepted");
-    let anchored_before = question_passed(&fx.gate_pr(W1), DECISIONS_ANCHORED);
+    let anchored_before = question_passed(&fx.gate_delivery(W1), DECISIONS_ANCHORED);
 
     fx.guideline_retire(TONE, None)
         .expect("the engine accepts retiring a guideline with decisions resting on it");
-    let anchored_after = question_passed(&fx.gate_pr(W1), DECISIONS_ANCHORED);
+    let anchored_after = question_passed(&fx.gate_delivery(W1), DECISIONS_ANCHORED);
 
     assert_eq!((anchored_before, anchored_after), (true, false));
 }

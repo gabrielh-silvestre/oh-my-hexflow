@@ -40,12 +40,11 @@ const BASE_LEAVES: [&str; 5] = [
 
 const WHO_USES_HEADING: &str = "## Who uses it, at which stage and with which filter";
 
-/// A ordem do fechamento no passo 8 da `review`: a parada do PR filho vem antes do primeiro `check run`.
-const CLOSING_ORDER: [&str; 7] = [
-    "stop after pasting the table",
+/// A ordem do fechamento no passo 8 da `review`.
+const CLOSING_ORDER: [&str; 6] = [
     "omhl check run --event before-merge",
     "omhl attest",
-    "omhl gate-pr",
+    "omhl gate-delivery",
     "`wt",
     "omhl close",
     "omhl report retro",
@@ -366,6 +365,7 @@ fn it_should_close_the_interview_only_with_low_ambiguity_and_every_active_part_c
             &text,
             &[
                 "20% or less",
+                "20% by default",
                 "each active part of Round 0",
                 "confirmed business premise"
             ]
@@ -645,7 +645,7 @@ fn it_should_link_native_checks_md_from_the_directives_flow_skill() {
 }
 
 const CLOSE_PAGE: &str = "review/references/close.md";
-const GATE_PR_PAGE: &str = "review/references/gate-pr.md";
+const GATE_DELIVERY_PAGE: &str = "review/references/gate-delivery.md";
 const CHECK_RETIRE_PAGE: &str = "review/references/check-retire.md";
 const APPEND_PAGE: &str = "directives-flow/references/append.md";
 const LOAD_PAGE: &str = "review/references/load.md";
@@ -744,8 +744,8 @@ fn it_should_say_in_close_md_that_abandon_has_no_required_retro() {
 }
 
 #[test]
-fn it_should_say_in_gate_pr_md_to_pass_the_printed_merge_base_as_base() {
-    assert_page_says(GATE_PR_PAGE, "the merge-base it prints");
+fn it_should_say_in_gate_delivery_md_to_pass_the_printed_merge_base_as_base() {
+    assert_page_says(GATE_DELIVERY_PAGE, "the merge-base it prints");
 }
 
 #[test]
@@ -822,7 +822,7 @@ fn it_should_turn_the_loosening_review_on_in_the_workflow_of_this_repository() {
 fn it_should_ship_the_command_pages_that_own_the_close_refusals_and_options() {
     let pages = [
         "review/references/close.md",
-        "review/references/gate-pr.md",
+        "review/references/gate-delivery.md",
         "review/references/load.md",
         "review/references/check-retire.md",
         "directives-flow/references/append.md",
@@ -835,4 +835,192 @@ fn it_should_ship_the_command_pages_that_own_the_close_refusals_and_options() {
         .collect();
 
     assert_eq!(missing, Vec::<&str>::new());
+}
+
+fn all_files(dir: &Path, found: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        if path.is_dir() {
+            all_files(&path, found);
+        } else {
+            found.push(path);
+        }
+    }
+}
+
+#[test]
+fn it_should_make_the_interview_threshold_and_weights_configurable_through_the_workflow_table() {
+    let text = read("interview/SKILL.md");
+
+    for needles in [
+        &["`[interview]`", "20% by default", ".omhl/workflow.toml"][..],
+        &["0.35", "`objective`"],
+        &["0.25", "`constraints`"],
+        &["0.25", "`success`"],
+        &["0.15", "`context`"],
+    ] {
+        assert!(
+            line_with(&text, needles).is_some(),
+            "interview/SKILL.md must carry {needles:?}"
+        );
+    }
+}
+
+#[test]
+fn it_should_drop_the_fixed_threshold_and_fixed_question_shape_from_the_interview() {
+    let text = read("interview/SKILL.md");
+
+    for gone in [
+        "The threshold is fixed",
+        "One per message",
+        "2 to 4 options",
+    ] {
+        assert!(
+            !text.contains(gone),
+            "interview/SKILL.md must not say {gone:?}"
+        );
+    }
+}
+
+#[test]
+fn it_should_word_the_interview_stop_rule_with_the_configurable_threshold() {
+    let text = read("interview/SKILL.md");
+
+    assert!(
+        text.contains("ends with ambiguity of 20% or less (20% by default; the `[interview]` table of the main checkout `.omhl/workflow.toml` changes it)"),
+        "the stop rule names the default and the table that changes it"
+    );
+}
+
+#[test]
+fn it_should_call_the_interview_threshold_a_default_in_cycle_md_and_the_directives_doc() {
+    let cycle = read("directives-flow/references/cycle.md");
+    let doc = fs::read_to_string(repo_root().join("docs/directives-flow.md")).expect("the doc");
+
+    assert!(
+        line_with(&cycle, &["until the ambiguity reaches 20% by default"]).is_some(),
+        "cycle.md calls 20% a default"
+    );
+    assert!(
+        line_with(&doc, &["a ambiguidade chegar a 20% por padrão"]).is_some(),
+        "the directives doc calls 20% a default"
+    );
+}
+
+#[test]
+fn it_should_keep_model_names_out_of_skills_and_docs() {
+    let mut files = Vec::new();
+    all_files(&repo_root().join("plugin/skills"), &mut files);
+    all_files(&repo_root().join("plugin/docs"), &mut files);
+
+    let offenders: Vec<_> = files
+        .iter()
+        .filter(|path| {
+            fs::read_to_string(path).is_ok_and(|text| {
+                let lower = text.to_lowercase();
+                lower.contains("opus") || lower.contains("sonnet")
+            })
+        })
+        .collect();
+
+    assert!(offenders.is_empty(), "model names found in {offenders:?}");
+}
+
+#[test]
+fn it_should_keep_the_model_line_on_line_four_of_every_agent() {
+    for name in [
+        "analyst",
+        "architect",
+        "code-reviewer",
+        "critic",
+        "planner",
+        "security-reviewer",
+        "verifier",
+    ] {
+        let text = read_agent(name);
+
+        assert!(
+            text.lines()
+                .nth(3)
+                .is_some_and(|line| line.starts_with("model:")),
+            "{name}.md has `model:` on line 4"
+        );
+    }
+}
+
+#[test]
+fn it_should_say_the_agent_model_is_a_default_the_caller_may_override() {
+    for file in [
+        "directives-flow/references/roles.md",
+        "plan-consensus/SKILL.md",
+    ] {
+        let text = read(file);
+
+        assert!(
+            text.contains("default") && text.contains("may pass another model"),
+            "{file} says the `model:` line is a default and the caller may pass another model"
+        );
+    }
+}
+
+#[test]
+fn it_should_not_name_child_prs_aggregator_prs_or_stacking_in_the_review_skill() {
+    let skill_dir = skills_dir().join("review");
+    let mut pages = vec![skill_dir.join("SKILL.md")];
+    pages.extend(
+        fs::read_dir(skill_dir.join("references"))
+            .expect("review has references")
+            .map(|entry| entry.expect("readable entry").path()),
+    );
+
+    let offending: Vec<String> = pages
+        .iter()
+        .flat_map(|page| {
+            let text = fs::read_to_string(page)
+                .expect("readable page")
+                .to_lowercase();
+            ["child pr", "aggregator pr", "stacked"]
+                .into_iter()
+                .filter(move |term| text.contains(term))
+                .map(move |term| format!("{}: {term}", page.display()))
+        })
+        .collect();
+
+    assert_eq!(offending, Vec::<String>::new());
+}
+
+#[test]
+fn it_should_say_the_findings_table_is_method_and_its_template_is_a_changeable_default() {
+    let text = lowercase("review/SKILL.md");
+
+    assert!(text.contains("findings table is part of the method"));
+    assert!(text.contains("template is a default the project can change"));
+}
+
+#[test]
+fn it_should_describe_the_child_and_aggregator_pr_flow_in_contributing() {
+    let contributing =
+        fs::read_to_string(repo_root().join("CONTRIBUTING.md")).expect("CONTRIBUTING.md");
+
+    let heading = contributing
+        .lines()
+        .find(|line| line.starts_with("## ") && line.contains("PR filho"))
+        .expect("CONTRIBUTING.md has a section about the child PR");
+    let section = section(&contributing, &heading[3..]).join("\n");
+
+    assert!(section.contains("gate-delivery"));
+    assert!(section.contains("close"));
+}
+
+#[test]
+fn it_should_leave_docs_adr_untouched_by_the_work_item() {
+    let output = std::process::Command::new("git")
+        .args(["diff", "--name-only", "develop", "--", "docs/adr/"])
+        .current_dir(repo_root())
+        .output()
+        .expect("git diff runs");
+
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
 }

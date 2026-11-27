@@ -5,8 +5,8 @@ use serde_json::{Map, Value};
 
 use super::model::{Extension, ExtensionIssue, ExtensionKind, RawExtension};
 use crate::guidance::Guidance;
-use crate::mechanical::RUNNABLE_EVENTS;
 use crate::mechanical::spec::{CheckSpec, SpecError};
+use crate::mechanical::{EVENTS, INSTRUCTION_EVENT};
 use crate::project::text::{
     is_invisible_format, normalize_line_breaks, normalize_line_breaks_owned, toml_error_position,
 };
@@ -17,11 +17,7 @@ const EVENT_MAX_CHARS: usize = 100;
 const MATCHER_MAX_CHARS: usize = 200;
 const AFTER_MAX_ITEMS: usize = 16;
 pub(crate) const GUIDELINE_KINDS: [&str; 2] = ["business", "architecture"];
-const CONCERN_VARIANTS: [(&str, [&str; 2]); 3] = [
-    ("style", ["format", "lint"]),
-    ("test", ["suite", "coverage"]),
-    ("compile", ["validate", "build"]),
-];
+const LABEL_MAX_CHARS: usize = 40;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -78,7 +74,12 @@ fn parse_check(raw: &RawExtension) -> Result<Extension, Vec<ExtensionIssue>> {
         &mut issues,
         text_field(raw, parsed.how, "how", HOW_MAX_CHARS),
     );
-    let when = when_data(&raw.toml_path, parsed.when, &mut issues);
+    let when = when_data(
+        &raw.toml_path,
+        parsed.when,
+        parsed.run.is_some(),
+        &mut issues,
+    );
     check_after(&raw.toml_path, &id, &parsed.after, &mut issues);
     issues.extend(check_concern_pair(
         &raw.toml_path,
@@ -158,6 +159,13 @@ fn rule_data(rule: ExpectToml) -> Value {
     Value::Object(data)
 }
 
+fn is_label(value: &str) -> bool {
+    (1..=LABEL_MAX_CHARS).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-'))
+}
+
 fn check_concern_pair(
     path: &str,
     concern: Option<&str>,
@@ -166,20 +174,8 @@ fn check_concern_pair(
     let message = match (concern, variant) {
         (None, None) => return None,
         (Some(_), None) | (None, Some(_)) => "`concern` and `variant` go together",
-        (Some(concern), Some(variant)) => {
-            let Some((_, variants)) = CONCERN_VARIANTS.iter().find(|(known, _)| *known == concern)
-            else {
-                return Some(issue(
-                    path,
-                    "value-not-allowed",
-                    "`concern` is not one of style, test, compile".to_owned(),
-                ));
-            };
-            if variants.contains(&variant) {
-                return None;
-            }
-            "`variant` does not belong to `concern`"
-        }
+        (Some(concern), Some(variant)) if is_label(concern) && is_label(variant) => return None,
+        _ => "`concern` and `variant` are 1 to 40 characters of a-z, 0-9 and hyphen",
     };
 
     Some(issue(path, "value-not-allowed", message.to_owned()))
@@ -198,15 +194,32 @@ fn spec_issue(path: &str, error: &SpecError) -> ExtensionIssue {
     issue(path, error.code, message)
 }
 
-fn when_data(path: &str, when: WhenToml, issues: &mut Vec<ExtensionIssue>) -> Option<Value> {
+fn when_data(
+    path: &str,
+    when: WhenToml,
+    has_run: bool,
+    issues: &mut Vec<ExtensionIssue>,
+) -> Option<Value> {
     let event = short_field(path, "event", when.event, EVENT_MAX_CHARS).and_then(|event| {
-        if RUNNABLE_EVENTS.contains(&event.as_str()) {
+        if event == INSTRUCTION_EVENT && has_run {
+            Err(issue_with_next_step(
+                path,
+                "event-not-runnable",
+                &format!(
+                    "`event` {INSTRUCTION_EVENT} is an instruction event and does not run a command"
+                ),
+                Guidance {
+                    cause: "an instruction event only tells the agent what to do; it has no command to run",
+                    next_step: "remove `run` from the check, or bind it to before-commit, before-push or before-merge, and run omhl load again",
+                },
+            ))
+        } else if EVENTS.contains(&event.as_str()) {
             Ok(event)
         } else {
             Err(issue(
                 path,
                 "event-unsupported",
-                "`event` is not one of before-commit, before-pr, before-merge".to_owned(),
+                format!("`event` is not one of {}", EVENTS.join(", ")),
             ))
         }
     });

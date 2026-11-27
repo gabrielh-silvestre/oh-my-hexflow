@@ -10,7 +10,9 @@ use serde_json::{Value, json};
 
 use super::action::{Caller, CheckTarget};
 use super::attest::{attestation_data, derived_id};
-use super::engine::{Engine, require_project_root};
+use super::engine::{
+    Engine, invalid_workflow_warning, read_evaluated_native, require_project_root, run_warnings,
+};
 use super::error::{AppError, CheckDetail};
 use super::retry::with_retry;
 use super::work_item::{WorkItemRoute, head_branch, resolve_work_item};
@@ -19,13 +21,17 @@ use crate::error::{OmhlError, RuleCode};
 use crate::extensions::collect::{collect, extension_file_exists};
 use crate::extensions::model::ExtensionKind;
 use crate::graphs;
+use crate::guard::Origin;
 use crate::mechanical::branch::{HeadFacts, PushError, PushPlan, current_branch, plan_push};
 use crate::mechanical::evaluate::{Evaluation, Observation, evaluate_with_reason};
 use crate::mechanical::plan::{CheckResult, PlannedCheck, plan_run, summarize};
 use crate::mechanical::redact::Redactor;
-use crate::mechanical::spec::{CheckSpec, Outcome, spec_digest};
-use crate::probe::{ProbeError, ProbeOutcome, TreeSource};
+use crate::mechanical::spec::{CheckSpec, Outcome, snapshot_for, spec_digest};
+use crate::native::{NativeBase, RUN_TESTS_ID};
+use crate::ports::git::WorkflowSource;
+use crate::probe::{NativeRefusal, ProbeError, ProbeOutcome, TreeSource};
 use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
+use crate::workflow::config::{NativeConfig, NativeRun, native_run_digest};
 
 const MAX_STREAM_BYTES: u64 = 4_194_304;
 const CUT_OUTPUT_NOTE: &str = "output was cut at 4 MiB; the rule could not be checked; ";
@@ -55,15 +61,6 @@ const HOOK_GIT_ENV: [&str; 5] = [
     "GIT_PREFIX",
     "GIT_WORK_TREE",
     "GIT_COMMON_DIR",
-];
-
-/// Variáveis do toolchain Rust que mudam o veredito sem aparecer no comando (`--cap-lints allow` esconde aviso de `clippy -D warnings`); configuração própria vai explícita no `run` do check.
-const TOOLCHAIN_ENV: [&str; 5] = [
-    "RUSTFLAGS",
-    "RUSTC_WRAPPER",
-    "RUSTC_WORKSPACE_WRAPPER",
-    "CARGO_ENCODED_RUSTFLAGS",
-    "CARGO_BUILD_RUSTFLAGS",
 ];
 
 type MissError = fn(Vec<CheckDetail>) -> AppError;
@@ -124,9 +121,12 @@ impl Engine<'_> {
         self.prune_quietly();
         let (event, planned) = self.plan_target(target)?;
         let checks_planned = planned.len();
-        let (planned, orphans): (Vec<_>, Vec<_>) = planned.into_iter().partition(|check| {
+        let (mut planned, orphans): (Vec<_>, Vec<_>) = planned.into_iter().partition(|check| {
             extension_file_exists(ExtensionKind::Check, &root, check.id.as_str())
         });
+        let native_planned = self.plan_native_run(&event);
+        let checks_planned = checks_planned + native_planned.len();
+        planned.extend(native_planned);
         let facts = self
             .probe
             .head_facts()
@@ -152,7 +152,101 @@ impl Engine<'_> {
         };
         let tally = self.run_planned(runner, &scope, &planned)?;
 
-        finish(&scope, tally, checks_planned, &orphans)
+        finish(
+            &scope,
+            tally,
+            checks_planned,
+            &orphans,
+            self.native_run_warnings(),
+        )
+    }
+
+    /// Principal inválido some com os nativos, mas o aviso diz por quê; tabela de nativo desligado no próprio arquivo é ignorada.
+    fn native_run_warnings(&self) -> Vec<Value> {
+        let (main_config, invalid) = match self.native_refusal() {
+            Ok(config) => (config, None),
+            Err(NativeRefusal::InvalidWorkflow(error)) => (
+                NativeConfig::default(),
+                Some(invalid_workflow_warning(&error)),
+            ),
+            Err(NativeRefusal::MainDirUnknown) => (NativeConfig::default(), None),
+        };
+
+        invalid
+            .into_iter()
+            .chain(run_warnings(
+                &main_config,
+                self.read_evaluated_index(),
+                "index",
+            ))
+            .collect()
+    }
+
+    /// O nativo roda como um check mecânico, sem arquivo de check; a declaração avaliada (índice) só soma ao que está em vigor.
+    fn plan_native_run(&self, event: &str) -> Vec<PlannedCheck> {
+        let Some(check) = NativeBase
+            .checks()
+            .iter()
+            .find(|check| check.id == RUN_TESTS_ID && check.event == event)
+        else {
+            return Vec::new();
+        };
+        let config = self.native_refusal().ok();
+        let enabled = config
+            .as_ref()
+            .is_some_and(|config| config.checks.contains(RUN_TESTS_ID));
+        let in_force = config
+            .as_ref()
+            .filter(|_| enabled)
+            .and_then(|config| config.run.get(RUN_TESTS_ID).cloned());
+        let evaluated = self.evaluated_native_run(enabled);
+        let runs = match (in_force, evaluated) {
+            (Some(a), Some(b)) if native_run_digest(&a) == native_run_digest(&b) => {
+                vec![(Origin::InForce, a)]
+            }
+            (Some(a), Some(b)) => vec![(Origin::InForce, a), (Origin::Evaluated, b)],
+            (Some(a), None) => vec![(Origin::InForce, a)],
+            (None, Some(b)) => vec![(Origin::Evaluated, b)],
+            (None, None) => Vec::new(),
+        };
+
+        runs.into_iter()
+            .filter_map(|(origin, entry)| native_planned(check, &entry, origin))
+            .collect()
+    }
+
+    fn read_evaluated_index(&self) -> (Option<NativeConfig>, Option<Value>) {
+        read_evaluated_native(self.project_root.as_deref(), WorkflowSource::Index, "index")
+    }
+
+    /// Comando do índice; com o nativo desligado no principal, só vale se o arquivo o liga.
+    fn evaluated_native_run(&self, enabled_in_force: bool) -> Option<NativeRun> {
+        let config = self.read_evaluated_index().0?;
+        if !enabled_in_force && !config.checks.contains(RUN_TESTS_ID) {
+            return None;
+        }
+
+        config.run.get(RUN_TESTS_ID).cloned()
+    }
+
+    /// `--check` de um nativo: o que roda sai de `plan_native_run`; sem comando, a recusa depende de o nativo estar ligado.
+    fn plan_native_target(&self, native: &crate::native::NativeCheck) -> Result<String, AppError> {
+        let enabled = self
+            .native_refusal()
+            .ok()
+            .is_some_and(|config| config.checks.contains(native.id))
+            || self
+                .read_evaluated_index()
+                .0
+                .is_some_and(|config| config.checks.contains(native.id));
+        if !enabled {
+            return Err(AppError::native_check_disabled("/check"));
+        }
+        if native.id != RUN_TESTS_ID || self.plan_native_run(native.event).is_empty() {
+            return Err(AppError::check_not_mechanical("/check"));
+        }
+
+        Ok(native.event.to_owned())
     }
 
     /// Lê checks e relações `after` em valores próprios: nenhuma transação fica aberta durante a execução.
@@ -170,6 +264,9 @@ impl Engine<'_> {
         match target {
             CheckTarget::Event(event) => Ok((event.clone(), plan_run(event, &nodes, &after))),
             CheckTarget::Check(id) => {
+                if let Some(native) = NativeBase.checks().iter().find(|check| check.id == id) {
+                    return Ok((self.plan_native_target(native)?, Vec::new()));
+                }
                 let node = nodes
                     .iter()
                     .find(|node| node.id.as_str() == id)
@@ -415,7 +512,7 @@ impl Engine<'_> {
         snapshot: &Snapshot,
         data: &Value,
     ) -> Result<Recording, AppError> {
-        let id = match derived_id(snapshot, &check.id, work_item) {
+        let id = match derived_id(snapshot, &check.id, work_item, check.origin) {
             Ok(id) => id,
             Err(OmhlError::Rule { code, .. }) => {
                 return Ok(Recording::Refused { code, stored: None });
@@ -473,7 +570,8 @@ impl Engine<'_> {
 impl Scope<'_> {
     /// O TOML da working tree não declara o check (inválido) ou o declara com outra definição que a do banco.
     fn stale(&self, check: &PlannedCheck) -> bool {
-        self.tree_digests.get(check.id.as_str()) != Some(&check.spec_digest)
+        check.id.as_str() != RUN_TESTS_ID
+            && self.tree_digests.get(check.id.as_str()) != Some(&check.spec_digest)
     }
 
     fn context(&self, kind: &str, check: &SemanticId, argv: Option<&[String]>) -> Value {
@@ -555,6 +653,34 @@ fn tree_digests(root: &Path) -> HashMap<String, String> {
         .filter(|extension| extension.kind == ExtensionKind::Check)
         .map(|extension| (extension.id, spec_digest(&extension.data)))
         .collect()
+}
+
+fn native_planned(
+    check: &crate::native::NativeCheck,
+    entry: &NativeRun,
+    origin: Origin,
+) -> Option<PlannedCheck> {
+    let data = json!({
+        "id": check.id,
+        "when": { "event": check.event },
+        "blocking": check.blocking,
+        "how": check.how,
+        "run": entry.run,
+        "timeout_secs": entry.timeout_secs,
+        "expect": entry.expect,
+    });
+    let spec = CheckSpec::from_data(&data).transpose()?;
+
+    Some(PlannedCheck {
+        id: SemanticId::parse(RUN_TESTS_ID).expect("native id is a valid semantic id"),
+        spec,
+        blocking: check.blocking,
+        snapshot: snapshot_for(&data),
+        spec_digest: native_run_digest(entry),
+        concern: None,
+        variant: None,
+        origin,
+    })
 }
 
 fn spec_stale_miss(scope: &Scope<'_>, check: &PlannedCheck) -> Miss {
@@ -663,11 +789,7 @@ fn run_command(
         project_root: scope.project_root.to_path_buf(),
         timeout: Duration::from_secs(u64::from(spec.timeout_secs)),
         env_set: Vec::new(),
-        env_remove: HOOK_GIT_ENV
-            .iter()
-            .chain(&TOOLCHAIN_ENV)
-            .map(|name| (*name).to_owned())
-            .collect(),
+        env_remove: HOOK_GIT_ENV.iter().map(|name| (*name).to_owned()).collect(),
         max_stream_bytes: MAX_STREAM_BYTES,
     };
     let program = runner.resolve_program(&request);
@@ -872,6 +994,7 @@ fn finish(
     tally: Tally,
     checks_planned: usize,
     orphans: &[PlannedCheck],
+    native_warnings: Vec<Value>,
 ) -> Result<Value, AppError> {
     if let Some(error) = tally.error {
         return Err(error(tally.details));
@@ -892,7 +1015,7 @@ fn finish(
         "results": tally.outputs,
         "blocked": summary.blocked,
     });
-    let mut warnings = Vec::new();
+    let mut warnings = native_warnings;
     if checks_planned == 0 {
         // Evento sem check no banco sai com 0, mas o aviso evita confundir vazio com aprovado.
         output["checks_planned"] = json!(0);

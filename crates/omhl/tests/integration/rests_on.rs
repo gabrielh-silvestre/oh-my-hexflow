@@ -9,16 +9,16 @@ use omhl::facade::{Omhl, OmhlDeps};
 use omhl::graphs;
 use omhl::native::NativeBase;
 use serde_json::{Value, json};
+use support::delivery_gate::relation_item;
 use support::omhl::{
     OmhlHarness, acme, decision_data, node_item, premise_data, request, revision_item,
 };
-use support::pr_gate::relation_item;
 use support::raw::RawHarness;
 use support::{FakeProbe, loader_author};
 
 const SOURCE: &str = "guidelines.source";
 const TARGET: &str = "guidelines.target";
-const NATIVE_GUIDELINE: &str = "guidelines.commit-policy";
+const FORMER_NATIVE_GUIDELINE: &str = "guidelines.commit-policy";
 const DECISION: &str = "decisions.d-1";
 const PREMISE: &str = "premises.p-1";
 const OTHER_PREMISE: &str = "premises.p-2";
@@ -200,23 +200,46 @@ fn it_should_accept_an_architecture_guideline_resting_on_a_business_guideline() 
 }
 
 #[test]
-fn it_should_accept_a_guideline_resting_on_a_native_guideline() {
+fn it_should_accept_a_guideline_resting_on_a_former_native_guideline() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![guideline(SOURCE, "business")]);
+    seed(
+        &mut omhl,
+        vec![
+            guideline(SOURCE, "business"),
+            guideline(FORMER_NATIVE_GUIDELINE, "business"),
+        ],
+    );
 
-    let result = appended(&mut omhl, vec![rests_on(SOURCE, NATIVE_GUIDELINE)]);
+    let result = appended(&mut omhl, vec![rests_on(SOURCE, FORMER_NATIVE_GUIDELINE)]);
 
     assert_eq!(result, Ok(1));
 }
 
 #[test]
-fn it_should_accept_a_native_guideline_resting_on_a_business_guideline() {
+fn it_should_refuse_a_guideline_resting_on_a_former_native_guideline_that_is_not_loaded() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![guideline(TARGET, "business")]);
+    seed(&mut omhl, vec![guideline(SOURCE, "business")]);
 
-    let result = appended(&mut omhl, vec![rests_on(NATIVE_GUIDELINE, TARGET)]);
+    let result = appended(&mut omhl, vec![rests_on(SOURCE, FORMER_NATIVE_GUIDELINE)]);
+
+    assert!(result.is_err(), "{result:?}");
+}
+
+#[test]
+fn it_should_accept_a_former_native_guideline_resting_on_a_business_guideline() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    seed(
+        &mut omhl,
+        vec![
+            guideline(TARGET, "business"),
+            guideline(FORMER_NATIVE_GUIDELINE, "business"),
+        ],
+    );
+
+    let result = appended(&mut omhl, vec![rests_on(FORMER_NATIVE_GUIDELINE, TARGET)]);
 
     assert_eq!(result, Ok(1));
 }
@@ -314,12 +337,18 @@ fn it_should_refuse_a_guideline_resting_on_a_premise() {
 }
 
 #[test]
-fn it_should_refuse_a_native_guideline_resting_on_an_architecture_guideline() {
+fn it_should_refuse_a_former_native_guideline_resting_on_an_architecture_guideline() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![guideline(TARGET, "architecture")]);
+    seed(
+        &mut omhl,
+        vec![
+            guideline(TARGET, "architecture"),
+            guideline(FORMER_NATIVE_GUIDELINE, "business"),
+        ],
+    );
 
-    let result = appended(&mut omhl, vec![rests_on(NATIVE_GUIDELINE, TARGET)]);
+    let result = appended(&mut omhl, vec![rests_on(FORMER_NATIVE_GUIDELINE, TARGET)]);
 
     assert_eq!(
         result,
@@ -328,12 +357,18 @@ fn it_should_refuse_a_native_guideline_resting_on_an_architecture_guideline() {
 }
 
 #[test]
-fn it_should_refuse_a_native_guideline_resting_on_a_premise() {
+fn it_should_refuse_a_former_native_guideline_resting_on_a_premise() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
-    seed(&mut omhl, vec![premise(PREMISE)]);
+    seed(
+        &mut omhl,
+        vec![
+            premise(PREMISE),
+            guideline(FORMER_NATIVE_GUIDELINE, "business"),
+        ],
+    );
 
-    let result = appended(&mut omhl, vec![rests_on(NATIVE_GUIDELINE, PREMISE)]);
+    let result = appended(&mut omhl, vec![rests_on(FORMER_NATIVE_GUIDELINE, PREMISE)]);
 
     assert_eq!(
         result,

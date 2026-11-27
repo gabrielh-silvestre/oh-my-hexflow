@@ -43,10 +43,10 @@ const BRANCH: &str = "feat/wi-w1__x";
 const GIT_DATE: &str = "2026-01-01T00:00:00Z";
 const WORK_ITEM: &str = r#"{"items":[{"body":{"kind":"node","id":"work-items.w1","type":"work-item","data":{"title":"First item","status":"open"}}}]}"#;
 const PREMISE: &str = r#"{"items":[{"body":{"kind":"node","id":"premises.p1","type":"premise","data":{"text":"Money is stored in cents.","status":"confirmed","kind":"business","work_item":"work-items.w1","confirmed_by":{"by":"person:ana","question":"How is money stored?","answer":"In cents."}}}}]}"#;
-const MECHANICAL_CHECK: &str = "blocking = true\nhow = \"Always passes.\"\nrun = [\"true\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-pr\"\n";
-const FAILING_CHECK: &str = "blocking = true\nhow = \"Always fails.\"\nrun = [\"sh\", \"-c\", \"echo first; echo second; echo boom >&2; exit 1\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-pr\"\n";
-const SOFT_CHECK: &str = "blocking = false\nhow = \"Fails but does not block.\"\nrun = [\"sh\", \"-c\", \"exit 1\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-pr\"\n";
-const GHOST_CHECK: &str = "blocking = true\nhow = \"Binary does not exist.\"\nrun = [\"omhl-ghost-binary\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-pr\"\n";
+const MECHANICAL_CHECK: &str = "blocking = true\nhow = \"Always passes.\"\nrun = [\"true\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-push\"\n";
+const FAILING_CHECK: &str = "blocking = true\nhow = \"Always fails.\"\nrun = [\"sh\", \"-c\", \"echo first; echo second; echo boom >&2; exit 1\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-push\"\n";
+const SOFT_CHECK: &str = "blocking = false\nhow = \"Fails but does not block.\"\nrun = [\"sh\", \"-c\", \"exit 1\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-push\"\n";
+const GHOST_CHECK: &str = "blocking = true\nhow = \"Binary does not exist.\"\nrun = [\"omhl-ghost-binary\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n\n[when]\nevent = \"before-push\"\n";
 const MANUAL_CHECK: &str =
     "blocking = false\nhow = \"Review it by hand.\"\n\n[when]\nevent = \"before-merge\"\n";
 const GUIDELINE: &str = "kind = \"business\"\ntext = \"Be brief.\"\n";
@@ -765,8 +765,8 @@ fn text_normalizer() -> Normalizer {
 
 #[test]
 fn it_should_match_check_run_text_durations_and_short_snapshot_against_placeholders() {
-    let expected = "✔ before-pr · work-items.w1 · recorded (git-commit <snapshot>)\n  ✘ checks.bad · blocking · exit 1 · <s>\n  ✔ checks.ok  passed  <ms>";
-    let obtained = "✔ before-pr · work-items.w1 · recorded (git-commit c43356d)\n  ✘ checks.bad · blocking · exit 1 · 2.6s\n  ✔ checks.ok  passed  12ms";
+    let expected = "✔ before-push · work-items.w1 · recorded (git-commit <snapshot>)\n  ✘ checks.bad · blocking · exit 1 · <s>\n  ✔ checks.ok  passed  <ms>";
+    let obtained = "✔ before-push · work-items.w1 · recorded (git-commit c43356d)\n  ✘ checks.bad · blocking · exit 1 · 2.6s\n  ✔ checks.ok  passed  12ms";
 
     assert!(text_normalizer().same(expected, obtained));
 }

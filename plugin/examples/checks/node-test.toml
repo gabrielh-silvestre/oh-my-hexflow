@@ -1,0 +1,7 @@
+concern = "test"
+variant = "suite"
+blocking = true
+run = ["npm", "test"]
+timeout_secs = 300
+expect = [{ exit = 0, outcome = "passed" }]
+when = { event = "before-push" }

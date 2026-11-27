@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use hexlog::{
-    AppendItem, AppendRequest, Author, Hexlog, ItemBody, Lineage, NativeNodes, NodeView, RecordId,
-    SemanticId, Snapshot, TenantId,
+    AppendItem, AppendRequest, Author, Hexlog, ItemBody, Lineage, NodeView, RecordId, SemanticId,
+    Snapshot, TenantId,
 };
 use serde_json::Value;
 
@@ -13,7 +13,6 @@ use crate::extensions::loosening::check_loosens;
 use crate::extensions::parse::GUIDELINE_KINDS;
 use crate::graphs::{WORK_ITEM_TYPES, namespace_of};
 use crate::mechanical::is_mechanical;
-use crate::native::NativeBase;
 use crate::probe::{ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 
 const LOADER_CLIENT: &str = "loader";
@@ -140,13 +139,19 @@ fn check_namespace(node: &NodeItem<'_>) -> Result<(), OmhlError> {
     }
 }
 
-fn native_guideline_endpoint(id: &SemanticId) -> Option<Endpoint> {
-    let native = NativeBase.lookup(id)?;
+fn check_check_labels(node: &NodeItem<'_>) -> Result<(), OmhlError> {
+    for key in ["concern", "variant"] {
+        let valid = node.field(key).is_none_or(|label| {
+            label
+                .bytes()
+                .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-'))
+        });
+        if !valid {
+            return Err(node.error(RuleCode::CheckLabelInvalid, &format!("body/data/{key}")));
+        }
+    }
 
-    (native.type_name.as_str() == "guideline").then(|| Endpoint {
-        type_name: "guideline".to_owned(),
-        kind: None,
-    })
+    Ok(())
 }
 
 fn check_guideline_kind(node: &NodeItem<'_>) -> Result<(), OmhlError> {
@@ -194,6 +199,7 @@ impl Guard<'_, '_> {
                 self.check_human_confirmation(node)
             }
             "check" => {
+                check_check_labels(node)?;
                 self.check_reactivation(node)?;
                 self.check_run_author(node)
             }
@@ -312,7 +318,7 @@ impl Guard<'_, '_> {
             return Ok(Some(node.clone()));
         }
         let Some(view) = self.hexlog.get(self.tenant, id)? else {
-            return Ok(native_guideline_endpoint(id));
+            return Ok(None);
         };
 
         Ok(Some(Endpoint {

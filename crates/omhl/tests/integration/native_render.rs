@@ -5,13 +5,11 @@ use omhl::project::ProjectError;
 use serde_json::json;
 use support::FakeNative;
 use support::appfx::AppFixture;
-use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING};
+use support::delivery_gate::{
+    ALL_NATIVE_CHECKS, CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING,
+};
 
 const RUN_TESTS: &str = "checks.run-tests";
-const GUIDELINES: [&str; 2] = [
-    "guidelines.one-decision-per-turn",
-    "guidelines.commit-policy",
-];
 
 fn text_of(fixture: &AppFixture) -> String {
     fixture.render()["text"]
@@ -60,12 +58,17 @@ fn it_should_print_no_native_check_block_when_the_resolver_enables_none() {
 }
 
 #[test]
-fn it_should_keep_the_native_guidelines_when_the_resolver_enables_none() {
+fn it_should_print_no_guideline_when_the_resolver_enables_none() {
     let fixture = AppFixture::new().with_native(FakeNative::enabling(&[]));
 
     let text = text_of(&fixture);
 
-    assert_eq!(headers(&text), GUIDELINES);
+    assert!(
+        !headers(&text)
+            .iter()
+            .any(|id| id.starts_with("guidelines.")),
+        "{text}"
+    );
 }
 
 #[test]
@@ -105,7 +108,7 @@ fn it_should_print_only_the_config_loosening_review_block_when_the_resolver_enab
             .collect::<Vec<_>>(),
         [CONFIG_LOOSENING_REVIEW]
     );
-    assert!(text.contains("- event: before-pr\n"), "{text}");
+    assert!(text.contains("- event: before-push\n"), "{text}");
 }
 
 #[test]
@@ -197,7 +200,12 @@ fn it_should_render_without_a_native_block_and_never_refuse_when_the_main_direct
     let text = text_of(&fixture);
 
     assert!(native_checks_in(&text).is_empty(), "{text}");
-    assert_eq!(headers(&text), GUIDELINES);
+    assert!(
+        !headers(&text)
+            .iter()
+            .any(|id| id.starts_with("guidelines.")),
+        "{text}"
+    );
 }
 
 #[test]
@@ -207,7 +215,12 @@ fn it_should_render_without_a_native_block_and_never_refuse_when_the_workflow_is
     let text = text_of(&fixture);
 
     assert!(native_checks_in(&text).is_empty(), "{text}");
-    assert_eq!(headers(&text), GUIDELINES);
+    assert!(
+        !headers(&text)
+            .iter()
+            .any(|id| id.starts_with("guidelines.")),
+        "{text}"
+    );
 }
 
 #[test]
@@ -246,7 +259,10 @@ fn it_should_warn_once_with_the_invalid_workflow_code_and_the_fix_as_next_step()
         panic!("one warning line expected: {text}");
     };
     assert!(line.contains("invalid-workflow-config"), "{line}");
-    assert!(line.contains("gate-pr and close refuse until"), "{line}");
+    assert!(
+        line.contains("gate-delivery and close refuse until"),
+        "{line}"
+    );
     assert!(line.contains("no native check is printed"), "{line}");
     assert!(line.contains("omhl load --dry-run"), "{line}");
     assert!(!line.contains("git init"), "{line}");

@@ -48,10 +48,10 @@ pub static PROFILE: Profile = Profile {
         Entry::new(Region::Data, "blocking", Shape::Derived)
             .under("results")
             .optional(),
-        Entry::new(Region::Data, "concern", Shape::Closed)
+        Entry::new(Region::Data, "concern", Shape::Literal)
             .under("results")
             .optional(),
-        Entry::new(Region::Data, "variant", Shape::Closed)
+        Entry::new(Region::Data, "variant", Shape::Literal)
             .under("results")
             .optional(),
         Entry::new(Region::Data, "exit_code", Shape::Derived)
@@ -76,6 +76,12 @@ pub static PROFILE: Profile = Profile {
             .under("warnings")
             .optional(),
         Entry::new(Region::Data, "hint", Shape::Closed)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "from", Shape::Closed)
+            .under("warnings")
+            .optional(),
+        Entry::new(Region::Data, "message", Shape::Literal)
             .under("warnings")
             .optional(),
     ],
@@ -142,10 +148,10 @@ pub static PROFILE: Profile = Profile {
         Entry::new(Region::Data, "timeout_secs", Shape::Derived)
             .under("context")
             .optional(),
-        Entry::new(Region::Data, "concern", Shape::Closed)
+        Entry::new(Region::Data, "concern", Shape::Literal)
             .under("context")
             .optional(),
-        Entry::new(Region::Data, "variant", Shape::Closed)
+        Entry::new(Region::Data, "variant", Shape::Literal)
             .under("context")
             .optional(),
         Entry::new(Region::Data, "exit_code", Shape::Literal)
@@ -409,7 +415,7 @@ fn result_line(result: &Value) -> Line {
     }
 }
 
-fn warning_line(warning: &Value, event: &str) -> Line {
+pub(super) fn warning_line(warning: &Value, event: &str) -> Line {
     let code = text(warning, "code");
     let message = match code.as_str() {
         "no-checks-for-event" => format!(
@@ -425,6 +431,21 @@ fn warning_line(warning: &Value, event: &str) -> Line {
             text(warning, "check"),
             byproduct_read_command(&text(warning, "check"), &text(warning, "work_item"))
         ),
+        "native-run-ignored" => format!(
+            "{code}: the table for {} in the {} workflow.toml is ignored. {}",
+            text(warning, "check"),
+            text(warning, "from"),
+            text(warning, "hint")
+        ),
+        "evaluated-workflow-unreadable" => format!(
+            "{code}: the workflow.toml read from {} is not valid UTF-8, so only the declaration in force counts.",
+            text(warning, "from")
+        ),
+        "invalid-workflow-config" => format!(
+            "{code}: no native check ran. {} {NEXT_LABEL} {}",
+            text(warning, "message"),
+            text(warning, "hint")
+        ),
         _ => code,
     };
 
@@ -437,7 +458,7 @@ fn warning_line(warning: &Value, event: &str) -> Line {
 fn next_step_after_success(event: &str) -> &'static str {
     match event {
         "before-commit" => "go on with the commit",
-        "before-pr" => "go on with the push",
+        "before-push" => "go on with the push",
         "before-merge" => "go on with the merge",
         _ => "go on",
     }

@@ -484,7 +484,7 @@ fn it_should_fail_the_gate_when_any_question_fails_and_keep_every_question_repor
     let head = chain_head(7, 'a');
 
     let report = GateReport::assemble(
-        "pr-gate",
+        "delivery-gate",
         head.clone(),
         vec![passing.clone(), failing.clone()],
     );
@@ -492,7 +492,7 @@ fn it_should_fail_the_gate_when_any_question_fails_and_keep_every_question_repor
     assert_eq!(
         report,
         GateReport {
-            gate: "pr-gate".to_owned(),
+            gate: "delivery-gate".to_owned(),
             passed: false,
             questions: vec![passing, failing],
             chain_head: head,
@@ -502,7 +502,7 @@ fn it_should_fail_the_gate_when_any_question_fails_and_keep_every_question_repor
 
 #[test]
 fn it_should_not_pass_a_gate_without_questions() {
-    let report = GateReport::assemble("pr-gate", chain_head(7, 'a'), Vec::new());
+    let report = GateReport::assemble("delivery-gate", chain_head(7, 'a'), Vec::new());
 
     assert!(!report.passed);
 }

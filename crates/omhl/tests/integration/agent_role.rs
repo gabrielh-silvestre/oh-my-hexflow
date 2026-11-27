@@ -6,14 +6,14 @@ use hexlog::{AppendItem, AppendRequest, Author, RecordId};
 use omhl::error::OmhlError;
 use omhl::facade::Omhl;
 use serde_json::{Value, json};
+use support::delivery_gate::{
+    ANCHOR, CRITIC_DECISION, DECISION, PREMISE, anchor_decision, confirmed_premise_data,
+    relation_item, relation_retirement_item, seed_contradicted_decision, seed_critic_contradiction,
+};
 use support::omhl::{
     OmhlHarness, PR_7, RUN_TESTS, append_as, append_ok, append_ok_as, attestation_item, check_data,
     decision_data, node_item, premise_data, pull_request_data, record_id_of, refusal, request,
     retirement_item, revision_item, rule_code, seed_pull_request, work_item_data,
-};
-use support::pr_gate::{
-    ANCHOR, CRITIC_DECISION, DECISION, PREMISE, anchor_decision, confirmed_premise_data,
-    relation_item, relation_retirement_item, seed_contradicted_decision, seed_critic_contradiction,
 };
 use support::project::Project;
 use support::run::{Run, run_omhl};
@@ -384,7 +384,7 @@ fn it_should_refuse_a_check_appended_by_any_ported_role() {
     let harness = OmhlHarness::new(FakeProbe::failing());
     let mut omhl = harness.open();
     let check_of = |_role: &str| {
-        let data = check_data("before-pr", "Read the diff", true);
+        let data = check_data("before-push", "Read the diff", true);
 
         vec![node_item("checks.read-diff", "check", data)]
     };

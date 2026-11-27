@@ -21,12 +21,12 @@ const ACTIVE: [(&str, &[&str]); 23] = [
         ],
     ),
     ("render", &["render"]),
-    ("gate-pr", &["gate-pr", WORK_ITEM]),
+    ("gate-delivery", &["gate-delivery", WORK_ITEM]),
     ("close", &["close", WORK_ITEM]),
     ("verify", &["verify"]),
     ("load", &["load"]),
     ("project", &["project"]),
-    ("check run", &["check", "run", "--event", "before-pr"]),
+    ("check run", &["check", "run", "--event", "before-push"]),
     ("check sweep", &["check", "sweep"]),
     ("check retire", &["check", "retire", "checks.ledger-audit"]),
     (
@@ -244,7 +244,7 @@ fn it_should_print_json_when_the_format_after_the_subcommand_is_json_and_the_one
 fn it_should_exit_two_for_format_text_on_check_run() {
     let bare = Bare::new();
 
-    let output = bare.run(&["check", "run", "--event", "before-pr", "--format", "text"]);
+    let output = bare.run(&["check", "run", "--event", "before-push", "--format", "text"]);
 
     assert_eq!(output.code, Some(2), "stdout: {}", output.stdout);
     assert!(output.stdout.is_empty(), "stdout stays empty");

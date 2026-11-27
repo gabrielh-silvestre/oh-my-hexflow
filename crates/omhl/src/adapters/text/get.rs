@@ -31,8 +31,8 @@ pub static PROFILE: Profile = Profile {
         Entry::data("check", "matcher", Shape::Literal)
             .under("when")
             .optional(),
-        Entry::data("check", "concern", Shape::Closed).optional(),
-        Entry::data("check", "variant", Shape::Closed).optional(),
+        Entry::data("check", "concern", Shape::Literal).optional(),
+        Entry::data("check", "variant", Shape::Literal).optional(),
         Entry::data("check", "run", Shape::Closed).optional(),
         Entry::data("check", "timeout_secs", Shape::Literal).optional(),
         Entry::data("check", "exit", Shape::Derived)

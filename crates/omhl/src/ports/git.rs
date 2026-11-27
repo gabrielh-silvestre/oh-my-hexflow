@@ -43,6 +43,49 @@ pub struct GitBlob {
     pub content: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlobReason {
+    Link,
+    TooLarge,
+    Absent,
+    NotUtf8,
+}
+
+#[derive(Clone, Copy)]
+pub enum WorkflowSource<'a> {
+    Rev(&'a str),
+    Index,
+}
+
+const WORKFLOW_PATH: &str = ".omhl/workflow.toml";
+
+/// Lê `.omhl/workflow.toml` da origem; só arquivo regular, UTF-8 e dentro do limite vira texto.
+pub fn workflow_text(probe: &GitProbe, source: WorkflowSource<'_>) -> Result<String, BlobReason> {
+    let blob = match source {
+        WorkflowSource::Rev(rev) => probe.read_blob(rev, WORKFLOW_PATH),
+        WorkflowSource::Index => probe.read_index_blob(WORKFLOW_PATH),
+    };
+    let Ok(Some(blob)) = blob else {
+        return Err(BlobReason::Absent);
+    };
+    if !matches!(blob.mode.as_str(), "100644" | "100755") {
+        return Err(BlobReason::Link);
+    }
+    if blob.size > EXT_FILE_MAX_BYTES {
+        return Err(BlobReason::TooLarge);
+    }
+    String::from_utf8(blob.content).map_err(|_| BlobReason::NotUtf8)
+}
+
+/// Campos antes do `\t` de uma linha de `ls-tree` ou `ls-files -s`.
+fn entry_fields(entry: &str) -> Vec<&str> {
+    entry
+        .split_once('\t')
+        .map_or(entry, |(meta, _)| meta)
+        .split(' ')
+        .collect()
+}
+
 struct GitOutput {
     status: ExitStatus,
     stdout: Vec<u8>,
@@ -277,15 +320,32 @@ impl GitProbe {
         let Some(entry) = listing.split('\0').find(|entry| !entry.is_empty()) else {
             return Ok(None);
         };
-        let fields: Vec<&str> = entry
-            .split_once('\t')
-            .map_or(entry, |(meta, _)| meta)
-            .split(' ')
-            .collect();
-        let [mode, kind, oid] = fields[..] else {
+        let [mode, kind, oid] = entry_fields(entry)[..] else {
             return Err(error("unexpected git output"));
         };
-        if kind != "blob" {
+        self.load_blob(mode, oid, kind == "blob")
+    }
+
+    /// Como `read_blob`, mas lê a entrada preparada no índice (`GIT_INDEX_FILE` incluído).
+    pub fn read_index_blob(&self, path: &str) -> Result<Option<GitBlob>, ProbeError> {
+        let listing = utf8_output(self.run_ok(self.git(&["ls-files", "-s", "-z", "--", path]))?)?;
+        let Some(entry) = listing.split('\0').find(|entry| !entry.is_empty()) else {
+            return Ok(None);
+        };
+        let [mode, oid, _stage] = entry_fields(entry)[..] else {
+            return Err(error("unexpected git output"));
+        };
+        self.load_blob(mode, oid, mode != "160000")
+    }
+
+    /// Entrada que não é blob (link de submódulo, árvore) volta com tamanho 0 e sem conteúdo.
+    fn load_blob(
+        &self,
+        mode: &str,
+        oid: &str,
+        is_blob: bool,
+    ) -> Result<Option<GitBlob>, ProbeError> {
+        if !is_blob {
             return Ok(Some(GitBlob {
                 mode: mode.to_owned(),
                 size: 0,

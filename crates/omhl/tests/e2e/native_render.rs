@@ -7,16 +7,14 @@ use std::path::Path;
 use serde_json::{Value, json};
 use support::child::{Cmd, omhl, omhl_json};
 use support::cycle::{check_file, check_repo};
+use support::delivery_gate::{
+    ALL_NATIVE_CHECKS, CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING,
+};
 use support::ext::ExtTree;
 use support::git::git_ok;
 use support::omhl::RUN_TESTS;
-use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING};
 use support::project::Project;
 
-const GUIDELINES: [&str; 2] = [
-    "guidelines.one-decision-per-turn",
-    "guidelines.commit-policy",
-];
 const LINT: &str = "checks.lint";
 const LINT_TOML: &str =
     "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
@@ -133,12 +131,12 @@ fn repo_with_lint(natives: &[&str]) -> Project {
 // CA-003: o `render` e o `additionalContext` imprimem só o bloco dos checks ligados
 
 #[test]
-fn it_should_print_no_native_check_block_and_keep_the_guidelines_without_a_workflow_file() {
+fn it_should_print_no_native_check_block_and_print_no_guideline_without_a_workflow_file() {
     let project = Project::with_workflow(None);
 
     for text in both_texts(&project) {
         assert!(native_checks_in(&text).is_empty(), "{text}");
-        assert_eq!(headers(&text), GUIDELINES, "{text}");
+        assert!(headers(&text).is_empty(), "{text}");
         assert!(text.contains("## Checks\n"), "{text}");
     }
 }
@@ -194,7 +192,7 @@ fn it_should_print_the_config_loosening_review_block_only_when_it_is_enabled() {
             block(&text, CONFIG_LOOSENING_REVIEW)[..3],
             [
                 &format!("### {CONFIG_LOOSENING_REVIEW}")[..],
-                "- event: before-pr",
+                "- event: before-push",
                 "- blocking: true"
             ],
             "{text}"
@@ -287,7 +285,7 @@ fn it_should_keep_running_the_check_of_the_event_with_an_after_to_a_disabled_nat
     let project = check_repo(&[("payroll-format", &toml)]);
     let appended = append_after(&project, "checks.payroll-format", RUN_TESTS);
 
-    let run = in_project(&project, &["check", "run", "--event", "before-pr"]).run();
+    let run = in_project(&project, &["check", "run", "--event", "before-push"]).run();
 
     assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
     assert_eq!(run.code, Some(0), "stderr: {}", run.stderr);
@@ -397,7 +395,7 @@ fn assert_not_accepted(project: &Project) {
     for text in both_texts(project) {
         let warnings = warnings_in(&text);
         assert!(native_checks_in(&text).is_empty(), "{text}");
-        assert_eq!(headers(&text), GUIDELINES, "{text}");
+        assert!(headers(&text).is_empty(), "{text}");
         assert_eq!(warnings.len(), 1, "{text}");
         assert!(warnings[0].contains("invalid-workflow-config"), "{text}");
         assert_eq!(text.matches("invalid-workflow-config").count(), 1, "{text}");
@@ -492,7 +490,7 @@ fn it_should_name_the_fix_of_the_file_as_the_next_step_of_the_invalid_workflow_l
         let line = warnings_in(&text)[0];
         assert!(line.contains("omhl load --dry-run"), "{line}");
         assert!(
-            line.contains("gate-pr and close refuse until it is fixed"),
+            line.contains("gate-delivery and close refuse until it is fixed"),
             "{line}"
         );
         assert!(line.contains("no native check is printed"), "{line}");

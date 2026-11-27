@@ -41,7 +41,7 @@ pub enum CommandKey {
     Append,
     Attest,
     Render,
-    GatePr,
+    GateDelivery,
     GateWorktree,
     Close,
     Verify,
@@ -75,7 +75,7 @@ impl CommandKey {
         Self::Append,
         Self::Attest,
         Self::Render,
-        Self::GatePr,
+        Self::GateDelivery,
         Self::GateWorktree,
         Self::Close,
         Self::Verify,
@@ -133,7 +133,7 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::Attest => Some(&BaseRenderer(simple::Attest)),
         CommandKey::Load => Some(&BaseRenderer(load::Load)),
         CommandKey::SpecValidate => Some(&BaseRenderer(spec_validate::SpecValidate)),
-        CommandKey::GatePr => Some(&BaseRenderer(gate::GatePr)),
+        CommandKey::GateDelivery => Some(&BaseRenderer(gate::GateDelivery)),
         CommandKey::Close => Some(&BaseRenderer(gate::Close)),
         CommandKey::GateWorktree
         | CommandKey::HooksPostCommit
@@ -166,7 +166,7 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::ByproductPrune => &simple::BYPRODUCT_PRUNE_PROFILE,
         CommandKey::Append => &simple::APPEND_PROFILE,
         CommandKey::Attest => &simple::ATTEST_PROFILE,
-        CommandKey::GatePr => &gate::GATE_PR_PROFILE,
+        CommandKey::GateDelivery => &gate::GATE_DELIVERY_PROFILE,
         CommandKey::Close => &gate::CLOSE_PROFILE,
         CommandKey::Load => &load::PROFILE,
         CommandKey::SpecValidate => &spec_validate::PROFILE,
@@ -222,7 +222,7 @@ pub fn deferred(key: CommandKey) -> bool {
         | CommandKey::Append
         | CommandKey::Attest
         | CommandKey::Render
-        | CommandKey::GatePr
+        | CommandKey::GateDelivery
         | CommandKey::Close
         | CommandKey::Verify
         | CommandKey::Load

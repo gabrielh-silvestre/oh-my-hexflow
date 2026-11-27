@@ -24,7 +24,7 @@ Segue a decisão de projeto sobre caixas cinzas: caixa cinza é um módulo profu
 
 **Profundidade.** É o maior consumidor do vocabulário de tipos (seção 5, item 1).
 
-### 3.8 Aninhada: `omhl::pr_gate`
+### 3.8 Aninhada: `omhl::delivery_gate`
 
 **Profundidade.** Média: política em forma de função. Interface e interior têm tamanho parecido; é aceitável porque é a tabela de política do plugin e muda por motivo próprio.
 
@@ -108,7 +108,7 @@ O `skill_examples` executa `check sweep`, que varre o `/proc` inteiro e vale par
 
 3. **Paginação e constantes duplicadas (corte).** Corte: `Omhl` expõe uma leitura de todos os nodes de um tipo reaproveitando `HexlogSource`. Trade-off: uma operação a mais na facade, em troca de um só laço.
 
-4. **A sonda do git vive em mais de uma camada (dívida).** Aceitável porque `evaluate_pr_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito. Vira corte se aparecer um caso em que as duas leituras discordem.
+4. **A sonda do git vive em mais de uma camada (dívida).** Aceitável porque `evaluate_delivery_gate(tenant, work_item, &snapshot)` recebe o snapshot explícito. Vira corte se aparecer um caso em que as duas leituras discordem.
 
 5. **Nome e formato de porta dentro de `app` (corte).** Corte: o adapter traduz o payload para um struct neutro e passa o `Caller` pronto; `app` deixa de nomear a porta. Trade-off: não medido além de mover os nomes de `Caller` e o parse do payload.
 

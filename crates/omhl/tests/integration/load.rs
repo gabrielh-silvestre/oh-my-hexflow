@@ -6,6 +6,7 @@ use hexlog::{AppendRequest, ErrorCode};
 use omhl::error::OmhlError;
 use omhl::extensions::loosening::check_loosens;
 use omhl::mechanical::spec::{CheckSpec, SpecError};
+use omhl::mechanical::spec_digest;
 use serde_json::{Value, json};
 use support::appfx::AppFixture;
 use support::omhl::{OmhlHarness, acme, node_item};
@@ -598,7 +599,7 @@ run = ["true"]
 timeout_secs = 60
 expect = [{ exit = 0, stdout = "(unclosed", outcome = "passed" }]
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 
 type CatalogVerdict = Result<(), Vec<(String, String)>>;
@@ -700,6 +701,53 @@ fn it_should_load_a_mechanical_check_into_the_database_with_all_its_fields() {
 
     assert_eq!(report["created"], json!(["checks.lint"]));
     assert_eq!(fx.get("checks.lint")["data"], report_lint_data());
+}
+
+const MOVABLE_TOML: &str = r#"blocking = true
+how = "Run the suite"
+run = ["true"]
+timeout_secs = 60
+expect = [{ exit = 0, outcome = "passed" }]
+
+[when]
+event = "before-commit"
+"#;
+
+#[test]
+fn it_should_record_a_new_revision_when_a_check_file_moves_to_before_push() {
+    let fx = AppFixture::new();
+    fx.ext().check("suite", MOVABLE_TOML);
+    loaded(&fx, false);
+    fx.ext().check(
+        "suite",
+        &MOVABLE_TOML.replace("before-commit", "before-push"),
+    );
+
+    let report = loaded(&fx, false);
+
+    assert_eq!(
+        (
+            report["revised"].clone(),
+            fx.get("checks.suite")["data"]["when"]["event"].clone()
+        ),
+        (json!(["checks.suite"]), json!("before-push"))
+    );
+}
+
+#[test]
+fn it_should_keep_the_spec_digest_of_a_check_that_only_changes_event() {
+    let moved = MOVABLE_TOML.replace("before-commit", "before-push");
+    let digests = |toml: &str| {
+        let fx = AppFixture::new();
+        fx.ext().check("suite", toml);
+        loaded(&fx, false);
+
+        spec_digest(&fx.get("checks.suite")["data"])
+    };
+
+    let found = (digests(MOVABLE_TOML), digests(&moved));
+
+    assert_eq!(found.0, found.1);
 }
 
 #[test]
@@ -994,7 +1042,7 @@ fn it_should_not_classify_blocking_turned_on_as_a_loosening() {
 #[test]
 fn it_should_not_classify_a_move_between_required_events_as_a_loosening() {
     let before = gate_data(true, "before-commit", None);
-    let after = gate_data(true, "before-pr", None);
+    let after = gate_data(true, "before-push", None);
 
     assert!(!check_loosens(&before, &after));
 }
@@ -1005,4 +1053,86 @@ fn it_should_not_classify_a_non_blocking_check_moved_out_of_the_required_events_
     let after = gate_data(false, "after-merge", None);
 
     assert!(!check_loosens(&before, &after));
+}
+
+// Eventos de um check de projeto
+
+const RUNNABLE: [&str; 3] = ["before-commit", "before-push", "before-merge"];
+const INSTRUCTION: &str = "before-publishing-review-comments";
+
+fn event_toml(event: &str, blocking: bool, run: bool) -> String {
+    let run_lines = if run {
+        "run = [\"true\"]\ntimeout_secs = 60\nexpect = [{ exit = 0, outcome = \"passed\" }]\n"
+    } else {
+        ""
+    };
+
+    format!("blocking = {blocking}\nhow = \"Run it\"\n{run_lines}\n[when]\nevent = \"{event}\"\n")
+}
+
+fn load_of(event: &str, blocking: bool, run: bool) -> Result<Value, Value> {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &event_toml(event, blocking, run));
+
+    fx.load(false)
+}
+
+#[test]
+fn it_should_accept_a_project_check_on_each_runnable_event_with_and_without_run() {
+    let refusals: Vec<(&str, bool, bool)> = RUNNABLE
+        .iter()
+        .flat_map(|event| [(*event, true), (*event, false)])
+        .flat_map(|(event, run)| [(event, true, run), (event, false, run)])
+        .filter(|(event, blocking, run)| load_of(event, *blocking, *run).is_err())
+        .collect();
+
+    assert_eq!(refusals, vec![]);
+}
+
+#[test]
+fn it_should_accept_an_instruction_event_check_without_run_blocking_or_not() {
+    let refusals: Vec<bool> = [true, false]
+        .into_iter()
+        .filter(|blocking| load_of(INSTRUCTION, *blocking, false).is_err())
+        .collect();
+
+    assert_eq!(refusals, Vec::<bool>::new());
+}
+
+#[test]
+fn it_should_refuse_an_instruction_event_check_with_run_as_not_runnable() {
+    let codes: Vec<Vec<(String, String)>> = [true, false]
+        .into_iter()
+        .map(|blocking| detail_keys(&load_of(INSTRUCTION, blocking, true).expect_err("refused")))
+        .collect();
+
+    let expected = vec![key(A_TOML_PATH, "event-not-runnable")];
+    assert_eq!(codes, vec![expected.clone(), expected]);
+}
+
+#[test]
+fn it_should_refuse_an_invented_event_listing_the_four_event_names() {
+    let error = load_of("before-lunch", true, false).expect_err("refused");
+
+    let detail = &details_of(&error)[0];
+
+    assert_eq!(detail["code"], json!("event-unsupported"));
+    for name in ["before-commit", "before-push", "before-merge", INSTRUCTION] {
+        assert!(
+            detail["message"].as_str().is_some_and(|m| m.contains(name)),
+            "{name} is missing from {detail}"
+        );
+    }
+}
+
+#[test]
+fn it_should_refuse_moving_a_blocking_check_from_before_push_to_the_instruction_event() {
+    let fx = AppFixture::new();
+    fx.ext().check("a", &event_toml("before-push", true, false));
+    loaded(&fx, false);
+    fx.ext().check("a", &event_toml(INSTRUCTION, true, false));
+
+    let error = refused(&fx);
+
+    assert_eq!(refused_code(&error), "check-loosening-refused");
 }
