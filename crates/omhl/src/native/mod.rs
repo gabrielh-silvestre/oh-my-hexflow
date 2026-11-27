@@ -43,7 +43,7 @@ static CHECKS: [NativeCheck; 4] = [
     NativeCheck {
         id: CONFIG_LOOSENING_REVIEW_ID,
         event: "before-pr",
-        how: "have oh-my-hexflow:code-reviewer review every loosening of a check or gate configuration in .omhl/workflow.toml or .omhl/checks/ in the diff, and let the human attest it before opening the PR",
+        how: "have oh-my-hexflow:code-reviewer review every loosening of a check or gate configuration in .omhl/workflow.toml or .omhl/checks/ in the diff, fix the findings and let the human attest it before opening the PR",
         blocking: true,
     },
 ];
