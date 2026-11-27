@@ -13,6 +13,7 @@ use crate::probe::{
     DevelopMark, GIT_TIMED_OUT, GitVersion, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe,
     TreeSource,
 };
+use crate::project::layout::EXT_FILE_MAX_BYTES;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 /// O total das chamadas de git de uma execução do hook `spec-lock`; menor que o `timeout` do `hooks.json`.
@@ -32,6 +33,14 @@ pub struct GitProbe {
     /// Prazo dividido entre todas as chamadas desta sonda.
     deadline: Option<Instant>,
     index_file: Option<PathBuf>,
+}
+
+/// Um arquivo como o commit o grava; `content` só vem lido até `EXT_FILE_MAX_BYTES`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitBlob {
+    pub mode: String,
+    pub size: u64,
+    pub content: Vec<u8>,
 }
 
 struct GitOutput {
@@ -253,6 +262,50 @@ impl GitProbe {
             .filter(|name| !name.is_empty())
             .map(str::to_owned)
             .collect())
+    }
+
+    /// `Ok(None)` quando o caminho não existe no commit; `Err` quando `rev` não resolve.
+    pub fn read_blob(&self, rev: &str, path: &str) -> Result<Option<GitBlob>, ProbeError> {
+        let listing = utf8_output(self.run_ok(self.git(&[
+            "ls-tree",
+            "-z",
+            "--full-tree",
+            rev,
+            "--",
+            path,
+        ]))?)?;
+        let Some(entry) = listing.split('\0').find(|entry| !entry.is_empty()) else {
+            return Ok(None);
+        };
+        let fields: Vec<&str> = entry
+            .split_once('\t')
+            .map_or(entry, |(meta, _)| meta)
+            .split(' ')
+            .collect();
+        let [mode, kind, oid] = fields[..] else {
+            return Err(error("unexpected git output"));
+        };
+        if kind != "blob" {
+            return Ok(Some(GitBlob {
+                mode: mode.to_owned(),
+                size: 0,
+                content: Vec::new(),
+            }));
+        }
+        let size: u64 = self
+            .line(&["cat-file", "-s", oid])?
+            .parse()
+            .map_err(|_| error("unexpected git output"))?;
+        let content = match size <= EXT_FILE_MAX_BYTES {
+            true => self.run_ok(self.git(&["cat-file", "blob", oid]))?,
+            false => Vec::new(),
+        };
+
+        Ok(Some(GitBlob {
+            mode: mode.to_owned(),
+            size,
+            content,
+        }))
     }
 
     pub fn current_branch(&self) -> Result<Option<String>, ProbeError> {

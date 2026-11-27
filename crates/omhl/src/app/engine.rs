@@ -25,10 +25,10 @@ use crate::pr_gate::{Abandonment, FailedDelivery, Forcing, GateSnapshots, Integr
 use crate::probe::{
     DevelopMark, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
 };
-use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
+use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
-use crate::workflow::config::{NativeConfig, RequireAtom};
+use crate::workflow::config::{NativeConfig, RequireAtom, parse_workflow};
 use crate::workflow::matrix::unsatisfied_atoms;
 use crate::workflow::retro::{DeliveryFailure, Retro, RetroAbandonment, retro};
 use crate::workflow::work_type::{effective_type, loosens};
@@ -207,9 +207,10 @@ impl Engine<'_> {
     fn gate_pr(&mut self, work_item: &str, base: Option<&str>) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshots = self.probe_gate_snapshots()?;
-        let enabled = self.resolve_native()?;
+        let (enabled, repair) = self.resolve_native_for_pr(base)?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
-        let (review_base, review_required) = self.review_base(base, &enabled)?;
+        let (mut review_base, review_required) = self.review_base(base, &enabled)?;
+        mark_repair(&mut review_base, repair);
         let report = self.omhl.evaluate_pr_gate(
             &self.tenant,
             &work_item,
@@ -233,10 +234,11 @@ impl Engine<'_> {
     ) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshots = self.probe_gate_snapshots()?;
-        let enabled = self.resolve_native()?;
+        let (enabled, repair) = self.resolve_native_for_pr(base)?;
         self.omhl.ensure_open(&self.tenant, &work_item)?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
-        let (review_base, review_required) = self.review_base(base, &enabled)?;
+        let (mut review_base, review_required) = self.review_base(base, &enabled)?;
+        mark_repair(&mut review_base, repair);
         // Lida antes de gravar: o `close` nunca devolve erro depois do record de fechamento.
         let mut facts = self.retro_facts(&work_item, false)?;
         let author = caller.author();
@@ -453,6 +455,39 @@ impl Engine<'_> {
         })
     }
 
+    /// Com o arquivo principal ilegível, só o PR que traz um `.omhl/workflow.toml` aceitável no `HEAD` segue, com a revisão exigida.
+    fn resolve_native_for_pr(&self, base: Option<&str>) -> Result<(NativeConfig, bool), AppError> {
+        match self.native_refusal() {
+            Ok(config) => Ok((config, false)),
+            Err(NativeRefusal::MainDirUnknown) => Err(AppError::main_dir_unknown()),
+            Err(NativeRefusal::InvalidWorkflow(error)) => base
+                .and_then(|base| self.repaired_native(base))
+                .map(|config| (config, true))
+                .ok_or_else(|| AppError::invalid_workflow(error)),
+        }
+    }
+
+    fn repaired_native(&self, base: &str) -> Option<NativeConfig> {
+        let git = GitProbe::new(self.project_root.as_deref()?);
+        let merge_base = git.merge_base(base).ok()??;
+        let changed = git.changed_names(&merge_base).ok()?;
+        if !review_trigger_paths(&changed).contains(&REPAIR_PATH.to_owned()) {
+            return None;
+        }
+        let blob = git.read_blob("HEAD", REPAIR_PATH).ok()??;
+        if !matches!(blob.mode.as_str(), "100644" | "100755") || blob.size > EXT_FILE_MAX_BYTES {
+            return None;
+        }
+        let config = parse_workflow(Path::new(REPAIR_PATH), &blob.content).ok()?;
+        let mut checks = config.native.checks;
+        checks.insert(CONFIG_LOOSENING_REVIEW_ID);
+
+        Some(NativeConfig {
+            checks,
+            prefixes: config.prefixes,
+        })
+    }
+
     /// Lê uma vez o que o tipo do item exige: o tipo, os átomos e as premissas sob uma mesma cabeça.
     fn work_requirements(
         &mut self,
@@ -616,4 +651,13 @@ impl Engine<'_> {
 
 pub(super) fn require_project_root(root: Option<&Path>) -> Result<&Path, AppError> {
     root.ok_or_else(AppError::no_project_root)
+}
+
+const REPAIR_PATH: &str = ".omhl/workflow.toml";
+const REPAIR_WARNING: &str = "the main workflow file is not accepted; this pull request repairs it, so its HEAD version was used and the review is required";
+
+fn mark_repair(review_base: &mut Value, repair: bool) {
+    if repair {
+        review_base["warning"] = json!(REPAIR_WARNING);
+    }
 }

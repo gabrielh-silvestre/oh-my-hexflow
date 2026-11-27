@@ -203,6 +203,11 @@ fn review_base_line(value: &Value) -> Option<Line> {
         None => "no base".to_owned(),
     };
 
+    let text = match review["warning"].as_str() {
+        Some(warning) => format!("{text}; warning: {warning}"),
+        None => text,
+    };
+
     Some(field(0, "review_base", text))
 }
 

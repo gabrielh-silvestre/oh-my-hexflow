@@ -1,7 +1,9 @@
 use crate::support;
 
 use ::omhl::native::review_trigger_paths;
-use ::omhl::ports::git::GitProbe;
+use ::omhl::ports::git::{GitBlob, GitProbe};
+use ::omhl::probe::ProbeError;
+use ::omhl::project::layout::EXT_FILE_MAX_BYTES;
 use support::git::GitRepo;
 
 /// `main` com um commit; o branch `topic` sai dele.
@@ -137,4 +139,109 @@ fn it_should_not_require_the_review_when_only_a_source_file_changed() {
     let triggers = triggers_after(&repo, |repo| repo.write("src/a.rs", "changed\n"));
 
     assert!(triggers.is_empty(), "{triggers:?}");
+}
+
+fn head_blob(repo: &GitRepo, path: &str) -> Result<Option<GitBlob>, ProbeError> {
+    GitProbe::new(repo.path()).read_blob("HEAD", path)
+}
+
+#[test]
+fn it_should_read_the_mode_size_and_content_of_a_regular_file_at_head() {
+    let (repo, _) = repo_on_topic();
+    repo.write(".omhl/workflow.toml", "version = 1\n");
+    repo.commit_all("add the workflow");
+
+    let blob = head_blob(&repo, ".omhl/workflow.toml");
+
+    assert_eq!(
+        blob,
+        Ok(Some(GitBlob {
+            mode: "100644".to_owned(),
+            size: 12,
+            content: b"version = 1\n".to_vec(),
+        }))
+    );
+}
+
+#[test]
+fn it_should_read_the_committed_version_not_the_working_tree_one() {
+    let (repo, _) = repo_on_topic();
+    repo.write(".omhl/workflow.toml", "committed\n");
+    repo.commit_all("add the workflow");
+    repo.write(".omhl/workflow.toml", "edited after the commit\n");
+
+    let blob = head_blob(&repo, ".omhl/workflow.toml");
+
+    assert_eq!(
+        blob.map(|blob| blob.map(|blob| blob.content)),
+        Ok(Some(b"committed\n".to_vec()))
+    );
+}
+
+#[test]
+fn it_should_report_the_symlink_mode_of_a_linked_file_at_head() {
+    let (repo, _) = repo_on_topic();
+    // The index entry must point at a blob the object store already holds.
+    repo.git(&["hash-object", "-w", "/dev/null"]);
+    repo.git(&[
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        "120000,e69de29bb2d1d6434b8b29ae775ad8c2e48c5391,.omhl/workflow.toml",
+    ]);
+    repo.git(&["commit", "-q", "-m", "link"]);
+
+    let blob = head_blob(&repo, ".omhl/workflow.toml");
+
+    assert_eq!(
+        blob.map(|blob| blob.map(|blob| blob.mode)),
+        Ok(Some("120000".to_owned()))
+    );
+}
+
+#[test]
+fn it_should_report_the_full_size_of_a_file_larger_than_the_extension_limit() {
+    let (repo, _) = repo_on_topic();
+    let big = "a".repeat(EXT_FILE_MAX_BYTES as usize + 1);
+    repo.write(".omhl/workflow.toml", &big);
+    repo.commit_all("add a large workflow");
+
+    let blob = head_blob(&repo, ".omhl/workflow.toml");
+
+    assert_eq!(
+        blob.map(|blob| blob.map(|blob| blob.size)),
+        Ok(Some(EXT_FILE_MAX_BYTES + 1))
+    );
+}
+
+#[test]
+fn it_should_answer_none_for_a_path_that_is_not_in_the_head_commit() {
+    let (repo, _) = repo_on_topic();
+
+    let blob = head_blob(&repo, ".omhl/workflow.toml");
+
+    assert_eq!(blob, Ok(None));
+}
+
+#[test]
+fn it_should_fail_reading_a_blob_when_the_ref_does_not_exist() {
+    let (repo, _) = repo_on_topic();
+
+    let blob = GitProbe::new(repo.path()).read_blob("no-such-ref", "src/a.rs");
+
+    assert!(blob.is_err(), "{blob:?}");
+}
+
+#[test]
+fn it_should_require_the_review_when_a_change_only_tightens_blocking_in_a_check_file() {
+    let (repo, _) = repo_on_topic();
+    repo.write(".omhl/checks/x.toml", "blocking = false\n");
+    repo.commit_all("add the check on main");
+    repo.git(&["branch", "-f", "main"]);
+
+    let triggers = triggers_after(&repo, |repo| {
+        repo.write(".omhl/checks/x.toml", "blocking = true\n")
+    });
+
+    assert_eq!(triggers, [".omhl/checks/x.toml"]);
 }

@@ -1,6 +1,7 @@
 use crate::support;
 
 use std::fs;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use support::child::{Cmd, Output, omhl_json};
@@ -404,4 +405,186 @@ fn it_should_keep_the_review_required_when_the_evaluated_commit_turns_it_off_in_
     let review = review_question(&gate).expect("the review question is in the gate");
     assert_eq!(review["passed"], json!(false));
     fs::remove_dir_all(linked).expect("the worktree is removed");
+}
+
+const BROKEN_WORKFLOW: &str = "version = 1\ncolour = true\n";
+const REPAIRED_WORKFLOW: &str =
+    "# repaired\nversion = 1\n\n[native]\nchecks = [\"checks.config-loosening-review\"]\n";
+const RUN_TESTS: &str = "checks.run-tests";
+
+/// A worktree `feat/wi-w1__x` com um commit; `change` roda dentro dela antes do commit.
+fn worktree_with_commit(project: &Project, change: impl FnOnce(&Path)) -> PathBuf {
+    let linked = project.dir().with_extension("linked");
+    git_ok(
+        project.dir(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feat/wi-w1__x",
+            linked.to_str().expect("utf-8"),
+        ],
+    );
+    change(&linked);
+    git_ok(&linked, &["add", "-A"]);
+    git_ok(&linked, &["commit", "-q", "-m", "the pull request"]);
+
+    linked
+}
+
+fn write_in(dir: &Path, rel: &str, bytes: impl AsRef<[u8]>) {
+    let target = dir.join(rel);
+    fs::create_dir_all(target.parent().expect("a parent")).expect("the folder is created");
+    let _ = fs::remove_file(&target);
+    fs::write(target, bytes).expect("the file is written");
+}
+
+/// O arquivo do diretório principal fica ilegível depois do commit do PR: a worktree já tem o seu.
+fn break_main_workflow(project: &Project) {
+    write_in(project.dir(), ".omhl/workflow.toml", BROKEN_WORKFLOW);
+}
+
+fn run_in(project: &Project, linked: &Path, args: &[&str]) -> Output {
+    cmd(project, args).cwd(linked).run()
+}
+
+fn repair_pr_with(head_workflow: impl FnOnce(&Path)) -> (Project, PathBuf) {
+    let project = project_with_review(true);
+    let linked = worktree_with_commit(&project, head_workflow);
+    break_main_workflow(&project);
+
+    (project, linked)
+}
+
+fn assert_refused_as_invalid_workflow(project: &Project, linked: &Path, args: &[&str]) {
+    for command in COMMANDS {
+        let mut full = vec![command, W1];
+        full.extend_from_slice(args);
+
+        assert_refused(&run_in(project, linked, &full), "invalid-workflow-config");
+    }
+}
+
+#[test]
+fn it_should_keep_invalid_workflow_config_for_a_normal_pull_request_when_the_main_file_is_unreadable()
+ {
+    let (project, linked) = repair_pr_with(|dir| write_in(dir, "src/a.rs", "changed\n"));
+
+    assert_refused_as_invalid_workflow(&project, &linked, &["--base", "main"]);
+}
+
+#[test]
+fn it_should_evaluate_the_repair_pull_request_with_the_review_required_and_a_warning() {
+    let (project, linked) =
+        repair_pr_with(|dir| write_in(dir, ".omhl/workflow.toml", REPAIRED_WORKFLOW));
+
+    let gate = run_in(&project, &linked, &["gate-pr", W1, "--base", "main"]);
+
+    let review = review_question(&gate).expect("the review question is in the gate");
+    assert_eq!(review["passed"], json!(false));
+    assert!(
+        text_of(&gate).to_lowercase().contains("warning"),
+        "{}",
+        text_of(&gate)
+    );
+}
+
+#[test]
+fn it_should_refuse_the_close_of_the_repair_pull_request_with_close_refused_while_the_review_is_unattested()
+ {
+    let (project, linked) =
+        repair_pr_with(|dir| write_in(dir, ".omhl/workflow.toml", REPAIRED_WORKFLOW));
+
+    let closed = run_in(&project, &linked, &["close", W1, "--base", "main"]);
+
+    assert_refused(&closed, "close-refused");
+}
+
+#[test]
+fn it_should_close_the_repair_pull_request_once_the_review_is_attested_at_its_head() {
+    let project = project_with_review(true);
+    let linked = worktree_with_commit(&project, |dir| {
+        write_in(dir, ".omhl/workflow.toml", REPAIRED_WORKFLOW)
+    });
+    let attested = run_in(
+        &project,
+        &linked,
+        &["attest", REVIEW, W1, "--outcome", "passed"],
+    );
+    assert_eq!(attested.code, Some(0), "stderr: {}", attested.stderr);
+    break_main_workflow(&project);
+
+    let closed = run_in(&project, &linked, &["close", W1, "--base", "main"]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+}
+
+#[test]
+fn it_should_not_recognize_the_repair_pull_request_without_a_base() {
+    let (project, linked) =
+        repair_pr_with(|dir| write_in(dir, ".omhl/workflow.toml", REPAIRED_WORKFLOW));
+
+    assert_refused_as_invalid_workflow(&project, &linked, &[]);
+}
+
+#[test]
+fn it_should_ask_a_native_check_that_is_on_only_in_the_head_version_of_the_workflow_file() {
+    let (project, linked) = repair_pr_with(|dir| {
+        write_in(
+            dir,
+            ".omhl/workflow.toml",
+            format!("version = 1\n\n[native]\nchecks = [\"{REVIEW}\", \"{RUN_TESTS}\"]\n"),
+        )
+    });
+
+    let gate = run_in(&project, &linked, &["gate-pr", W1, "--base", "main"]);
+
+    let asked = text_of(&gate);
+    assert!(asked.contains(RUN_TESTS), "{asked}");
+}
+
+#[test]
+fn it_should_not_recognize_a_repair_whose_head_workflow_file_is_a_symlink() {
+    let (project, linked) = repair_pr_with(|dir| {
+        write_in(dir, "other.toml", REPAIRED_WORKFLOW);
+        let target = dir.join(".omhl/workflow.toml");
+        fs::remove_file(&target).expect("the file is removed");
+        std::os::unix::fs::symlink("../other.toml", target).expect("the link is created");
+    });
+
+    assert_refused_as_invalid_workflow(&project, &linked, &["--base", "main"]);
+}
+
+#[test]
+fn it_should_not_recognize_a_repair_whose_head_workflow_file_is_larger_than_the_limit() {
+    let (project, linked) = repair_pr_with(|dir| {
+        let padding = "#".repeat(::omhl::project::layout::EXT_FILE_MAX_BYTES as usize);
+        write_in(
+            dir,
+            ".omhl/workflow.toml",
+            format!("{REPAIRED_WORKFLOW}{padding}\n"),
+        )
+    });
+
+    assert_refused_as_invalid_workflow(&project, &linked, &["--base", "main"]);
+}
+
+#[test]
+fn it_should_not_recognize_a_repair_whose_head_workflow_file_is_not_utf8() {
+    let (project, linked) = repair_pr_with(|dir| {
+        let mut bytes = REPAIRED_WORKFLOW.as_bytes().to_vec();
+        bytes.extend_from_slice(b"# \xff\xfe\n");
+        write_in(dir, ".omhl/workflow.toml", bytes)
+    });
+
+    assert_refused_as_invalid_workflow(&project, &linked, &["--base", "main"]);
+}
+
+#[test]
+fn it_should_not_recognize_a_repair_whose_head_workflow_file_the_parser_refuses() {
+    let (project, linked) =
+        repair_pr_with(|dir| write_in(dir, ".omhl/workflow.toml", BROKEN_WORKFLOW));
+
+    assert_refused_as_invalid_workflow(&project, &linked, &["--base", "main"]);
 }
