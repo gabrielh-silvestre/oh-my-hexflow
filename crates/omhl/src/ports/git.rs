@@ -217,10 +217,29 @@ impl GitProbe {
     }
 
     fn head_commit(&self) -> Result<Option<String>, ProbeError> {
-        let output = self.run(self.git(&["rev-parse", "--verify", "-q", "HEAD"]))?;
+        self.ref_commit("HEAD")
+    }
+
+    pub fn ref_commit(&self, refname: &str) -> Result<Option<String>, ProbeError> {
+        let peeled = format!("{refname}^{{commit}}");
+        let output = self.run(self.git(&["rev-parse", "--verify", "-q", &peeled]))?;
         match output.status.code() {
             Some(0) => text_line(output.stdout).map(Some),
             Some(1) if output.stdout.is_empty() => Ok(None),
+            _ => Err(git_error(&output)),
+        }
+    }
+
+    pub fn current_branch(&self) -> Result<Option<String>, ProbeError> {
+        let name = self.line(&["branch", "--show-current"])?;
+        Ok(Some(name).filter(|name| !name.is_empty()))
+    }
+
+    pub fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, ProbeError> {
+        let output = self.run(self.git(&["merge-base", "--is-ancestor", ancestor, descendant]))?;
+        match output.status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
             _ => Err(git_error(&output)),
         }
     }

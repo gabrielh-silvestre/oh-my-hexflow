@@ -64,10 +64,12 @@ pub fn current_branch(facts: &HeadFacts) -> Result<String, BranchError> {
     }
 }
 
+pub const DEVELOP_BRANCH: &str = "develop";
+
 pub fn classify(branch: &str) -> BranchKind {
     match branch {
         "main" => BranchKind::Main,
-        "develop" => BranchKind::Develop,
+        DEVELOP_BRANCH => BranchKind::Develop,
         _ => work_item_id(branch).map_or(BranchKind::Other, BranchKind::WorkItem),
     }
 }
