@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use support::child::{Output, omhl_json};
 use support::git::commit_marker;
 use support::omhl::work_item_data;
+use support::pr_gate::{CI_GREEN, VERIFY_ANCHORING};
 use support::project::Project;
 use support::repo_checks::repo_root;
 use support::sid;
@@ -26,8 +27,6 @@ const REPO_CHECKS: [&str; 6] = [
     "checks.test-suite",
 ];
 
-const CI_GREEN: &str = "checks.ci-green-before-merge";
-const ANCHORING: &str = "checks.verify-review-comment-anchoring";
 const WORKFLOW_FILE: &str = ".omhl/workflow.toml";
 const WORK_ITEM: &str = "work-items.w1";
 const GATE_BASE_LABELS: [&str; 3] = [
@@ -276,7 +275,7 @@ fn it_should_enable_only_ci_green_and_anchoring_in_the_repository_workflow() {
 
     assert_eq!(
         config.native.checks.into_iter().collect::<Vec<_>>(),
-        [CI_GREEN, ANCHORING]
+        [CI_GREEN, VERIFY_ANCHORING]
     );
 }
 
@@ -288,7 +287,10 @@ fn it_should_render_the_repository_with_ci_green_and_anchoring_and_without_run_t
 
     let text = render["text"].as_str().expect("the render has a text");
     assert!(text.contains(&format!("### {CI_GREEN}\n")), "{text}");
-    assert!(text.contains(&format!("### {ANCHORING}\n")), "{text}");
+    assert!(
+        text.contains(&format!("### {VERIFY_ANCHORING}\n")),
+        "{text}"
+    );
     assert!(!text.contains("checks.run-tests"), "{text}");
 }
 

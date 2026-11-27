@@ -34,20 +34,32 @@ impl Project {
         project
     }
 
-    /// Escreve o `.omhl/workflow.toml` com `[native] checks`; o `Project::new` não liga nenhum check nativo.
-    pub fn enable_natives(&self, ids: &[&str]) {
+    /// Repositório git com o marcador e o `workflow` dado já commitados; sem `workflow`, o arquivo não existe.
+    pub fn with_workflow(workflow: Option<&str>) -> Project {
+        let project = Project::new("acme");
+        if let Some(text) = workflow {
+            project.write_workflow(text);
+        }
+        commit_marker(project.dir());
+
+        project
+    }
+
+    pub fn write_workflow(&self, text: &str) {
         let dir = self.dir.path().join(".omhl");
         fs::create_dir_all(&dir).expect("the .omhl directory is created");
+        fs::write(dir.join("workflow.toml"), text).expect("the workflow file is written");
+    }
+
+    /// Escreve o `.omhl/workflow.toml` com `[native] checks`; o `Project::new` não liga nenhum check nativo.
+    pub fn enable_natives(&self, ids: &[&str]) {
         let list = ids
             .iter()
             .map(|id| format!("\"{id}\""))
             .collect::<Vec<_>>()
             .join(", ");
-        fs::write(
-            dir.join("workflow.toml"),
-            format!("version = 1\n\n[native]\nchecks = [{list}]\n"),
-        )
-        .expect("the workflow file is written");
+
+        self.write_workflow(&format!("version = 1\n\n[native]\nchecks = [{list}]\n"));
     }
 
     pub fn dir(&self) -> &Path {

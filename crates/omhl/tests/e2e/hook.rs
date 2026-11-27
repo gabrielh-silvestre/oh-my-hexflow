@@ -369,10 +369,10 @@ fn it_should_warn_about_an_invalid_workflow_file_instead_of_swallowing_it() {
         "version = 1\n\n[specs]\ndirr = \"x\"\n",
     );
 
-    let context = context_of(&hook_for(&project)).to_lowercase();
+    let context = context_of(&hook_for(&project));
 
     assert!(
-        context.contains("workflow") && context.contains("invalid"),
+        context.contains("invalid-workflow-config"),
         "context: {context}"
     );
 }

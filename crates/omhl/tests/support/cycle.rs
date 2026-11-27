@@ -16,6 +16,7 @@ use super::ext::ExtTree;
 use super::git::{commit_marker, git_ok};
 use super::inproc::run_inproc;
 use super::omhl::work_item_data;
+use super::pr_gate::ALL_NATIVE_CHECKS;
 use super::project::Project;
 use super::sweep_lock::serialize_sweeps;
 
@@ -295,11 +296,6 @@ pub fn attest_repo() -> Project {
 
 // ---------------------------------------------------------------- `gate-pr` e `close`
 
-const ALL_NATIVE_CHECKS: [&str; 3] = [
-    "checks.run-tests",
-    "checks.ci-green-before-merge",
-    "checks.verify-review-comment-anchoring",
-];
 pub const NATIVE_CHECKS: [&str; 2] = ["checks.run-tests", "checks.ci-green-before-merge"];
 pub const DECISION_UNANCHORED: &str = "decisions.ledger-split";
 pub const DECISION_ON_ASSUMED: &str = "decisions.bonus-cap";

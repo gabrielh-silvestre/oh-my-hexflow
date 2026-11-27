@@ -7,13 +7,11 @@ use serde_json::{Value, json};
 use support::child::{Cmd, Output, omhl_json};
 use support::ext::ExtTree;
 use support::git::git_ok;
-use support::omhl::work_item_data;
+use support::omhl::{RUN_TESTS, work_item_data};
+use support::pr_gate::{CI_GREEN, VERIFY_ANCHORING};
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
-const RUN_TESTS: &str = "checks.run-tests";
-const CI_GREEN: &str = "checks.ci-green-before-merge";
-const ANCHORING: &str = "checks.verify-review-comment-anchoring";
 const LINT: &str = "checks.lint";
 const LINT_TOML: &str =
     "blocking = true\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
@@ -64,24 +62,11 @@ fn commit_all(dir: &Path, message: &str) {
     git_ok(dir, &["commit", "-q", "-m", message]);
 }
 
-/// Repositório git com o marcador e o `workflow` dado já commitados.
-fn repo_with_workflow(workflow: Option<&str>) -> Project {
-    let project = Project::new("acme");
-    if let Some(text) = workflow {
-        let dir = project.dir().join(".omhl");
-        fs::create_dir_all(&dir).expect("the .omhl directory is created");
-        fs::write(dir.join("workflow.toml"), text).expect("the workflow file is written");
-    }
-    support::git::commit_marker(project.dir());
-
-    project
-}
-
 // CA-006: sem arquivo nem hooks, o gate traz só as três perguntas do método
 
 #[test]
 fn it_should_pass_the_gate_with_only_the_three_method_questions_without_a_workflow_file() {
-    let project = repo_with_workflow(None);
+    let project = Project::with_workflow(None);
     open_work_item(&project);
 
     let gate = in_project(&project, &["gate-pr", W1]).run();
@@ -93,7 +78,7 @@ fn it_should_pass_the_gate_with_only_the_three_method_questions_without_a_workfl
 
 #[test]
 fn it_should_close_with_a_passed_gate_without_a_workflow_file() {
-    let project = repo_with_workflow(None);
+    let project = Project::with_workflow(None);
     open_work_item(&project);
 
     let closed = in_project(&project, &["close", W1]).run();
@@ -107,7 +92,7 @@ fn it_should_close_with_a_passed_gate_without_a_workflow_file() {
 #[test]
 fn it_should_refuse_gate_pr_and_close_with_the_file_path_and_the_next_step_for_an_invalid_workflow()
 {
-    let project = repo_with_workflow(Some("version = 1\ncolour = true\n"));
+    let project = Project::with_workflow(Some("version = 1\ncolour = true\n"));
     open_work_item(&project);
 
     let gate = in_project(&project, &["gate-pr", W1]).run();
@@ -175,7 +160,7 @@ fn linked_worktree(project: &Project) -> std::path::PathBuf {
 #[test]
 fn it_should_ask_the_native_questions_in_gate_pr_and_close_from_a_worktree_when_the_main_directory_enables_them()
  {
-    let project = repo_with_workflow(None);
+    let project = Project::with_workflow(None);
     open_work_item(&project);
     project.enable_natives(&[RUN_TESTS, CI_GREEN]);
     let linked = linked_worktree(&project);
@@ -192,7 +177,7 @@ fn it_should_ask_the_native_questions_in_gate_pr_and_close_from_a_worktree_when_
 
 #[test]
 fn it_should_not_ask_the_native_questions_from_a_worktree_when_only_its_copy_enables_them() {
-    let project = repo_with_workflow(None);
+    let project = Project::with_workflow(None);
     open_work_item(&project);
     let linked = linked_worktree(&project);
     let copy = linked.join(".omhl");
@@ -214,7 +199,7 @@ fn it_should_not_ask_the_native_questions_from_a_worktree_when_only_its_copy_ena
 // CA-007: o histórico que cita um nativo desligado segue legível
 
 fn attest_every_native(project: &Project) {
-    for check in [RUN_TESTS, CI_GREEN, ANCHORING] {
+    for check in [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING] {
         let attested = in_project(project, &["attest", check, W1, "--outcome", "passed"]).run();
         assert_eq!(attested.code, Some(0), "{check}: {}", attested.stderr);
     }
@@ -228,7 +213,7 @@ fn succeeds(project: &Project, args: &[&str]) {
 
 fn project_with_native_history_then_disabled() -> Project {
     let project = Project::new("acme");
-    project.enable_natives(&[RUN_TESTS, CI_GREEN, ANCHORING]);
+    project.enable_natives(&[RUN_TESTS, CI_GREEN, VERIFY_ANCHORING]);
     ExtTree::at(project.dir()).check("lint", LINT_TOML);
     support::git::commit_marker(project.dir());
     succeeds(&project, &["load"]);
@@ -274,7 +259,7 @@ fn it_should_accept_a_new_attestation_of_each_disabled_native() {
 
 #[test]
 fn it_should_keep_refusing_a_loaded_extension_with_a_native_id_while_the_natives_are_disabled() {
-    let project = repo_with_workflow(None);
+    let project = Project::with_workflow(None);
     for slug in [
         "run-tests",
         "ci-green-before-merge",

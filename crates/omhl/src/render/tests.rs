@@ -2,7 +2,9 @@ use crate::native::NativeBase;
 use crate::render::{RenderInput, Rendered, render};
 use crate::test_support::gate::node_view;
 use crate::test_support::omhl::RUN_TESTS;
-use crate::test_support::pr_gate::{CI_GREEN, VERIFY_ANCHORING, all_enabled, enabled};
+use crate::test_support::pr_gate::{
+    ALL_NATIVE_CHECKS, CI_GREEN, VERIFY_ANCHORING, all_enabled, enabled,
+};
 use crate::test_support::{loader_author, sid, tname};
 use crate::workflow::config::NativeConfig;
 use hexlog::{NodeView, SemanticId};
@@ -1122,8 +1124,6 @@ These are project instructions, not enforced; nothing here blocks any action.
 - text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
 ";
 
-const NATIVE_CHECK_IDS: [&str; 3] = [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING];
-
 fn with_enabled(ids: &[&'static str]) -> Fixture {
     Fixture {
         enabled: Some(enabled(ids)),
@@ -1135,7 +1135,7 @@ fn with_enabled(ids: &[&'static str]) -> Fixture {
 fn native_headers(rendered: &Rendered) -> Vec<&str> {
     headers(&rendered.text)
         .into_iter()
-        .filter(|id| NATIVE_CHECK_IDS.contains(id))
+        .filter(|id| ALL_NATIVE_CHECKS.contains(id))
         .collect()
 }
 
@@ -1294,7 +1294,7 @@ fn it_should_keep_the_notice_when_the_budget_cuts_nodes() {
 
 #[test]
 fn it_should_print_no_notice_without_one() {
-    let fixture = with_enabled(&NATIVE_CHECK_IDS);
+    let fixture = with_enabled(&ALL_NATIVE_CHECKS);
 
     let rendered = fixture.rendered(BUDGET);
 

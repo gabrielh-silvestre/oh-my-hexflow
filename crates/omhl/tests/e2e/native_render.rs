@@ -9,12 +9,10 @@ use support::child::{Cmd, omhl, omhl_json};
 use support::cycle::{check_file, check_repo};
 use support::ext::ExtTree;
 use support::git::git_ok;
+use support::omhl::RUN_TESTS;
+use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN, VERIFY_ANCHORING};
 use support::project::Project;
 
-const RUN_TESTS: &str = "checks.run-tests";
-const CI_GREEN: &str = "checks.ci-green-before-merge";
-const ANCHORING: &str = "checks.verify-review-comment-anchoring";
-const NATIVE_CHECKS: [&str; 3] = [RUN_TESTS, CI_GREEN, ANCHORING];
 const GUIDELINES: [&str; 2] = [
     "guidelines.one-decision-per-turn",
     "guidelines.commit-policy",
@@ -87,7 +85,7 @@ fn headers(text: &str) -> Vec<&str> {
 fn native_checks_in(text: &str) -> Vec<&str> {
     headers(text)
         .into_iter()
-        .filter(|id| NATIVE_CHECKS.contains(id))
+        .filter(|id| ALL_NATIVE_CHECKS.contains(id))
         .collect()
 }
 
@@ -104,19 +102,6 @@ fn warnings_in(text: &str) -> Vec<&str> {
     text.lines()
         .filter(|line| line.starts_with("WARNING:"))
         .collect()
-}
-
-/// Repositório git com o marcador e o `workflow` dado.
-fn repo_with_workflow(workflow: Option<&str>) -> Project {
-    let project = Project::new("acme");
-    if let Some(text) = workflow {
-        let dir = project.dir().join(".omhl");
-        fs::create_dir_all(&dir).expect("the .omhl directory is created");
-        fs::write(dir.join("workflow.toml"), text).expect("the workflow file is written");
-    }
-    support::git::commit_marker(project.dir());
-
-    project
 }
 
 fn repo_enabling(ids: &[&str]) -> Project {
@@ -153,7 +138,7 @@ fn repo_with_lint(natives: &[&str]) -> Project {
 
 #[test]
 fn it_should_print_no_native_check_block_and_keep_the_guidelines_without_a_workflow_file() {
-    let project = repo_with_workflow(None);
+    let project = Project::with_workflow(None);
 
     for text in both_texts(&project) {
         assert!(native_checks_in(&text).is_empty(), "{text}");
@@ -193,19 +178,19 @@ fn it_should_print_only_the_ci_green_block_when_only_it_is_enabled() {
 
 #[test]
 fn it_should_print_only_the_anchoring_block_when_only_it_is_enabled() {
-    let project = repo_enabling(&[ANCHORING]);
+    let project = repo_enabling(&[VERIFY_ANCHORING]);
 
     for text in both_texts(&project) {
-        assert_eq!(native_checks_in(&text), [ANCHORING], "{text}");
+        assert_eq!(native_checks_in(&text), [VERIFY_ANCHORING], "{text}");
     }
 }
 
 #[test]
 fn it_should_print_the_three_blocks_when_the_three_are_enabled() {
-    let project = repo_enabling(&NATIVE_CHECKS);
+    let project = repo_enabling(&ALL_NATIVE_CHECKS);
 
     for text in both_texts(&project) {
-        assert_eq!(native_checks_in(&text), NATIVE_CHECKS, "{text}");
+        assert_eq!(native_checks_in(&text), ALL_NATIVE_CHECKS, "{text}");
     }
 }
 
@@ -369,7 +354,7 @@ fn it_should_print_no_block_from_a_worktree_when_the_main_directory_disables_it_
 #[test]
 fn it_should_not_use_the_copy_of_the_current_directory_when_there_is_no_git() {
     let project = Project::new("acme");
-    project.enable_natives(&NATIVE_CHECKS);
+    project.enable_natives(&ALL_NATIVE_CHECKS);
 
     for text in both_texts(&project) {
         assert!(native_checks_in(&text).is_empty(), "{text}");
@@ -379,7 +364,7 @@ fn it_should_not_use_the_copy_of_the_current_directory_when_there_is_no_git() {
 // CA-009 e CA-010: o arquivo que o `omhl` não aceita
 
 fn repo_with_invalid(setup: impl FnOnce(&Path)) -> Project {
-    let project = repo_with_workflow(None);
+    let project = Project::with_workflow(None);
     setup(project.dir());
 
     project
@@ -538,7 +523,7 @@ fn it_should_print_no_warning_with_an_accepted_workflow_file() {
 
 #[test]
 fn it_should_print_no_warning_without_a_workflow_file() {
-    let project = repo_with_workflow(None);
+    let project = Project::with_workflow(None);
 
     for text in both_texts(&project) {
         assert!(warnings_in(&text).is_empty(), "{text}");

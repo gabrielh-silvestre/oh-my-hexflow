@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::project::ProjectError;
+use crate::test_support::omhl::RUN_TESTS;
+use crate::test_support::pr_gate::{CI_GREEN, VERIFY_ANCHORING};
 use crate::workflow::config::{
     PromotionConfig, RequireAtom, SpecsConfig, WorkflowConfig, parse_workflow,
 };
@@ -470,10 +472,6 @@ fn it_should_not_echo_the_file_content_in_any_refusal() {
 
 // Ativação dos checks nativos: `[native] checks`
 
-const RUN_TESTS: &str = "checks.run-tests";
-const CI_GREEN: &str = "checks.ci-green-before-merge";
-const ANCHORING: &str = "checks.verify-review-comment-anchoring";
-
 fn native_checks_text(list: &str) -> String {
     lines(&["version = 1", "[native]", &format!("checks = {list}")])
 }
@@ -507,27 +505,27 @@ fn it_should_enable_no_native_check_with_an_empty_list() {
 
 #[test]
 fn it_should_enable_only_the_listed_native_check_when_each_id_is_alone() {
-    let found: Vec<Vec<&str>> = [RUN_TESTS, CI_GREEN, ANCHORING]
+    let found: Vec<Vec<&str>> = [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING]
         .iter()
         .map(|id| enabled(&native_checks_text(&format!("[\"{id}\"]"))))
         .collect();
 
     assert_eq!(
         found,
-        vec![vec![RUN_TESTS], vec![CI_GREEN], vec![ANCHORING]]
+        vec![vec![RUN_TESTS], vec![CI_GREEN], vec![VERIFY_ANCHORING]]
     );
 }
 
 #[test]
 fn it_should_enable_the_three_native_checks_when_all_ids_are_listed() {
     let text = native_checks_text(&format!(
-        "[\"{ANCHORING}\", \"{RUN_TESTS}\", \"{CI_GREEN}\"]"
+        "[\"{VERIFY_ANCHORING}\", \"{RUN_TESTS}\", \"{CI_GREEN}\"]"
     ));
 
     let mut found = enabled(&text);
 
     found.sort_unstable();
-    assert_eq!(found, vec![CI_GREEN, RUN_TESTS, ANCHORING]);
+    assert_eq!(found, vec![CI_GREEN, RUN_TESTS, VERIFY_ANCHORING]);
 }
 
 #[test]

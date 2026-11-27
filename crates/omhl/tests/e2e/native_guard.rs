@@ -3,14 +3,11 @@ use crate::support;
 use serde_json::{Value, json};
 use support::child::{omhl, omhl_json};
 use support::git::git_ok;
-use support::omhl::work_item_data;
+use support::omhl::{RUN_TESTS, work_item_data};
+use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN};
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
-const RUN_TESTS: &str = "checks.run-tests";
-const CI_GREEN: &str = "checks.ci-green-before-merge";
-const ANCHORING: &str = "checks.verify-review-comment-anchoring";
-const NATIVE_CHECKS: [&str; 3] = [RUN_TESTS, CI_GREEN, ANCHORING];
 const INVENTED_NATIVE: &str = "checks.native-from-the-future";
 const BASE_LABELS: [&str; 3] = [
     "no-open-contradiction",
@@ -96,7 +93,7 @@ fn violations(surfaces: &Surfaces) -> Vec<String> {
         ("render", &surfaces.render),
         ("additionalContext", &surfaces.context),
     ] {
-        for id in NATIVE_CHECKS.iter().filter(|id| text.contains(**id)) {
+        for id in ALL_NATIVE_CHECKS.iter().filter(|id| text.contains(**id)) {
             found.push(format!("{surface} cites {id}"));
         }
         let blocks = checks_section_blocks(text);
@@ -139,7 +136,7 @@ fn it_should_show_no_native_check_block_id_or_question_in_a_project_without_conf
 
 #[test]
 fn it_should_flag_the_render_and_the_context_when_a_native_check_is_enabled_alone() {
-    for id in NATIVE_CHECKS {
+    for id in ALL_NATIVE_CHECKS {
         let found = violations(&enabling(&[id]));
 
         for surface in ["render", "additionalContext"] {
