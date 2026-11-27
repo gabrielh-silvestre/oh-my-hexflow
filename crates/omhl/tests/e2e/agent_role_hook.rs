@@ -1944,6 +1944,55 @@ fn it_should_deny_owner_override_wrapped_in_bash_c() {
 }
 
 #[test]
+fn it_should_deny_owner_override_wrapped_in_env_with_an_option_that_hides_the_program() {
+    let output = run_agent_role("env -i omhl load --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_wrapped_in_env_split_string() {
+    let output = run_agent_role("env -S 'omhl load --owner-override'", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_wrapped_in_exec_with_a_clearing_option() {
+    let output = run_agent_role("exec -c omhl load --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_wrapped_in_a_wrapper_with_an_unknown_option() {
+    let output = run_agent_role("stdbuf -oL omhl load --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_in_a_bash_c_body_with_trailing_punctuation() {
+    let output = run_agent_role("bash -c 'omhl load --owner-override;'", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_quoted_in_a_bash_c_body() {
+    let output = run_agent_role("bash -c 'omhl load \"--owner-override\"'", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_pass_omhl_load_without_owner_override_wrapped_in_env_with_an_option() {
+    let output = run_agent_role("env -i omhl load", None);
+
+    assert_passed(&output);
+}
+
+#[test]
 fn it_should_pass_omhl_load_without_owner_override_from_the_main_session() {
     let output = run_agent_role("omhl load", None);
 

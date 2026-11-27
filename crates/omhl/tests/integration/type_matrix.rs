@@ -393,6 +393,37 @@ fn it_should_refuse_a_type_set_over_a_branch_prefix_that_requires_more() {
 }
 
 #[test]
+fn it_should_refuse_a_pull_request_revision_that_changes_the_branch_and_sets_the_type_at_once() {
+    let repo = repo_on_develop();
+    let fixture = fixture_for(&repo);
+    let recorded = json!({
+        "title": "Ship it",
+        "status": "open",
+        "provider": "github",
+        "repo": "acme/oh-my-hexflow",
+        "number": 7,
+        "branch": "feat/wi-w1__s",
+    });
+    let opened = fixture
+        .append_as_user(json!({ "items": [node(PR7, "pull-request", &recorded)] }))
+        .expect("the pull request is opened");
+    let base = opened["records"][0]["id"]
+        .as_str()
+        .expect("the response carries a record id");
+    let mut loosened = recorded;
+    loosened["branch"] = json!("chore/wi-w1__s");
+    loosened["type"] = json!("chore");
+    let mut item = node(PR7, "pull-request", &loosened);
+    item["base"] = json!(base);
+
+    let refusal = fixture
+        .append_as_user(json!({ "items": [item] }))
+        .expect_err("the recorded branch says feat");
+
+    assert_eq!(code_of(&refusal), "type-change-loosens");
+}
+
+#[test]
 fn it_should_allow_a_change_away_from_a_recorded_type_outside_the_table() {
     let repo = repo_on_develop();
     let fixture = fixture_for(&repo);

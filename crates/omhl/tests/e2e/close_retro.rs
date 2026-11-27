@@ -1915,6 +1915,47 @@ fn it_should_print_the_delivered_with_failure_header() {
     );
 }
 
+const REVIEW: &str = "checks.config-loosening-review";
+
+#[test]
+fn it_should_leave_the_review_question_out_of_the_failed_ones_when_the_base_range_touches_only_source()
+ {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN, REVIEW]);
+
+    let closed = fixture.run(&[
+        "close",
+        W1,
+        "--failed-delivery",
+        "--note",
+        DELIVERY_NOTE,
+        "--base",
+        "main",
+    ]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let failed = fixture.data_of(W1)["delivery_failure"]["failed"].to_string();
+    assert!(!failed.contains(REVIEW), "{failed}");
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_with_review_base_invalid_and_write_nothing_when_the_base_does_not_resolve()
+ {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN, REVIEW]);
+    let before = fixture.chain();
+
+    let closed = fixture.run(&[
+        "close",
+        W1,
+        "--failed-delivery",
+        "--note",
+        DELIVERY_NOTE,
+        "--base",
+        "no-such-ref",
+    ]);
+
+    fixture.assert_refused_with(&closed, "review-base-invalid", &before);
+}
+
 #[test]
 fn it_should_record_the_session_of_the_failed_delivery_close() {
     let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
