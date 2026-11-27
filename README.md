@@ -195,6 +195,17 @@ rode `omhl load`. Detalhes em
 
 Uma entrada por mudança que exige ação de quem atualiza, a mais nova primeiro.
 
+### O `close` recusa mais e o `require` acrescenta
+
+O que cada comando recusa e com qual código está na página do comando, em `plugin/skills/directives-flow/references/`. O que muda para quem atualiza:
+
+1. `close` agora recusa onde fechava: um work item que falha na checagem do gate não fecha mais, e o mesmo vale nos caminhos `--force --note`, `--abandon` e `--failed-delivery`.
+2. `require` agora acrescenta, em `[prefix.<tipo>]`, aos padrões do binário em vez de substituí-los. Quem repetia os padrões ali pode tirá-los.
+3. O check `checks.config-loosening-review` pede, antes do PR, a revisão do diff de `.omhl/workflow.toml` e de `.omhl/checks/`. Ele continua desligado até o id entrar em `[native] checks`.
+4. As opções novas são `--base`, para escolher a base do diff, e `--owner-override`, para o dono liberar uma recusa.
+5. Um `workflow.toml` inválido na `main` não trava mais o trabalho: o caminho é o PR de reparo contra a `main`.
+6. Plugin e binário se atualizam juntos.
+
 ### Os checks nativos vêm desligados
 
 O que cada check nativo pede e como ligá-lo está em [native-checks.md](plugin/skills/directives-flow/references/native-checks.md). O que muda para quem atualiza:

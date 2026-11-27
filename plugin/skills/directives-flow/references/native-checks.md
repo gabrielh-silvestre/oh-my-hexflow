@@ -1,6 +1,8 @@
 # Native checks
 
-The `omhl` binary carries native checks. They come off: a project turns each one on in `.omhl/workflow.toml`, and until then nothing prints, asks or blocks for it. The two native guidelines are not in this page and stay on.
+The `omhl` binary carries native checks. The native checks come off: a project turns each one on in `.omhl/workflow.toml`, and until then nothing prints, asks or blocks for it.
+
+The native guidelines are not in this page and stay on.
 
 | Check | When | What it asks | Gate |
 |---|---|---|---|

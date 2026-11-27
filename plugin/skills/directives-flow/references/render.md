@@ -35,7 +35,7 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 ## Examples
 
-Reads the context of a project with a confirmed premise and the three native checks turned on in `.omhl/workflow.toml` (the checks section brings their blocks, the guidelines section the native guidelines):
+Reads the context of a project with a confirmed premise and the native checks turned on in `.omhl/workflow.toml` (the checks section brings their blocks, the guidelines section the native guidelines):
 
 ```omhl-example fixture=natives
 $ omhl render
