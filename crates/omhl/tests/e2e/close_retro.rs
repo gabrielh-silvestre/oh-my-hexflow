@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 use support::child::{Output, omhl, omhl_json};
 use support::git::git_in;
-use support::omhl::{PR_7, pull_request_data, work_item_data};
+use support::omhl::{PR_7, closed_with_gate, pull_request_data, work_item_data};
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
@@ -1600,4 +1600,171 @@ fn it_should_still_accept_force_in_hooks_install() {
     let installed = fixture.run(&["hooks", "install", "--force"]);
 
     assert_ne!(installed.code, Some(2), "stderr: {}", installed.stderr);
+}
+
+// Leitores do nó abandonado e do nó fechado no formato antigo
+
+const OLD_WORK_ITEM: &str = "work-items.old";
+const OLD_PULL_REQUEST: &str = "work-items.old-pr";
+
+impl Fixture {
+    fn abandoned(id: &str) -> Fixture {
+        let fixture = Fixture::with_pull_request();
+        let closed = fixture.abandon(id);
+        assert_eq!(closed.code, Some(0), "{id} stderr: {}", closed.stderr);
+
+        fixture
+    }
+
+    /// Gravados direto no banco: a guarda do `append` recusa `closed` fora do `close`.
+    fn with_old_closed_nodes() -> Fixture {
+        let project = Project::new("acme");
+        for args in [
+            &["init", "-b", "main"][..],
+            &["config", "user.name", "Test Author"],
+            &["config", "user.email", "author@example.com"],
+            &["add", "-A"],
+            &["commit", "-m", "add marker"],
+        ] {
+            let output = git_in(project.dir(), args);
+            assert!(output.status.success(), "git {args:?} failed");
+        }
+        support::forge::forge(
+            &project,
+            support::author(),
+            vec![
+                support::omhl::node_item(
+                    OLD_WORK_ITEM,
+                    "work-item",
+                    closed_with_gate(work_item_data("Old work")),
+                ),
+                support::omhl::node_item(
+                    OLD_PULL_REQUEST,
+                    "pull-request",
+                    closed_with_gate(pull_request_data("Old pr")),
+                ),
+            ],
+        );
+
+        Fixture { project }
+    }
+}
+
+#[test]
+fn it_should_show_the_reason_and_the_note_in_get_of_an_abandoned_node() {
+    for id in closable_ids() {
+        let fixture = Fixture::abandoned(id);
+
+        let got = fixture.run(&["get", id]);
+
+        assert_eq!(got.code, Some(0), "{id} stderr: {}", got.stderr);
+        assert!(got.stdout.contains(ABANDON_REASON), "{id} {}", got.stdout);
+        assert!(got.stdout.contains(ABANDON_NOTE), "{id} {}", got.stdout);
+    }
+}
+
+#[test]
+fn it_should_show_the_reason_and_the_note_in_report_retro_of_an_abandoned_node() {
+    for id in closable_ids() {
+        let fixture = Fixture::abandoned(id);
+
+        let retro = fixture.run(&["report", "retro", id]);
+
+        assert_eq!(retro.code, Some(0), "{id} stderr: {}", retro.stderr);
+        assert!(
+            retro.stdout.contains(ABANDON_REASON),
+            "{id} {}",
+            retro.stdout
+        );
+        assert!(retro.stdout.contains(ABANDON_NOTE), "{id} {}", retro.stdout);
+    }
+}
+
+#[test]
+fn it_should_run_render_without_error_when_a_node_is_abandoned() {
+    for id in closable_ids() {
+        let fixture = Fixture::abandoned(id);
+
+        let rendered = fixture.run(&["render"]);
+
+        assert_eq!(rendered.code, Some(0), "{id} stderr: {}", rendered.stderr);
+    }
+}
+
+#[test]
+fn it_should_run_the_projection_without_error_when_a_node_is_abandoned() {
+    for id in closable_ids() {
+        let fixture = Fixture::abandoned(id);
+
+        let projected = fixture.run(&["project"]);
+
+        assert_eq!(projected.code, Some(0), "{id} stderr: {}", projected.stderr);
+    }
+}
+
+#[test]
+fn it_should_print_only_the_retro_line_of_the_abandonment_without_any_gate_question() {
+    for id in closable_ids() {
+        let fixture = Fixture::with_pull_request();
+
+        let closed = omhl(&[
+            "close",
+            id,
+            "--abandon",
+            "--reason",
+            ABANDON_REASON,
+            "--note",
+            ABANDON_NOTE,
+        ])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .run();
+
+        assert_eq!(closed.code, Some(0), "{id} stderr: {}", closed.stderr);
+        assert!(closed.stdout.contains("retro"), "{id} {}", closed.stdout);
+        assert!(
+            closed.stdout.contains(ABANDON_REASON),
+            "{id} {}",
+            closed.stdout
+        );
+        assert!(
+            !closed.stdout.contains("question"),
+            "{id} {}",
+            closed.stdout
+        );
+        assert!(!closed.stdout.contains('✘'), "{id} {}", closed.stdout);
+    }
+}
+
+#[test]
+fn it_should_read_a_node_closed_in_the_old_format_with_get() {
+    let fixture = Fixture::with_old_closed_nodes();
+
+    for (id, title) in [(OLD_WORK_ITEM, "Old work"), (OLD_PULL_REQUEST, "Old pr")] {
+        let got = fixture.run(&["get", id]);
+
+        assert_eq!(got.code, Some(0), "{id} stderr: {}", got.stderr);
+        assert!(got.stdout.contains(title), "{id} {}", got.stdout);
+    }
+}
+
+#[test]
+fn it_should_read_a_node_closed_in_the_old_format_with_the_projection() {
+    let fixture = Fixture::with_old_closed_nodes();
+
+    let projected = fixture.run(&["project"]);
+
+    assert_eq!(projected.code, Some(0), "stderr: {}", projected.stderr);
+}
+
+#[test]
+fn it_should_read_a_node_closed_in_the_old_format_with_report_retro() {
+    let fixture = Fixture::with_old_closed_nodes();
+
+    for id in [OLD_WORK_ITEM, OLD_PULL_REQUEST] {
+        let retro = fixture.run(&["report", "retro", id]);
+
+        assert_eq!(retro.code, Some(0), "{id} stderr: {}", retro.stderr);
+        assert_eq!(retro_of(&json_line(&retro.stdout)), Value::Null, "{id}");
+    }
 }
