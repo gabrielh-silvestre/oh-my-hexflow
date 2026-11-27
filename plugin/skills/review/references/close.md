@@ -71,34 +71,48 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 ## Examples
 
-Closes the work item and then tries to close it again. The gate fails (the attestations are missing; the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`); the retro is `null`:
+Tries to close the work item. The gate fails (the attestations are missing and the spec is not valid; the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`). A failed `refuse` question stops `close`: it records nothing, so the work item stays open and the next call refuses the same way. The `warn` question is listed, but only the `refuse` ones block:
 
 ```omhl-example fixture=native-checks
 $ omhl close work-items.w1
-⚠ close · pull-request · not passed · 7 questions · 4 failed
-✘ checks.run-tests · occurred · matched 0
-✘ checks.ci-green-before-merge · occurred · matched 0
-✘ checks.ok · occurred · matched 0
-✘ spec-digest-match:checks.ok · occurred · matched 0
-✔ no-open-contradiction · matched 0
-✔ decisions-anchored · anchored · matched 0
-✔ anchors-confirmed · anchored · matched 0
-✔ closed · 1 record
-- <record-id> · seq 5
+2> ✘ close-refused · a refuse question failed, and --force does not override it: fix its cause before the merge, use --abandon for work that will not be delivered, or --failed-delivery --note when the evaluated commit is already on the integration branch
+2>   - /questions/0 · warn · the gate question did not pass
+2>     label: checks.run-tests
+2>   - /questions/1 · refuse · the gate question did not pass
+2>     label: checks.ci-green-before-merge
+2>   - /questions/2 · refuse · the gate question did not pass
+2>     label: checks.ok
+2>   - /questions/3 · refuse · the gate question did not pass
+2>     label: spec-digest-match:checks.ok
+2>   - /questions/4 · refuse · the gate question did not pass
+2>     label: requires:spec
+2> Next: make the spec valid with omhl spec validate.
+# exit 1
 $ omhl close work-items.w1
-2> ✘ invalid-transition · invalid-transition at /work_item
-2>   - /work_item · invalid-transition
+2> ✘ close-refused · a refuse question failed, and --force does not override it: fix its cause before the merge, use --abandon for work that will not be delivered, or --failed-delivery --note when the evaluated commit is already on the integration branch
+2>   - /questions/0 · warn · the gate question did not pass
+2>     label: checks.run-tests
+2>   - /questions/1 · refuse · the gate question did not pass
+2>     label: checks.ci-green-before-merge
+2>   - /questions/2 · refuse · the gate question did not pass
+2>     label: checks.ok
+2>   - /questions/3 · refuse · the gate question did not pass
+2>     label: spec-digest-match:checks.ok
+2>   - /questions/4 · refuse · the gate question did not pass
+2>     label: requires:spec
+2> Next: make the spec valid with omhl spec validate.
 # exit 1
 ```
 
-The same closing, in JSON:
+The same refusal, in JSON:
 
 ```omhl-example fixture=native-checks
 $ omhl close work-items.w1 --format json
-{"outcome":{"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false},"report":{"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]},"retro":null}
+2> {"error":{"code":"close-refused","details":[{"code":"warn","context":{"label":"checks.run-tests"},"message":"the gate question did not pass","path":"/questions/0"},{"code":"refuse","context":{"label":"checks.ci-green-before-merge"},"message":"the gate question did not pass","path":"/questions/1"},{"code":"refuse","context":{"label":"checks.ok"},"message":"the gate question did not pass","path":"/questions/2"},{"code":"refuse","context":{"label":"spec-digest-match:checks.ok"},"message":"the gate question did not pass","path":"/questions/3"},{"code":"refuse","context":{"label":"requires:spec"},"message":"the gate question did not pass","next_step":"make the spec valid with omhl spec validate","path":"/questions/4"}],"message":"a refuse question failed, and --force does not override it: fix its cause before the merge, use --abandon for work that will not be delivered, or --failed-delivery --note when the evaluated commit is already on the integration branch"}}
+# exit 1
 ```
 
-With the gate green (the two native checks attested and the mechanical check run), `report.passed` is `true`:
+With the two native checks attested and the mechanical check run, only the type requirement `requires:spec` is left, and `close` still refuses until the spec is valid:
 
 ```omhl-example fixture=native-checks
 $ omhl attest checks.run-tests work-items.w1 --outcome passed
@@ -108,19 +122,14 @@ $ omhl attest checks.ci-green-before-merge work-items.w1 --outcome passed
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":"<ms>","exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl close work-items.w1
-✔ close · pull-request · passed · 7 questions
-✔ checks.run-tests · occurred · matched 1
-✔ checks.ci-green-before-merge · occurred · matched 1
-✔ checks.ok · occurred · matched 1
-✔ spec-digest-match:checks.ok · occurred · matched 1
-✔ no-open-contradiction · matched 0
-✔ decisions-anchored · anchored · matched 0
-✔ anchors-confirmed · anchored · matched 0
-✔ closed · 1 record
-- <record-id> · seq 8
+2> ✘ close-refused · a refuse question failed, and --force does not override it: fix its cause before the merge, use --abandon for work that will not be delivered, or --failed-delivery --note when the evaluated commit is already on the integration branch
+2>   - /questions/0 · refuse · the gate question did not pass
+2>     label: requires:spec
+2> Next: make the spec valid with omhl spec validate.
+# exit 1
 ```
 
-With an open divergence, the retro comes filled in (only ids, never the divergence text):
+With an open divergence the gate fails the same way and nothing is recorded, so there is no retro: the retro (only ids, never the divergence text) comes only with a `close` that records:
 
 ```omhl-example fixture=native-checks
 $ omhl append <<'EOF'
@@ -129,19 +138,19 @@ EOF
 ✔ append · 1 record
 - <record-id> · seq 5
 $ omhl close work-items.w1
-⚠ close · pull-request · not passed · 7 questions · 4 failed
-✘ checks.run-tests · occurred · matched 0
-✘ checks.ci-green-before-merge · occurred · matched 0
-✘ checks.ok · occurred · matched 0
-✘ spec-digest-match:checks.ok · occurred · matched 0
-✔ no-open-contradiction · matched 0
-✔ decisions-anchored · anchored · matched 0
-✔ anchors-confirmed · anchored · matched 0
-✔ closed · 1 record
-- <record-id> · seq 6
-✔ retro · 1 divergence
-- divergence · missing · open · divergences.limit
-Next: propose one improvement per item to the owner and change nothing without the answer.
+2> ✘ close-refused · a refuse question failed, and --force does not override it: fix its cause before the merge, use --abandon for work that will not be delivered, or --failed-delivery --note when the evaluated commit is already on the integration branch
+2>   - /questions/0 · warn · the gate question did not pass
+2>     label: checks.run-tests
+2>   - /questions/1 · refuse · the gate question did not pass
+2>     label: checks.ci-green-before-merge
+2>   - /questions/2 · refuse · the gate question did not pass
+2>     label: checks.ok
+2>   - /questions/3 · refuse · the gate question did not pass
+2>     label: spec-digest-match:checks.ok
+2>   - /questions/4 · refuse · the gate question did not pass
+2>     label: requires:spec
+2> Next: make the spec valid with omhl spec validate.
+# exit 1
 ```
 
 Refusal: the `.omhl/workflow.toml` lists an id that is not a native check. Nothing is recorded:

@@ -45,28 +45,31 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 ## Examples
 
-With no attestation at all, the gate fails. Each required check appears with `matched 0` (the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`):
+With no attestation at all, the gate fails. Each required check appears with `matched 0` and its class (`warn` or `refuse`; only a failed `refuse` question stops `close`). The type requirements come last as `requires:*`, here with `requires:spec` failing because the spec is not valid (the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`):
 
 ```omhl-example fixture=native-checks
 $ omhl gate-pr work-items.w1
-✘ gate-pr · pull-request · not passed · 7 questions · 4 failed
-✘ checks.run-tests · occurred · matched 0
-✘ checks.ci-green-before-merge · occurred · matched 0
-✘ checks.ok · occurred · matched 0
-✘ spec-digest-match:checks.ok · occurred · matched 0
+✘ gate-pr · pull-request · not passed · 9 questions · 5 failed
+✘ checks.run-tests · warn · occurred · matched 0
+✘ checks.ci-green-before-merge · refuse · occurred · matched 0
+✘ checks.ok · refuse · occurred · matched 0
+✘ spec-digest-match:checks.ok · refuse · occurred · matched 0
 ✔ no-open-contradiction · matched 0
 ✔ decisions-anchored · anchored · matched 0
 ✔ anchors-confirmed · anchored · matched 0
+✔ requires:business-premise · requirement · matched 1
+✘ requires:spec · refuse · requirement · matched 1
+Next: make the spec valid with omhl spec validate.
 ```
 
 The same gate, in JSON (the `passed` and the fields of each question that the text summarizes):
 
 ```omhl-example fixture=native-checks
 $ omhl gate-pr work-items.w1 --format json
-{"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]}
+{"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"class":"warn","failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"class":"refuse","failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"class":"refuse","failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"class":"refuse","failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"requirement","label":"requires:business-premise","matched":1,"omitted":0,"passed":true},{"class":"refuse","failing":[],"kind":"requirement","label":"requires:spec","matched":1,"next_step":"make the spec valid with omhl spec validate","omitted":0,"passed":false}],"review_base":null}
 ```
 
-With the two native checks attested by hand and the mechanical check run, on the same commit, the gate passes:
+With the two native checks attested by hand and the mechanical check run, on the same commit, the checks pass and only the `requires:spec` requirement still fails:
 
 ```omhl-example fixture=native-checks
 $ omhl attest checks.run-tests work-items.w1 --outcome passed
@@ -76,7 +79,7 @@ $ omhl attest checks.ci-green-before-merge work-items.w1 --outcome passed
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":"<ms>","exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl gate-pr work-items.w1
-✔ gate-pr · pull-request · passed · 7 questions
+✘ gate-pr · pull-request · not passed · 9 questions · 1 failed
 ✔ checks.run-tests · occurred · matched 1
 ✔ checks.ci-green-before-merge · occurred · matched 1
 ✔ checks.ok · occurred · matched 1
@@ -84,18 +87,24 @@ $ omhl gate-pr work-items.w1
 ✔ no-open-contradiction · matched 0
 ✔ decisions-anchored · anchored · matched 0
 ✔ anchors-confirmed · anchored · matched 0
+✔ requires:business-premise · requirement · matched 1
+✘ requires:spec · refuse · requirement · matched 1
+Next: make the spec valid with omhl spec validate.
 ```
 
-With no `[native]` table, the gate asks only about the project checks and the decisions:
+With no `[native]` table, the gate asks only about the project checks, the decisions and the type requirements:
 
 ```omhl-example fixture=checks
 $ omhl gate-pr work-items.w1
-✘ gate-pr · pull-request · not passed · 5 questions · 2 failed
-✘ checks.ok · occurred · matched 0
-✘ spec-digest-match:checks.ok · occurred · matched 0
+✘ gate-pr · pull-request · not passed · 7 questions · 3 failed
+✘ checks.ok · refuse · occurred · matched 0
+✘ spec-digest-match:checks.ok · refuse · occurred · matched 0
 ✔ no-open-contradiction · matched 0
 ✔ decisions-anchored · anchored · matched 0
 ✔ anchors-confirmed · anchored · matched 0
+✔ requires:business-premise · requirement · matched 1
+✘ requires:spec · refuse · requirement · matched 1
+Next: make the spec valid with omhl spec validate.
 ```
 
 Refusal: the `.omhl/workflow.toml` lists an id that is not a native check:

@@ -32,10 +32,15 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 ## Examples
 
-Retires a check whose file was deleted. The second call refuses, because the check is no longer live, and an id that never existed refuses the same way:
+Retiring a check loosens the gate, so an agent run refuses with `check-loosening-refused`. The owner retires it with `--owner-override`. The next call refuses, because the check is no longer live, and an id that never existed refuses the same way:
 
 ```omhl-example fixture=retire-check
 $ omhl check retire checks.ok
+2> ✘ check-loosening-refused · the revised check turns blocking off, removes its run or moves a blocking check out of the required events, which loosens a check already stored
+2>   - /check
+2> Next: keep the check blocking, with its run and on a required event, or retire the check and declare a new one.
+# exit 1
+$ omhl check retire checks.ok --owner-override
 ✔ check retire · retired checks.ok
 $ omhl check retire checks.ok
 2> ✘ check-not-found · check-not-found at /check
@@ -50,7 +55,7 @@ $ omhl check retire checks.nope
 With `--format json`, the retirement comes out for machines:
 
 ```omhl-example fixture=retire-check
-$ omhl check retire checks.ok --format json
+$ omhl check retire checks.ok --owner-override --format json
 {"retired":"checks.ok"}
 ```
 
