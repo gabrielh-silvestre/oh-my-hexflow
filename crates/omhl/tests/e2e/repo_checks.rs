@@ -11,8 +11,8 @@ use hexlog::SnapshotKind;
 use serde_json::{Value, json};
 use support::child::{Output, omhl_json};
 use support::git::commit_marker;
-use support::omhl::work_item_data;
-use support::pr_gate::{CI_GREEN, VERIFY_ANCHORING};
+use support::omhl::typed_work_item_data;
+use support::pr_gate::{CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING};
 use support::project::Project;
 use support::repo_checks::repo_root;
 use support::sid;
@@ -263,7 +263,7 @@ fn blocking_repo_check_ids() -> Vec<String> {
 }
 
 #[test]
-fn it_should_enable_only_ci_green_and_anchoring_in_the_repository_workflow() {
+fn it_should_enable_ci_green_anchoring_and_the_loosening_review_in_the_repository_workflow() {
     let path = repo_root().join(WORKFLOW_FILE);
     let bytes = fs::read(&path).expect("the repository workflow file is readable");
 
@@ -271,7 +271,7 @@ fn it_should_enable_only_ci_green_and_anchoring_in_the_repository_workflow() {
 
     assert_eq!(
         config.native.checks.into_iter().collect::<Vec<_>>(),
-        [CI_GREEN, VERIFY_ANCHORING]
+        [CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING]
     );
 }
 
@@ -294,7 +294,7 @@ fn it_should_render_the_repository_with_ci_green_and_anchoring_and_without_run_t
 fn it_should_require_ci_green_and_the_blocking_repository_checks_in_the_gate() {
     let project = project_with_repo_config();
     let work_item = json!({ "items": [{ "body": {
-        "kind": "node", "id": WORK_ITEM, "type": "work-item", "data": work_item_data("t"),
+        "kind": "node", "id": WORK_ITEM, "type": "work-item", "data": typed_work_item_data("t"),
     } }] });
     project_output(&project, &["append"], &work_item.to_string());
 
@@ -311,6 +311,8 @@ fn it_should_require_ci_green_and_the_blocking_repository_checks_in_the_gate() {
     required.sort_unstable();
     let mut expected = blocking_repo_check_ids();
     expected.push(CI_GREEN.to_owned());
+    // Without --base the review counts as required.
+    expected.push(CONFIG_LOOSENING_REVIEW.to_owned());
     expected.sort_unstable();
     assert_eq!(required, expected);
 }

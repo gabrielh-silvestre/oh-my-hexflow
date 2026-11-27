@@ -117,6 +117,15 @@ pub static PROFILE: Profile = Profile {
         Entry::data("work-item", "passed", Shape::Derived)
             .under("gate")
             .optional(),
+        Entry::data("work-item", "forced", Shape::Derived)
+            .under("gate")
+            .optional(),
+        Entry::data("work-item", "overridden", Shape::Literal)
+            .under("gate")
+            .optional(),
+        Entry::data("work-item", "note", Shape::Literal)
+            .under("gate")
+            .optional(),
         Entry::data("work-item", "chain_head_seq", Shape::Literal)
             .under("gate")
             .optional(),
@@ -136,6 +145,15 @@ pub static PROFILE: Profile = Profile {
             .under("gate")
             .optional(),
         Entry::data("pull-request", "passed", Shape::Derived)
+            .under("gate")
+            .optional(),
+        Entry::data("pull-request", "forced", Shape::Derived)
+            .under("gate")
+            .optional(),
+        Entry::data("pull-request", "overridden", Shape::Literal)
+            .under("gate")
+            .optional(),
+        Entry::data("pull-request", "note", Shape::Literal)
             .under("gate")
             .optional(),
         Entry::data("pull-request", "chain_head_seq", Shape::Literal)

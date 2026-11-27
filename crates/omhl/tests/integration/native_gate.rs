@@ -1,8 +1,8 @@
 use crate::support;
 
 use hexlog::{Snapshot, SnapshotKind};
-use omhl::facade::Omhl;
-use omhl::pr_gate::GateSnapshots;
+use omhl::facade::{CloseError, Omhl};
+use omhl::pr_gate::{CloseRefusal, GateSnapshots};
 use omhl::probe::{ProbeOutcome, TreeSource};
 use omhl::workflow::config::NativeConfig;
 use serde_json::json;
@@ -53,18 +53,47 @@ type Outcomes = Vec<(String, bool)>;
 
 fn gate_outcomes(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> Outcomes {
     let report = omhl
-        .evaluate_pr_gate(&acme(), &sid(PR_7), &at_head(), enabled)
+        .evaluate_pr_gate(
+            &acme(),
+            &sid(PR_7),
+            &at_head(),
+            enabled,
+            &omhl::facade::WorkRequirements::none(),
+            false,
+        )
         .expect("the gate is evaluated");
 
     outcomes(&report)
 }
 
+/// Um `close` recusado ainda avalia as mesmas perguntas: elas vêm da recusa, sem gravar nada.
 fn close_outcomes(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> (Outcomes, bool) {
-    let closed = omhl
-        .close_work_item(&acme(), &sid(PR_7), &at_head(), enabled, &author())
-        .expect("the work item is closed");
+    let result = omhl.close_work_item(
+        &acme(),
+        &sid(PR_7),
+        &at_head(),
+        enabled,
+        &omhl::facade::WorkRequirements::none(),
+        false,
+        &omhl::facade::Closing {
+            author: &author(),
+            note: None,
+        },
+    );
 
-    (outcomes(&closed.report), closed.report.passed)
+    match result {
+        Ok(closed) => (outcomes(&closed.report), closed.report.passed),
+        Err(CloseError::Refused(
+            CloseRefusal::Refused(questions) | CloseRefusal::Warnings(questions),
+        )) => (
+            questions
+                .iter()
+                .map(|question| (question.label.clone(), question.passed))
+                .collect(),
+            false,
+        ),
+        Err(error) => panic!("the close failed for another reason: {error:?}"),
+    }
 }
 
 /// `gate-pr` e depois `close` sobre o mesmo estado: o `close` só avalia o gate e grava.
@@ -325,7 +354,14 @@ fn it_should_pass_the_gate_with_the_three_method_questions_when_nothing_is_enabl
     let mut omhl = open_pull_request(&harness);
 
     let gate = omhl
-        .evaluate_pr_gate(&acme(), &sid(PR_7), &at_head(), &native_enabled(&[]))
+        .evaluate_pr_gate(
+            &acme(),
+            &sid(PR_7),
+            &at_head(),
+            &native_enabled(&[]),
+            &omhl::facade::WorkRequirements::none(),
+            false,
+        )
         .expect("the gate is evaluated");
     let (closed, closed_passed) = close_outcomes(&mut omhl, &native_enabled(&[]));
 
@@ -360,7 +396,7 @@ fn it_should_fail_the_gate_before_the_ci_green_attestation_and_pass_it_after() {
 }
 
 #[test]
-fn it_should_record_the_failed_gate_when_close_runs_with_an_enabled_native_unattested() {
+fn it_should_ask_the_unattested_native_as_failing_when_close_is_refused() {
     let harness = harness();
     let mut omhl = open_pull_request(&harness);
 

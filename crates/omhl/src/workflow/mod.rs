@@ -9,3 +9,4 @@ pub mod retro;
 pub mod role_allow;
 pub mod shell;
 pub mod spec;
+pub mod work_type;

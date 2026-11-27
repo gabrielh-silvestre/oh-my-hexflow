@@ -9,6 +9,8 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         (RuleCode::InvalidTransition, "invalid-transition"),
         (RuleCode::WorkItemNotFound, "work-item-not-found"),
         (RuleCode::WorkItemClosed, "work-item-closed"),
+        (RuleCode::WorkItemTypeUnknown, "work-item-type-unknown"),
+        (RuleCode::TypeChangeLoosens, "type-change-loosens"),
         (RuleCode::CheckNotFound, "check-not-found"),
         (RuleCode::AttestationIdMismatch, "attestation-id-mismatch"),
         (RuleCode::AttestationIdTooLong, "attestation-id-too-long"),
@@ -48,6 +50,8 @@ fn it_should_render_each_rule_code_as_its_contract_string() {
         ),
         (RuleCode::RoleAnswerForbidden, "role-answer-forbidden"),
         (RuleCode::InvalidSessionId, "invalid-session-id"),
+        (RuleCode::ReviewBaseInvalid, "review-base-invalid"),
+        (RuleCode::CheckLooseningRefused, "check-loosening-refused"),
     ];
 
     let rendered: Vec<(RuleCode, &str)> = expected
@@ -97,6 +101,7 @@ fn it_should_give_every_new_rule_code_a_cause_and_a_next_step() {
         RuleCode::GuidelineRetireByCommand,
         RuleCode::RoleUnknown,
         RuleCode::InvalidSessionId,
+        RuleCode::CheckLooseningRefused,
     ];
 
     let incomplete: Vec<&str> = new_codes
@@ -137,4 +142,25 @@ fn it_should_cover_both_paths_in_the_next_step_of_origin_required() {
     );
 
     assert_eq!(covered, (true, true));
+}
+
+#[test]
+fn it_should_name_the_owner_and_owner_override_in_the_next_step_of_type_change_loosens() {
+    let next_step = RuleCode::TypeChangeLoosens
+        .guidance()
+        .expect("type-change-loosens has guidance")
+        .next_step;
+
+    assert!(next_step.contains("owner"), "{next_step}");
+    assert!(next_step.contains("--owner-override"), "{next_step}");
+}
+
+#[test]
+fn it_should_explain_in_the_cause_of_type_change_loosens_that_the_new_type_asks_for_less() {
+    let cause = RuleCode::TypeChangeLoosens
+        .guidance()
+        .expect("type-change-loosens has guidance")
+        .cause;
+
+    assert!(cause.contains("type"), "{cause}");
 }

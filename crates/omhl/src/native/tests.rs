@@ -5,7 +5,7 @@ use hexlog::NativeNodes;
 use hexlog::{NativeNode, SemanticId};
 
 #[test]
-fn it_should_keep_the_native_catalog_version_unchanged() {
+fn it_should_bump_the_native_catalog_version_for_the_new_check() {
     let native = NativeBase;
 
     let versions = (
@@ -13,19 +13,21 @@ fn it_should_keep_the_native_catalog_version_unchanged() {
         native.catalog_version(),
     );
 
-    assert_eq!(versions, ("1.0.0", "1.0.0"));
+    assert_eq!(versions, ("1.1.0", "1.1.0"));
 }
 
-const CHECK_IDS: [&str; 3] = [
+const CHECK_IDS: [&str; 4] = [
     "checks.run-tests",
     "checks.ci-green-before-merge",
     "checks.verify-review-comment-anchoring",
+    CONFIG_LOOSENING_REVIEW,
 ];
 const GUIDELINE_IDS: [&str; 2] = [
     "guidelines.one-decision-per-turn",
     "guidelines.commit-policy",
 ];
 
+const CONFIG_LOOSENING_REVIEW: &str = "checks.config-loosening-review";
 const RUN_TESTS: &str = "checks.run-tests";
 const CI_GREEN: &str = "checks.ci-green-before-merge";
 
@@ -106,7 +108,7 @@ fn it_should_list_the_native_ids_in_the_contract_order() {
 }
 
 #[test]
-fn it_should_mark_the_three_native_checks_blocking_with_the_contract_events() {
+fn it_should_mark_the_four_native_checks_blocking_with_the_contract_events() {
     let native = NativeBase;
     let expected = vec![
         (RUN_TESTS, "before-commit", true),
@@ -116,6 +118,7 @@ fn it_should_mark_the_three_native_checks_blocking_with_the_contract_events() {
             "before-publishing-review-comments",
             true,
         ),
+        (CONFIG_LOOSENING_REVIEW, "before-pr", true),
     ];
 
     let found: Vec<(&str, &str, bool)> = native
@@ -133,7 +136,7 @@ fn it_should_expose_the_native_catalog_version() {
 
     let versions = (native.catalog_version(), NATIVE_CATALOG_VERSION);
 
-    assert_eq!(versions, ("1.0.0", "1.0.0"));
+    assert_eq!(versions, ("1.1.0", "1.1.0"));
 }
 
 #[test]
@@ -152,5 +155,146 @@ fn it_should_expose_the_guideline_and_check_data_as_non_empty_texts_without_carr
         .copied()
         .filter(|text| text.is_empty() || text.contains('\r'))
         .collect();
-    assert_eq!((texts.len(), malformed), (5, Vec::new()));
+    assert_eq!((texts.len(), malformed), (6, Vec::new()));
+}
+
+#[test]
+fn it_should_end_the_native_check_catalog_with_the_config_loosening_review() {
+    let native = NativeBase;
+
+    let last = native.checks().last().map(|check| check.id);
+
+    assert_eq!(last, Some(CONFIG_LOOSENING_REVIEW));
+}
+
+#[test]
+fn it_should_describe_the_config_loosening_review_in_one_english_sentence() {
+    let native = NativeBase;
+    let check = native
+        .checks()
+        .iter()
+        .find(|check| check.id == CONFIG_LOOSENING_REVIEW)
+        .expect("the review check is in the catalog");
+
+    let how = check.how;
+
+    assert!(how.is_ascii(), "{how}");
+    assert!(how.contains("oh-my-hexflow:code-reviewer"), "{how}");
+    assert!(!how.contains(". "), "{how}");
+    assert!(!how.contains('\n'), "{how}");
+}
+
+fn config_loosening_review_how() -> &'static str {
+    NativeBase
+        .checks()
+        .iter()
+        .find(|check| check.id == CONFIG_LOOSENING_REVIEW)
+        .expect("the review check is in the catalog")
+        .how
+}
+
+#[test]
+fn it_should_name_the_two_reviewed_paths_in_the_config_loosening_review_how() {
+    let how = config_loosening_review_how();
+
+    assert!(how.contains(".omhl/workflow.toml"), "{how}");
+    assert!(how.contains(".omhl/checks/"), "{how}");
+}
+
+#[test]
+fn it_should_leave_the_attestation_to_the_human_in_the_config_loosening_review_how() {
+    let how = config_loosening_review_how();
+
+    assert!(how.contains("the human attest"), "{how}");
+}
+
+#[test]
+fn it_should_not_tell_the_agent_to_attest_in_the_config_loosening_review_how() {
+    let how = config_loosening_review_how();
+
+    assert!(!how.contains("attest the result"), "{how}");
+    assert!(
+        !how.contains("any check, gate or lint configuration"),
+        "{how}"
+    );
+}
+
+#[test]
+fn it_should_reserve_the_config_loosening_review_id_as_a_check() {
+    let native = NativeBase;
+
+    let found = native.lookup(&sid(CONFIG_LOOSENING_REVIEW));
+
+    assert_eq!(
+        found,
+        Some(NativeNode {
+            type_name: tname("check")
+        })
+    );
+}
+
+#[test]
+fn it_should_keep_the_config_loosening_review_out_of_the_native_after_pair() {
+    let native = NativeBase;
+
+    let pairs = native.native_relations(&rty("after"));
+
+    assert!(pairs.iter().all(|(from, to)| {
+        from.as_str() != CONFIG_LOOSENING_REVIEW && to.as_str() != CONFIG_LOOSENING_REVIEW
+    }));
+}
+
+fn names(paths: &[&str]) -> Vec<String> {
+    paths.iter().map(|path| (*path).to_owned()).collect()
+}
+
+#[test]
+fn it_should_trigger_the_review_for_each_config_path_that_changed() {
+    let changed = names(&[
+        ".omhl/workflow.toml",
+        ".omhl/checks/x.toml",
+        ".omhl/checks/x.md",
+    ]);
+
+    let triggers = crate::native::review_trigger_paths(&changed);
+
+    assert_eq!(triggers, changed);
+}
+
+#[test]
+fn it_should_not_trigger_the_review_for_a_source_file() {
+    let changed = names(&["src/a.rs", "README.md"]);
+
+    let triggers = crate::native::review_trigger_paths(&changed);
+
+    assert!(triggers.is_empty(), "{triggers:?}");
+}
+
+#[test]
+fn it_should_not_trigger_the_review_for_a_nested_file_or_another_extension_in_the_checks_folder() {
+    let changed = names(&[
+        ".omhl/checks/sub/x.toml",
+        ".omhl/checks/x.rs",
+        ".omhl/guidelines/g.toml",
+    ]);
+
+    let triggers = crate::native::review_trigger_paths(&changed);
+
+    assert!(triggers.is_empty(), "{triggers:?}");
+}
+
+#[test]
+fn it_should_trigger_the_review_only_by_the_old_path_of_a_check_moved_out_of_the_folder() {
+    let changed = names(&["docs/x.toml", ".omhl/checks/x.toml"]);
+
+    let triggers = crate::native::review_trigger_paths(&changed);
+
+    assert_eq!(triggers, names(&[".omhl/checks/x.toml"]));
+}
+
+#[test]
+fn it_should_not_trigger_the_review_for_an_empty_change_list() {
+    let triggers = crate::native::review_trigger_paths(&[]);
+
+    assert!(triggers.is_empty(), "{triggers:?}");
 }

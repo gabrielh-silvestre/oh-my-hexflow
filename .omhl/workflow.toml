@@ -1,4 +1,4 @@
 version = 1
 
 [native]
-checks = ["checks.ci-green-before-merge", "checks.verify-review-comment-anchoring"]
+checks = ["checks.ci-green-before-merge", "checks.verify-review-comment-anchoring", "checks.config-loosening-review"]

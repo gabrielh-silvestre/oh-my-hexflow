@@ -8,6 +8,7 @@ use crate::workflow::config::{
     PromotionConfig, RequireAtom, SpecsConfig, WorkflowConfig, parse_workflow,
 };
 
+const CONFIG_LOOSENING_REVIEW: &str = "checks.config-loosening-review";
 const WORKFLOW_PATH: &str = "/project/.omhl/workflow.toml";
 const CANARY: &str = "CANARY-7f3a91";
 const ERROR_CODE: &str = "invalid-workflow-config";
@@ -107,14 +108,14 @@ fn it_should_read_a_file_with_only_the_version_as_the_defaults() {
 fn it_should_read_the_four_require_atoms_by_their_kebab_case_names() {
     let text = lines(&[
         "version = 1",
-        "[prefix.feat]",
+        "[prefix.chore]",
         "require = [\"business-premise\", \"technical-premise-confirmed\", \"agent-premise\", \"spec\"]",
     ]);
 
     let config = accepted(&text);
 
     assert_eq!(
-        config.prefixes["feat"],
+        config.prefixes["chore"],
         vec![
             RequireAtom::BusinessPremise,
             RequireAtom::TechnicalPremiseConfirmed,
@@ -165,16 +166,49 @@ fn it_should_read_a_custom_promotion_threshold() {
 }
 
 #[test]
-fn it_should_replace_the_requirements_of_a_listed_prefix_and_keep_the_others() {
-    let text = lines(&["version = 1", "[prefix.feat]", "require = [\"spec\"]"]);
+fn it_should_add_the_requirements_of_a_listed_default_prefix_to_its_defaults() {
+    let text = lines(&["version = 1", "[prefix.refactor]", "require = [\"spec\"]"]);
 
     let config = accepted(&text);
 
-    let mut expected = WorkflowConfig::default();
-    expected
-        .prefixes
-        .insert("feat".to_owned(), vec![RequireAtom::Spec]);
-    assert_eq!(config, expected);
+    assert_eq!(
+        config.prefixes["refactor"],
+        vec![RequireAtom::TechnicalPremiseConfirmed, RequireAtom::Spec]
+    );
+    assert_eq!(
+        config.prefixes["feat"],
+        WorkflowConfig::default().prefixes["feat"]
+    );
+}
+
+#[test]
+fn it_should_keep_the_defaults_when_a_listed_prefix_requires_nothing_more() {
+    let text = lines(&["version = 1", "[prefix.feat]", "require = []"]);
+
+    let config = accepted(&text);
+
+    assert_eq!(
+        config.prefixes["feat"],
+        vec![RequireAtom::BusinessPremise, RequireAtom::Spec]
+    );
+}
+
+#[test]
+fn it_should_give_a_default_prefix_with_no_defaults_exactly_the_listed_atoms() {
+    let text = lines(&["version = 1", "[prefix.chore]", "require = [\"spec\"]"]);
+
+    let config = accepted(&text);
+
+    assert_eq!(config.prefixes["chore"], vec![RequireAtom::Spec]);
+}
+
+#[test]
+fn it_should_give_a_new_prefix_exactly_the_listed_atoms() {
+    let text = lines(&["version = 1", "[prefix.release]", "require = [\"spec\"]"]);
+
+    let config = accepted(&text);
+
+    assert_eq!(config.prefixes["release"], vec![RequireAtom::Spec]);
 }
 
 #[test]
@@ -186,15 +220,6 @@ fn it_should_add_a_prefix_the_defaults_do_not_have() {
     let mut expected = WorkflowConfig::default();
     expected.prefixes.insert("perf".to_owned(), Vec::new());
     assert_eq!(config, expected);
-}
-
-#[test]
-fn it_should_allow_a_prefix_to_require_nothing() {
-    let text = lines(&["version = 1", "[prefix.feat]", "require = []"]);
-
-    let config = accepted(&text);
-
-    assert_eq!(config.prefixes["feat"], Vec::<RequireAtom>::new());
 }
 
 // AC 14: o valor vem do texto, não do binário
@@ -524,6 +549,24 @@ fn it_should_enable_the_three_native_checks_when_all_ids_are_listed() {
 
     found.sort_unstable();
     assert_eq!(found, vec![CI_GREEN, RUN_TESTS, VERIFY_ANCHORING]);
+}
+
+#[test]
+fn it_should_enable_the_config_loosening_review_when_its_id_is_listed() {
+    let text = native_checks_text(&format!("[\"{CONFIG_LOOSENING_REVIEW}\"]"));
+
+    let found = enabled(&text);
+
+    assert_eq!(found, vec![CONFIG_LOOSENING_REVIEW]);
+}
+
+#[test]
+fn it_should_keep_the_other_native_checks_off_when_only_the_config_loosening_review_is_listed() {
+    let text = native_checks_text(&format!("[\"{CONFIG_LOOSENING_REVIEW}\"]"));
+
+    let found = enabled(&text);
+
+    assert!(!found.contains(&RUN_TESTS) && !found.contains(&CI_GREEN));
 }
 
 #[test]

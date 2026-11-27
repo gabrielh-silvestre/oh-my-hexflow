@@ -50,6 +50,9 @@ pub enum RuleCode {
     InvalidTransition,
     WorkItemNotFound,
     WorkItemClosed,
+    WorkItemTypeUnknown,
+    TypeChangeLoosens,
+    CheckLooseningRefused,
     CheckNotFound,
     AttestationIdMismatch,
     AttestationIdTooLong,
@@ -80,6 +83,7 @@ pub enum RuleCode {
     RoleAnswerForbidden,
     RoleRetirementForbidden,
     InvalidSessionId,
+    ReviewBaseInvalid,
 }
 
 impl RuleCode {
@@ -89,6 +93,9 @@ impl RuleCode {
             RuleCode::UseCloseWorkItem => "use-close-work-item",
             RuleCode::InvalidTransition => "invalid-transition",
             RuleCode::WorkItemNotFound => "work-item-not-found",
+            RuleCode::WorkItemTypeUnknown => "work-item-type-unknown",
+            RuleCode::TypeChangeLoosens => "type-change-loosens",
+            RuleCode::CheckLooseningRefused => "check-loosening-refused",
             RuleCode::WorkItemClosed => "work-item-closed",
             RuleCode::CheckNotFound => "check-not-found",
             RuleCode::AttestationIdMismatch => "attestation-id-mismatch",
@@ -120,11 +127,16 @@ impl RuleCode {
             RuleCode::RoleAnswerForbidden => "role-answer-forbidden",
             RuleCode::RoleRetirementForbidden => "role-retirement-forbidden",
             RuleCode::InvalidSessionId => "invalid-session-id",
+            RuleCode::ReviewBaseInvalid => "review-base-invalid",
         }
     }
 
     pub fn guidance(self) -> Option<Guidance> {
         match self {
+            RuleCode::WorkItemTypeUnknown => Some(Guidance {
+                cause: "the work item has no type the project's matrix knows",
+                next_step: "record the type with omhl append (field type) on the work item, or name the branch with its prefix in the table",
+            }),
             RuleCode::KindMissing => Some(Guidance {
                 cause: "the guideline has no kind",
                 next_step: "set kind to business or architecture in the item data and append again",
@@ -180,6 +192,18 @@ impl RuleCode {
             RuleCode::InvalidSessionId => Some(Guidance {
                 cause: "CLAUDE_CODE_SESSION_ID is set but empty, is not UTF-8, is longer than 100 UTF-16 units or equals outside-claude-code",
                 next_step: "unset CLAUDE_CODE_SESSION_ID, or run omhl inside a Claude Code session",
+            }),
+            RuleCode::ReviewBaseInvalid => Some(Guidance {
+                cause: "--base does not name a commit, or it is the same commit as HEAD, so there is no range to review",
+                next_step: "pass --base with the integration branch the pull request targets, such as develop",
+            }),
+            RuleCode::TypeChangeLoosens => Some(Guidance {
+                cause: "the new work item type asks for less than the current type, which loosens what the work item must deliver",
+                next_step: "keep the current type, or ask the owner to make the change with --owner-override, run outside Claude Code",
+            }),
+            RuleCode::CheckLooseningRefused => Some(Guidance {
+                cause: "the revised check turns blocking off, removes its run or moves a blocking check out of the required events, which loosens a check already stored",
+                next_step: "keep the check blocking, with its run and on a required event, or ask the owner to retire the check and declare a new one",
             }),
             _ => None,
         }

@@ -15,6 +15,7 @@ Before opening or merging the pull request of a work item, to know whether every
 - `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
+- `--base <ref>`: the base of the loosening review; the review reads the diff from the merge-base it prints to `HEAD`, and a pull request without `--base` is not recognized as a repair PR.
 - It needs a git repository with a clean tree: the gate reads `HEAD` and its tree. It also reads the `.omhl/workflow.toml` of the main directory, which says which native checks are on ([native-checks.md](../../directives-flow/references/native-checks.md)).
 
 ## Output
@@ -34,9 +35,11 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 - `work-item-not-found` (exit 1): the work item does not exist (or the id belongs to another node type). The pointer is `/work_item`. Check the id.
 - `INVALID_INPUT` (exit 1): the id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
+- `work-item-type-unknown` (exit 1): the work item has no type the project's matrix knows. Record the type with `omhl append` or name the branch with its prefix.
+- `review-base-invalid` (exit 1): `--base` does not name a commit or is the same commit as `HEAD`. Pass the integration branch the pull request targets, such as `develop`.
 - `snapshot-dirty` (exit 1): the tree has an uncommitted change. Commit and repeat.
 - `probe-failed` (exit 1): git did not answer (outside a repository, or in one with no commits). Run inside a checkout with at least one commit.
-- `invalid-workflow-config` (exit 1): the `.omhl/workflow.toml` of the main directory is not accepted (a bad key or value, an unsupported version, a symbolic link, a file that is not UTF-8 or one above the size limit). The gate refuses before asking anything, and the error never turns a native check on or off. Fix the file; `omhl load --dry-run` details it.
+- `invalid-workflow-config` (exit 1): the `.omhl/workflow.toml` of the main directory is not accepted (a bad key or value, an unsupported version, a symbolic link, a file that is not UTF-8 or one above the size limit). The gate refuses before asking anything, except for the repair pull request (`--base` naming a diff that only fixes the file), and the error never turns a native check on or off. The other exception is `close --abandon` (`--abandon`), which does not evaluate the gate. Fix the file; `omhl load --dry-run` details it.
 - `main-dir-unknown` (exit 1): the main directory could not be resolved from this checkout. Check the repository.
 - `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
 - `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
@@ -44,28 +47,31 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 ## Examples
 
-With no attestation at all, the gate fails. Each required check appears with `matched 0` (the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`):
+With no attestation at all, the gate fails. Each required check appears with `matched 0` and its class (`warn` or `refuse`; only a failed `refuse` question stops `close`). The type requirements come last as `requires:*`, here with `requires:spec` failing because the spec is not valid (the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`):
 
 ```omhl-example fixture=native-checks
 $ omhl gate-pr work-items.w1
-✘ gate-pr · pull-request · not passed · 7 questions · 4 failed
-✘ checks.run-tests · occurred · matched 0
-✘ checks.ci-green-before-merge · occurred · matched 0
-✘ checks.ok · occurred · matched 0
-✘ spec-digest-match:checks.ok · occurred · matched 0
+✘ gate-pr · pull-request · not passed · 9 questions · 5 failed
+✘ checks.run-tests · warn · occurred · matched 0
+✘ checks.ci-green-before-merge · refuse · occurred · matched 0
+✘ checks.ok · refuse · occurred · matched 0
+✘ spec-digest-match:checks.ok · refuse · occurred · matched 0
 ✔ no-open-contradiction · matched 0
 ✔ decisions-anchored · anchored · matched 0
 ✔ anchors-confirmed · anchored · matched 0
+✔ requires:business-premise · requirement · matched 1
+✘ requires:spec · refuse · requirement · matched 1
+Next: make the spec valid with omhl spec validate.
 ```
 
 The same gate, in JSON (the `passed` and the fields of each question that the text summarizes):
 
 ```omhl-example fixture=native-checks
 $ omhl gate-pr work-items.w1 --format json
-{"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]}
+{"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"class":"warn","failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"class":"refuse","failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"class":"refuse","failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"class":"refuse","failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"requirement","label":"requires:business-premise","matched":1,"omitted":0,"passed":true},{"class":"refuse","failing":[],"kind":"requirement","label":"requires:spec","matched":1,"next_step":"make the spec valid with omhl spec validate","omitted":0,"passed":false}]}
 ```
 
-With the two native checks attested by hand and the mechanical check run, on the same commit, the gate passes:
+With the two native checks attested by hand and the mechanical check run, on the same commit, the checks pass and only the `requires:spec` requirement still fails:
 
 ```omhl-example fixture=native-checks
 $ omhl attest checks.run-tests work-items.w1 --outcome passed
@@ -75,7 +81,7 @@ $ omhl attest checks.ci-green-before-merge work-items.w1 --outcome passed
 $ omhl check run --event before-pr --format json
 {"blocked":[],"event":"before-pr","recorded":true,"results":[{"blocking":true,"check":"checks.ok","duration_ms":"<ms>","exit_code":0,"ok":true,"outcome":"passed","timed_out":false,"truncated":false}],"snapshot":{"id":"<commit>","kind":"git-commit"},"work_item":"work-items.w1"}
 $ omhl gate-pr work-items.w1
-✔ gate-pr · pull-request · passed · 7 questions
+✘ gate-pr · pull-request · not passed · 9 questions · 1 failed
 ✔ checks.run-tests · occurred · matched 1
 ✔ checks.ci-green-before-merge · occurred · matched 1
 ✔ checks.ok · occurred · matched 1
@@ -83,18 +89,24 @@ $ omhl gate-pr work-items.w1
 ✔ no-open-contradiction · matched 0
 ✔ decisions-anchored · anchored · matched 0
 ✔ anchors-confirmed · anchored · matched 0
+✔ requires:business-premise · requirement · matched 1
+✘ requires:spec · refuse · requirement · matched 1
+Next: make the spec valid with omhl spec validate.
 ```
 
-With no `[native]` table, the gate asks only about the project checks and the decisions:
+With no `[native]` table, the gate asks only about the project checks, the decisions and the type requirements:
 
 ```omhl-example fixture=checks
 $ omhl gate-pr work-items.w1
-✘ gate-pr · pull-request · not passed · 5 questions · 2 failed
-✘ checks.ok · occurred · matched 0
-✘ spec-digest-match:checks.ok · occurred · matched 0
+✘ gate-pr · pull-request · not passed · 7 questions · 3 failed
+✘ checks.ok · refuse · occurred · matched 0
+✘ spec-digest-match:checks.ok · refuse · occurred · matched 0
 ✔ no-open-contradiction · matched 0
 ✔ decisions-anchored · anchored · matched 0
 ✔ anchors-confirmed · anchored · matched 0
+✔ requires:business-premise · requirement · matched 1
+✘ requires:spec · refuse · requirement · matched 1
+Next: make the spec valid with omhl spec validate.
 ```
 
 Refusal: the `.omhl/workflow.toml` lists an id that is not a native check:

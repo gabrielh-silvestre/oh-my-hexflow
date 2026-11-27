@@ -9,7 +9,7 @@ Before `wt switch -c <branch>`, to check whether the worktree of the branch can 
 - `--branch <name>`: the branch name, in the format `type/wi-<id>__<slug>` (`feat`, `fix`, `refactor`, `tests`, `bugfix`, `chore` or `docs`). Required; accepts a value with a leading hyphen and the form `--branch=<value>`.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. `--project-dir` must exist.
 - `--format json`: global option, the only format of this command, which prints only JSON. `agent` and `human` exit with a usage error (exit 2), before the command runs.
-- What each prefix requires comes from `.omhl/workflow.toml` (the matrix is in [matrix.md](matrix.md)): `feat` and `fix` ask for a confirmed business premise and a valid spec; `refactor` and `tests` ask for a confirmed technical premise; `bugfix` asks for an agent premise; `chore` and `docs` ask for nothing.
+- What each prefix requires is the default of the matrix plus what `.omhl/workflow.toml` adds with `require` (the matrix is in [matrix.md](matrix.md)): `feat` and `fix` ask for a confirmed business premise and a valid spec; `refactor` and `tests` ask for a confirmed technical premise; `bugfix` asks for an agent premise; `chore` and `docs` ask for nothing.
 
 ## Output
 

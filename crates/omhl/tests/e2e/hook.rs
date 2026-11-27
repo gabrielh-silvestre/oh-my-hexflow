@@ -834,7 +834,7 @@ fn git_project() -> Project {
 }
 
 fn append_open_work_item(project: &Project, id: &str) {
-    let data = json!({ "title": "Login", "status": "open" });
+    let data = json!({ "title": "Login", "status": "open", "type": "chore" });
 
     append_nodes(project, vec![node_item(id, "work-item", data)]);
 }

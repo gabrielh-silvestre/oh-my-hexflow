@@ -1,9 +1,10 @@
 use hexlog::{NativeNode, NativeNodes, RelationTypeName, SemanticId, TypeName};
 
-pub const NATIVE_CATALOG_VERSION: &str = "1.0.0";
+pub const NATIVE_CATALOG_VERSION: &str = "1.1.0";
 
 const RUN_TESTS_ID: &str = "checks.run-tests";
-const CI_GREEN_ID: &str = "checks.ci-green-before-merge";
+pub(crate) const CI_GREEN_ID: &str = "checks.ci-green-before-merge";
+pub(crate) const CONFIG_LOOSENING_REVIEW_ID: &str = "checks.config-loosening-review";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeCheck {
@@ -20,7 +21,7 @@ pub struct NativeGuideline {
 }
 
 // A ordem é a do contrato: o plugin nunca remove nem reordena um id nativo.
-static CHECKS: [NativeCheck; 3] = [
+static CHECKS: [NativeCheck; 4] = [
     NativeCheck {
         id: RUN_TESTS_ID,
         event: "before-commit",
@@ -39,6 +40,12 @@ static CHECKS: [NativeCheck; 3] = [
         how: "compare path, line and side of each inline comment with the diff of the head SHA; post the approved text unchanged",
         blocking: true,
     },
+    NativeCheck {
+        id: CONFIG_LOOSENING_REVIEW_ID,
+        event: "before-pr",
+        how: "have oh-my-hexflow:code-reviewer review every loosening of a check or gate configuration in .omhl/workflow.toml or .omhl/checks/ in the diff, fix the findings and let the human attest it before opening the PR",
+        blocking: true,
+    },
 ];
 
 static GUIDELINES: [NativeGuideline; 2] = [
@@ -51,6 +58,26 @@ static GUIDELINES: [NativeGuideline; 2] = [
         text: "by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy",
     },
 ];
+
+pub fn review_trigger_paths(changed: &[String]) -> Vec<String> {
+    changed
+        .iter()
+        .filter(|path| {
+            path.as_str() == ".omhl/workflow.toml"
+                || path
+                    .strip_prefix(".omhl/checks/")
+                    .is_some_and(|name| !name.contains('/') && is_check_file(name))
+        })
+        .cloned()
+        .collect()
+}
+
+fn is_check_file(name: &str) -> bool {
+    [".toml", ".md"].iter().any(|extension| {
+        name.strip_suffix(extension)
+            .is_some_and(|stem| !stem.is_empty())
+    })
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct NativeBase;

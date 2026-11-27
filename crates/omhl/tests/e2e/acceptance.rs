@@ -5,7 +5,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 use support::child::{Cmd, omhl, omhl_json};
 use support::git::commit_marker;
-use support::omhl::{LIMIT_RULE, decision_data, work_item_data};
+use support::omhl::{LIMIT_RULE, decision_data, typed_work_item_data};
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
@@ -82,7 +82,7 @@ fn it_should_return_the_attestation_from_the_cli() {
         project.xdg(),
         W1,
         "work-item",
-        &work_item_data("t"),
+        &typed_work_item_data("t"),
     );
 
     let cli = at(
@@ -155,8 +155,19 @@ fn it_should_run_a_full_session_across_hook_and_cli() {
         &decision_data("Use WAL", None),
     );
     let after = hook_context(dir, xdg);
-    append_node(dir, xdg, W1, "work-item", &work_item_data("t"));
-    let closed = at(dir, xdg, &["close", W1]).run();
+    append_node(dir, xdg, W1, "work-item", &typed_work_item_data("t"));
+    let closed = at(
+        dir,
+        xdg,
+        &[
+            "close",
+            W1,
+            "--force",
+            "--note",
+            "owner approved the override",
+        ],
+    )
+    .run();
     let verified = at(dir, xdg, &["verify"]).run();
     let fetched = at(dir, xdg, &["get", W1]).run();
 

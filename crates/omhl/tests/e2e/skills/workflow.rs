@@ -643,3 +643,196 @@ fn it_should_link_native_checks_md_from_the_directives_flow_skill() {
         "SKILL.md links native-checks.md"
     );
 }
+
+const CLOSE_PAGE: &str = "review/references/close.md";
+const GATE_PR_PAGE: &str = "review/references/gate-pr.md";
+const CHECK_RETIRE_PAGE: &str = "review/references/check-retire.md";
+const APPEND_PAGE: &str = "directives-flow/references/append.md";
+const LOAD_PAGE: &str = "review/references/load.md";
+
+/// As páginas do `review` que só apontam para a dona de cada regra de fechamento, mais a dona.
+const CLOSING_PAGES: [&str; 4] = [
+    "review/SKILL.md",
+    "review/references/fechamento.md",
+    "review/references/checks.md",
+    CLOSE_PAGE,
+];
+
+fn assert_page_says(page: &str, phrase: &str) {
+    let text = lowercase(page);
+
+    assert!(
+        text.contains(&phrase.to_lowercase()),
+        "{page} must say: {phrase}"
+    );
+}
+
+#[test]
+fn it_should_say_in_close_md_that_close_runs_at_the_tip_of_the_work_item_branch() {
+    assert_page_says(CLOSE_PAGE, "tip of the work item branch");
+}
+
+#[test]
+fn it_should_say_in_close_md_to_check_the_commit_before_any_other_exit() {
+    assert_page_says(CLOSE_PAGE, "before any other exit");
+}
+
+#[test]
+fn it_should_say_in_close_md_that_no_commit_goes_after_the_merge() {
+    assert_page_says(CLOSE_PAGE, "no commit after the merge");
+}
+
+#[test]
+fn it_should_say_in_close_md_that_a_merged_item_never_closes_with_abandon() {
+    assert_page_says(CLOSE_PAGE, "never closes with `--abandon`");
+}
+
+#[test]
+fn it_should_say_in_close_md_that_a_merged_item_closes_with_failed_delivery_and_a_note() {
+    assert_page_says(CLOSE_PAGE, "`--failed-delivery --note`");
+}
+
+#[test]
+fn it_should_say_in_close_md_which_merges_failed_delivery_does_not_cover() {
+    assert_page_says(
+        CLOSE_PAGE,
+        "squash or rebase merges or a project without `develop`",
+    );
+}
+
+#[test]
+fn it_should_say_in_close_md_that_abandon_reason_tells_how_the_merge_happened() {
+    assert_page_says(CLOSE_PAGE, "`--reason` says how the merge happened");
+}
+
+#[test]
+fn it_should_say_in_close_md_that_force_does_not_help_in_close_refused() {
+    assert_page_says(CLOSE_PAGE, "`--force` does not help in `close-refused`");
+}
+
+#[test]
+fn it_should_say_in_close_md_that_force_note_is_only_for_close_warnings() {
+    assert_page_says(CLOSE_PAGE, "`--force --note` only for `close-warnings`");
+}
+
+#[test]
+fn it_should_say_in_close_md_that_the_note_holds_the_owner_phrase() {
+    assert_page_says(CLOSE_PAGE, "the owner's literal phrase in the `--note`");
+}
+
+#[test]
+fn it_should_say_in_close_md_that_abandon_takes_reason_and_note() {
+    assert_page_says(CLOSE_PAGE, "`--abandon --reason --note`");
+}
+
+#[test]
+fn it_should_say_in_close_md_that_the_retro_is_required_only_after_failed_delivery() {
+    assert_page_says(
+        CLOSE_PAGE,
+        "the retro is required only after `--failed-delivery`",
+    );
+}
+
+#[test]
+fn it_should_say_in_close_md_to_propose_one_improvement_per_failed_refuse_question() {
+    assert_page_says(CLOSE_PAGE, "one improvement per failed `refuse` question");
+}
+
+#[test]
+fn it_should_say_in_close_md_that_abandon_has_no_required_retro() {
+    assert_page_says(CLOSE_PAGE, "`--abandon` has no required retro");
+}
+
+#[test]
+fn it_should_say_in_gate_pr_md_to_pass_the_printed_merge_base_as_base() {
+    assert_page_says(GATE_PR_PAGE, "the merge-base it prints");
+}
+
+#[test]
+fn it_should_say_in_check_retire_md_that_retiring_a_check_is_the_owners_task() {
+    assert_page_says(CHECK_RETIRE_PAGE, "retiring a check is the owner's task");
+}
+
+#[test]
+fn it_should_say_in_append_md_to_record_the_type_when_creating_the_work_item() {
+    assert_page_says(APPEND_PAGE, "record the `type` when creating the work item");
+}
+
+#[test]
+fn it_should_say_in_load_md_to_edit_workflow_and_checks_only_inside_a_worktree() {
+    assert_page_says(LOAD_PAGE, "only inside a worktree");
+}
+
+#[test]
+fn it_should_not_say_in_review_pages_that_close_closes_with_a_failed_gate() {
+    for page in ["review/SKILL.md", CLOSE_PAGE] {
+        let text = lowercase(page);
+
+        assert!(
+            !text.contains("closes even with the gate failed")
+                && !text.contains("closing is recorded anyway"),
+            "{page} still says close closes with a failed gate"
+        );
+    }
+}
+
+#[test]
+fn it_should_not_tell_the_agent_in_review_pages_to_retire_a_check() {
+    let skill = read("review/SKILL.md");
+    let checks = read("review/references/checks.md");
+
+    assert!(
+        !skill.contains("Run `omhl check retire`")
+            && !checks.contains("`omhl check retire` only when"),
+        "review/SKILL.md and checks.md must leave retiring to the owner"
+    );
+}
+
+#[test]
+fn it_should_not_teach_recreating_the_branch_or_the_worktree_after_the_merge() {
+    for page in CLOSING_PAGES {
+        let text = lowercase(page);
+
+        assert!(
+            !text.contains("recreate the branch") && !text.contains("recreate the worktree"),
+            "{page} must not teach recreating the branch or the worktree"
+        );
+    }
+}
+
+#[test]
+fn it_should_turn_the_loosening_review_on_in_the_workflow_of_this_repository() {
+    let path = repo_root().join(".omhl/workflow.toml");
+    let bytes = std::fs::read(&path).expect("the repository workflow is readable");
+
+    let parsed = parse_workflow(&path, &bytes);
+
+    assert!(parsed.is_ok(), "the workflow is not accepted: {parsed:?}");
+    let table: toml::Table =
+        toml::from_str(&String::from_utf8(bytes).expect("UTF-8")).expect("the workflow is TOML");
+    let checks = table["native"]["checks"].as_array().expect("native checks");
+    assert!(
+        checks
+            .iter()
+            .any(|id| id.as_str() == Some("checks.config-loosening-review"))
+    );
+}
+
+#[test]
+fn it_should_ship_the_command_pages_that_own_the_close_refusals_and_options() {
+    let pages = [
+        "review/references/close.md",
+        "review/references/gate-pr.md",
+        "review/references/load.md",
+        "review/references/check-retire.md",
+        "directives-flow/references/append.md",
+        "directives-flow/references/errors.md",
+    ];
+
+    let missing: Vec<&str> = pages
+        .into_iter()
+        .filter(|page| !skills_dir().join(page).is_file())
+        .collect();
+
+    assert_eq!(missing, Vec::<&str>::new());
+}

@@ -1,7 +1,8 @@
+use crate::gate::QuestionClass;
 use crate::workflow::gap::{Answerer, GapState};
 use crate::workflow::retro::{
-    AnsweredGap, ApprovedAmendment, DivergenceFact, DivergenceGroup, GapFact, OpenGap, Retro,
-    RetroFacts, retro,
+    AnsweredGap, ApprovedAmendment, DeliveryFailure, DivergenceFact, DivergenceGroup,
+    FailedQuestion, GapFact, OpenGap, Retro, RetroFacts, retro,
 };
 
 const DIVERGENCE: &str = "divergences.login-cmp-001";
@@ -64,6 +65,8 @@ fn pure_retro(
         divergences,
         gaps,
         amendment_files: names(amendment_files),
+        gate_override: None,
+        delivery_failure: None,
     })
 }
 
@@ -270,4 +273,45 @@ fn it_should_not_list_a_gap_that_needs_a_human_as_an_answer_without_criterion() 
     );
 
     assert_eq!(result.no_criterion, vec![]);
+}
+
+fn failed(label: &str, class: QuestionClass) -> FailedQuestion {
+    FailedQuestion {
+        label: label.to_owned(),
+        class,
+    }
+}
+
+fn delivery_failure() -> DeliveryFailure {
+    DeliveryFailure {
+        note: "authorized by the owner".to_owned(),
+        failed: vec![
+            failed("checks.run-tests", QuestionClass::Warn),
+            failed("checks.ci-green-before-merge", QuestionClass::Refuse),
+        ],
+    }
+}
+
+fn retro_with_delivery_failure(delivery_failure: DeliveryFailure) -> Option<Retro> {
+    retro(&RetroFacts {
+        divergences: vec![],
+        gaps: vec![],
+        amendment_files: vec![],
+        gate_override: None,
+        delivery_failure: Some(delivery_failure),
+    })
+}
+
+#[test]
+fn it_should_produce_a_retro_for_a_delivery_failure_without_divergence_and_without_gap() {
+    let result = retro_with_delivery_failure(delivery_failure());
+
+    assert!(result.is_some());
+}
+
+#[test]
+fn it_should_list_one_item_per_failed_question_with_its_class_and_the_note() {
+    let result = retro_with_delivery_failure(delivery_failure()).expect("the retro exists");
+
+    assert_eq!(result.delivery_failure, Some(delivery_failure()));
 }

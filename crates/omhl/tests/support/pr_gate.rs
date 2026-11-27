@@ -2,7 +2,7 @@ use ::omhl::facade::{ClosedWorkItem, Omhl};
 use ::omhl::gate::{GateReport, QuestionReport};
 use ::omhl::native::NativeCheck;
 use ::omhl::pr_gate::GateSnapshots;
-use ::omhl::workflow::config::NativeConfig;
+use ::omhl::workflow::config::{NativeConfig, WorkflowConfig};
 use hexlog::{
     AppendItem, AppendOutcome, ItemBody, Lineage, NodeView, RecordId, SemanticId, Snapshot,
     SnapshotKind,
@@ -44,11 +44,14 @@ pub fn native_check(id: &'static str, event: &'static str, blocking: bool) -> Na
 
 pub const VERIFY_ANCHORING: &str = "checks.verify-review-comment-anchoring";
 /// O fixture padrão das camadas que não escolhem liga todos: o nativo desligado some do gate e dos testes.
+pub const CONFIG_LOOSENING_REVIEW: &str = "checks.config-loosening-review";
 pub const ALL_NATIVE_CHECKS: [&str; 3] = [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING];
 
 pub fn native_enabled(ids: &[&'static str]) -> NativeConfig {
     NativeConfig {
         checks: ids.iter().copied().collect(),
+        // A tabela que um projeto sem `workflow.toml` lê: a dos padrões do binário.
+        prefixes: WorkflowConfig::default().prefixes,
     }
 }
 
@@ -287,8 +290,32 @@ pub fn gate_with(
     snapshots: &GateSnapshots,
     enabled: &NativeConfig,
 ) -> GateReport {
-    omhl.evaluate_pr_gate(&acme(), &sid(PR_7), snapshots, enabled)
-        .expect("the gate is evaluated")
+    omhl.evaluate_pr_gate(
+        &acme(),
+        &sid(PR_7),
+        snapshots,
+        enabled,
+        &omhl::facade::WorkRequirements::none(),
+        false,
+    )
+    .expect("the gate is evaluated")
+}
+
+/// O gate com só o check da revisão ligado, com a exigência dada pelo Engine.
+pub fn gate_with_review(
+    omhl: &mut Omhl<'_>,
+    snapshots: &GateSnapshots,
+    review_required: bool,
+) -> GateReport {
+    omhl.evaluate_pr_gate(
+        &acme(),
+        &sid(PR_7),
+        snapshots,
+        &native_enabled(&[CONFIG_LOOSENING_REVIEW]),
+        &omhl::facade::WorkRequirements::none(),
+        review_required,
+    )
+    .expect("the gate is evaluated")
 }
 
 pub fn close(omhl: &mut Omhl<'_>, work_item: &str, snapshots: &GateSnapshots) -> ClosedWorkItem {
@@ -297,7 +324,12 @@ pub fn close(omhl: &mut Omhl<'_>, work_item: &str, snapshots: &GateSnapshots) ->
         &sid(work_item),
         snapshots,
         &all_native_enabled(),
-        &author(),
+        &omhl::facade::WorkRequirements::none(),
+        false,
+        &omhl::facade::Closing {
+            author: &author(),
+            note: None,
+        },
     )
     .expect("the work item is closed")
 }

@@ -9,7 +9,9 @@ use super::action::Caller;
 use super::engine::{Engine, require_project_root};
 use super::error::AppError;
 use super::read::all_nodes;
+use crate::error::{OmhlError, RuleCode};
 use crate::extensions::collect::collect;
+use crate::extensions::loosening::check_loosens;
 use crate::extensions::model::{Extension, ExtensionIssue, ExtensionKind};
 use crate::extensions::plan::{
     ExistingNode, ExistingRelation, Plan, PlanInput, PlannedChange, plan,
@@ -22,7 +24,7 @@ const BATCH_SIZE: usize = 50;
 const KEY_PREFIX: &str = "omhl-load-";
 
 impl Engine<'_> {
-    pub(super) fn load(&mut self, dry_run: bool) -> Result<Value, AppError> {
+    pub(super) fn load(&mut self, dry_run: bool, owner_override: bool) -> Result<Value, AppError> {
         let Engine {
             omhl,
             tenant,
@@ -37,7 +39,7 @@ impl Engine<'_> {
                 collected.omitted_errors,
             ));
         }
-        let reconciled = reconcile(omhl, tenant, &collected.extensions)?;
+        let reconciled = reconcile(omhl, tenant, &collected.extensions, owner_override)?;
         let report = report(tenant, dry_run, &reconciled, &collected.warnings);
         if !dry_run {
             write_changes(omhl, tenant, reconciled.changes)?;
@@ -51,6 +53,7 @@ fn reconcile(
     omhl: &mut Omhl<'_>,
     tenant: &TenantId,
     extensions: &[Extension],
+    owner_override: bool,
 ) -> Result<Plan, AppError> {
     let natives: Vec<String> = NativeBase
         .checks()
@@ -66,7 +69,31 @@ fn reconcile(
         native_check_ids: &natives,
     };
 
-    plan(&input).map_err(|issues| AppError::extensions_invalid(&issues, 0))
+    let plan = plan(&input).map_err(|issues| AppError::extensions_invalid(&issues, 0))?;
+    if !owner_override {
+        refuse_loosening(&plan, &existing_nodes)?;
+    }
+
+    Ok(plan)
+}
+
+fn refuse_loosening(plan: &Plan, existing: &[ExistingNode]) -> Result<(), AppError> {
+    let loosens = |change: &PlannedChange| match change {
+        PlannedChange::ReviseNode {
+            id,
+            type_name,
+            data,
+            ..
+        } if type_name == ExtensionKind::Check.type_name() => existing
+            .iter()
+            .any(|node| node.id == *id && check_loosens(&node.data, data)),
+        _ => false,
+    };
+
+    match plan.changes.iter().any(loosens) {
+        true => Err(OmhlError::rule(RuleCode::CheckLooseningRefused, "").into()),
+        false => Ok(()),
+    }
 }
 
 fn existing_nodes(

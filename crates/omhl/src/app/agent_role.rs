@@ -16,6 +16,8 @@ const ASSIGNING_PROGRAMS: [&str; 5] = ["export", "declare", "typeset", "readonly
 /// Com `-p` e nomes, só estes imprimem o que o nome é; `export -p` e `readonly -p` atribuem (bash 5.2).
 const PRINTING_PROGRAMS: [&str; 2] = ["declare", "typeset"];
 const AGENT_FILE_MAX_BYTES: u64 = 64 * 1024;
+const OWNER_OVERRIDE: &str = "--owner-override";
+const MAX_BODY_DEPTH: usize = 3;
 const BLANKS: [char; 2] = [' ', '\t'];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +49,12 @@ pub fn agent_role(input: &Value, env: &AgentRoleEnv<'_>) -> RoleVerdict {
     let line = read_command(command);
     if let Some(change) = line.as_ref().ok().and_then(role_change) {
         return change.denial();
+    }
+    if line.as_ref().is_ok_and(uses_owner_override) {
+        return deny(
+            "owner-override",
+            "--owner-override is for the owner, outside Claude Code; do not pass it in a command",
+        );
     }
     let Some(role) = input["agent_type"]
         .as_str()
@@ -109,6 +117,25 @@ impl RoleChange {
             ),
         }
     }
+}
+
+/// Só a palavra exata: o `omhl` não aceita abreviação de opção longa; sem programa resolvido, toda palavra conta.
+fn uses_owner_override(line: &CommandLine) -> bool {
+    line.mentions_omhl && has_owner_override(line, 0)
+}
+
+/// Cada palavra é também relida como linha de comando (`bash -c '...'`), até `MAX_BODY_DEPTH` níveis.
+fn has_owner_override(line: &CommandLine, depth: usize) -> bool {
+    line.commands
+        .iter()
+        .flat_map(SimpleCommand::words)
+        .any(|word| {
+            word == OWNER_OVERRIDE
+                || word.starts_with("--owner-override=")
+                || (depth < MAX_BODY_DEPTH
+                    && word.contains(OWNER_OVERRIDE)
+                    && read_command(word).is_ok_and(|body| has_owner_override(&body, depth + 1)))
+        })
 }
 
 /// A primeira mudança de `OMHL_ROLE` que algum comando faz: como prefixo (também depois de embrulho) ou como argumento de `export` e afins.

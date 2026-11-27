@@ -1,7 +1,7 @@
 use crate::support;
 
 use hexlog::{FieldName, ListFilter, Scalar};
-use omhl::gate::{GateQuestion, Question};
+use omhl::gate::{GateQuestion, Question, QuestionClass};
 use support::omhl::{
     LINT_DOCS, OmhlHarness, acme, append_ok, check_data, decision_data, node_item, premise_data,
 };
@@ -57,6 +57,7 @@ fn it_should_run_a_decision_flow_with_approved_and_no_pending_questions() {
             Question::Approved {
                 of: of_type("decision"),
             },
+            QuestionClass::Warn,
         ),
         GateQuestion::new(
             "no-pending",
@@ -70,6 +71,7 @@ fn it_should_run_a_decision_flow_with_approved_and_no_pending_questions() {
                 },
                 resolved_by: rty("answers"),
             },
+            QuestionClass::Warn,
         ),
     ];
 

@@ -5,6 +5,7 @@ use support::child::{Output, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::commit_marker;
 use support::omhl::decision_data;
+use support::omhl::typed_work_item_data;
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
@@ -81,7 +82,7 @@ fn critic_premise_node(id: &str) -> Value {
 fn work_item_nodes() -> Vec<Value> {
     [W1, W2]
         .iter()
-        .map(|id| node(id, "work-item", json!({ "title": "t", "status": "open" })))
+        .map(|id| node(id, "work-item", typed_work_item_data("t")))
         .collect()
 }
 

@@ -1,5 +1,7 @@
 use crate::error::OmhlError;
-use crate::gate::{GateQuestion, GateSource, Question, QuestionKind, QuestionReport, evaluate};
+use crate::gate::{
+    GateQuestion, GateSource, Question, QuestionClass, QuestionKind, QuestionReport, evaluate,
+};
 use hexlog::{
     ChainHead, EndpointStatus, Hash, ListFilter, NodeView, Origin, RecordId, RelationTypeName,
     RelationView, TenantId,
@@ -9,6 +11,7 @@ use serde_json::{Value, json};
 use super::{DEFAULT_INSTANT, author, rty, sid, tenant, tname};
 
 pub const LABEL: &str = "q";
+const CLASS: QuestionClass = QuestionClass::Refuse;
 
 const RECORD_ID: &str = "acme:0192a000-0000-7000-8000-000000000001";
 
@@ -164,7 +167,7 @@ pub fn relation_view(relation_type: &str, from: &str, to: &str) -> RelationView 
 // Avaliação e relatórios
 
 pub fn evaluate_one(source: &mut FakeSource, question: Question) -> QuestionReport {
-    let questions = [GateQuestion::new(LABEL, question)];
+    let questions = [GateQuestion::new(LABEL, question, CLASS)];
 
     evaluate(source, &tenant("acme"), &questions)
         .expect("the evaluation succeeds")
@@ -186,6 +189,7 @@ pub fn expected_report(
         failing: failing.iter().map(|id| sid(id)).collect(),
         omitted: 0,
         next_step: None,
+        class: (!passed).then_some(CLASS),
     }
 }
 

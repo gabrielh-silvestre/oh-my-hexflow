@@ -18,6 +18,7 @@ To record in the project database: work item, premise, gap, divergence, guidelin
 - A `confirmed` premise carries `confirmed_by` with `by` (`person:<name>`), and verbatim `question` and `answer`, copied from the human's real answer.
 - A new or revised guideline carries `kind`: `business` or `architecture`.
 - Options: `--db <path>` (a new path creates the database) and `--project-dir <dir>` (the folder where the search for the `.omhl.toml` marker starts; it must exist).
+- `--owner-override`: belongs to the owner, outside Claude Code; an agent never passes it ([config-loosening-review.md](../../review/references/config-loosening-review.md)).
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 - `key` (optional, at the top of the JSON, next to `items`; there is no `--key` flag): a text of 1 to 200 characters that you choose to identify this request, for example `gaps-limit-1`. It exists for the retry. If `append` fails without you knowing whether it recorded (`BUSY`, `STORE_ERROR`, timeout), repeat the identical request with the same `key`:
   - If the first had not recorded, the second records and returns `replayed: false`.
@@ -33,12 +34,14 @@ An extra field is refused. Texts have 1 to 2000 characters (`title`, 1 to 200).
 
 | Type | Required | Optional |
 |---|---|---|
-| `work-item` | `title`, `status` (`open`; `closed` only through `omhl close`) | |
+| `work-item` | `title`, `status` (`open`; `closed` only through `omhl close`) | `type` |
 | `premise` | `text`, `status` (`assumed` or `confirmed`) | `kind` (`technical`, `business`), `origin` (`late`, only in `business`), `work_item`, `confirmed_by` |
 | `guideline` | `text` | `kind` (`business`, `architecture`), `confirmed_by` |
 | `gap` | `question`, `context` | `kind` (`technical`, `business`), `work_item` |
 | `divergence` | `source_ref`, `kind` (`missing`, `partial`, `contradicts`, `unrequested`), `text`, `evidence`, `resolution` (`open`, `spec-stale`, `code-fixed`, `accepted`), `work_item` | `confirmed_by`, `amendment` |
 | `decision` | `text`, `evidence` | `work_item` |
+
+Record the `type` when creating the work item, in `data.type`; it picks what the prefix requires.
 
 `evidence` is a list of 1 to 20 items `{"source": "...", "summary": "..."}`. `confirmed_by` is `{"by": "person:<name>", "question": "...", "answer": "..."}`.
 
@@ -63,6 +66,8 @@ Each error carries the code (`error.code` in the JSON) and, in the details, the 
 - `origin-immutable` (exit 1): the revision adds, changes or removes the `origin` of the premise. Keep what it already has, or record a new premise.
 - `origin-required` (exit 1): the work item already has a `decision` and the new business premise does not carry `origin: late`. On creation, add `origin: late` and record again; on a revision that makes the premise a business one, record a new premise with `origin: late`, because adding `origin` in a revision gives `origin-immutable`.
 - `work-item-not-found` (exit 1): the `work_item` of the premise, gap or divergence does not exist. Record the work item first.
+- `type-change-loosens` (exit 1): the new work item type asks for less than the current one. Keep the current type, or ask the owner to change it with `--owner-override`, outside Claude Code.
+- `check-loosening-refused` (exit 1): the revised check loosens a check already stored. Keep it blocking, with its run and on a required event, or ask the owner to retire it and declare a new one.
 - `work-item-closed` (exit 1): the work item is already closed. Record in an open work item.
 - `use-close-work-item` (exit 1): the `status` of the work item was changed to `closed` through here. Close with `omhl close`.
 - `rests-on-architecture` (exit 1): a guideline rests on a guideline of `kind` `architecture`. Rest it on a business one.

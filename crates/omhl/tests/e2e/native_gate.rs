@@ -35,7 +35,7 @@ fn json_line(text: &str) -> Value {
 
 fn open_work_item(project: &Project) {
     let request = json!({ "items": [{ "body": {
-        "kind": "node", "id": W1, "type": "work-item", "data": work_item_data("t"),
+        "kind": "node", "id": W1, "type": "work-item", "data": typed(work_item_data("t")),
     } }] });
     let appended = in_project(project, &["append"])
         .stdin(request.to_string())
@@ -170,8 +170,11 @@ fn it_should_ask_the_native_questions_in_gate_pr_and_close_from_a_worktree_when_
 
     assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
     assert_eq!(labels_of(&gate)[..2], [RUN_TESTS, CI_GREEN]);
-    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
-    assert_eq!(json_line(&closed.stdout)["report"]["passed"], json!(false));
+    assert_eq!(closed.code, Some(1), "stdout: {}", closed.stdout);
+    let error = &json_line(&closed.stderr)["error"];
+    assert_eq!(error["code"], json!("close-refused"));
+    assert_eq!(error["details"][0]["context"]["label"], json!(RUN_TESTS));
+    assert_eq!(error["details"][1]["context"]["label"], json!(CI_GREEN));
     fs::remove_dir_all(linked).expect("the worktree is removed");
 }
 
@@ -243,7 +246,13 @@ fn it_should_read_and_evaluate_the_history_of_disabled_natives_without_error() {
         &["report", "retro", W1],
         &["report", "sessions"],
         &["gate-pr", W1],
-        &["close", W1],
+        &[
+            "close",
+            W1,
+            "--force",
+            "--note",
+            "owner approved the override",
+        ],
     ] {
         succeeds(&project, args);
     }
@@ -264,6 +273,7 @@ fn it_should_keep_refusing_a_loaded_extension_with_a_native_id_while_the_natives
         "run-tests",
         "ci-green-before-merge",
         "verify-review-comment-anchoring",
+        "config-loosening-review",
     ] {
         ExtTree::at(project.dir()).check(slug, LINT_TOML);
     }
@@ -272,5 +282,11 @@ fn it_should_keep_refusing_a_loaded_extension_with_a_native_id_while_the_natives
 
     let details = error_of(&loaded)["details"].to_string();
     assert_eq!(loaded.code, Some(1), "stderr: {}", loaded.stderr);
-    assert_eq!(details.matches("reserved-id").count(), 3, "{details}");
+    assert_eq!(details.matches("reserved-id").count(), 4, "{details}");
+}
+
+/// Um work item com tipo sem átomo: o `close` não procura o branch, e a fixture não tem um.
+fn typed(mut data: serde_json::Value) -> serde_json::Value {
+    data["type"] = serde_json::json!("chore");
+    data
 }

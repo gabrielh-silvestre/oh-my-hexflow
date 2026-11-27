@@ -4,16 +4,21 @@ use hexlog::{
     AppendItem, AppendRequest, Author, FieldName, ItemBody, ListFilter, NodeView, RelationTypeName,
     Scalar, SemanticId, Snapshot, SnapshotKind, TenantId, TypeName,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::extensions::plan::LOADER_CLIENT;
-use crate::gate::{GateQuestion, GateReport, Predicate, Question, TargetCheck, TargetFact};
+use crate::gate::{
+    GateQuestion, GateReport, Predicate, Question, QuestionClass, QuestionReport, TargetCheck,
+    TargetFact,
+};
 use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
-use crate::native::NativeCheck;
-use crate::workflow::config::NativeConfig;
+use crate::native::{CI_GREEN_ID, CONFIG_LOOSENING_REVIEW_ID, NativeCheck};
+use crate::workflow::config::{NativeConfig, RequireAtom};
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
+use crate::workflow::retro::{FailedQuestion, GateOverride};
 
 pub const GATE_NAME: &str = "pull-request";
+const ABANDONED_GATE_NAME: &str = "abandoned";
 pub const REQUIRED_EVENTS: [&str; 3] = RUNNABLE_EVENTS;
 pub const NATIVE_SNAPSHOT: SnapshotKind = SnapshotKind::GitCommit;
 
@@ -32,6 +37,7 @@ pub fn required_checks(
     native: &[NativeCheck],
     enabled: &NativeConfig,
     tenant_checks: &[NodeView],
+    review_required: bool,
 ) -> Vec<(SemanticId, SnapshotKind)> {
     let projects: Vec<&NodeView> = tenant_checks
         .iter()
@@ -39,10 +45,17 @@ pub fn required_checks(
         .collect();
     let natives = native
         .iter()
+        .filter(|check| check.id != CONFIG_LOOSENING_REVIEW_ID)
         .filter(|check| enabled.checks.contains(check.id))
         .filter(|check| check.blocking && REQUIRED_EVENTS.contains(&check.event))
         .filter_map(|check| SemanticId::parse(check.id).ok())
         .map(|id| (id, NATIVE_SNAPSHOT));
+    let review = review_required
+        .then(|| enabled.checks.contains(CONFIG_LOOSENING_REVIEW_ID))
+        .filter(|on| *on)
+        .and_then(|_| SemanticId::parse(CONFIG_LOOSENING_REVIEW_ID).ok())
+        .map(|id| (id, NATIVE_SNAPSHOT));
+    let natives = natives.chain(review);
     let projects = projects
         .iter()
         .map(|node| (node.id.clone(), snapshot_for(&node.data)));
@@ -92,15 +105,28 @@ pub fn pr_gate_questions(
                     GateQuestion::new(
                         format!("{SPEC_DIGEST_LABEL}:{}", check.as_str()),
                         occurred(check, work_item, snapshot, Some(digest)),
+                        QuestionClass::Refuse,
                     )
                 });
-            let plain =
-                GateQuestion::new(check.as_str(), occurred(check, work_item, snapshot, None));
+            let plain = GateQuestion::new(
+                check.as_str(),
+                occurred(check, work_item, snapshot, None),
+                plain_check_class(check, sealed.is_some()),
+            );
 
             once(plain).chain(sealed)
         })
         .chain(once(contradiction_question(work_item)))
         .collect()
+}
+
+// Um check mecânico ou o CI verde do merge recusa sem `--force`; os demais são aviso.
+fn plain_check_class(check: &SemanticId, mechanical: bool) -> QuestionClass {
+    if mechanical || matches!(check.as_str(), CI_GREEN_ID | CONFIG_LOOSENING_REVIEW_ID) {
+        QuestionClass::Refuse
+    } else {
+        QuestionClass::Warn
+    }
 }
 
 fn occurred(
@@ -144,6 +170,7 @@ fn contradiction_question(work_item: &SemanticId) -> GateQuestion {
         Question::NoOpenContradiction {
             of: Some(decisions_filter(work_item)),
         },
+        QuestionClass::Warn,
     )
 }
 
@@ -156,6 +183,34 @@ fn decisions_filter(work_item: &SemanticId) -> ListFilter {
             "work_item",
             Scalar::Str(work_item.as_str().to_owned()),
         )],
+    }
+}
+
+/// Um `requires:<átomo>` por átomo do tipo; o Engine já leu a satisfação de cada um.
+pub fn requirement_questions(atoms: &[(RequireAtom, bool)]) -> Vec<GateQuestion> {
+    atoms
+        .iter()
+        .map(|(atom, holds)| GateQuestion {
+            next_step: Some(requirement_next_step(*atom)),
+            ..GateQuestion::new(
+                format!("requires:{}", atom.as_str()),
+                Question::Requirement { holds: *holds },
+                QuestionClass::Refuse,
+            )
+        })
+        .collect()
+}
+
+fn requirement_next_step(atom: RequireAtom) -> &'static str {
+    match atom {
+        RequireAtom::BusinessPremise => {
+            "record a business premise and ask the human to confirm it (premise: status confirmed with confirmed_by), before the work item closes"
+        }
+        RequireAtom::TechnicalPremiseConfirmed => {
+            "record the technical premise of the choice and have it confirmed"
+        }
+        RequireAtom::AgentPremise => "record the agent premise of the technical choice",
+        RequireAtom::Spec => "make the spec valid with omhl spec validate",
     }
 }
 
@@ -183,13 +238,21 @@ pub fn anchor_questions(work_item: &SemanticId) -> Vec<GateQuestion> {
             next_step: Some(
                 "record a rests-on from the decision to a confirmed guideline or premise",
             ),
-            ..GateQuestion::new(DECISIONS_ANCHORED_LABEL, anchored(None))
+            ..GateQuestion::new(
+                DECISIONS_ANCHORED_LABEL,
+                anchored(None),
+                QuestionClass::Warn,
+            )
         },
         GateQuestion {
             next_step: Some(
                 "ask the human to confirm the target (premise: set status confirmed with confirmed_by) or rest the decision on a confirmed one",
             ),
-            ..GateQuestion::new(ANCHORS_CONFIRMED_LABEL, anchored(Some(confirmed)))
+            ..GateQuestion::new(
+                ANCHORS_CONFIRMED_LABEL,
+                anchored(Some(confirmed)),
+                QuestionClass::Warn,
+            )
         },
     ]
 }
@@ -217,21 +280,185 @@ pub(crate) fn project_checks_filter() -> ListFilter {
     }
 }
 
+/// Nem `--force` contorna o `refuse`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloseRefusal {
+    Refused(Vec<QuestionReport>),
+    Warnings(Vec<QuestionReport>),
+    DeliveryUnneeded { only_warn: bool },
+}
+
+pub struct Abandonment<'a> {
+    pub reason: &'a str,
+    pub note: &'a str,
+}
+
+pub struct Integration {
+    pub reference: String,
+    pub commit: String,
+}
+
+pub struct FailedDelivery<'a> {
+    pub author: &'a Author,
+    pub note: &'a str,
+    pub integration: &'a Integration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Forcing {
+    Discarded,
+    Forced(GateOverride),
+}
+
+/// Um `--force` só contorna perguntas `warn`; uma pergunta sem classe conta como `refuse`.
+pub fn close_verdict(
+    report: &GateReport,
+    note: Option<&str>,
+) -> Result<Option<Forcing>, CloseRefusal> {
+    let failing: Vec<QuestionReport> = report
+        .questions
+        .iter()
+        .filter(|question| !question.passed)
+        .cloned()
+        .collect();
+    if failing.is_empty() {
+        return Ok(note.map(|_| Forcing::Discarded));
+    }
+    if failing
+        .iter()
+        .any(|question| question.class != Some(QuestionClass::Warn))
+    {
+        return Err(CloseRefusal::Refused(report.questions.clone()));
+    }
+    let Some(note) = note else {
+        return Err(CloseRefusal::Warnings(report.questions.clone()));
+    };
+
+    Ok(Some(Forcing::Forced(GateOverride {
+        note: note.to_owned(),
+        overridden: failing.into_iter().map(|question| question.label).collect(),
+    })))
+}
+
+/// Todas as perguntas reprovadas entram, as `warn` também; sem nenhuma `refuse` o modo não serve.
+pub fn delivery_verdict(report: &GateReport) -> Result<Vec<FailedQuestion>, CloseRefusal> {
+    let failed: Vec<FailedQuestion> = report
+        .questions
+        .iter()
+        .filter(|question| !question.passed)
+        .map(|question| FailedQuestion {
+            label: question.label.clone(),
+            class: question.class.unwrap_or(QuestionClass::Refuse),
+        })
+        .collect();
+    if failed
+        .iter()
+        .all(|question| question.class == QuestionClass::Warn)
+    {
+        return Err(CloseRefusal::DeliveryUnneeded {
+            only_warn: !failed.is_empty(),
+        });
+    }
+
+    Ok(failed)
+}
+
 pub(crate) fn closing_request(
     tenant: &TenantId,
     author: &Author,
     current: NodeView,
     report: &GateReport,
     snapshot: &Snapshot,
+    forcing: Option<&Forcing>,
 ) -> AppendRequest {
-    let mut data = current.data;
-    data["status"] = json!("closed");
-    data["gate"] = json!({
+    let mut gate = gate_json(report, snapshot);
+    if let Some(Forcing::Forced(gate_override)) = forcing {
+        gate["forced"] = json!(true);
+        gate["overridden"] = json!(gate_override.overridden);
+        gate["note"] = json!(gate_override.note);
+    }
+
+    closed_request(tenant, author, current, gate, None)
+}
+
+fn gate_json(report: &GateReport, snapshot: &Snapshot) -> Value {
+    json!({
         "name": GATE_NAME,
         "passed": report.passed,
         "chain_head_seq": report.chain_head.seq,
         "snapshot": snapshot,
+    })
+}
+
+/// O `gate` fica como foi avaliado, sem `forced`: quem fechou foi a nota do dono em `delivery_failure`.
+pub(crate) fn failed_delivery_request(
+    tenant: &TenantId,
+    current: NodeView,
+    report: &GateReport,
+    snapshot: &Snapshot,
+    failed: &[FailedQuestion],
+    delivery: &FailedDelivery<'_>,
+) -> AppendRequest {
+    let recorded = json!({
+        "note": delivery.note,
+        "failed": failed
+            .iter()
+            .map(|question| json!({ "label": question.label, "class": question.class.as_str() }))
+            .collect::<Vec<_>>(),
+        "integration": {
+            "ref": delivery.integration.reference,
+            "commit": delivery.integration.commit,
+        },
     });
+
+    closed_request(
+        tenant,
+        delivery.author,
+        current,
+        gate_json(report, snapshot),
+        Some(("delivery_failure", recorded)),
+    )
+}
+
+/// O abandono não avalia o gate: o `gate` tem nome próprio e nunca passa.
+pub(crate) fn abandonment_request(
+    tenant: &TenantId,
+    author: &Author,
+    current: NodeView,
+    chain_head_seq: u64,
+    snapshot: &Snapshot,
+    abandonment: &Abandonment<'_>,
+) -> AppendRequest {
+    let gate = json!({
+        "name": ABANDONED_GATE_NAME,
+        "passed": false,
+        "chain_head_seq": chain_head_seq,
+        "snapshot": snapshot,
+    });
+    let recorded = json!({ "reason": abandonment.reason, "note": abandonment.note });
+
+    closed_request(
+        tenant,
+        author,
+        current,
+        gate,
+        Some(("abandonment", recorded)),
+    )
+}
+
+fn closed_request(
+    tenant: &TenantId,
+    author: &Author,
+    current: NodeView,
+    gate: Value,
+    extra: Option<(&str, Value)>,
+) -> AppendRequest {
+    let mut data = current.data;
+    data["status"] = json!("closed");
+    data["gate"] = gate;
+    if let Some((field, value)) = extra {
+        data[field] = value;
+    }
     let item = AppendItem {
         body: ItemBody::Node {
             id: current.id,

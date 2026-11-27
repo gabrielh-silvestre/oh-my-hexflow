@@ -5,7 +5,10 @@ use serde_json::{Value, json};
 
 use crate::error::{OmhlError, RuleCode};
 use crate::extensions::model::ExtensionIssue;
+use crate::facade::CloseError;
+use crate::gate::QuestionClass;
 use crate::guidance::Guidance;
+use crate::pr_gate::CloseRefusal;
 use crate::project::ProjectError;
 use crate::project::layout::ISSUES_MAX;
 use crate::projection::ProjectionError;
@@ -66,6 +69,10 @@ impl Detail {
         detail
     }
 }
+
+const CLOSE_REFUSED_MESSAGE: &str = "a refuse question failed, and --force does not override it: fix its cause before the merge, use --abandon for work that will not be delivered, or --failed-delivery --note when the evaluated commit is already on the integration branch";
+const CLOSE_WARNINGS_MESSAGE: &str = "only warn questions failed: --force --note closes the work item, with the owner's authorization";
+const QUESTION_FAILED_MESSAGE: &str = "the gate question did not pass";
 
 const INVALID_WORKFLOW_NEXT_STEP: &str =
     "fix the workflow file named in the message; `omhl load --dry-run` details the problem";
@@ -419,6 +426,17 @@ impl AppError {
         )
     }
 
+    pub(crate) fn check_retire_refused(pointer: &str) -> AppError {
+        AppError::refusal(
+            "check-loosening-refused",
+            pointer,
+            Guidance {
+                cause: "retiring a check is the owner's task, not the agent's",
+                next_step: "ask the owner to retire it with --owner-override, run outside Claude Code",
+            },
+        )
+    }
+
     pub(crate) fn guideline_not_found(pointer: &str) -> AppError {
         AppError::refusal(
             "guideline-not-found",
@@ -486,6 +504,79 @@ impl AppError {
                 next_step: Some(guidance.next_step.to_owned()),
                 ..Detail::new(pointer, code, guidance.cause)
             }],
+        }
+    }
+
+    pub(crate) fn failed_delivery_unneeded(only_warn: bool) -> AppError {
+        let next_step = match only_warn {
+            true => {
+                "only warn questions failed: close with --force --note, with the owner's authorization"
+            }
+            false => "every question passed: close without --failed-delivery",
+        };
+
+        AppError::refusal(
+            "failed-delivery-unneeded",
+            "/failed_delivery",
+            Guidance {
+                cause: "no refuse question failed, so the failed delivery has nothing to record",
+                next_step,
+            },
+        )
+    }
+
+    pub(crate) fn delivery_not_on_work_item_branch() -> AppError {
+        AppError::refusal(
+            "delivery-not-on-work-item-branch",
+            "/work_item",
+            Guidance {
+                cause: "the current branch is not the branch of the work item",
+                next_step: "check out the branch of the work item and run the close again",
+            },
+        )
+    }
+
+    pub(crate) fn delivery_not_integrated() -> AppError {
+        AppError::refusal(
+            "delivery-not-integrated",
+            "/work_item",
+            Guidance {
+                cause: "the evaluated commit is not in the local integration branch",
+                next_step: "update the local develop from the remote without a new commit, or ask the owner for --abandon",
+            },
+        )
+    }
+
+    pub(crate) fn close_refused(refusal: CloseRefusal) -> AppError {
+        let (code, message, questions) = match refusal {
+            CloseRefusal::Refused(questions) => ("close-refused", CLOSE_REFUSED_MESSAGE, questions),
+            CloseRefusal::Warnings(questions) => {
+                ("close-warnings", CLOSE_WARNINGS_MESSAGE, questions)
+            }
+            CloseRefusal::DeliveryUnneeded { only_warn } => {
+                return AppError::failed_delivery_unneeded(only_warn);
+            }
+        };
+        let details = questions
+            .into_iter()
+            .filter(|question| !question.passed)
+            .enumerate()
+            .map(|(index, question)| Detail {
+                context: Some(json!({ "label": question.label })),
+                next_step: question.next_step,
+                ..Detail::new(
+                    &format!("/questions/{index}"),
+                    question.class.unwrap_or(QuestionClass::Refuse).as_str(),
+                    QUESTION_FAILED_MESSAGE,
+                )
+            })
+            .collect();
+
+        AppError {
+            code: code.to_owned(),
+            context: None,
+            message: message.to_owned(),
+            details,
         }
     }
 
@@ -736,6 +827,15 @@ impl AppError {
         AppError::violations_of("amendment-invalid", "amendment", violations)
     }
 
+    /// A base conferida segue na recusa do fechamento, que não devolve o relatório.
+    pub(crate) fn with_review_base(mut self, review_base: &Value) -> AppError {
+        if self.context.is_none() && !review_base.is_null() {
+            self.context = Some(json!({ "review_base": review_base }));
+        }
+
+        self
+    }
+
     /// Único caminho, além de `CheckDetail.context`, por onde `context` entra num detalhe; nunca é gravado.
     pub(crate) fn with_context(mut self, context: Value) -> AppError {
         if let Some(detail) = self.details.last_mut() {
@@ -807,6 +907,15 @@ impl From<OmhlError> for AppError {
                 Some(guidance) => AppError::refusal(code.as_str(), &pointer, guidance),
                 None => AppError::unguided_rule(code.as_str(), &pointer),
             },
+        }
+    }
+}
+
+impl From<CloseError> for AppError {
+    fn from(error: CloseError) -> AppError {
+        match error {
+            CloseError::Omhl(error) => AppError::from(error),
+            CloseError::Refused(refusal) => AppError::close_refused(refusal),
         }
     }
 }

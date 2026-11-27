@@ -5,7 +5,7 @@ use std::fs;
 use serde_json::{Value, json};
 use support::child::{Output, omhl_json};
 use support::git::{commit_marker, git_in};
-use support::omhl::work_item_data;
+use support::omhl::typed_work_item_data;
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
@@ -50,7 +50,7 @@ fn unconfirmed_directive_node(id: &str, text: &str) -> Value {
 }
 
 fn open_work_item(id: &str) -> Value {
-    node(id, "work-item", work_item_data("t"))
+    node(id, "work-item", typed_work_item_data("t"))
 }
 
 fn in_project(project: &Project, args: &[&str]) -> Output {

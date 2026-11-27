@@ -1282,6 +1282,9 @@ fn question_facts(report: &Value, promoted: Option<&str>) -> Vec<String> {
         };
         let label = text_at(question, "label");
         let mut parts = vec![label.to_owned()];
+        if !question_passed(question) && question["class"].is_string() {
+            parts.push(text_at(question, "class").to_owned());
+        }
         if text_at(question, "kind") != label {
             parts.push(text_at(question, "kind").to_owned());
         }
@@ -1462,6 +1465,22 @@ fn close_absent(value: &Value) -> Vec<String> {
     absent
 }
 
+/// O `close` forçado: o de gate reprovado, com o `closed` marcado como forçado.
+fn forced_close_facts(value: &Value) -> Vec<String> {
+    let overridden = value["forced"]["overridden"]
+        .as_array()
+        .expect("overridden is a list")
+        .len();
+    let closed = format!("{SYMBOL_OK} closed · ");
+    close_facts(value)
+        .into_iter()
+        .map(|fact| match fact.starts_with(&closed) {
+            true => format!("{SYMBOL_WARNING} closed · forced · {overridden} overridden"),
+            false => fact,
+        })
+        .collect()
+}
+
 /// Um estado de fixture de um comando.
 struct Case {
     name: &'static str,
@@ -1477,7 +1496,7 @@ struct Case {
     absent: fn(&Value) -> Vec<String>,
 }
 
-const CASES: [Case; 84] = [
+const CASES: [Case; 85] = [
     Case {
         name: "verify ok",
         key: CommandKey::Verify,
@@ -1926,7 +1945,7 @@ const CASES: [Case; 84] = [
     Case {
         name: "check retire an orphaned check",
         key: CommandKey::CheckRetire,
-        args: &["check", "retire", cycle::ORPHAN_CHECK],
+        args: &["check", "retire", cycle::ORPHAN_CHECK, "--owner-override"],
         outcome: Outcome::Success,
         error_code: None,
         fixture: retire_check_orphaned,
@@ -2246,13 +2265,29 @@ const CASES: [Case; 84] = [
         absent: close_absent,
     },
     Case {
-        name: "close with a failed gate and no retro",
+        name: "close with a refused gate",
         key: CommandKey::Close,
         args: &["close", cycle::WORK_ITEM],
+        outcome: Outcome::Failure,
+        error_code: Some("close-warnings"),
+        fixture: gate_failed,
+        derived: generic_error_facts,
+        absent: no_facts,
+    },
+    Case {
+        name: "close forced over a failed gate",
+        key: CommandKey::Close,
+        args: &[
+            "close",
+            cycle::WORK_ITEM,
+            "--force",
+            "--note",
+            "owner approved the override",
+        ],
         outcome: Outcome::Success,
         error_code: None,
         fixture: gate_failed,
-        derived: close_facts,
+        derived: forced_close_facts,
         absent: close_absent,
     },
     Case {

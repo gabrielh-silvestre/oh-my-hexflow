@@ -18,6 +18,6 @@ The `require` atoms:
 | `agent-premise` | The work item has 1+ premise of `kind` `technical`, confirmed or not. A premise that the human confirmed later also counts |
 | `spec` | `omhl spec validate` passes for the work item |
 
-- The defaults in the table hold when the project has no `.omhl/workflow.toml`. With the file, what each prefix requires comes from it; read it in the project itself.
+- The defaults in the table hold when the project has no `.omhl/workflow.toml`. With the file, `require` adds atoms to the defaults of a prefix and never removes them; a prefix the file adds takes only the atoms it lists. Read the file in the project itself.
 - `develop` and `main` never go through the gate: they come out `allowed` (`exempt-branch`).
 - The gate refusal says what is missing. Record what is missing (premise, confirmation, spec) and run `omhl gate-worktree` again.

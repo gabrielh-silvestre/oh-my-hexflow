@@ -3,6 +3,7 @@
 //! estado vale entre as chamadas, e o `AppFixture` não precisa guardar um empréstimo de si mesmo.
 
 use std::fs;
+use std::path::{Path, PathBuf};
 
 use ::omhl::app::App;
 use ::omhl::app::action::{Action, Caller};
@@ -32,6 +33,7 @@ pub struct AppFixture {
     tree: ExtTree,
     with_root: bool,
     native: Option<Box<dyn NativeResolver>>,
+    root: Option<PathBuf>,
 }
 
 impl AppFixture {
@@ -46,6 +48,7 @@ impl AppFixture {
             tree: ExtTree::new(),
             with_root: true,
             native: Some(Box::new(FakeNative::all_enabled())),
+            root: None,
         }
     }
 
@@ -72,6 +75,14 @@ impl AppFixture {
         }
     }
 
+    /// A raiz de projeto é a pasta dada, em vez da pasta temporária da fixture.
+    pub fn with_project_root(self, root: &Path) -> AppFixture {
+        AppFixture {
+            root: Some(root.to_path_buf()),
+            ..self
+        }
+    }
+
     pub fn with_probe(self, probe: FakeProbe) -> AppFixture {
         AppFixture { probe, ..self }
     }
@@ -92,6 +103,15 @@ impl AppFixture {
     /// `append` com o autor `cli`/`user`; `request` é o corpo do pedido (`items`, `key`, ...).
     pub fn append_as_user(&self, request: Value) -> Result<Value, Value> {
         self.run(&Caller::cli(), &Action::Append { request })
+    }
+
+    /// `append` com o `--owner-override`, o único caminho fora do loader que aposenta um check.
+    pub fn append_as_owner(&self, request: Value) -> Result<Value, Value> {
+        let caller = Caller {
+            owner_override: true,
+            ..Caller::cli()
+        };
+        self.run(&caller, &Action::Append { request })
     }
 
     /// `append` com o autor do comando `guideline retire`, o único client que a guarda deixa retirar uma diretiva.
@@ -196,6 +216,7 @@ impl AppFixture {
     pub fn gate_pr(&self, work_item: &str) -> Value {
         let action = Action::GatePr {
             work_item: work_item.to_owned(),
+            base: None,
         };
 
         self.run(&Caller::cli(), &action)
@@ -206,6 +227,7 @@ impl AppFixture {
     pub fn try_gate_pr(&self, work_item: &str) -> Result<Value, Value> {
         let action = Action::GatePr {
             work_item: work_item.to_owned(),
+            base: None,
         };
 
         self.run(&Caller::cli(), &action)
@@ -214,6 +236,19 @@ impl AppFixture {
     pub fn close(&self, work_item: &str) -> Result<Value, Value> {
         let action = Action::Close {
             work_item: work_item.to_owned(),
+            note: None,
+            base: None,
+        };
+
+        self.run(&Caller::cli(), &action)
+    }
+
+    /// O `close` com `--force --note`: a nota é o que o CLI passa ao engine.
+    pub fn close_forced(&self, work_item: &str, note: &str) -> Result<Value, Value> {
+        let action = Action::Close {
+            work_item: work_item.to_owned(),
+            note: Some(note.to_owned()),
+            base: None,
         };
 
         self.run(&Caller::cli(), &action)
@@ -317,7 +352,11 @@ impl AppFixture {
         };
 
         if self.with_root {
-            app.with_project_root(self.tree.root())
+            app.with_project_root(
+                self.root
+                    .clone()
+                    .unwrap_or_else(|| self.tree.root().to_path_buf()),
+            )
         } else {
             app
         }

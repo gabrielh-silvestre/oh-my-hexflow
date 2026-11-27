@@ -41,7 +41,10 @@ impl NativeResolver for GitProbe {
         let main_dir = self.main_dir().map_err(|_| NativeRefusal::MainDirUnknown)?;
 
         read_workflow(&main_dir)
-            .map(|config| config.native)
+            .map(|config| NativeConfig {
+                checks: config.native.checks,
+                prefixes: config.prefixes,
+            })
             .map_err(NativeRefusal::InvalidWorkflow)
     }
 }

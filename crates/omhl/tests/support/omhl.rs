@@ -158,6 +158,11 @@ pub fn work_item_data(title: &str) -> Value {
     json!({ "title": title, "status": "open" })
 }
 
+/// Com tipo sem átomo: o `close` não procura o branch, e a fixture não tem um que dê o tipo.
+pub fn typed_work_item_data(title: &str) -> Value {
+    json!({ "title": title, "status": "open", "type": "chore" })
+}
+
 /// Troca o `status` por `closed` e acrescenta o objeto `gate` que o schema exige nesse estado.
 pub fn closed_with_gate(mut data: Value) -> Value {
     data["status"] = json!("closed");

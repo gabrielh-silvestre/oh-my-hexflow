@@ -2,18 +2,17 @@
 
 ## Who uses it, at which stage and with which filter
 
-| Role | Stage | Command |
-|---|---|---|
-| session | review rules | `omhl check retire` |
+No stage of the cycle runs it.
 
 ## When to use
 
-To discard for good a check whose file was deleted from the tree and whose deletion was already merged. Without this, `omhl load` only lists the id in `orphans`, `omhl check run` warns `check-orphaned` on every run and the pull request gate keeps asking for an attestation nobody records anymore. **The retirement is final** and holds for all clones and branches: the id never comes back. If your branch predates the check (the file did not exist in it yet), do not retire: rebase onto `main` or restore the file.
+Retiring a check is the owner's task: the agent never runs it. To discard for good a check whose file was deleted from the tree and whose deletion was already merged. Without this, `omhl load` only lists the id in `orphans`, `omhl check run` warns `check-orphaned` on every run and the pull request gate keeps asking for an attestation nobody records anymore. **The retirement is final** and holds for all clones and branches: the id never comes back. If your branch predates the check (the file did not exist in it yet), do not retire: rebase onto `main` or restore the file.
 
 ## Inputs
 
 - `<CHECK>`: the check id, like `checks.ok`. It must be a live check of the project, with the file `.omhl/checks/<slug>.toml` absent from the tree.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
+- `--owner-override`: belongs to the owner, outside Claude Code; an agent never passes it ([config-loosening-review.md](../../review/references/config-loosening-review.md)).
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
 ## Output
@@ -33,10 +32,15 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 ## Examples
 
-Retires a check whose file was deleted. The second call refuses, because the check is no longer live, and an id that never existed refuses the same way:
+Retiring a check loosens the gate, so an agent run refuses with `check-loosening-refused`. The owner retires it with `--owner-override`. The next call refuses, because the check is no longer live, and an id that never existed refuses the same way:
 
 ```omhl-example fixture=retire-check
 $ omhl check retire checks.ok
+2> ✘ check-loosening-refused · retiring a check is the owner's task, not the agent's
+2>   - /check
+2> Next: ask the owner to retire it with --owner-override, run outside Claude Code.
+# exit 1
+$ omhl check retire checks.ok --owner-override
 ✔ check retire · retired checks.ok
 $ omhl check retire checks.ok
 2> ✘ check-not-found · check-not-found at /check
@@ -51,7 +55,7 @@ $ omhl check retire checks.nope
 With `--format json`, the retirement comes out for machines:
 
 ```omhl-example fixture=retire-check
-$ omhl check retire checks.ok --format json
+$ omhl check retire checks.ok --owner-override --format json
 {"retired":"checks.ok"}
 ```
 

@@ -5,7 +5,7 @@ use omhl::project::ProjectError;
 use serde_json::json;
 use support::FakeNative;
 use support::appfx::AppFixture;
-use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN, VERIFY_ANCHORING};
+use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING};
 
 const RUN_TESTS: &str = "checks.run-tests";
 const GUIDELINES: [&str; 2] = [
@@ -90,6 +90,31 @@ fn it_should_print_the_three_blocks_when_the_resolver_enables_the_three() {
         [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING]
     );
     assert!(warnings_in(&text).is_empty(), "{text}");
+}
+
+#[test]
+fn it_should_print_only_the_config_loosening_review_block_when_the_resolver_enables_it() {
+    let fixture = AppFixture::new().with_native(FakeNative::enabling(&[CONFIG_LOOSENING_REVIEW]));
+
+    let text = text_of(&fixture);
+
+    assert_eq!(
+        headers(&text)
+            .into_iter()
+            .filter(|id| id.starts_with("checks."))
+            .collect::<Vec<_>>(),
+        [CONFIG_LOOSENING_REVIEW]
+    );
+    assert!(text.contains("- event: before-pr\n"), "{text}");
+}
+
+#[test]
+fn it_should_not_print_the_config_loosening_review_block_when_the_common_natives_are_enabled() {
+    let fixture = AppFixture::new().with_native(FakeNative::all_enabled());
+
+    let text = text_of(&fixture);
+
+    assert!(!headers(&text).contains(&CONFIG_LOOSENING_REVIEW), "{text}");
 }
 
 // CA-004: a linha `after` do par nativo depende dos dois ligados

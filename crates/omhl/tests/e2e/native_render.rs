@@ -10,7 +10,7 @@ use support::cycle::{check_file, check_repo};
 use support::ext::ExtTree;
 use support::git::git_ok;
 use support::omhl::RUN_TESTS;
-use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN, VERIFY_ANCHORING};
+use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING};
 use support::project::Project;
 
 const GUIDELINES: [&str; 2] = [
@@ -178,6 +178,27 @@ fn it_should_print_only_the_anchoring_block_when_only_it_is_enabled() {
 
     for text in both_texts(&project) {
         assert_eq!(native_checks_in(&text), [VERIFY_ANCHORING], "{text}");
+    }
+}
+
+#[test]
+fn it_should_print_the_config_loosening_review_block_only_when_it_is_enabled() {
+    let off = repo_enabling(&ALL_NATIVE_CHECKS);
+    let on = repo_enabling(&[CONFIG_LOOSENING_REVIEW]);
+
+    for text in both_texts(&off) {
+        assert!(!headers(&text).contains(&CONFIG_LOOSENING_REVIEW), "{text}");
+    }
+    for text in both_texts(&on) {
+        assert_eq!(
+            block(&text, CONFIG_LOOSENING_REVIEW)[..3],
+            [
+                &format!("### {CONFIG_LOOSENING_REVIEW}")[..],
+                "- event: before-pr",
+                "- blocking: true"
+            ],
+            "{text}"
+        );
     }
 }
 

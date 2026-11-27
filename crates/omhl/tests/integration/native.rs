@@ -17,10 +17,11 @@ use support::pr_gate::{
 use support::raw::RawHarness;
 use support::{FakeProbe, author, rty, sid, snap, tenant, tname};
 
-const CHECK_IDS: [&str; 3] = [
+const CHECK_IDS: [&str; 4] = [
     "checks.run-tests",
     "checks.ci-green-before-merge",
     "checks.verify-review-comment-anchoring",
+    "checks.config-loosening-review",
 ];
 const GUIDELINE_IDS: [&str; 2] = [
     "guidelines.one-decision-per-turn",
@@ -230,7 +231,7 @@ fn it_should_refuse_a_tenant_node_with_each_native_id() {
         .collect();
 
     let summaries: Vec<_> = errors.iter().map(refusal_summary).collect();
-    assert_eq!(summaries, vec![expected; 5]);
+    assert_eq!(summaries, vec![expected; 6]);
 }
 
 #[test]
@@ -265,7 +266,7 @@ fn it_should_accept_a_project_check_linked_after_a_native_check() {
             Origin::Tenant,
             Origin::Native,
             EndpointStatus::Current,
-            Some("1.0.0")
+            Some("1.1.0")
         )]
     );
 }
@@ -391,7 +392,7 @@ fn it_should_keep_the_native_review_check_in_the_catalog_and_out_of_the_required
         .find(|check| check.id == "checks.verify-review-comment-anchoring")
         .expect("the review check is in the catalog");
 
-    let required = required_checks(checks, &all_native_enabled(), &[]);
+    let required = required_checks(checks, &all_native_enabled(), &[], false);
 
     assert_eq!(ids, CHECK_IDS.to_vec());
     assert_eq!(

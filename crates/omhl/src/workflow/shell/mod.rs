@@ -39,6 +39,10 @@ impl SimpleCommand {
         self.resolved.program_at.map(|at| basename(&self.words[at]))
     }
 
+    pub fn words(&self) -> &[String] {
+        &self.words
+    }
+
     pub fn split(&self) -> (&[String], Option<&str>, &[String]) {
         match self.resolved.program_at {
             Some(at) => (

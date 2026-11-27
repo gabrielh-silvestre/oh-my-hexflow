@@ -125,7 +125,20 @@ impl Fixture {
         json!(self.seed(executor_author(), vec![item]).records[0].id)
     }
 
-    fn close_w1(&self) {
+    /// Fecha o W1 com o gate aprovado: atesta os nativos e, para cada check mecânico dado, uma atestação com o `spec_digest` dele.
+    fn close_w1(&self, mechanical: &[(&str, Value)]) {
+        self.seed_attestation("run-tests", "passed");
+        self.seed_attestation("ci-green-before-merge", "passed");
+        for (slug, data) in mechanical {
+            let mut attestation =
+                executor_attestation_data(&format!("checks.{slug}"), W1, "passed", BYPRODUCT);
+            attestation["spec_digest"] = json!(spec_digest(data));
+            let item = with_snapshot(
+                node_item(&att(slug), "attestation", attestation),
+                &snap('a'),
+            );
+            self.seed(executor_author(), vec![item]);
+        }
         let probe = FakeProbe::clean(snap('a'))
             .with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree('c'))));
         let snapshots = support::pr_gate::snapshots(&snap('a'), &tree('c'));
@@ -1526,7 +1539,7 @@ fn it_should_answer_work_item_not_found_for_a_branch_whose_work_item_does_not_ex
 #[test]
 fn it_should_answer_work_item_closed_for_a_branch_whose_work_item_is_closed() {
     let fx = Fixture::new();
-    fx.close_w1();
+    fx.close_w1(&[]);
     let (runner, specs) = FakeRunner::new(vec![]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -1550,16 +1563,20 @@ fn it_should_check_the_work_item_before_running_any_command() {
     let fx = Fixture::new();
     fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
     fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
-    fx.close_w1();
+    fx.close_w1(&[
+        ("build", run_data("before-pr", true, BUILD)),
+        ("lint", run_data("before-pr", true, LINT)),
+    ]);
     let (runner, specs) = FakeRunner::new(vec![ok(BUILD), ok(LINT)]);
     let probe = dirty_probe();
     let mut app = fx.app(&probe, &runner);
+    let attested_before = list(&mut app, "attestation");
 
     let error = run_pr(&mut app).expect_err("the work item is closed");
 
     assert_eq!(error.code(), "work-item-closed");
     assert_eq!(received(&specs), Vec::<Vec<String>>::new());
-    assert_eq!(list(&mut app, "attestation"), no_attestations());
+    assert_eq!(list(&mut app, "attestation"), attested_before);
 }
 
 #[test]

@@ -135,8 +135,11 @@ fn it_should_refuse_with_the_invalid_workflow_code_when_the_main_copy_is_not_acc
 // O `gate-pr` e o `close` valem-se da ativação do diretório principal
 
 fn open_work_item(fixture: &AppFixture) {
+    // Um tipo sem átomo: sem `type` gravado o `close` procuraria o branch, e a fixture não tem repositório.
+    let mut data = work_item_data("Ship it");
+    data["type"] = json!("chore");
     let item = json!({ "body": {
-        "kind": "node", "id": W1, "type": "work-item", "data": work_item_data("Ship it"),
+        "kind": "node", "id": W1, "type": "work-item", "data": data,
     } });
     fixture
         .append_as_user(json!({ "items": [item] }))
@@ -161,10 +164,24 @@ fn it_should_ask_the_native_question_in_gate_pr_and_close_when_only_the_main_dir
     open_work_item(&fixture);
 
     let gate = fixture.gate_pr(W1);
-    let closed = fixture.close(W1).expect("the work item is closed");
+    let refusal = fixture
+        .close(W1)
+        .expect_err("the failing warn question refuses the close without force");
+    let refused_labels: Vec<String> = refusal["error"]["details"]
+        .as_array()
+        .expect("the refusal lists its failing questions")
+        .iter()
+        .map(|detail| {
+            detail["context"]["label"]
+                .as_str()
+                .expect("a label")
+                .to_owned()
+        })
+        .collect();
 
+    assert_eq!(refusal["error"]["code"], json!("close-warnings"));
     assert!(asked(&gate).contains(&RUN_TESTS.to_owned()));
-    assert!(asked(&closed["report"]).contains(&RUN_TESTS.to_owned()));
+    assert!(refused_labels.contains(&RUN_TESTS.to_owned()));
 }
 
 #[test]

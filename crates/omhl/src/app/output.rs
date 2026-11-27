@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use super::report::state_name;
 use crate::facade::ClosedWorkItem;
 use crate::gate::{GateReport, QuestionKind, QuestionReport};
+use crate::pr_gate::Forcing;
 use crate::workflow::retro::Retro;
 
 pub fn node(view: &NodeView) -> Value {
@@ -63,11 +64,23 @@ pub fn gate(report: &GateReport) -> Value {
 }
 
 pub fn closed(closed: &ClosedWorkItem, retro_report: Option<&Retro>) -> Value {
-    json!({
+    let mut value = json!({
         "outcome": appended(&closed.outcome),
         "report": gate(&closed.report),
         "retro": retro(retro_report),
-    })
+    });
+    match &closed.forcing {
+        Some(Forcing::Forced(gate_override)) => {
+            value["forced"] = json!({
+                "overridden": gate_override.overridden,
+                "note": gate_override.note,
+            });
+        }
+        Some(Forcing::Discarded) => value["note_discarded"] = json!(true),
+        None => {}
+    }
+
+    value
 }
 
 pub fn retro(report: Option<&Retro>) -> Value {
@@ -97,12 +110,31 @@ pub fn retro(report: Option<&Retro>) -> Value {
         .map(|open| json!({ "gap": open.gap, "state": state_name(open.state) }))
         .collect();
 
-    json!({
+    let mut value = json!({
         "divergences": divergences,
         "amendments": { "approved": approved, "pending": report.pending },
         "no_criterion": no_criterion,
         "open_gaps": open_gaps,
-    })
+    });
+    if let Some(gate_override) = &report.gate_override {
+        value["gate_override"] = json!({
+            "note": gate_override.note,
+            "overridden": gate_override.overridden,
+        });
+    }
+    if let Some(failure) = &report.delivery_failure {
+        let failed: Vec<Value> = failure
+            .failed
+            .iter()
+            .map(|question| json!({ "label": question.label, "class": question.class.as_str() }))
+            .collect();
+        value["delivery_failure"] = json!({ "note": failure.note, "failed": failed });
+    }
+    if let Some(abandonment) = &report.abandonment {
+        value["abandonment"] = json!({ "reason": abandonment.reason, "note": abandonment.note });
+    }
+
+    value
 }
 
 pub fn verify(report: &ChainReport) -> Value {
@@ -148,6 +180,9 @@ fn question(report: &QuestionReport) -> Value {
     if let Some(next_step) = &report.next_step {
         value["next_step"] = json!(next_step);
     }
+    if let Some(class) = report.class {
+        value["class"] = json!(class.as_str());
+    }
 
     value
 }
@@ -159,6 +194,7 @@ fn question_kind(kind: QuestionKind) -> &'static str {
         QuestionKind::NoPending => "no-pending",
         QuestionKind::NoOpenContradiction => "no-open-contradiction",
         QuestionKind::Anchored => "anchored",
+        QuestionKind::Requirement => "requirement",
     }
 }
 

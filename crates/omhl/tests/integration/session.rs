@@ -20,7 +20,7 @@ use support::ext::ExtTree;
 use support::omhl::{
     PR_7, acme, decision_data, node_item, premise_data, request, seed_pull_request, work_item_data,
 };
-use support::pr_gate::{all_native_enabled, mechanical_check_data, snapshots};
+use support::pr_gate::{all_native_enabled, attest_required, mechanical_check_data, snapshots};
 use support::project::Project;
 use support::raw::RawHarness;
 use support::run::{Run, run_omhl_with_session};
@@ -283,7 +283,13 @@ fn it_should_record_the_session_on_a_check_retirement() {
         check: CHECK.to_owned(),
     };
 
-    fx.dispatch(&raw_session(SESSION), &retire);
+    let owner = Caller {
+        owner_override: true,
+        ..Caller::cli()
+    };
+    fx.app(&raw_session(SESSION))
+        .dispatch(&owner, &retire)
+        .expect("the owner retires the check");
 
     assert_eq!(fx.last_stamp(), Stamp::new(CHECK, true, SESSION));
 }
@@ -307,6 +313,7 @@ fn it_should_record_the_session_on_a_close() {
     let fx = Fixture::new();
     let no_session = SessionSource::Absent;
     seed_pull_request(&mut fx.omhl(&no_session));
+    attest_required(&mut fx.omhl(&no_session), &snap('a'));
     let session = raw_session(SESSION);
 
     fx.omhl(&session)
@@ -315,7 +322,12 @@ fn it_should_record_the_session_on_a_close() {
             &sid(PR_7),
             &snapshots(&snap('a'), &tree('c')),
             &all_native_enabled(),
-            &author(),
+            &omhl::facade::WorkRequirements::none(),
+            false,
+            &omhl::facade::Closing {
+                author: &author(),
+                note: None,
+            },
         )
         .expect("the work item is closed");
 
@@ -715,11 +727,22 @@ fn it_should_refuse_the_session_first_in_a_close_before_the_probe_and_the_gate()
         &sid("work-items.missing"),
         &snapshots(&snap('a'), &tree('c')),
         &all_native_enabled(),
-        &author(),
+        &omhl::facade::WorkRequirements::none(),
+        false,
+        &omhl::facade::Closing {
+            author: &author(),
+            note: None,
+        },
     );
 
     assert_eq!(
         (refused.err(), chain_head(&fx.raw.db_path()) == head_before),
-        (Some(OmhlError::rule(RuleCode::InvalidSessionId, "")), true)
+        (
+            Some(omhl::facade::CloseError::Omhl(OmhlError::rule(
+                RuleCode::InvalidSessionId,
+                ""
+            ))),
+            true
+        )
     );
 }

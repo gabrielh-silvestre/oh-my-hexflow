@@ -1862,3 +1862,146 @@ fn it_should_deny_byproduct_prune_outside_the_matrix_in_every_spelling() {
         assert_reason_starts_with_code(&output, "command-outside-matrix", command);
     }
 }
+
+// --owner-override: negada por sintaxe, antes do teste de `agent_type`
+
+const OVERRIDE_DENIAL: &str = "--owner-override";
+const ALL_ROLES: [&str; 7] = [
+    "analyst",
+    "architect",
+    "code-reviewer",
+    "critic",
+    "planner",
+    "security-reviewer",
+    "verifier",
+];
+
+#[test]
+fn it_should_deny_owner_override_on_load_from_the_main_session() {
+    let output = run_agent_role("omhl load --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_on_check_retire_from_the_main_session() {
+    let output = run_agent_role("omhl check retire checks.gate --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_on_append_from_the_main_session() {
+    let output = run_agent_role("omhl append --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_with_an_assigned_value() {
+    let output = run_agent_role("omhl load --owner-override=x", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_for_every_role() {
+    for role in ALL_ROLES {
+        let output = run_as(role, "omhl load --owner-override");
+
+        assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+    }
+}
+
+#[test]
+fn it_should_deny_owner_override_with_an_assigned_value_for_every_role() {
+    for role in ALL_ROLES {
+        let output = run_as(role, "omhl append --owner-override=x");
+
+        assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+    }
+}
+
+#[test]
+fn it_should_deny_owner_override_in_a_command_chained_with_and() {
+    let output = run_agent_role("cd crates && omhl load --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_wrapped_in_env() {
+    let output = run_agent_role("env FOO=1 omhl load --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_wrapped_in_bash_c() {
+    let output = run_agent_role("bash -c 'omhl load --owner-override'", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_wrapped_in_env_with_an_option_that_hides_the_program() {
+    let output = run_agent_role("env -i omhl load --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_wrapped_in_env_split_string() {
+    let output = run_agent_role("env -S 'omhl load --owner-override'", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_wrapped_in_exec_with_a_clearing_option() {
+    let output = run_agent_role("exec -c omhl load --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_wrapped_in_a_wrapper_with_an_unknown_option() {
+    let output = run_agent_role("stdbuf -oL omhl load --owner-override", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_in_a_bash_c_body_with_trailing_punctuation() {
+    let output = run_agent_role("bash -c 'omhl load --owner-override;'", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_deny_owner_override_quoted_in_a_bash_c_body() {
+    let output = run_agent_role("bash -c 'omhl load \"--owner-override\"'", None);
+
+    assert_denied_mentioning(&output, OVERRIDE_DENIAL);
+}
+
+#[test]
+fn it_should_pass_omhl_load_without_owner_override_wrapped_in_env_with_an_option() {
+    let output = run_agent_role("env -i omhl load", None);
+
+    assert_passed(&output);
+}
+
+#[test]
+fn it_should_pass_omhl_load_without_owner_override_from_the_main_session() {
+    let output = run_agent_role("omhl load", None);
+
+    assert_passed(&output);
+}
+
+#[test]
+fn it_should_not_deny_omhl_close_force_from_the_main_session() {
+    let output = run_agent_role("omhl close work-items.w1 --force", None);
+
+    assert_passed(&output);
+}

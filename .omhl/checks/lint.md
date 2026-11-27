@@ -1,1 +1,1 @@
-Runs `cargo clippy --workspace --all-targets --locked -- -D warnings`; it passes when clippy reports no warning. Read the output with `omhl byproduct checks.lint <work-item>` and fix each lint.
+Runs `cargo clippy --workspace --all-targets --profile checks --locked -- -D warnings`; it passes when clippy reports no warning. Read the output with `omhl byproduct checks.lint <work-item>` and fix each lint.

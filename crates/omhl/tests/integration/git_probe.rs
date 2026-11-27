@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
+use ::omhl::mechanical::branch::{BranchKind, DEVELOP_BRANCH, classify};
 use ::omhl::ports::git::GitProbe;
 use ::omhl::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
 use hexlog::{Snapshot, SnapshotKind};
@@ -1202,4 +1203,149 @@ fn it_should_report_dirty_for_an_edit_hidden_by_assume_unchanged() {
             Ok(true)
         )
     );
+}
+
+// A leitura da integração: branch atual, ref de commit e ancestralidade
+
+/// `develop` com o commit base e `FEATURE` um commit à frente; o HEAD fica no branch do item.
+fn feature_ahead_of_develop() -> GitRepo {
+    let repo = GitRepo::init();
+    repo.write("a.txt", "a\n");
+    repo.commit_all("base");
+    repo.git(&["branch", "-m", DEVELOP_BRANCH]);
+    repo.git(&["switch", "-q", "-c", FEATURE]);
+    repo.write("b.txt", "b\n");
+    repo.commit_all("feature work");
+    repo
+}
+
+fn develop_ref() -> String {
+    format!("refs/heads/{DEVELOP_BRANCH}")
+}
+
+#[test]
+fn it_should_read_the_current_branch_at_the_tip_of_the_item_branch() {
+    let repo = feature_ahead_of_develop();
+
+    let current = GitProbe::new(repo.path()).current_branch();
+
+    assert_eq!(current, Ok(Some(FEATURE.to_owned())));
+}
+
+#[test]
+fn it_should_read_the_current_branch_on_develop() {
+    let repo = feature_ahead_of_develop();
+    repo.git(&["switch", "-q", DEVELOP_BRANCH]);
+
+    let current = GitProbe::new(repo.path()).current_branch();
+
+    assert_eq!(current, Ok(Some(DEVELOP_BRANCH.to_owned())));
+}
+
+#[test]
+fn it_should_read_no_current_branch_on_a_detached_head() {
+    let repo = feature_ahead_of_develop();
+    repo.git(&["switch", "-q", "--detach", "HEAD"]);
+
+    let current = GitProbe::new(repo.path()).current_branch();
+
+    assert_eq!(current, Ok(None));
+}
+
+#[test]
+fn it_should_fail_the_current_branch_read_outside_a_repository() {
+    let dir = TempDir::new().expect("temp dir");
+
+    let current = GitProbe::new(dir.path()).current_branch();
+
+    assert!(current.is_err());
+}
+
+#[test]
+fn it_should_resolve_an_existing_ref_to_its_commit() {
+    let repo = feature_ahead_of_develop();
+    let expected = git_out(repo.path(), &["rev-parse", &develop_ref()]);
+
+    let commit = GitProbe::new(repo.path()).ref_commit(&develop_ref());
+
+    assert_eq!(commit, Ok(Some(expected)));
+}
+
+#[test]
+fn it_should_report_no_commit_when_the_ref_does_not_exist() {
+    let repo = feature_ahead_of_develop();
+    repo.git(&["branch", "-m", DEVELOP_BRANCH, "trunk"]);
+
+    let commit = GitProbe::new(repo.path()).ref_commit(&develop_ref());
+
+    assert_eq!(commit, Ok(None));
+}
+
+#[test]
+fn it_should_fail_the_ref_read_when_git_fails() {
+    let dir = TempDir::new().expect("temp dir");
+
+    let commit = GitProbe::new(dir.path()).ref_commit(&develop_ref());
+
+    assert!(commit.is_err());
+}
+
+#[test]
+fn it_should_report_not_an_ancestor_before_the_merge() {
+    let repo = feature_ahead_of_develop();
+    let feature = git_out(repo.path(), &["rev-parse", "HEAD"]);
+    let develop = git_out(repo.path(), &["rev-parse", &develop_ref()]);
+
+    let ancestor = GitProbe::new(repo.path()).is_ancestor(&feature, &develop);
+
+    assert_eq!(ancestor, Ok(false));
+}
+
+#[test]
+fn it_should_report_an_ancestor_after_a_merge_commit() {
+    let repo = feature_ahead_of_develop();
+    let feature = git_out(repo.path(), &["rev-parse", "HEAD"]);
+    repo.git(&["switch", "-q", DEVELOP_BRANCH]);
+    repo.git(&["merge", "--no-ff", "-q", "-m", "merge feature", FEATURE]);
+    let develop = git_out(repo.path(), &["rev-parse", &develop_ref()]);
+
+    let ancestor = GitProbe::new(repo.path()).is_ancestor(&feature, &develop);
+
+    assert_eq!(ancestor, Ok(true));
+}
+
+#[test]
+fn it_should_report_not_an_ancestor_after_a_squash_merge() {
+    let repo = feature_ahead_of_develop();
+    let feature = git_out(repo.path(), &["rev-parse", "HEAD"]);
+    repo.git(&["switch", "-q", DEVELOP_BRANCH]);
+    repo.git(&["merge", "--squash", "-q", FEATURE]);
+    repo.git(&["commit", "-q", "-m", "squashed feature"]);
+    let develop = git_out(repo.path(), &["rev-parse", &develop_ref()]);
+
+    let ancestor = GitProbe::new(repo.path()).is_ancestor(&feature, &develop);
+
+    assert_eq!(ancestor, Ok(false));
+}
+
+#[test]
+fn it_should_fail_the_ancestry_read_when_git_exits_with_another_status() {
+    let repo = feature_ahead_of_develop();
+    let develop = git_out(repo.path(), &["rev-parse", &develop_ref()]);
+    let missing = "0".repeat(40);
+
+    let ancestor = GitProbe::new(repo.path()).is_ancestor(&missing, &develop);
+
+    assert!(ancestor.is_err());
+}
+
+#[test]
+fn it_should_share_the_develop_constant_between_classify_and_the_ref_read() {
+    let repo = feature_ahead_of_develop();
+
+    let kind = classify(DEVELOP_BRANCH);
+    let commit = GitProbe::new(repo.path()).ref_commit(&develop_ref());
+
+    assert_eq!(kind, BranchKind::Develop);
+    assert!(matches!(commit, Ok(Some(_))));
 }

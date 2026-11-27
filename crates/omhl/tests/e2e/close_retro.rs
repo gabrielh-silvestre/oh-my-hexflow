@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use support::child::{Output, omhl, omhl_json};
-use support::git::git_in;
-use support::omhl::work_item_data;
+use support::git::{git_in, git_ok};
+use support::omhl::{PR_7, closed_with_gate, pull_request_data, work_item_data};
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
@@ -19,6 +19,9 @@ const GAP: &str = "gaps.g1";
 const ANSWER: &str = "premises.p1";
 const DIRECTIVE: &str = "guidelines.d1";
 const CANARY: &str = "CANARY-8f3a1c";
+const MISSING_WORK_ITEM: &str = "work-items.ghost";
+// Sem a linha do prefixo `chore`, o tipo gravado do W1 deixa de estar na tabela.
+const FEAT_ONLY_WORKFLOW: &str = "version = 1\n\n[prefix.feat]\nrequire = []\n";
 
 // Repositório git real: `omhl close` e `omhl report retro`
 
@@ -168,7 +171,7 @@ impl Fixture {
             assert!(output.status.success(), "git {args:?} failed");
         }
         let fixture = Fixture { project };
-        fixture.append(vec![node(W1, "work-item", work_item_data("t"))]);
+        fixture.append(vec![node(W1, "work-item", typed(work_item_data("t")))]);
 
         fixture
     }
@@ -881,4 +884,1341 @@ fn it_should_take_an_approved_english_amendment_out_of_pending() {
             "pending": [],
         })
     );
+}
+
+/// Um work item com tipo sem átomo: o `close` não procura o branch, e a fixture não tem um.
+fn typed(mut data: serde_json::Value) -> serde_json::Value {
+    data["type"] = serde_json::json!("chore");
+    data
+}
+
+// Gate reprovado: recusa do `close`, `--force --note` e a paridade com o `gate-pr`
+
+const RUN_TESTS: &str = "checks.run-tests";
+const CI_GREEN: &str = "checks.ci-green-before-merge";
+const OWNER_NOTE: &str = "owner approved the override";
+
+/// Repositório com os nativos dados ligados: o gate reprova pelas perguntas deles.
+fn fixture_with_natives(natives: &[&str]) -> Fixture {
+    let fixture = Fixture::new();
+    fixture.project.enable_natives(natives);
+
+    fixture
+}
+
+impl Fixture {
+    /// Commita o que foi escrito e roda o `close` com os argumentos extras, sem exigir saída 0.
+    fn close_with(&self, extra: &[&str]) -> Output {
+        self.commit_all();
+        let mut args = vec!["close", W1];
+        args.extend_from_slice(extra);
+
+        self.run(&args)
+    }
+
+    /// Atesta o check no `HEAD` atual, sem commitar: o `close` seguinte precisa da árvore como está.
+    fn attest(&self, check: &str) {
+        let attested = self.run(&["attest", check, W1, "--outcome", "passed"]);
+        assert_eq!(attested.code, Some(0), "stderr: {}", attested.stderr);
+    }
+
+    fn gate_pr(&self) -> Value {
+        let gate = self.run(&["gate-pr", W1]);
+        assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
+
+        json_line(&gate.stdout)
+    }
+
+    fn node_data(&self) -> Value {
+        json_line(&self.run(&["get", W1]).stdout)["node"]["data"].clone()
+    }
+}
+
+/// Todos os arquivos sob `dir`, concatenados: a projeção é uma árvore de arquivos.
+fn all_text_under(dir: &std::path::Path) -> String {
+    let mut text = String::new();
+    for entry in fs::read_dir(dir).expect("the directory is read") {
+        let path = entry.expect("the entry is read").path();
+        if path.is_dir() {
+            text.push_str(&all_text_under(&path));
+        } else {
+            text.push_str(&fs::read_to_string(&path).unwrap_or_default());
+        }
+    }
+
+    text
+}
+
+#[test]
+fn it_should_refuse_the_close_with_close_warnings_when_only_a_warn_question_fails() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.run(&["close", W1]);
+
+    assert_eq!(closed.code, Some(1), "stdout: {}", closed.stdout);
+    assert_eq!(closed.stdout, "");
+    let error = json_line(&closed.stderr)["error"].clone();
+    assert_eq!(error["code"], json!("close-warnings"));
+    assert!(
+        error["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("--force --note"))
+    );
+    assert_eq!(error["details"][0]["code"], json!("warn"));
+    assert_eq!(error["details"][0]["context"]["label"], json!(RUN_TESTS));
+    assert_eq!(fixture.node_data()["status"], json!("open"));
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_the_close_with_close_refused_when_a_refuse_question_fails_with_a_warn_one() {
+    let fixture = fixture_with_natives(&[RUN_TESTS, CI_GREEN]);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.run(&["close", W1]);
+
+    assert_eq!(closed.code, Some(1), "stdout: {}", closed.stdout);
+    let error = json_line(&closed.stderr)["error"].clone();
+    assert_eq!(error["code"], json!("close-refused"));
+    let message = error["message"].as_str().expect("the message is text");
+    assert!(message.contains("--abandon"), "{message}");
+    assert!(message.contains("--failed-delivery --note"), "{message}");
+    assert!(!message.contains("new commit"), "{message}");
+    assert_eq!(error["details"][0]["code"], json!("warn"));
+    assert_eq!(error["details"][1]["code"], json!("refuse"));
+    assert_eq!(error["details"][1]["context"]["label"], json!(CI_GREEN));
+    assert_eq!(fixture.node_data()["status"], json!("open"));
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_close_with_exit_zero_once_the_refused_questions_pass() {
+    let fixture = fixture_with_natives(&[RUN_TESTS, CI_GREEN]);
+    fixture.commit_all();
+    let refused = fixture.run(&["close", W1]);
+    assert_eq!(refused.code, Some(1), "stderr: {}", refused.stderr);
+    fixture.attest(RUN_TESTS);
+    fixture.attest(CI_GREEN);
+
+    let closed = fixture.run(&["close", W1]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(fixture.node_data()["status"], json!("closed"));
+    assert!(fixture.node_data()["gate"].get("forced").is_none());
+}
+
+#[test]
+fn it_should_close_with_exit_zero_when_the_whole_gate_passes() {
+    let fixture = Fixture::new();
+
+    let closed = fixture.close_with(&[]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(fixture.node_data()["status"], json!("closed"));
+}
+
+#[test]
+fn it_should_record_the_forced_close_with_the_note_and_the_overridden_labels() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+
+    let closed = fixture.close_with(&["--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(
+        json_line(&closed.stdout)["forced"],
+        json!({ "overridden": [RUN_TESTS], "note": OWNER_NOTE })
+    );
+    let gate = fixture.node_data()["gate"].clone();
+    assert_eq!(gate["passed"], json!(false));
+    assert_eq!(gate["forced"], json!(true));
+    assert_eq!(gate["overridden"], json!([RUN_TESTS]));
+    assert_eq!(gate["note"], json!(OWNER_NOTE));
+}
+
+#[test]
+fn it_should_print_the_forced_header_for_the_forced_close() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+    fixture.commit_all();
+
+    let closed = omhl(&["close", W1, "--force", "--note", OWNER_NOTE])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .run();
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert!(
+        closed
+            .stdout
+            .lines()
+            .any(|line| line == "⚠ closed · forced · 1 overridden"),
+        "{}",
+        closed.stdout
+    );
+}
+
+#[test]
+fn it_should_show_the_note_and_the_labels_in_the_retro_and_the_projection() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+    fixture.close_with(&["--force", "--note", OWNER_NOTE]);
+
+    let retro = retro_of(&fixture.retro_report());
+    let projection = fixture.run(&["project"]);
+    assert_eq!(projection.code, Some(0), "stderr: {}", projection.stderr);
+    let dir = json_line(&projection.stdout)["dir"]
+        .as_str()
+        .expect("the projection dir is text")
+        .to_owned();
+
+    assert_eq!(
+        retro["gate_override"],
+        json!({ "note": OWNER_NOTE, "overridden": [RUN_TESTS] })
+    );
+    let written = all_text_under(&fixture.project.dir().join(dir));
+    assert!(
+        written.contains(&format!("- note: {OWNER_NOTE}")),
+        "{written}"
+    );
+    assert!(
+        written.contains(&format!("- overridden: {RUN_TESTS}")),
+        "{written}"
+    );
+}
+
+#[test]
+fn it_should_refuse_the_forced_close_and_write_nothing_when_a_refuse_question_fails() {
+    let fixture = fixture_with_natives(&[RUN_TESTS, CI_GREEN]);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(closed.code, Some(1), "stdout: {}", closed.stdout);
+    assert_eq!(
+        json_line(&closed.stderr)["error"]["code"],
+        json!("close-refused")
+    );
+    assert_eq!(fixture.node_data()["status"], json!("open"));
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_discard_the_note_and_record_nothing_forced_when_the_gate_passes() {
+    let fixture = Fixture::new();
+    fixture.commit_all();
+
+    let closed = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(json_line(&closed.stdout)["note_discarded"], json!(true));
+    let gate = fixture.node_data()["gate"].clone();
+    assert!(gate.get("forced").is_none());
+    assert!(gate.get("note").is_none());
+    assert!(gate.get("overridden").is_none());
+}
+
+#[test]
+fn it_should_print_the_discarded_note_warning_when_the_gate_passes() {
+    let fixture = Fixture::new();
+    fixture.commit_all();
+
+    let closed = omhl(&["close", W1, "--force", "--note", OWNER_NOTE])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .run();
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert!(
+        closed
+            .stdout
+            .lines()
+            .any(|line| line == "⚠ note discarded · gate passed"),
+        "{}",
+        closed.stdout
+    );
+}
+
+#[test]
+fn it_should_refuse_force_and_note_that_do_not_come_together() {
+    let fixture = fixture_with_natives(&[RUN_TESTS]);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let force_alone = fixture.run(&["close", W1, "--force"]);
+    let note_alone = fixture.run(&["close", W1, "--note", OWNER_NOTE]);
+
+    assert_ne!(force_alone.code, Some(0), "stderr: {}", force_alone.stderr);
+    assert_ne!(note_alone.code, Some(0), "stderr: {}", note_alone.stderr);
+    assert_eq!(fixture.node_data()["status"], json!("open"));
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_close_with_snapshot_dirty_with_and_without_force_before_any_gate_question() {
+    let fixture = Fixture::new();
+    fs::write(fixture.project.dir().join("dirty.txt"), "not committed\n")
+        .expect("the dirty file is written");
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", W1]);
+    let forced = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (json!("snapshot-dirty"), json!("snapshot-dirty"), before),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_close_with_invalid_workflow_config_before_a_missing_work_item() {
+    let fixture = Fixture::new();
+    fixture.write_workflow(INVALID_WORKFLOW);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", MISSING_WORK_ITEM]);
+    let forced = fixture.run(&["close", MISSING_WORK_ITEM, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (
+            json!("invalid-workflow-config"),
+            json!("invalid-workflow-config"),
+            before
+        ),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_close_with_work_item_not_found_with_and_without_force() {
+    let fixture = Fixture::new();
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", MISSING_WORK_ITEM]);
+    let forced = fixture.run(&["close", MISSING_WORK_ITEM, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (
+            json!("work-item-not-found"),
+            json!("work-item-not-found"),
+            before
+        ),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_close_of_a_closed_work_item_with_and_without_force() {
+    let fixture = Fixture::new();
+    fixture.close_output();
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", W1]);
+    let forced = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (
+            json!("invalid-transition"),
+            json!("invalid-transition"),
+            before
+        ),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_close_of_a_closed_work_item_whose_type_is_no_longer_in_the_table() {
+    let fixture = Fixture::new();
+    fixture.close_output();
+    fixture.write_workflow(FEAT_ONLY_WORKFLOW);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let plain = fixture.run(&["close", W1]);
+    let forced = fixture.run(&["close", W1, "--force", "--note", OWNER_NOTE]);
+
+    assert_eq!(
+        (error_code(&plain), error_code(&forced), fixture.chain()),
+        (
+            json!("invalid-transition"),
+            json!("invalid-transition"),
+            before
+        ),
+        "stderr: {} / {}",
+        plain.stderr,
+        forced.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_gate_pr_with_invalid_workflow_config_before_a_missing_work_item() {
+    let fixture = Fixture::new();
+    fixture.write_workflow(INVALID_WORKFLOW);
+    fixture.commit_all();
+
+    let gate = fixture.run(&["gate-pr", MISSING_WORK_ITEM]);
+
+    assert_eq!(
+        error_code(&gate),
+        json!("invalid-workflow-config"),
+        "stderr: {}",
+        gate.stderr
+    );
+}
+
+#[test]
+fn it_should_ask_gate_pr_the_same_failing_questions_and_classes_that_close_refuses() {
+    for natives in [&[RUN_TESTS][..], &[RUN_TESTS, CI_GREEN][..]] {
+        let fixture = fixture_with_natives(natives);
+        fixture.commit_all();
+
+        let gate = fixture.gate_pr();
+        let closed = fixture.run(&["close", W1]);
+
+        let asked: Vec<Value> = gate["questions"]
+            .as_array()
+            .expect("the questions are a list")
+            .iter()
+            .filter(|question| question["passed"] == json!(false))
+            .map(|question| json!([question["label"], question["class"]]))
+            .collect();
+        let refused: Vec<Value> = json_line(&closed.stderr)["error"]["details"]
+            .as_array()
+            .expect("the details are a list")
+            .iter()
+            .map(|detail| json!([detail["context"]["label"], detail["code"]]))
+            .collect();
+        assert_eq!(gate["passed"], json!(false));
+        assert_eq!(asked, refused, "natives {natives:?}");
+    }
+}
+
+// `close --abandon`: fecha sem avaliar o gate
+
+const ABANDON_REASON: &str = "the owner dropped the feature";
+const ABANDON_NOTE: &str = "authorized by the owner";
+
+/// Os dois tipos de nó que o `close` aceita: o work item da fixture e um pull-request.
+fn closable_ids() -> [&'static str; 2] {
+    [W1, PR_7]
+}
+
+impl Fixture {
+    fn with_pull_request() -> Fixture {
+        let fixture = Fixture::new();
+        fixture.append(vec![node(
+            PR_7,
+            "pull-request",
+            pull_request_data("Add gate"),
+        )]);
+
+        fixture
+    }
+
+    fn abandon_cmd(&self, id: &str) -> support::child::Cmd {
+        omhl_json(&[
+            "close",
+            id,
+            "--abandon",
+            "--reason",
+            ABANDON_REASON,
+            "--note",
+            ABANDON_NOTE,
+        ])
+        .cwd(self.project.dir())
+        .xdg(self.project.xdg())
+    }
+
+    fn abandon(&self, id: &str) -> Output {
+        self.abandon_cmd(id).run()
+    }
+
+    fn data_of(&self, id: &str) -> Value {
+        json_line(&self.run(&["get", id]).stdout)["node"]["data"].clone()
+    }
+
+    fn head(&self) -> String {
+        let output = git_in(self.project.dir(), &["rev-parse", "HEAD"]);
+
+        String::from_utf8(output.stdout)
+            .expect("the HEAD id is text")
+            .trim()
+            .to_owned()
+    }
+}
+
+#[test]
+fn it_should_abandon_with_a_dirty_tree_and_an_invalid_workflow_and_record_the_closing() {
+    for id in closable_ids() {
+        let fixture = Fixture::with_pull_request();
+        fs::write(fixture.project.dir().join("dirty.txt"), "not committed\n")
+            .expect("the dirty file is written");
+        fixture.write_workflow(INVALID_WORKFLOW);
+
+        let closed = fixture.abandon(id);
+
+        assert_eq!(closed.code, Some(0), "{id} stderr: {}", closed.stderr);
+        let data = fixture.data_of(id);
+        assert_eq!(data["status"], json!("closed"), "{id}");
+        assert_eq!(
+            data["abandonment"],
+            json!({ "reason": ABANDON_REASON, "note": ABANDON_NOTE }),
+            "{id}"
+        );
+        assert_eq!(data["gate"]["name"], json!("abandoned"), "{id}");
+        assert_eq!(data["gate"]["passed"], json!(false), "{id}");
+        assert_eq!(
+            data["gate"]["snapshot"]["kind"],
+            json!("git-commit"),
+            "{id}"
+        );
+        assert_eq!(
+            data["gate"]["snapshot"]["id"],
+            json!(fixture.head()),
+            "{id}"
+        );
+        let abandoned = json_line(&closed.stdout)["abandoned"].clone();
+        assert_eq!(abandoned, data["abandonment"], "{id}");
+    }
+}
+
+#[test]
+fn it_should_record_the_session_of_the_abandonment() {
+    let fixture = Fixture::new();
+
+    let closed = fixture
+        .abandon_cmd(W1)
+        .env("CLAUDE_CODE_SESSION_ID", "sess-abandon-1")
+        .run();
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let sessions = fixture.run(&["report", "sessions"]).stdout;
+    assert!(sessions.contains("sess-abandon-1"), "{sessions}");
+}
+
+#[test]
+fn it_should_refuse_the_abandonment_with_probe_failed_and_write_nothing_without_a_commit() {
+    let project = Project::new("acme");
+    let init = git_in(project.dir(), &["init", "-b", "main"]);
+    assert!(init.status.success(), "git init failed");
+    let fixture = Fixture { project };
+    fixture.append(vec![node(W1, "work-item", typed(work_item_data("t")))]);
+    let before = fixture.chain();
+
+    let closed = fixture.abandon(W1);
+
+    assert_eq!(
+        (closed.code, error_code(&closed), fixture.chain()),
+        (Some(1), json!("probe-failed"), before),
+        "stderr: {}",
+        closed.stderr
+    );
+}
+
+#[test]
+fn it_should_exit_two_for_the_abandon_argument_combinations_that_do_not_hold() {
+    let fixture = Fixture::new();
+    let combinations: [&[&str]; 8] = [
+        &["close", W1, "--abandon", "--note", "n"],
+        &["close", W1, "--abandon", "--reason", "r"],
+        &["close", W1, "--reason", "r"],
+        &["close", W1, "--force"],
+        &["close", W1, "--note", "n"],
+        &[
+            "close",
+            W1,
+            "--abandon",
+            "--force",
+            "--reason",
+            "r",
+            "--note",
+            "n",
+        ],
+        &[
+            "close",
+            W1,
+            "--abandon",
+            "--failed-delivery",
+            "--reason",
+            "r",
+            "--note",
+            "n",
+        ],
+        &[
+            "close",
+            W1,
+            "--abandon",
+            "--base",
+            "main",
+            "--reason",
+            "r",
+            "--note",
+            "n",
+        ],
+    ];
+    let before = fixture.chain();
+
+    for args in combinations {
+        let closed = fixture.run(args);
+
+        assert_eq!(closed.code, Some(2), "{args:?} stderr: {}", closed.stderr);
+    }
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_an_empty_or_too_long_reason_or_note_with_invalid_input() {
+    let fixture = Fixture::new();
+    let long = "x".repeat(501);
+    let invalid: [(&str, &str); 4] = [
+        ("", "n"),
+        ("r", ""),
+        (long.as_str(), "n"),
+        ("r", long.as_str()),
+    ];
+    let before = fixture.chain();
+
+    for (reason, note) in invalid {
+        let closed = fixture.run(&["close", W1, "--abandon", "--reason", reason, "--note", note]);
+
+        assert_eq!(
+            (closed.code, error_code(&closed)),
+            (Some(1), json!("INVALID_INPUT")),
+            "stderr: {}",
+            closed.stderr
+        );
+    }
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_to_abandon_a_closed_item_and_an_unknown_one() {
+    let fixture = Fixture::new();
+    let first = fixture.abandon(W1);
+    assert_eq!(first.code, Some(0), "stderr: {}", first.stderr);
+
+    let again = fixture.abandon(W1);
+    let ghost = fixture.abandon(MISSING_WORK_ITEM);
+
+    assert_eq!(error_code(&again), json!("invalid-transition"));
+    assert_eq!(error_code(&ghost), json!("work-item-not-found"));
+}
+
+#[test]
+fn it_should_refuse_an_append_that_carries_abandonment_or_delivery_failure() {
+    for id in closable_ids() {
+        for (field, value) in [
+            ("abandonment", json!({ "reason": "r", "note": "n" })),
+            ("delivery_failure", json!({ "note": "n" })),
+        ] {
+            let fixture = Fixture::with_pull_request();
+            let mut data = fixture.data_of(id);
+            data[field] = value;
+            let before = fixture.chain();
+            let mut request = json!({});
+            let type_name = if id == W1 {
+                "work-item"
+            } else {
+                "pull-request"
+            };
+            request["items"] = Value::Array(vec![node(id, type_name, data)]);
+
+            let appended = omhl_json(&["append"])
+                .cwd(fixture.project.dir())
+                .xdg(fixture.project.xdg())
+                .stdin(request.to_string())
+                .run();
+
+            assert_eq!(
+                (appended.code, error_code(&appended), fixture.chain()),
+                (Some(1), json!("use-close-work-item"), before),
+                "{id} {field} stderr: {}",
+                appended.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn it_should_list_an_abandoned_item_as_closed_and_refuse_a_second_close() {
+    for id in closable_ids() {
+        let fixture = Fixture::with_pull_request();
+        fixture.abandon(id);
+
+        let listed = fixture.run(&["list", "--where", "status=closed"]);
+        let again = fixture.run(&["close", id, "--force", "--note", "n"]);
+
+        assert!(listed.stdout.contains(id), "{id} {}", listed.stdout);
+        assert_eq!(error_code(&again), json!("invalid-transition"), "{id}");
+    }
+}
+
+#[test]
+fn it_should_exit_two_when_the_close_options_appear_in_another_subcommand() {
+    let fixture = Fixture::new();
+
+    for flag in [
+        "--force",
+        "--abandon",
+        "--failed-delivery",
+        "--reason",
+        "--note",
+    ] {
+        for command in [&["gate-pr", W1][..], &["append"]] {
+            let mut args = command.to_vec();
+            args.push(flag);
+            if matches!(flag, "--reason" | "--note") {
+                args.push("x");
+            }
+
+            let output = fixture.run(&args);
+
+            assert_eq!(output.code, Some(2), "{args:?} stderr: {}", output.stderr);
+        }
+    }
+}
+
+#[test]
+fn it_should_still_accept_force_in_hooks_install() {
+    let fixture = Fixture::new();
+
+    let installed = fixture.run(&["hooks", "install", "--force"]);
+
+    assert_ne!(installed.code, Some(2), "stderr: {}", installed.stderr);
+}
+
+// Leitores do nó abandonado e do nó fechado no formato antigo
+
+const OLD_WORK_ITEM: &str = "work-items.old";
+const OLD_PULL_REQUEST: &str = "work-items.old-pr";
+
+impl Fixture {
+    fn abandoned(id: &str) -> Fixture {
+        let fixture = Fixture::with_pull_request();
+        let closed = fixture.abandon(id);
+        assert_eq!(closed.code, Some(0), "{id} stderr: {}", closed.stderr);
+
+        fixture
+    }
+
+    /// Gravados direto no banco: a guarda do `append` recusa `closed` fora do `close`.
+    fn with_old_closed_nodes() -> Fixture {
+        let project = Project::new("acme");
+        for args in [
+            &["init", "-b", "main"][..],
+            &["config", "user.name", "Test Author"],
+            &["config", "user.email", "author@example.com"],
+            &["add", "-A"],
+            &["commit", "-m", "add marker"],
+        ] {
+            let output = git_in(project.dir(), args);
+            assert!(output.status.success(), "git {args:?} failed");
+        }
+        support::forge::forge(
+            &project,
+            support::author(),
+            vec![
+                support::omhl::node_item(
+                    OLD_WORK_ITEM,
+                    "work-item",
+                    closed_with_gate(work_item_data("Old work")),
+                ),
+                support::omhl::node_item(
+                    OLD_PULL_REQUEST,
+                    "pull-request",
+                    closed_with_gate(pull_request_data("Old pr")),
+                ),
+            ],
+        );
+
+        Fixture { project }
+    }
+}
+
+#[test]
+fn it_should_show_the_reason_and_the_note_in_get_of_an_abandoned_node() {
+    for id in closable_ids() {
+        let fixture = Fixture::abandoned(id);
+
+        let got = fixture.run(&["get", id]);
+
+        assert_eq!(got.code, Some(0), "{id} stderr: {}", got.stderr);
+        assert!(got.stdout.contains(ABANDON_REASON), "{id} {}", got.stdout);
+        assert!(got.stdout.contains(ABANDON_NOTE), "{id} {}", got.stdout);
+    }
+}
+
+#[test]
+fn it_should_show_the_reason_and_the_note_in_report_retro_of_an_abandoned_node() {
+    for id in closable_ids() {
+        let fixture = Fixture::abandoned(id);
+
+        let retro = fixture.run(&["report", "retro", id]);
+
+        assert_eq!(retro.code, Some(0), "{id} stderr: {}", retro.stderr);
+        assert!(
+            retro.stdout.contains(ABANDON_REASON),
+            "{id} {}",
+            retro.stdout
+        );
+        assert!(retro.stdout.contains(ABANDON_NOTE), "{id} {}", retro.stdout);
+    }
+}
+
+#[test]
+fn it_should_run_render_without_error_when_a_node_is_abandoned() {
+    for id in closable_ids() {
+        let fixture = Fixture::abandoned(id);
+
+        let rendered = fixture.run(&["render"]);
+
+        assert_eq!(rendered.code, Some(0), "{id} stderr: {}", rendered.stderr);
+    }
+}
+
+#[test]
+fn it_should_run_the_projection_without_error_when_a_node_is_abandoned() {
+    for id in closable_ids() {
+        let fixture = Fixture::abandoned(id);
+
+        let projected = fixture.run(&["project"]);
+
+        assert_eq!(projected.code, Some(0), "{id} stderr: {}", projected.stderr);
+    }
+}
+
+#[test]
+fn it_should_print_only_the_retro_line_of_the_abandonment_without_any_gate_question() {
+    for id in closable_ids() {
+        let fixture = Fixture::with_pull_request();
+
+        let closed = omhl(&[
+            "close",
+            id,
+            "--abandon",
+            "--reason",
+            ABANDON_REASON,
+            "--note",
+            ABANDON_NOTE,
+        ])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .run();
+
+        assert_eq!(closed.code, Some(0), "{id} stderr: {}", closed.stderr);
+        assert!(closed.stdout.contains("retro"), "{id} {}", closed.stdout);
+        assert!(
+            closed.stdout.contains(ABANDON_REASON),
+            "{id} {}",
+            closed.stdout
+        );
+        assert!(
+            !closed.stdout.contains("question"),
+            "{id} {}",
+            closed.stdout
+        );
+        assert!(!closed.stdout.contains('✘'), "{id} {}", closed.stdout);
+    }
+}
+
+#[test]
+fn it_should_read_a_node_closed_in_the_old_format_with_get() {
+    let fixture = Fixture::with_old_closed_nodes();
+
+    for (id, title) in [(OLD_WORK_ITEM, "Old work"), (OLD_PULL_REQUEST, "Old pr")] {
+        let got = fixture.run(&["get", id]);
+
+        assert_eq!(got.code, Some(0), "{id} stderr: {}", got.stderr);
+        assert!(got.stdout.contains(title), "{id} {}", got.stdout);
+    }
+}
+
+#[test]
+fn it_should_read_a_node_closed_in_the_old_format_with_the_projection() {
+    let fixture = Fixture::with_old_closed_nodes();
+
+    let projected = fixture.run(&["project"]);
+
+    assert_eq!(projected.code, Some(0), "stderr: {}", projected.stderr);
+}
+
+#[test]
+fn it_should_read_a_node_closed_in_the_old_format_with_report_retro() {
+    let fixture = Fixture::with_old_closed_nodes();
+
+    for id in [OLD_WORK_ITEM, OLD_PULL_REQUEST] {
+        let retro = fixture.run(&["report", "retro", id]);
+
+        assert_eq!(retro.code, Some(0), "{id} stderr: {}", retro.stderr);
+        assert_eq!(retro_of(&json_line(&retro.stdout)), Value::Null, "{id}");
+    }
+}
+
+// `close --failed-delivery`: fecha o item já mergeado cujo commit ainda reprova
+
+const DELIVERY_NOTE: &str = "autorizado";
+const ITEM_BRANCH: &str = "feat/wi-w1__login";
+const OTHER_ITEM_BRANCH: &str = "feat/wi-w2__other";
+
+impl Fixture {
+    /// Branch do item com um commit próprio, `develop` ainda sem ele.
+    fn unmerged(natives: &[&str]) -> Fixture {
+        let fixture = fixture_with_natives(natives);
+        fixture.git(&["checkout", "-b", ITEM_BRANCH]);
+        fs::write(fixture.project.dir().join("feature.txt"), "feature\n")
+            .expect("the feature file is written");
+        fixture.commit_all();
+        fixture.git(&["branch", "develop", "main"]);
+
+        fixture
+    }
+
+    /// Como `merged`, com o `workflow.toml` já na `main`: a faixa a partir dela só toca fonte.
+    fn merged_with_the_workflow_on_main(natives: &[&str]) -> Fixture {
+        let fixture = fixture_with_natives(natives);
+        fixture.commit_all();
+        fixture.git(&["checkout", "-b", ITEM_BRANCH]);
+        fs::write(fixture.project.dir().join("feature.txt"), "feature\n")
+            .expect("the feature file is written");
+        fixture.commit_all();
+        fixture.git(&["branch", "develop", "main"]);
+        fixture.git(&["checkout", "develop"]);
+        fixture.git(&["merge", "--no-ff", "-m", "merge the item", ITEM_BRANCH]);
+        fixture.git(&["checkout", ITEM_BRANCH]);
+
+        fixture
+    }
+
+    /// Item mergeado na `develop` com merge commit; o `HEAD` volta para a ponta do item.
+    fn merged(natives: &[&str]) -> Fixture {
+        let fixture = Fixture::unmerged(natives);
+        fixture.git(&["checkout", "develop"]);
+        fixture.git(&["merge", "--no-ff", "-m", "merge the item", ITEM_BRANCH]);
+        fixture.git(&["checkout", ITEM_BRANCH]);
+
+        fixture
+    }
+
+    fn squashed(natives: &[&str]) -> Fixture {
+        let fixture = Fixture::unmerged(natives);
+        fixture.git(&["checkout", "develop"]);
+        fixture.git(&["merge", "--squash", ITEM_BRANCH]);
+        fixture.git(&["commit", "-m", "squash the item"]);
+        fixture.git(&["checkout", ITEM_BRANCH]);
+
+        fixture
+    }
+
+    fn git(&self, args: &[&str]) {
+        git_ok(self.project.dir(), args);
+    }
+
+    fn develop_commit(&self) -> String {
+        git_ok(self.project.dir(), &["rev-parse", "refs/heads/develop"])
+            .trim()
+            .to_owned()
+    }
+
+    fn failed_delivery(&self, id: &str) -> Output {
+        self.run(&["close", id, "--failed-delivery", "--note", DELIVERY_NOTE])
+    }
+
+    fn failed_delivery_text(&self, id: &str) -> Output {
+        omhl(&["close", id, "--failed-delivery", "--note", DELIVERY_NOTE])
+            .cwd(self.project.dir())
+            .xdg(self.project.xdg())
+            .run()
+    }
+
+    fn pull_request_on(&self, branch: &str) {
+        let mut data = pull_request_data("Add gate");
+        data["branch"] = json!(branch);
+        self.append(vec![node(PR_7, "pull-request", data)]);
+    }
+
+    fn assert_refused_with(&self, output: &Output, code: &str, before: &Value) {
+        assert_eq!(
+            (output.code, error_code(output), &self.chain()),
+            (Some(1), json!(code), before),
+            "stderr: {}",
+            output.stderr
+        );
+    }
+}
+
+#[test]
+fn it_should_close_a_merged_work_item_recording_the_failure_and_leaving_the_gate_without_override()
+{
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = fixture.failed_delivery(W1);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let data = fixture.data_of(W1);
+    assert_eq!(data["status"], json!("closed"));
+    assert_eq!(data["gate"]["passed"], json!(false));
+    for key in ["forced", "overridden", "note"] {
+        assert!(data["gate"].get(key).is_none(), "{key} in the gate");
+    }
+}
+
+#[test]
+fn it_should_record_the_note_the_failed_questions_and_the_integration_read() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    fixture.failed_delivery(W1);
+
+    assert_eq!(
+        fixture.data_of(W1)["delivery_failure"],
+        json!({
+            "note": DELIVERY_NOTE,
+            "failed": [
+                { "label": RUN_TESTS, "class": "warn" },
+                { "label": CI_GREEN, "class": "refuse" },
+            ],
+            "integration": { "ref": "develop", "commit": fixture.develop_commit() },
+        })
+    );
+}
+
+#[test]
+fn it_should_close_a_merged_pull_request_recording_the_failure() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.pull_request_on(ITEM_BRANCH);
+
+    let closed = fixture.failed_delivery(PR_7);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let data = fixture.data_of(PR_7);
+    assert_eq!(data["status"], json!("closed"));
+    assert_eq!(data["gate"]["passed"], json!(false));
+    assert_eq!(data["delivery_failure"]["note"], json!(DELIVERY_NOTE));
+    assert_eq!(
+        data["delivery_failure"]["integration"]["commit"],
+        json!(fixture.develop_commit())
+    );
+}
+
+#[test]
+fn it_should_print_the_delivered_with_failure_header() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = fixture.failed_delivery_text(W1);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert!(
+        closed
+            .stdout
+            .lines()
+            .any(|line| line == "⚠ closed · delivered with failure · 2 failed"),
+        "{}",
+        closed.stdout
+    );
+}
+
+const REVIEW: &str = "checks.config-loosening-review";
+
+#[test]
+fn it_should_leave_the_review_question_out_of_the_failed_ones_when_the_base_range_touches_only_source()
+ {
+    let fixture = Fixture::merged_with_the_workflow_on_main(&[RUN_TESTS, CI_GREEN, REVIEW]);
+
+    let closed = fixture.run(&[
+        "close",
+        W1,
+        "--failed-delivery",
+        "--note",
+        DELIVERY_NOTE,
+        "--base",
+        "main",
+    ]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let failed = fixture.data_of(W1)["delivery_failure"]["failed"].to_string();
+    assert!(!failed.contains(REVIEW), "{failed}");
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_with_review_base_invalid_and_write_nothing_when_the_base_does_not_resolve()
+ {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN, REVIEW]);
+    let before = fixture.chain();
+
+    let closed = fixture.run(&[
+        "close",
+        W1,
+        "--failed-delivery",
+        "--note",
+        DELIVERY_NOTE,
+        "--base",
+        "no-such-ref",
+    ]);
+
+    fixture.assert_refused_with(&closed, "review-base-invalid", &before);
+}
+
+#[test]
+fn it_should_record_the_session_of_the_failed_delivery_close() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = omhl_json(&["close", W1, "--failed-delivery", "--note", DELIVERY_NOTE])
+        .cwd(fixture.project.dir())
+        .xdg(fixture.project.xdg())
+        .env("CLAUDE_CODE_SESSION_ID", "sess-failed-delivery-1")
+        .run();
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    let sessions = fixture.run(&["report", "sessions"]).stdout;
+    assert!(sessions.contains("sess-failed-delivery-1"), "{sessions}");
+}
+
+#[test]
+fn it_should_show_the_note_the_questions_and_the_integration_in_get_report_retro_and_projection() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.failed_delivery(W1);
+    let projection = fixture.run(&["project"]);
+    let dir = json_line(&projection.stdout)["dir"]
+        .as_str()
+        .expect("the projection dir is text")
+        .to_owned();
+    let projected = all_text_under(&fixture.project.dir().join(dir));
+
+    let got = fixture.run(&["get", W1]).stdout;
+    let retro = fixture.report_retro().stdout;
+
+    for shown in [&got, &retro, &projected] {
+        assert!(shown.contains(DELIVERY_NOTE), "{shown}");
+        assert!(shown.contains(CI_GREEN), "{shown}");
+    }
+    assert!(got.contains(&fixture.develop_commit()), "{got}");
+    assert_eq!(fixture.run(&["render"]).code, Some(0));
+}
+
+#[test]
+fn it_should_exit_two_and_write_nothing_for_the_failed_delivery_argument_combinations_that_do_not_hold()
+ {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    let before = fixture.chain();
+
+    for extra in [
+        &["--failed-delivery"][..],
+        &["--failed-delivery", "--note", DELIVERY_NOTE, "--force"],
+        &[
+            "--failed-delivery",
+            "--note",
+            DELIVERY_NOTE,
+            "--abandon",
+            "--reason",
+            "r",
+        ],
+        &[
+            "--failed-delivery",
+            "--note",
+            DELIVERY_NOTE,
+            "--reason",
+            "r",
+        ],
+    ] {
+        let mut args = vec!["close", W1];
+        args.extend_from_slice(extra);
+
+        let output = fixture.run(&args);
+
+        assert_eq!(output.code, Some(2), "{args:?} stderr: {}", output.stderr);
+    }
+    assert_eq!(fixture.chain(), before);
+}
+
+#[test]
+fn it_should_refuse_with_failed_delivery_unneeded_when_the_whole_gate_passes() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.attest(RUN_TESTS);
+    fixture.attest(CI_GREEN);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "failed-delivery-unneeded", &before);
+}
+
+#[test]
+fn it_should_refuse_with_failed_delivery_unneeded_pointing_to_force_when_only_a_warn_fails() {
+    let fixture = Fixture::merged(&[RUN_TESTS]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "failed-delivery-unneeded", &before);
+    assert!(
+        json_line(&closed.stderr)["error"]
+            .to_string()
+            .contains("--force --note"),
+        "{}",
+        closed.stderr
+    );
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_with_snapshot_dirty_first() {
+    let fixture = Fixture::new();
+    fixture.write_workflow(INVALID_WORKFLOW);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(MISSING_WORK_ITEM);
+
+    fixture.assert_refused_with(&closed, "snapshot-dirty", &before);
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_with_invalid_workflow_config_before_a_missing_work_item() {
+    let fixture = Fixture::new();
+    fixture.write_workflow(INVALID_WORKFLOW);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(MISSING_WORK_ITEM);
+
+    fixture.assert_refused_with(&closed, "invalid-workflow-config", &before);
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_with_work_item_not_found() {
+    let fixture = Fixture::new();
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(MISSING_WORK_ITEM);
+
+    fixture.assert_refused_with(&closed, "work-item-not-found", &before);
+}
+
+#[test]
+fn it_should_refuse_the_failed_delivery_of_a_closed_work_item_with_invalid_transition() {
+    let fixture = Fixture::new();
+    fixture.close_output();
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "invalid-transition", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_integrated_before_the_merge() {
+    let fixture = Fixture::unmerged(&[RUN_TESTS, CI_GREEN]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-integrated", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_integrated_after_a_squash_merge() {
+    let fixture = Fixture::squashed(&[RUN_TESTS, CI_GREEN]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-integrated", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_integrated_when_the_local_develop_does_not_exist() {
+    let fixture = Fixture::unmerged(&[RUN_TESTS, CI_GREEN]);
+    fixture.git(&["branch", "-D", "develop"]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-integrated", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_on_work_item_branch_when_head_is_on_develop() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.git(&["checkout", "develop"]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-on-work-item-branch", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_on_work_item_branch_on_another_work_item_branch() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.git(&["checkout", "-b", OTHER_ITEM_BRANCH]);
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-on-work-item-branch", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_on_work_item_branch_when_the_pull_request_branch_differs() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.pull_request_on("feat/wi-w1__another-name");
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(PR_7);
+
+    fixture.assert_refused_with(&closed, "delivery-not-on-work-item-branch", &before);
+}
+
+#[test]
+fn it_should_print_the_retro_block_and_the_next_line_when_closing_with_failed_delivery() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = fixture.failed_delivery_text(W1);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert!(closed.stdout.contains("retro"), "{}", closed.stdout);
+    assert!(closed.stdout.contains(CI_GREEN), "{}", closed.stdout);
+    assert!(
+        closed
+            .stdout
+            .lines()
+            .last()
+            .is_some_and(|line| line.starts_with("Next:")),
+        "{}",
+        closed.stdout
+    );
+}
+
+#[test]
+fn it_should_return_a_non_null_retro_when_closing_with_failed_delivery_without_divergence() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+
+    let closed = fixture.failed_delivery(W1);
+
+    let retro = retro_of(&json_line(&closed.stdout));
+    assert!(!retro.is_null(), "{}", closed.stdout);
+    assert!(retro.to_string().contains(DELIVERY_NOTE), "{retro}");
+}
+
+#[test]
+fn it_should_print_the_same_retro_in_report_retro_after_the_failed_delivery_close() {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    let closed = json_line(&fixture.failed_delivery(W1).stdout);
+
+    let reported = fixture.retro_report();
+
+    assert_eq!(retro_of(&reported), retro_of(&closed));
 }

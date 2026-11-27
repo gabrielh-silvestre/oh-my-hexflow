@@ -27,3 +27,9 @@ opt-level = 3
 
 [profile.dev.package.regex]
 opt-level = 3
+
+# Os checks locais rodam otimizados sem perder os asserts que o CI vê no perfil padrão.
+[profile.checks]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true

@@ -14,6 +14,7 @@ const CONFIRM_STEP: &str = "ask the human to confirm the target (premise: set st
 const RETRO_STEP: &str =
     "propose one improvement per item to the owner and change nothing without the answer";
 const DIRTY_ERROR: &str = "{\"error\":{\"code\":\"snapshot-dirty\",\"details\":[{\"code\":\"snapshot-dirty\",\"message\":\"snapshot-dirty\",\"path\":\"/snapshot\"}],\"message\":\"snapshot-dirty at /snapshot\"}}\n";
+const OWNER_NOTE: &str = "owner approved the override";
 
 // ---------------------------------------------------------------- ajudantes
 
@@ -56,6 +57,15 @@ fn gate_pr(project: &Project, format: Option<&str>) -> String {
 
 fn close(project: &Project, format: Option<&str>) -> String {
     printed(project, format, &["close", WORK_ITEM])
+}
+
+/// O `close` que contorna os avisos de um gate reprovado, com a nota do dono.
+fn forced_close(project: &Project, format: Option<&str>) -> String {
+    printed(
+        project,
+        format,
+        &["close", WORK_ITEM, "--force", "--note", OWNER_NOTE],
+    )
 }
 
 fn record_line() -> Regex {
@@ -115,9 +125,10 @@ fn it_should_print_the_failing_ids_and_the_next_step_of_each_failed_question_in_
             "✔ checks.run-tests · occurred · matched 1".to_owned(),
             "✔ checks.ci-green-before-merge · occurred · matched 1".to_owned(),
             "✔ no-open-contradiction · matched 2".to_owned(),
-            "✘ decisions-anchored · anchored · matched 2 · failing decisions.ledger-split"
+            "✘ decisions-anchored · warn · anchored · matched 2 · failing decisions.ledger-split"
                 .to_owned(),
-            "✘ anchors-confirmed · anchored · matched 2 · failing decisions.bonus-cap".to_owned(),
+            "✘ anchors-confirmed · warn · anchored · matched 2 · failing decisions.bonus-cap"
+                .to_owned(),
             format!("  next_step: {CONFIRM_STEP}"),
             format!("Next: {RESTS_ON_STEP}."),
         ]
@@ -133,7 +144,7 @@ fn it_should_open_a_human_block_for_each_header_list_and_closing_of_a_failed_gat
     assert_eq!(
         text,
         format!(
-            "✘ gate-pr · pull-request · not passed · 5 questions · 2 failed\n\n✔ checks.run-tests · occurred · matched 1\n✔ checks.ci-green-before-merge · occurred · matched 1\n✔ no-open-contradiction · matched 2\n✘ decisions-anchored · anchored · matched 2 · failing decisions.ledger-split\n\n✘ anchors-confirmed · anchored · matched 2 · failing decisions.bonus-cap\n  next_step: {CONFIRM_STEP}\n\nNext: {RESTS_ON_STEP}.\n"
+            "✘ gate-pr · pull-request · not passed · 5 questions · 2 failed\n\n✔ checks.run-tests · occurred · matched 1\n✔ checks.ci-green-before-merge · occurred · matched 1\n✔ no-open-contradiction · matched 2\n✘ decisions-anchored · warn · anchored · matched 2 · failing decisions.ledger-split\n\n✘ anchors-confirmed · warn · anchored · matched 2 · failing decisions.bonus-cap\n  next_step: {CONFIRM_STEP}\n\nNext: {RESTS_ON_STEP}.\n"
         )
     );
 }
@@ -157,8 +168,8 @@ fn it_should_not_suggest_a_next_step_when_the_failed_questions_carry_none() {
         lines_of(&text),
         [
             "✘ gate-pr · pull-request · not passed · 5 questions · 2 failed",
-            "✘ checks.run-tests · occurred · matched 0",
-            "✘ checks.ci-green-before-merge · occurred · matched 0",
+            "✘ checks.run-tests · warn · occurred · matched 0",
+            "✘ checks.ci-green-before-merge · refuse · occurred · matched 0",
             "✔ no-open-contradiction · matched 0",
             "✔ decisions-anchored · anchored · matched 0",
             "✔ anchors-confirmed · anchored · matched 0",
@@ -210,7 +221,7 @@ fn it_should_keep_the_gate_pr_json_bytes() {
     assert_eq!(
         text,
         format!(
-            "{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"gate\":\"pull-request\",\"passed\":false,\"questions\":[{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.run-tests\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.ci-green-before-merge\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"no-open-contradiction\",\"label\":\"no-open-contradiction\",\"matched\":2,\"omitted\":0,\"passed\":true}},{{\"failing\":[\"decisions.ledger-split\"],\"kind\":\"anchored\",\"label\":\"decisions-anchored\",\"matched\":2,\"next_step\":\"{RESTS_ON_STEP}\",\"omitted\":0,\"passed\":false}},{{\"failing\":[\"decisions.bonus-cap\"],\"kind\":\"anchored\",\"label\":\"anchors-confirmed\",\"matched\":2,\"next_step\":\"{CONFIRM_STEP}\",\"omitted\":0,\"passed\":false}}]}}\n",
+            "{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"gate\":\"pull-request\",\"passed\":false,\"questions\":[{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.run-tests\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.ci-green-before-merge\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"no-open-contradiction\",\"label\":\"no-open-contradiction\",\"matched\":2,\"omitted\":0,\"passed\":true}},{{\"class\":\"warn\",\"failing\":[\"decisions.ledger-split\"],\"kind\":\"anchored\",\"label\":\"decisions-anchored\",\"matched\":2,\"next_step\":\"{RESTS_ON_STEP}\",\"omitted\":0,\"passed\":false}},{{\"class\":\"warn\",\"failing\":[\"decisions.bonus-cap\"],\"kind\":\"anchored\",\"label\":\"anchors-confirmed\",\"matched\":2,\"next_step\":\"{CONFIRM_STEP}\",\"omitted\":0,\"passed\":false}}]}}\n",
             head["hash"].as_str().expect("the hash is text"),
             head["seq"],
         )
@@ -258,7 +269,7 @@ fn it_should_print_the_gate_the_closing_record_and_no_retro_when_the_gate_passes
 fn it_should_print_the_warning_symbol_and_every_next_step_as_a_field_when_the_gate_fails() {
     let project = cycle::gate_failed();
 
-    let text = close(&project, None);
+    let text = forced_close(&project, None);
 
     let lines = lines_of(&text);
     assert_eq!(
@@ -268,34 +279,42 @@ fn it_should_print_the_warning_symbol_and_every_next_step_as_a_field_when_the_ga
             "✔ checks.run-tests · occurred · matched 1".to_owned(),
             "✔ checks.ci-green-before-merge · occurred · matched 1".to_owned(),
             "✔ no-open-contradiction · matched 2".to_owned(),
-            "✘ decisions-anchored · anchored · matched 2 · failing decisions.ledger-split"
+            "✘ decisions-anchored · warn · anchored · matched 2 · failing decisions.ledger-split"
                 .to_owned(),
             format!("  next_step: {RESTS_ON_STEP}"),
-            "✘ anchors-confirmed · anchored · matched 2 · failing decisions.bonus-cap".to_owned(),
+            "✘ anchors-confirmed · warn · anchored · matched 2 · failing decisions.bonus-cap"
+                .to_owned(),
             format!("  next_step: {CONFIRM_STEP}"),
-            "✔ closed · 1 record".to_owned(),
+            "⚠ closed · forced · 2 overridden".to_owned(),
         ]
     );
-    assert_eq!(lines.len(), 10, "{text}");
+    assert_eq!(lines.len(), 13, "{text}");
 }
 
 #[test]
 fn it_should_close_with_exit_zero_even_when_the_gate_fails() {
     let project = cycle::gate_failed();
 
-    let output = run(&project, None, &["close", WORK_ITEM]);
+    let output = run(
+        &project,
+        None,
+        &["close", WORK_ITEM, "--force", "--note", OWNER_NOTE],
+    );
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_text_starting_with(&output.stdout, "⚠");
 }
 
 #[test]
-fn it_should_not_print_a_next_line_when_the_gate_fails_and_the_retro_is_null() {
+fn it_should_print_the_first_next_step_when_the_close_is_refused_for_warnings() {
     let project = cycle::gate_failed();
 
-    let text = close(&project, None);
+    let text = refused(&project, None, &["close", WORK_ITEM]);
 
-    assert!(!text.contains("Next:"), "{text}");
+    assert!(
+        text.ends_with(&format!("Next: {RESTS_ON_STEP}.\n")),
+        "{text}"
+    );
 }
 
 #[test]
@@ -337,7 +356,7 @@ fn it_should_open_a_human_block_for_the_gate_the_closing_record_and_the_retro() 
 fn it_should_not_cite_the_work_item_in_the_close_header() {
     let project = cycle::gate_failed();
 
-    let text = close(&project, None);
+    let text = forced_close(&project, None);
 
     assert!(!first_line(&text).contains("payroll"), "{text}");
 }
@@ -361,14 +380,15 @@ fn it_should_print_the_code_and_the_pointer_when_close_refuses_a_dirty_tree() {
 fn it_should_keep_the_close_json_bytes() {
     let project = cycle::gate_failed();
 
-    let text = close(&project, Some("json"));
+    let text = forced_close(&project, Some("json"));
 
     let value = parsed(&text);
     let (written, read) = (&value["outcome"], &value["report"]["chain_head"]);
     assert_eq!(
         text,
         format!(
-            "{{\"outcome\":{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"records\":[{{\"id\":\"{}\",\"seq\":{}}}],\"replayed\":false}},\"report\":{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"gate\":\"pull-request\",\"passed\":false,\"questions\":[{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.run-tests\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.ci-green-before-merge\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"no-open-contradiction\",\"label\":\"no-open-contradiction\",\"matched\":2,\"omitted\":0,\"passed\":true}},{{\"failing\":[\"decisions.ledger-split\"],\"kind\":\"anchored\",\"label\":\"decisions-anchored\",\"matched\":2,\"next_step\":\"{RESTS_ON_STEP}\",\"omitted\":0,\"passed\":false}},{{\"failing\":[\"decisions.bonus-cap\"],\"kind\":\"anchored\",\"label\":\"anchors-confirmed\",\"matched\":2,\"next_step\":\"{CONFIRM_STEP}\",\"omitted\":0,\"passed\":false}}]}},\"retro\":null}}\n",
+            "{{\"forced\":{{\"note\":\"owner approved the override\",\"overridden\":[\"decisions-anchored\",\"anchors-confirmed\"]}},\"outcome\":{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"records\":[{{\"id\":\"{}\",\"seq\":{}}}],\"replayed\":false}},\"report\":{{\"chain_head\":{{\"hash\":\"{}\",\"seq\":{}}},\"gate\":\"pull-request\",\"passed\":false,\"questions\":[{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.run-tests\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"occurred\",\"label\":\"checks.ci-green-before-merge\",\"matched\":1,\"omitted\":0,\"passed\":true}},{{\"failing\":[],\"kind\":\"no-open-contradiction\",\"label\":\"no-open-contradiction\",\"matched\":2,\"omitted\":0,\"passed\":true}},{{\"class\":\"warn\",\"failing\":[\"decisions.ledger-split\"],\"kind\":\"anchored\",\"label\":\"decisions-anchored\",\"matched\":2,\"next_step\":\"{RESTS_ON_STEP}\",\"omitted\":0,\"passed\":false}},{{\"class\":\"warn\",\"failing\":[\"decisions.bonus-cap\"],\"kind\":\"anchored\",\"label\":\"anchors-confirmed\",\"matched\":2,\"next_step\":\"{CONFIRM_STEP}\",\"omitted\":0,\"passed\":false}}]}},\"retro\":{{\"amendments\":{{\"approved\":[],\"pending\":[]}},\"divergences\":[],\"gate_override\":{{\"note\":\"owner approved the override\",\"overridden\":[\"decisions-anchored\",\"anchors-confirmed\"]}},\"no_criterion\":[],\"open_gaps\":[]}}}}
+",
             written["chain_head"]["hash"]
                 .as_str()
                 .expect("the hash is text"),

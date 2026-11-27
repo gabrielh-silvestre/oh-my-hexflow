@@ -57,7 +57,57 @@ const ADR_FIELDS: [&str; 6] = [
 ];
 const ROLES_LINK: &str = "https://github.com/gabrielh-silvestre/oh-my-hexflow/blob/main/docs/directives-flow.md#a-matriz-por-papel";
 
+const NATIVE_CHECKS_PAGE: &str = "plugin/skills/directives-flow/references/native-checks.md";
+const RENDER_PAGE: &str = "plugin/skills/directives-flow/references/render.md";
+const README_ENTRY_ANCHORS: [&str; 5] = [
+    "`close` agora recusa",
+    "`require` agora acrescenta",
+    "`checks.config-loosening-review`",
+    "`--base`",
+    "PR de reparo",
+];
+
 // Apoio
+
+/// A quantidade dos nativos escrita por extenso ou em dígito, em inglês ou português.
+fn names_a_native_quantity(line: &str) -> bool {
+    Regex::new(
+        r"(?i)\b(?:one|two|three|four|five|um|dois|duas|três|tres|quatro|cinco|\d+)\s+(?:\w+\s+)?nativ(?:e|o|a)s?\b",
+    )
+    .expect("the quantity pattern is valid")
+    .is_match(line)
+}
+
+fn lines_with<'a>(text: &'a str, anchor: &str) -> Vec<&'a str> {
+    text.lines().filter(|line| line.contains(anchor)).collect()
+}
+
+fn boundary_row(first_cell: &str) -> Option<String> {
+    let page = read_repo_file(BOUNDARY_DOC);
+
+    page.lines()
+        .find(|line| line.starts_with(&format!("| {first_cell} |")))
+        .map(str::to_owned)
+}
+
+fn readme_update_entry() -> String {
+    let notices = section(&read_repo_file("README.md"), "Avisos de atualização");
+    let mut blocks: Vec<String> = Vec::new();
+    for line in notices.lines() {
+        if line.starts_with("### ") {
+            blocks.push(String::new());
+        }
+        if let Some(block) = blocks.last_mut() {
+            block.push_str(line);
+            block.push('\n');
+        }
+    }
+
+    blocks
+        .into_iter()
+        .find(|block| block.contains(README_ENTRY_ANCHORS[0]))
+        .unwrap_or_default()
+}
 
 fn read_repo_file(relative: &str) -> String {
     fs::read_to_string(repo_root().join(relative))
@@ -312,6 +362,112 @@ fn it_should_name_the_five_homes_of_the_text_and_the_rule_that_the_other_side_li
         .collect();
     assert_eq!(missing, Vec::<&str>::new());
     assert!(rule.contains("The other side links to it and does not copy it."));
+}
+
+// Frases novas da entrega dlv1
+
+#[test]
+fn it_should_name_the_native_checks_row_of_the_boundary_table_without_a_count() {
+    let row = boundary_row("The native checks");
+
+    let row = row.expect("the table has a row that starts with `The native checks`");
+    assert!(!names_a_native_quantity(&row), "{row}");
+}
+
+#[test]
+fn it_should_keep_the_prefix_matrix_row_of_the_boundary_table_without_a_count() {
+    let row = boundary_row("The matrix of requirements by prefix");
+
+    let row = row.expect("the table has the prefix matrix row");
+    assert!(!names_a_native_quantity(&row), "{row}");
+}
+
+#[test]
+fn it_should_describe_the_close_refusal_in_a_row_of_the_boundary_table_without_a_count() {
+    let row = boundary_row("The refusal of `close`");
+
+    let row = row.expect("the table has a row that starts with `The refusal of `close``");
+    assert!(row.contains("close"), "{row}");
+    assert!(!names_a_native_quantity(&row), "{row}");
+}
+
+#[test]
+fn it_should_say_the_native_checks_in_native_checks_md_without_a_count() {
+    let page = read_repo_file(NATIVE_CHECKS_PAGE);
+
+    let lines = lines_with(&page, "The native checks");
+
+    assert!(
+        !lines.is_empty(),
+        "native-checks.md lacks `The native checks`"
+    );
+    assert!(lines.iter().all(|line| !names_a_native_quantity(line)));
+}
+
+#[test]
+fn it_should_cite_the_review_check_in_native_checks_md_without_a_count() {
+    let page = read_repo_file(NATIVE_CHECKS_PAGE);
+
+    let lines = lines_with(&page, "checks.config-loosening-review");
+
+    assert!(!lines.is_empty());
+    assert!(lines.iter().all(|line| !names_a_native_quantity(line)));
+}
+
+#[test]
+fn it_should_say_the_native_checks_in_render_md_without_a_count() {
+    let page = read_repo_file(RENDER_PAGE);
+
+    let lines = lines_with(&page, "the native checks turned on");
+
+    assert!(
+        !lines.is_empty(),
+        "render.md lacks `the native checks turned on`"
+    );
+    assert!(lines.iter().all(|line| !names_a_native_quantity(line)));
+}
+
+#[test]
+fn it_should_give_the_readme_a_new_update_entry_with_each_changed_behavior() {
+    let entry = readme_update_entry();
+
+    let missing: Vec<&str> = README_ENTRY_ANCHORS
+        .into_iter()
+        .filter(|anchor| !entry.contains(anchor))
+        .collect();
+
+    assert!(
+        !entry.is_empty(),
+        "no entry of the update notices has `{}`",
+        README_ENTRY_ANCHORS[0]
+    );
+    assert_eq!(missing, Vec::<&str>::new());
+}
+
+#[test]
+fn it_should_write_the_readme_update_entry_without_a_count_of_the_natives() {
+    let entry = readme_update_entry();
+
+    let counted: Vec<&str> = entry
+        .lines()
+        .filter(|line| names_a_native_quantity(line))
+        .collect();
+
+    assert!(!entry.is_empty());
+    assert_eq!(counted, Vec::<&str>::new());
+}
+
+#[test]
+fn it_should_flag_a_native_quantity_in_english_portuguese_and_digits() {
+    for line in [
+        "The three native checks",
+        "Os quatro checks nativos",
+        "2 native checks",
+        "três nativos",
+    ] {
+        assert!(names_a_native_quantity(line), "{line}");
+    }
+    assert!(!names_a_native_quantity("The native checks come off"));
 }
 
 // Leitores

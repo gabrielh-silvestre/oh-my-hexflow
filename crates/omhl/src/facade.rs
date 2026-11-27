@@ -4,7 +4,7 @@ use hexlog::{
     AppendOutcome, AppendRequest, Author, Catalog, ChainHead, ChainReport, Clock, Config, Deps,
     Hash, Hexlog, IdGenerator, Lineage, ListFilter, NodeView, Page, PageRequest, RelationQuery,
     RelationTypeName, RelationView, RevisionView, ScannedRecord, SemanticId, SessionLabel,
-    TenantId, TenantInfo, TypeName,
+    Snapshot, TenantId, TenantInfo, TypeName,
 };
 
 use crate::error::{OmhlError, RuleCode};
@@ -13,12 +13,15 @@ use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::plan::CheckNode;
 use crate::native::NativeBase;
 use crate::pr_gate::{
-    GATE_NAME, GateSnapshots, anchor_questions, closing_request, pr_gate_questions,
-    project_checks_filter, required_checks, spec_digests,
+    Abandonment, CloseRefusal, FailedDelivery, Forcing, GATE_NAME, GateSnapshots,
+    abandonment_request, anchor_questions, close_verdict, closing_request, delivery_verdict,
+    failed_delivery_request, pr_gate_questions, project_checks_filter, required_checks,
+    requirement_questions, spec_digests,
 };
 use crate::probe::{SnapshotProbe, TreeSource};
 use crate::projection::ProjectionState;
-use crate::workflow::config::NativeConfig;
+use crate::workflow::config::{NativeConfig, RequireAtom};
+use crate::workflow::retro::FailedQuestion;
 use crate::{graphs, guard};
 
 static NATIVE: NativeBase = NativeBase;
@@ -74,10 +77,45 @@ pub struct OmhlDeps<'d> {
     pub session: &'d SessionSource,
 }
 
+/// O que o tipo do work item exige, lido uma vez pelo Engine sob a cabeça `head`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkRequirements {
+    pub head: Option<ChainHead>,
+    pub atoms: Vec<(RequireAtom, bool)>,
+}
+
+impl WorkRequirements {
+    pub fn none() -> WorkRequirements {
+        WorkRequirements {
+            head: None,
+            atoms: Vec::new(),
+        }
+    }
+}
+
 /// Work item fechado: o que foi gravado e o gate avaliado no fechamento.
 pub struct ClosedWorkItem {
     pub outcome: AppendOutcome,
     pub report: GateReport,
+    pub forcing: Option<Forcing>,
+}
+
+pub struct Closing<'a> {
+    pub author: &'a Author,
+    pub note: Option<&'a str>,
+}
+
+/// A recusa do gate nada grava.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloseError {
+    Omhl(OmhlError),
+    Refused(CloseRefusal),
+}
+
+impl From<OmhlError> for CloseError {
+    fn from(error: OmhlError) -> CloseError {
+        CloseError::Omhl(error)
+    }
 }
 
 pub struct Omhl<'d> {
@@ -113,10 +151,35 @@ impl<'d> Omhl<'d> {
     }
 
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, OmhlError> {
+        self.append_checked(req, false)
+    }
+
+    /// Passa pela recusa de afrouxar ou aposentar um check; as demais regras da guarda valem.
+    pub fn append_owner_override(
+        &mut self,
+        req: &AppendRequest,
+    ) -> Result<AppendOutcome, OmhlError> {
+        self.append_checked(req, true)
+    }
+
+    fn append_checked(
+        &mut self,
+        req: &AppendRequest,
+        owner_override: bool,
+    ) -> Result<AppendOutcome, OmhlError> {
         let session = self.session.resolve()?;
-        guard::check_append(&mut self.hexlog, self.probe, req)?;
+        guard::check_append(&mut self.hexlog, self.probe, req, owner_override)?;
 
         Ok(self.hexlog.append_with_session(req, &session)?)
+    }
+
+    /// Segundo ponto de escrita: as recusas de encerramento já foram decididas antes daqui.
+    fn append_closing(
+        &mut self,
+        request: &AppendRequest,
+        session: &SessionLabel,
+    ) -> Result<AppendOutcome, OmhlError> {
+        Ok(self.hexlog.append_with_session(request, session)?)
     }
 
     pub fn get(
@@ -195,10 +258,19 @@ impl<'d> Omhl<'d> {
         work_item: &SemanticId,
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
+        requirements: &WorkRequirements,
+        review_required: bool,
     ) -> Result<GateReport, OmhlError> {
         self.find_work_item(tenant, work_item)?;
 
-        self.gate_report(tenant, work_item, snapshots, enabled)
+        self.gate_report(
+            tenant,
+            work_item,
+            snapshots,
+            enabled,
+            requirements,
+            review_required,
+        )
     }
 
     pub fn read_projection_state(
@@ -262,48 +334,167 @@ impl<'d> Omhl<'d> {
         work_item: &SemanticId,
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
+        requirements: &WorkRequirements,
+        review_required: bool,
     ) -> Result<GateReport, OmhlError> {
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
         let (head, reports) = read_consistent(&mut source, tenant, |source| {
             let checks = source.nodes(tenant, &project_checks_filter())?;
-            let required = required_checks(NATIVE.checks(), enabled, &checks);
+            let required = required_checks(NATIVE.checks(), enabled, &checks, review_required);
             let digests = spec_digests(&checks);
             let mut questions = pr_gate_questions(&required, work_item, snapshots, &digests);
             questions.extend(anchor_questions(work_item));
+            questions.extend(requirement_questions(&requirements.atoms));
 
             gate::evaluate(source, tenant, &questions)
         })?;
+        // As premissas lidas pelo Engine têm de ser da mesma cabeça que o gate leu.
+        if requirements.head.as_ref().is_some_and(|read| *read != head) {
+            return Err(OmhlError::rule(RuleCode::GateInconsistent, ""));
+        }
 
         Ok(GateReport::assemble(GATE_NAME, head, reports))
     }
 
+    /// Checa a transição antes do tipo: um item fechado pode já não ter tipo válido na tabela.
+    pub fn ensure_open(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+    ) -> Result<NodeView, OmhlError> {
+        let current = self.find_work_item(tenant, work_item)?;
+        if current.data["status"] == "closed" {
+            return Err(OmhlError::rule(RuleCode::InvalidTransition, "/work_item"));
+        }
+
+        Ok(current)
+    }
+
     /// Os snapshots têm de ser o `HEAD` e a árvore dele, de uma árvore limpa, conferidos na sonda antes do gate.
+    #[allow(clippy::too_many_arguments)]
     pub fn close_work_item(
         &mut self,
         tenant: &TenantId,
         work_item: &SemanticId,
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
-        author: &Author,
-    ) -> Result<ClosedWorkItem, OmhlError> {
+        requirements: &WorkRequirements,
+        review_required: bool,
+        closing: &Closing<'_>,
+    ) -> Result<ClosedWorkItem, CloseError> {
         let session = self.session.resolve()?;
-        let current = self.find_work_item(tenant, work_item)?;
-        if current.data["status"] == "closed" {
-            return Err(OmhlError::rule(RuleCode::InvalidTransition, "/work_item"));
-        }
+        let (current, report) = self.evaluate_closing(
+            tenant,
+            work_item,
+            snapshots,
+            enabled,
+            requirements,
+            review_required,
+        )?;
+        // A recusa é decidida antes de gravar: quem recusa não deixa nenhum registro.
+        let forcing = close_verdict(&report, closing.note).map_err(CloseError::Refused)?;
+        let request = closing_request(
+            tenant,
+            closing.author,
+            current,
+            &report,
+            &snapshots.head_commit,
+            forcing.as_ref(),
+        );
+        let outcome = self.append_closing(&request, &session)?;
+
+        Ok(ClosedWorkItem {
+            outcome,
+            report,
+            forcing,
+        })
+    }
+
+    /// Fecha o item já mergeado cujo commit ainda reprova uma pergunta `refuse`; devolve as reprovadas.
+    #[allow(clippy::too_many_arguments)]
+    pub fn close_with_failed_delivery(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+        snapshots: &GateSnapshots,
+        enabled: &NativeConfig,
+        requirements: &WorkRequirements,
+        review_required: bool,
+        delivery: &FailedDelivery<'_>,
+    ) -> Result<(ClosedWorkItem, Vec<FailedQuestion>), CloseError> {
+        let session = self.session.resolve()?;
+        let (current, report) = self.evaluate_closing(
+            tenant,
+            work_item,
+            snapshots,
+            enabled,
+            requirements,
+            review_required,
+        )?;
+        let failed = delivery_verdict(&report).map_err(CloseError::Refused)?;
+        let request = failed_delivery_request(
+            tenant,
+            current,
+            &report,
+            &snapshots.head_commit,
+            &failed,
+            delivery,
+        );
+        let outcome = self.append_closing(&request, &session)?;
+        let closed = ClosedWorkItem {
+            outcome,
+            report,
+            forcing: None,
+        };
+
+        Ok((closed, failed))
+    }
+
+    fn evaluate_closing(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+        snapshots: &GateSnapshots,
+        enabled: &NativeConfig,
+        requirements: &WorkRequirements,
+        review_required: bool,
+    ) -> Result<(NodeView, GateReport), CloseError> {
+        let current = self.ensure_open(tenant, work_item)?;
         let head_commit = guard::probe_refusal(&self.probe.probe(), &snapshots.head_commit);
         let head_tree = guard::probe_refusal(
             &self.probe.probe_tree(TreeSource::Head),
             &snapshots.head_tree,
         );
         if let Some(code) = head_commit.or(head_tree) {
-            return Err(OmhlError::rule(code, "/snapshot"));
+            return Err(OmhlError::rule(code, "/snapshot").into());
         }
-        let report = self.gate_report(tenant, work_item, snapshots, enabled)?;
-        let request = closing_request(tenant, author, current, &report, &snapshots.head_commit);
-        let outcome = self.hexlog.append_with_session(&request, &session)?;
+        let report = self.gate_report(
+            tenant,
+            work_item,
+            snapshots,
+            enabled,
+            requirements,
+            review_required,
+        )?;
 
-        Ok(ClosedWorkItem { outcome, report })
+        Ok((current, report))
+    }
+
+    /// Não avalia o gate: o `snapshot` é o `HEAD` lido pela sonda, sem conferir a árvore.
+    pub fn abandon_work_item(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+        author: &Author,
+        snapshot: &Snapshot,
+        abandonment: &Abandonment<'_>,
+    ) -> Result<AppendOutcome, OmhlError> {
+        let session = self.session.resolve()?;
+        let current = self.ensure_open(tenant, work_item)?;
+        let head = self.chain_head(tenant)?;
+        let request = abandonment_request(tenant, author, current, head.seq, snapshot, abandonment);
+
+        self.append_closing(&request, &session)
     }
 
     pub fn find_work_item(

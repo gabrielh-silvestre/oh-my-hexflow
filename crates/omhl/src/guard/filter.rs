@@ -21,6 +21,7 @@ fn question_filter(question: &Question) -> Option<&ListFilter> {
         Question::NoPending { pending, .. } => Some(pending),
         Question::NoOpenContradiction { of } => of.as_ref(),
         Question::Anchored { select, .. } => Some(select),
+        Question::Requirement { .. } => None,
     }
 }
 

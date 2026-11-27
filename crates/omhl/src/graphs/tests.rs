@@ -1287,3 +1287,286 @@ fn old_decisions_premise() -> Value {
 fn old_decisions_guideline() -> Value {
     json!({ "text": "prefer small modules" })
 }
+
+fn work_item_with_type(type_value: &Value) -> Value {
+    json!({ "title": "Add the catalogs", "status": "open", "type": type_value.clone() })
+}
+
+#[test]
+fn it_should_accept_a_type_on_a_work_item_and_on_a_pull_request() {
+    let typed_pull_request = {
+        let mut data = pull_request(1);
+        data["type"] = json!("feat");
+        data
+    };
+
+    assert!(is_accepted(
+        "work-item",
+        &work_item_with_type(&json!("feat"))
+    ));
+    assert!(is_accepted("pull-request", &typed_pull_request));
+}
+
+#[test]
+fn it_should_reject_an_empty_a_long_or_a_non_text_type_on_both_types() {
+    let too_long = "x".repeat(65);
+    let refused = [json!(""), json!(too_long), json!(7)];
+
+    for type_value in refused {
+        let work_item = work_item_with_type(&type_value);
+        let mut pull_request = pull_request(1);
+        pull_request["type"] = type_value;
+
+        assert!(
+            violations_of("work-item", &work_item)
+                .iter()
+                .any(|found| found.pointer == "/type"),
+            "work-item accepted {work_item}"
+        );
+        assert!(
+            violations_of("pull-request", &pull_request)
+                .iter()
+                .any(|found| found.pointer == "/type"),
+            "pull-request accepted {pull_request}"
+        );
+    }
+}
+
+#[test]
+fn it_should_accept_a_type_of_exactly_sixty_four_characters() {
+    let exact = "t".repeat(64);
+
+    assert!(is_accepted(
+        "work-item",
+        &work_item_with_type(&json!(exact))
+    ));
+}
+
+/// O gate do fechamento forçado: reprovado, com os campos que o `--force --note` grava.
+fn forced_gate(fields: &Value) -> Value {
+    let mut gate = gate();
+    gate["passed"] = json!(false);
+    for (key, value) in fields.as_object().expect("the fields are an object") {
+        gate[key.as_str()] = value.clone();
+    }
+
+    gate
+}
+
+fn closed_with_gate(gate: &Value) -> Value {
+    json!({ "title": "Ship the catalogs", "status": "closed", "gate": gate })
+}
+
+#[test]
+fn it_should_accept_a_forced_gate_with_its_note_and_overridden_labels() {
+    let gate = forced_gate(&json!({
+        "forced": true,
+        "overridden": ["checks.run-tests"],
+        "note": "owner approved the override",
+    }));
+
+    assert!(is_accepted("work-item", &closed_with_gate(&gate)));
+}
+
+#[test]
+fn it_should_reject_a_forced_flag_other_than_true() {
+    let gate = forced_gate(&json!({ "forced": false }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/forced", "const")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_overridden_label_that_is_not_text() {
+    let gate = forced_gate(&json!({ "forced": true, "overridden": [1] }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/overridden/0", "type")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_more_than_one_hundred_overridden_labels() {
+    let labels: Vec<String> = (0..101).map(|index| format!("checks.{index}")).collect();
+    let gate = forced_gate(&json!({ "forced": true, "overridden": labels }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/overridden", "max-items")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_empty_note() {
+    let gate = forced_gate(&json!({ "forced": true, "note": "" }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/note", "min-length")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_a_note_longer_than_five_hundred_characters() {
+    let gate = forced_gate(&json!({ "forced": true, "note": "n".repeat(501) }));
+
+    let found = violations_of("work-item", &closed_with_gate(&gate));
+
+    assert!(
+        found.contains(&violation("/gate/note", "max-length")),
+        "{found:?}"
+    );
+}
+
+fn delivery_failure() -> Value {
+    json!({
+        "note": "authorized by the owner",
+        "failed": [{ "label": "checks.ci-green-before-merge", "class": "refuse" }],
+        "integration": { "ref": "develop", "commit": "b".repeat(40) },
+    })
+}
+
+fn failed_delivery(delivery_failure: Value) -> Value {
+    let mut gate = gate();
+    gate["passed"] = json!(false);
+    let mut data = closed_with_gate(&gate);
+    data["delivery_failure"] = delivery_failure;
+
+    data
+}
+
+fn with_field(mut delivery_failure: Value, pointer: &str, value: Value) -> Value {
+    *delivery_failure
+        .pointer_mut(pointer)
+        .expect("the field exists") = value;
+
+    delivery_failure
+}
+
+#[test]
+fn it_should_accept_a_delivery_failure_in_a_work_item() {
+    let data = failed_delivery(delivery_failure());
+
+    assert!(is_accepted("work-item", &data));
+}
+
+#[test]
+fn it_should_accept_a_delivery_failure_in_a_pull_request() {
+    let mut data = failed_delivery(delivery_failure());
+    data["provider"] = json!("github");
+    data["repo"] = json!("owner/repo");
+    data["number"] = json!(7);
+
+    assert!(is_accepted("pull-request", &data));
+}
+
+#[test]
+fn it_should_reject_a_delivery_failure_with_an_empty_failed_list() {
+    let data = failed_delivery(with_field(delivery_failure(), "/failed", json!([])));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/failed", "min-items")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_a_delivery_failure_with_more_than_one_hundred_failed_questions() {
+    let items: Vec<Value> = (0..101)
+        .map(|index| json!({ "label": format!("checks.{index}"), "class": "warn" }))
+        .collect();
+    let data = failed_delivery(with_field(delivery_failure(), "/failed", json!(items)));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/failed", "max-items")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_a_failed_question_whose_class_is_not_refuse_or_warn() {
+    let data = failed_delivery(with_field(
+        delivery_failure(),
+        "/failed/0/class",
+        json!("block"),
+    ));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/failed/0/class", "enum")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_empty_delivery_failure_note() {
+    let data = failed_delivery(with_field(delivery_failure(), "/note", json!("")));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/note", "min-length")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_a_delivery_failure_note_longer_than_five_hundred_characters() {
+    let data = failed_delivery(with_field(
+        delivery_failure(),
+        "/note",
+        json!("n".repeat(501)),
+    ));
+
+    let found = violations_of("work-item", &data);
+
+    assert!(
+        found.contains(&violation("/delivery_failure/note", "max-length")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_integration_without_ref() {
+    let mut delivery_failure = delivery_failure();
+    delivery_failure["integration"] = json!({ "commit": "b".repeat(40) });
+
+    let found = violations_of("work-item", &failed_delivery(delivery_failure));
+
+    assert!(
+        found.contains(&violation("/delivery_failure/integration/ref", "required")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn it_should_reject_an_integration_without_commit() {
+    let mut delivery_failure = delivery_failure();
+    delivery_failure["integration"] = json!({ "ref": "develop" });
+
+    let found = violations_of("work-item", &failed_delivery(delivery_failure));
+
+    assert!(
+        found.contains(&violation(
+            "/delivery_failure/integration/commit",
+            "required"
+        )),
+        "{found:?}"
+    );
+}

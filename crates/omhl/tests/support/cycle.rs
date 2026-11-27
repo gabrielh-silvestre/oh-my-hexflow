@@ -15,7 +15,7 @@ use super::child::{Cmd, omhl};
 use super::ext::ExtTree;
 use super::git::{commit_marker, git_ok};
 use super::inproc::run_inproc;
-use super::omhl::work_item_data;
+use super::omhl::typed_work_item_data;
 use super::pr_gate::ALL_NATIVE_CHECKS;
 use super::project::Project;
 use super::sweep_lock::serialize_sweeps;
@@ -90,7 +90,7 @@ fn append_work_items(project: &Project, items: &[(&str, &str)]) {
         .iter()
         .map(|(id, title)| {
             json!({ "body": {
-                "kind": "node", "id": id, "type": "work-item", "data": work_item_data(title),
+                "kind": "node", "id": id, "type": "work-item", "data": typed_work_item_data(title),
             } })
         })
         .collect();
@@ -135,7 +135,7 @@ fn repo_with_natives(checks: &[(&str, &str)], natives: &[&str]) -> Project {
     let work_item = json!({
         "items": [{ "body": {
             "kind": "node", "id": WORK_ITEM, "type": "work-item",
-            "data": work_item_data("Payroll rollout"),
+            "data": typed_work_item_data("Payroll rollout"),
         } }]
     });
     omhl_succeeds(
@@ -758,7 +758,16 @@ pub fn load_full() -> Project {
 
     let checks = project.dir().join(".omhl/checks");
     fs::remove_file(checks.join("payroll-retire.toml")).expect("the file is removed");
-    run_ok(&project, &["check", "retire", "checks.payroll-retire"], "");
+    run_ok(
+        &project,
+        &[
+            "check",
+            "retire",
+            "checks.payroll-retire",
+            "--owner-override",
+        ],
+        "",
+    );
     tree.check("payroll-retire", &manual_check("Guards the retire", &[]));
     fs::remove_file(checks.join("payroll-orphan.toml")).expect("the file is removed");
     tree.check(

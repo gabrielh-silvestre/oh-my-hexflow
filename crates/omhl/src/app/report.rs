@@ -7,14 +7,68 @@ use super::engine::{Engine, parse_at};
 use super::error::AppError;
 use super::output;
 use super::read::{all_nodes, nodes_matching};
+use crate::gate::QuestionClass;
 use crate::native::NativeBase;
 use crate::ports::workflow::read_policy;
 use crate::workflow::config::WorkflowConfig;
 use crate::workflow::gap::{Answerer, Edge, Fact, GapFacts, GapState, answered_by, gap_state};
 use crate::workflow::recurrence::{Premise, recurrences};
-use crate::workflow::retro::{DivergenceFact, GapFact, RetroFacts, retro};
+use crate::workflow::retro::{
+    DeliveryFailure, DivergenceFact, FailedQuestion, GapFact, GateOverride, RetroAbandonment,
+    RetroFacts, retro_with_abandonment,
+};
 
 const GAP_RELATIONS: [&str; 3] = ["answers", "supports", "contradicts"];
+
+fn gate_override(data: &Value) -> Option<GateOverride> {
+    let gate = &data["gate"];
+    if gate["forced"] != true {
+        return None;
+    }
+
+    Some(GateOverride {
+        note: gate["note"].as_str()?.to_owned(),
+        overridden: gate["overridden"]
+            .as_array()?
+            .iter()
+            .filter_map(|label| label.as_str().map(str::to_owned))
+            .collect(),
+    })
+}
+
+fn delivery_failure(data: &Value) -> Option<DeliveryFailure> {
+    let recorded = &data["delivery_failure"];
+    let failed = recorded["failed"]
+        .as_array()?
+        .iter()
+        .map(|question| {
+            let class = match question["class"].as_str()? {
+                "refuse" => QuestionClass::Refuse,
+                "warn" => QuestionClass::Warn,
+                _ => return None,
+            };
+
+            Some(FailedQuestion {
+                label: question["label"].as_str()?.to_owned(),
+                class,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    Some(DeliveryFailure {
+        note: recorded["note"].as_str()?.to_owned(),
+        failed,
+    })
+}
+
+pub(super) fn abandonment(data: &Value) -> Option<RetroAbandonment> {
+    let abandonment = &data["abandonment"];
+
+    Some(RetroAbandonment {
+        reason: abandonment["reason"].as_str()?.to_owned(),
+        note: abandonment["note"].as_str()?.to_owned(),
+    })
+}
 
 impl Engine<'_> {
     pub(super) fn report_answers(&mut self, work_item: Option<&str>) -> Result<Value, AppError> {
@@ -38,14 +92,21 @@ impl Engine<'_> {
 
     pub(super) fn report_retro(&mut self, work_item: &str) -> Result<Value, AppError> {
         let id = parse_at(SemanticId::parse, work_item, "/work_item")?;
-        let facts = self.retro_facts(&id)?;
+        let facts = self.retro_facts(&id, false)?;
+        let node = self.omhl.find_work_item(&self.tenant, &id)?;
+        let report = retro_with_abandonment(&facts, abandonment(&node.data));
 
-        Ok(json!({ "retro": output::retro(retro(&facts).as_ref()) }))
+        Ok(json!({ "retro": output::retro(report.as_ref()) }))
     }
 
     /// Os fatos da retro não dependem do fechamento: o `close` os lê antes de gravar.
-    pub(super) fn retro_facts(&mut self, work_item: &SemanticId) -> Result<RetroFacts, AppError> {
-        self.omhl.find_work_item(&self.tenant, work_item)?;
+    /// `always_retro` lê também as emendas de um fechamento que sempre terá retro e ainda não gravou o motivo.
+    pub(super) fn retro_facts(
+        &mut self,
+        work_item: &SemanticId,
+        always_retro: bool,
+    ) -> Result<RetroFacts, AppError> {
+        let node = self.omhl.find_work_item(&self.tenant, work_item)?;
         let filter = work_item_filter(work_item.as_str())?;
         let divergences: Vec<DivergenceFact> =
             nodes_matching(&mut self.omhl, &self.tenant, "divergence", filter.clone())?
@@ -63,7 +124,12 @@ impl Engine<'_> {
             })
             .collect();
 
+        let gate_override = gate_override(&node.data);
+        let delivery_failure = delivery_failure(&node.data);
         let has_retro = !divergences.is_empty()
+            || gate_override.is_some()
+            || delivery_failure.is_some()
+            || always_retro
             || gaps.iter().any(|gap| {
                 matches!(
                     gap.state,
@@ -84,6 +150,8 @@ impl Engine<'_> {
             divergences,
             gaps,
             amendment_files,
+            gate_override,
+            delivery_failure,
         })
     }
 

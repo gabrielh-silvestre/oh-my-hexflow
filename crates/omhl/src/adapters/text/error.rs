@@ -7,7 +7,7 @@ use super::doc::{Closing, Doc, Join, Line, Marker, items, opt_text, scalar_field
 use super::vocab::{State, without_final_period};
 
 /// (cada comando monta contextos diferentes e o `no-marker` tem `details: []`).
-pub static ENTRIES: [Entry; 14] = [
+pub static ENTRIES: [Entry; 15] = [
     Entry::new(Region::Root, "code", Shape::Closed),
     Entry::new(Region::Root, "message", Shape::Closed),
     Entry::new(Region::Data, "path", Shape::Closed)
@@ -32,6 +32,9 @@ pub static ENTRIES: [Entry; 14] = [
         .under("context")
         .optional(),
     Entry::new(Region::Data, "event", Shape::Closed)
+        .under("context")
+        .optional(),
+    Entry::new(Region::Data, "label", Shape::Literal)
         .under("context")
         .optional(),
     Entry::new(Region::Data, "branch", Shape::Literal)

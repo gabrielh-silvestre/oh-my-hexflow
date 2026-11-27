@@ -3095,3 +3095,40 @@ fn it_should_print_path_unresolvable_and_allow_a_note_whose_physical_path_cannot
         json!("path-unresolvable")
     );
 }
+
+#[test]
+fn it_should_allow_a_write_of_the_main_workflow_file_that_raises_the_spec_line_limit() {
+    let repo = frozen_workflow_repo(Some(EXPLICIT_DEFAULT_WORKFLOW));
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Write",
+        write_input(
+            &main_workflow(&repo),
+            "version = 1\n\n[specs]\ndir = \".omhl/specs\"\nmax_lines = 900\n",
+        ),
+    );
+
+    assert_allowed(&output);
+}
+
+#[test]
+fn it_should_allow_an_edit_of_a_check_file_that_turns_blocking_off_while_a_spec_is_frozen() {
+    let repo = Repo::with_files(&[(".omhl/checks/x.toml", "blocking = true\n")]);
+    repo.branch(BRANCH);
+
+    let output = hook_input(
+        &repo,
+        &repo.main,
+        "Edit",
+        edit_input(
+            &repo.main.join(".omhl/checks/x.toml"),
+            "blocking = true",
+            "blocking = false",
+            None,
+        ),
+    );
+
+    assert_allowed(&output);
+}

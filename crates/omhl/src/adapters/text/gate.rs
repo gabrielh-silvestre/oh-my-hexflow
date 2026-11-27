@@ -1,7 +1,9 @@
 use serde_json::Value;
 
 use super::base::{Entry, Profile, Region, Shape, Specialization};
-use super::doc::{Closing, Join, Line, Marker, field, has_items, items, joined, opt_text, text};
+use super::doc::{
+    Closing, Join, Line, Marker, field, has_items, items, joined, one_line, opt_text, text,
+};
 use super::error;
 use super::report::Retro;
 use super::simple::Append;
@@ -18,6 +20,9 @@ pub static GATE_PR_PROFILE: Profile = Profile {
         Entry::new(Region::Data, "passed", Shape::Derived).under("questions"),
         Entry::new(Region::Data, "matched", Shape::Derived).under("questions"),
         Entry::new(Region::Data, "failing", Shape::Derived)
+            .under("questions")
+            .optional(),
+        Entry::new(Region::Data, "class", Shape::Closed)
             .under("questions")
             .optional(),
         Entry::new(Region::Data, "omitted", Shape::Derived).under("questions"),
@@ -44,12 +49,28 @@ pub static CLOSE_PROFILE: Profile = Profile {
         Entry::new(Region::Data, "failing", Shape::Derived)
             .under("questions")
             .optional(),
+        Entry::new(Region::Data, "class", Shape::Closed)
+            .under("questions")
+            .optional(),
         Entry::new(Region::Data, "omitted", Shape::Derived).under("questions"),
         Entry::new(Region::Data, "next_step", Shape::Closed)
             .under("questions")
             .optional(),
         Entry::new(Region::Data, "seq", Shape::Noise).under("chain_head"),
         Entry::new(Region::Data, "hash", Shape::Noise).under("chain_head"),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("gate_override")
+            .optional(),
+        Entry::new(Region::Data, "overridden", Shape::Literal)
+            .under("gate_override")
+            .optional(),
+        Entry::new(Region::Data, "overridden", Shape::Literal)
+            .under("forced")
+            .optional(),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("forced")
+            .optional(),
+        Entry::new(Region::Root, "note_discarded", Shape::Derived).optional(),
         Entry::new(Region::Data, "id", Shape::Literal).under("records"),
         Entry::new(Region::Data, "seq", Shape::Literal).under("records"),
         Entry::new(Region::Data, "replayed", Shape::Derived).under("outcome"),
@@ -76,6 +97,21 @@ pub static CLOSE_PROFILE: Profile = Profile {
             .optional(),
         Entry::new(Region::Data, "answered_by", Shape::Literal)
             .under("no_criterion")
+            .optional(),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("delivery_failure")
+            .optional(),
+        Entry::new(Region::Data, "label", Shape::Literal)
+            .under("failed")
+            .optional(),
+        Entry::new(Region::Data, "class", Shape::Closed)
+            .under("failed")
+            .optional(),
+        Entry::new(Region::Data, "reason", Shape::Literal)
+            .under("abandonment")
+            .optional(),
+        Entry::new(Region::Data, "note", Shape::Literal)
+            .under("abandonment")
             .optional(),
         Entry::new(Region::Data, "gap", Shape::Literal)
             .under("open_gaps")
@@ -126,6 +162,9 @@ fn question_lines(report: &Value, action: Option<&str>) -> Vec<Line> {
             let label = text(question, "label");
             let kind = text(question, "kind");
             let mut parts = vec![label.clone()];
+            if question["passed"] != true && question["class"].is_string() {
+                parts.push(text(question, "class"));
+            }
             // Nas perguntas sem check o `kind` repete o `label`.
             if kind != label {
                 parts.push(kind);
@@ -152,6 +191,29 @@ fn question_lines(report: &Value, action: Option<&str>) -> Vec<Line> {
         .collect()
 }
 
+fn review_base_line(value: &Value) -> Option<Line> {
+    let review = &value["review_base"];
+    if review.is_null() {
+        return None;
+    }
+    let text = match review["base"].as_str() {
+        Some(base) => format!(
+            "base {}, merge-base {}, triggering paths {}",
+            one_line(base),
+            one_line(review["merge_base"].as_str().unwrap_or_default()),
+            joined(review, "paths"),
+        ),
+        None => "no base".to_owned(),
+    };
+
+    let text = match review["warning"].as_str() {
+        Some(warning) => format!("{text}; warning: {warning}"),
+        None => text,
+    };
+
+    Some(field(0, "review_base", text))
+}
+
 pub struct GatePr;
 
 impl Specialization for GatePr {
@@ -171,7 +233,9 @@ impl Specialization for GatePr {
     }
 
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
-        question_lines(value, first_next_step(value).as_deref())
+        let mut lines = question_lines(value, first_next_step(value).as_deref());
+        lines.extend(review_base_line(value));
+        lines
     }
 
     fn closing(&self, value: &Value) -> Closing {
@@ -180,6 +244,47 @@ impl Specialization for GatePr {
             None => Closing::None,
         }
     }
+}
+
+/// Um fechamento forçado ou entregue com falha sai com aviso: o dono precisa ver o que foi contornado.
+fn closed_header(value: &Value) -> Line {
+    let failed = &value["retro"]["delivery_failure"];
+    if failed.is_object() {
+        return Line::Header {
+            state: State::Warning,
+            parts: vec![
+                "closed".to_owned(),
+                "delivered with failure".to_owned(),
+                format!("{} failed", items(failed, "failed").count()),
+            ],
+        };
+    }
+
+    if value["forced"].is_object() {
+        return Line::Header {
+            state: State::Warning,
+            parts: vec![
+                "closed".to_owned(),
+                "forced".to_owned(),
+                format!(
+                    "{} overridden",
+                    items(&value["forced"], "overridden").count()
+                ),
+            ],
+        };
+    }
+
+    Line::Header {
+        state: State::Ok,
+        parts: std::iter::once("closed".to_owned())
+            .chain(Append.summary(&value["outcome"]))
+            .collect(),
+    }
+}
+
+/// O abandono não avalia o gate: só a retro dele vai ao terminal.
+fn is_abandonment(value: &Value) -> bool {
+    value["abandoned"].is_object()
 }
 
 pub struct Close;
@@ -191,6 +296,9 @@ impl Specialization for Close {
 
     /// O work item fecha mesmo com o gate reprovado: o resultado fica gravado.
     fn state(&self, value: &Value) -> State {
+        if is_abandonment(value) {
+            return State::Ok;
+        }
         match gate_passed(&value["report"]) {
             true => State::Ok,
             false => State::Warning,
@@ -198,18 +306,28 @@ impl Specialization for Close {
     }
 
     fn summary(&self, value: &Value) -> Vec<String> {
+        if is_abandonment(value) {
+            return std::iter::once("retro".to_owned())
+                .chain(Retro.summary(value))
+                .collect();
+        }
         gate_summary(&value["report"])
     }
 
     fn detail_lines(&self, value: &Value) -> Vec<Line> {
+        if is_abandonment(value) {
+            return Retro.detail_lines(value);
+        }
         let outcome = &value["outcome"];
         let mut lines = question_lines(&value["report"], None);
-        lines.push(Line::Header {
-            state: State::Ok,
-            parts: std::iter::once("closed".to_owned())
-                .chain(Append.summary(outcome))
-                .collect(),
-        });
+        lines.extend(review_base_line(value));
+        lines.push(closed_header(value));
+        if value["note_discarded"] == true {
+            lines.push(Line::Header {
+                state: State::Warning,
+                parts: vec!["note discarded".to_owned(), "gate passed".to_owned()],
+            });
+        }
         lines.extend(Append.detail_lines(outcome));
         if !value["retro"].is_null() {
             lines.push(Line::Header {

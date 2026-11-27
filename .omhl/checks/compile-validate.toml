@@ -1,7 +1,7 @@
 concern = "compile"
 variant = "validate"
 blocking = true
-run = ["cargo", "check", "--workspace", "--all-targets", "--locked"]
+run = ["cargo", "check", "--workspace", "--all-targets", "--profile", "checks", "--locked"]
 timeout_secs = 89
 expect = [{ exit = 0, outcome = "passed" }]
 when = { event = "before-pr" }

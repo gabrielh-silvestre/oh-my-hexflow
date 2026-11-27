@@ -16,6 +16,7 @@ const SLUG: &str = "login";
 const BRANCH: &str = "feat/wi-w1__login";
 const DEFAULT_SPECS: &str = ".omhl/specs";
 const PART_DIR: &str = "wi-w1__login";
+const PREMISE: &str = "premises.login-rule";
 const SECTIONS: [&str; 5] = [
     "## Objective",
     "## Applicable directives and premises",
@@ -94,6 +95,42 @@ impl Fixture {
             .xdg(self.project.xdg())
             .stdin(request.to_string())
             .run()
+    }
+
+    /// A premissa confirmada e a spec válida que o gate de um `feat` exige para fechar.
+    fn append_confirmed_premise(&self) {
+        let data = json!({
+            "text": "the login rule",
+            "kind": "business",
+            "work_item": WORK_ITEM,
+            "status": "confirmed",
+            "confirmed_by": { "by": "person:ana", "question": "Is the rule right?", "answer": "Yes." },
+        });
+        let request = json!({ "items": [{ "body": { "kind": "node", "id": PREMISE, "type": "premise", "data": data } }] });
+        let appended = omhl(&["append"])
+            .cwd(self.project.dir())
+            .xdg(self.project.xdg())
+            .stdin(request.to_string())
+            .run();
+
+        assert_eq!(appended.code, Some(0), "stderr: {}", appended.stderr);
+    }
+
+    fn write_valid_spec(&self) {
+        let dir = self.project.dir().join(DEFAULT_SPECS).join(PART_DIR);
+        fs::create_dir_all(&dir).expect("spec directory is created");
+        fs::write(dir.join("part-01.md"), valid_spec()).expect("the spec part is written");
+    }
+
+    /// O `close` exige árvore limpa: o que foi escrito até aqui vai para um commit.
+    fn commit_all(&self) {
+        for args in [
+            &["add", "-A"][..],
+            &["commit", "--allow-empty", "-m", "save the work"],
+        ] {
+            let output = git_in(self.project.dir(), args);
+            assert!(output.status.success(), "git {args:?} failed");
+        }
     }
 
     fn close_work_item(&self) {
@@ -362,6 +399,9 @@ fn it_should_create_nothing_when_the_work_item_does_not_exist() {
 #[test]
 fn it_should_refuse_a_closed_work_item() {
     let fixture = Fixture::new();
+    fixture.append_confirmed_premise();
+    fixture.write_valid_spec();
+    fixture.commit_all();
     fixture.close_work_item();
 
     let output = fixture.init_from_linked(WORK_ITEM, SLUG);
@@ -588,4 +628,10 @@ fn it_should_not_create_the_notes_folder_on_append_spec_init_and_load() {
     assert_eq!(initialized.code, Some(0), "stderr: {}", initialized.stderr);
     assert_eq!(loaded.code, Some(0), "stderr: {}", loaded.stderr);
     assert!(!fixture.main_dir().join(".omhl/notes").exists());
+}
+
+fn valid_spec() -> String {
+    format!(
+        "## Objetivo\n\nPermitir o login.\n\n## Diretivas e premissas aplicáveis\n\n- {PREMISE}\n\n## Comportamentos\n\n- CMP-001: o sistema autentica o usuário.\n\n## Critérios de aceitação\n\n- CA-001: login válido devolve sessão.\n\n## Fora de escopo\n\nLogout.\n"
+    )
 }
