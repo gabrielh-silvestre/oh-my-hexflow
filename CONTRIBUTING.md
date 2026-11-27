@@ -21,6 +21,34 @@ Para desenvolver o plugin, abra o Claude Code com `claude --plugin-dir plugin/`.
 
 Depois de puxar mudanças, recompile e copie o binário de novo, como no passo de compilar do fonte da [instalação](README.md#instalação).
 
+## Grafos do código
+
+Este repositório usa o [GitNexus](https://github.com/abhigyanpatwari/GitNexus) e o Graphify para quem desenvolve nele. É configuração só do repositório: o plugin não depende dela. Os grafos não são versionados.
+
+| Grafo | O que indexa | Quando usar |
+| --- | --- | --- |
+| GitNexus `oh-my-hexflow` | produção, testes e documentação | achar os testes que cobrem um símbolo, antes de rodar só o módulo afetado |
+| GitNexus `oh-my-hexflow-prod` | o mesmo, sem os testes | impacto em produção: no grafo completo, o filtro de testes do GitNexus deixa passar testes unitários |
+| Graphify (`graphify-out/`) | código e documentos versionados, sem os testes | saber por que algo existe e qual documento explica |
+
+Instale com `npm install -g gitnexus` e `uv tool install graphifyy`. O script também usa o `jq` para ler JSON, o `rsync` para a cópia e o `flock`, do util-linux, para a trava. Na primeira vez, e quando quiser atualizar tudo, inclusive os documentos, rode no checkout principal:
+
+```bash
+bash scripts/graph-sync.sh sync --docs
+```
+
+A extração dos documentos usa o Claude pela CLI `claude` e gasta do seu limite de uso. Sem `--docs`, o comando atualiza o GitNexus e o código no Graphify sem modelo, e avisa quando há documento pendente.
+
+O hook do [`.claude/settings.json`](.claude/settings.json) roda a sincronização em segundo plano depois que o agente executa um `omhl close` ou um `git pull` que mude a `main` ou a `develop`. Com uma tag `v*` ainda não processada no clone, a mesma rodada extrai os documentos. O resultado chega ao agente no turno seguinte.
+
+- Um `git pull` no seu terminal não dispara o hook, nem um comando que o agente rode fora da ferramenta Bash. Rode o script à mão.
+- A leitura é sempre do checkout principal como está, inclusive o que não tem commit, mesmo que o comando saia de uma worktree. Edições feitas depois da última sincronização não aparecem.
+- O grafo de produção vem de uma cópia sem testes em `.ignore/graph-prod/`, que o script mantém. Não edite a cópia.
+- O GitNexus não indexa pastas e arquivos que começam com ponto, como o `.omhl/`.
+- O GitNexus também não lê `.gitignore` de subpasta. Pasta comum ignorada assim precisa entrar no [`.gitnexusignore`](.gitnexusignore); o script avisa quando um arquivo ignorado é indexado.
+- O recorte de testes está no [`.graphifyignore`](.graphifyignore) e no `TEST_PATH` do [script](scripts/graph-sync.sh); mude os dois juntos.
+- Não rode `graphify hook install`: neste clone, a pasta de hooks do git é do `omhl`.
+
 ## ADRs
 
 O projeto não escreve mais ADRs. Os arquivos de `docs/adr/` são histórico congelado: nenhum é editado, renomeado ou movido. A decisão nova mora no grafo, como uma `decision` ancorada por `rests-on`. Onde um ADR deixou de valer, o README e o `docs/` dizem o comportamento atual, e o ADR fica como está.
