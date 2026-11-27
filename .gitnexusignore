@@ -1,0 +1,2 @@
+# O GitNexus trata qualquer pasta build/ como saída de compilação; esta é código do projeto.
+!crates/omhl/src/projection/build/

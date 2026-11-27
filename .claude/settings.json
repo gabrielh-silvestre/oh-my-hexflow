@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/scripts/graph-sync.sh\" ] || exit 0; bash \"$CLAUDE_PROJECT_DIR/scripts/graph-sync.sh\" hook",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

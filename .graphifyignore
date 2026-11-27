@@ -1,0 +1,8 @@
+# Testes ficam só no grafo completo do GitNexus. Mesmo recorte do TEST_PATH em scripts/graph-sync.sh.
+crates/*/tests/
+**/tests.rs
+**/tests/
+**/test_support/
+**/test_support.rs
+
+.claude/
