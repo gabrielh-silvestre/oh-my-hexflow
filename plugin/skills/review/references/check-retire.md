@@ -36,9 +36,9 @@ Retiring a check loosens the gate, so an agent run refuses with `check-loosening
 
 ```omhl-example fixture=retire-check
 $ omhl check retire checks.ok
-2> ✘ check-loosening-refused · the revised check turns blocking off, removes its run or moves a blocking check out of the required events, which loosens a check already stored
+2> ✘ check-loosening-refused · retiring a check is the owner's task, not the agent's
 2>   - /check
-2> Next: keep the check blocking, with its run and on a required event, or retire the check and declare a new one.
+2> Next: ask the owner to retire it with --owner-override, run outside Claude Code.
 # exit 1
 $ omhl check retire checks.ok --owner-override
 ✔ check retire · retired checks.ok

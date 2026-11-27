@@ -48,7 +48,7 @@ The main directory is the parent of the git common directory. In a clone made wi
 An invalid `.omhl/workflow.toml` never turns a check on or off.
 
 - `omhl render` and the context of the session start still exit 0, print no native check block and carry one `invalid-workflow-config` warning line.
-- `gate-pr` and `close` refuse with `invalid-workflow-config` before evaluating the gate, and `close` refuses before recording anything, with a retro or without one.
+- `gate-pr` and `close` refuse with `invalid-workflow-config` before evaluating the gate, and `close` refuses before recording anything, with a retro or without one. The exceptions are `--abandon`, which does not evaluate the gate, and the repair pull request.
 - The recommended fix is a repair pull request with `--base`: the fix goes through a pull request and the loosening review like any other change.
 - The exception, for when the pull request cannot be used (without `--base`, a pull request is not recognized as a repair), is an edit made directly by the owner in the working tree of the main directory, committed on the branch checked out there.
 

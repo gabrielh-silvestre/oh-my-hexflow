@@ -22,10 +22,10 @@ When the work item's work is finished and the pull request gate was already chec
 - `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist and be open.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
-- `--base <ref>`: the base of the loosening review, as in [gate-pr.md](gate-pr.md).
-- `--force --note <text>`: closes with the gate failed only by warnings; `--force --note` only for `close-warnings`, and the note carries the owner's literal phrase authorizing it. `--force` does not help in `close-refused`.
-- `--failed-delivery --note <text>`: closes a work item whose pull request was merged with the gate failed; the note carries the owner's literal phrase.
-- `--abandon --reason <text> --note <text>` (`--abandon --reason --note` together): closes a work item that will not be delivered, or whose merge `--failed-delivery` does not cover. The `--reason` says how the merge happened, when there was one.
+- `--base <ref>`: the base of the loosening review. Pass the merge-base that `gate-pr` prints, as in [gate-pr.md](gate-pr.md); `close` does not compute it.
+- `--force --note <text>`: closes with the gate failed only by warnings; `--force --note` only for `close-warnings`, and the note carries the owner's literal phrase authorizing it. `--force` does not help in `close-refused`. Before asking the owner on `close-warnings`, try to resolve each warning; ask only for what is left, citing each one.
+- `--failed-delivery --note <text>`: closes a work item whose pull request was merged with the gate failed; the note carries the owner's literal phrase. The request for it names the failed `refuse` questions and says the history stays as a failed delivery.
+- `--abandon --reason <text> --note <text>` (`--abandon --reason --note` together): closes a work item that will not be delivered, or whose merge `--failed-delivery` does not cover. The `--reason` says how the merge happened, when there was one. `--abandon` does not evaluate the gate. Before the merge, the request for it says what evidence, premise or spec is missing and proposes the fix first.
 - It needs a git repository with a clean tree at the tip of the work item branch: the closing ties the gate result to `HEAD`. When every attestation fails at once, check the commit before any other exit: the checkout is probably not at that tip. It also reads the `.omhl/workflow.toml` of the main directory, which says which native checks the gate asks about ([native-checks.md](../../directives-flow/references/native-checks.md)).
 
 ## Output
@@ -48,21 +48,26 @@ Closing a work item that was already merged:
 
 - A merged work item never closes with `--abandon`, unless the merge is one `--failed-delivery` does not cover. It closes with `--failed-delivery --note`, with the owner's literal phrase in the `--note`.
 - The limit: `--failed-delivery` does not cover squash or rebase merges or a project without `develop`. There the owner uses `--abandon`, and the `--reason` says how the merge happened.
-- The retro is required only after `--failed-delivery`: propose one improvement per item, and one improvement per failed `refuse` question, as in [fechamento.md](fechamento.md). `--abandon` has no required retro.
+- The retro is required only after `--failed-delivery`: propose one improvement per item, and one improvement per failed `refuse` question saying how it got past the brake before the merge, as in [fechamento.md](fechamento.md). `--abandon` has no required retro.
 
 ## Errors
 
 An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). A missing `<WORK_ITEM>` is a clap usage error, with exit 2 and no code. When there is a retro and reading the facts fails, `close` refuses without recording anything. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
 - `work-item-not-found` (exit 1): the work item does not exist. The pointer is `/work_item`. Check the id.
-- `close-refused` (exit 1): the gate failed. `--force` does not help here: fix each failed question, or the owner decides on `--abandon` or `--failed-delivery`.
-- `close-warnings` (exit 1): the gate failed only by warnings. Close with `--force --note`, only with the owner's phrase.
+- `close-refused` (exit 1): the gate failed. `--force` does not help here: fix each failed question, or the owner decides on `--abandon` or `--failed-delivery`. The request to the owner differs by error code: here, before the merge, say what is missing and propose the fix before asking for `--abandon`; after the merge, name the failed `refuse` questions.
+- `close-warnings` (exit 1): the gate failed only by warnings. Try to resolve each warning first; then close with `--force --note`, only with the owner's phrase.
+- `work-item-type-unknown` (exit 1): the work item has no type the project's matrix knows. Record the type with `omhl append` or name the branch with its prefix.
+- `review-base-invalid` (exit 1): `--base` does not name a commit or is the same commit as `HEAD`. Pass the merge-base that `gate-pr` prints.
+- `failed-delivery-unneeded` (exit 1): no `refuse` question failed, so `--failed-delivery` has nothing to record. Close without it, or with `--force --note` when only warnings failed.
+- `delivery-not-on-work-item-branch` (exit 1): the current branch is not the work item's. Check it out and run `close` again.
+- `delivery-not-integrated` (exit 1): the evaluated commit is not in the local integration branch. Update the local `develop` from the remote without a new commit, or ask the owner for `--abandon`.
 - `invalid-transition` (exit 1): the work item is already closed. A closed work item does not close again.
 - `INVALID_INPUT` (exit 1): the id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
 - `snapshot-dirty` (exit 1): the tree has an uncommitted change. Commit and repeat.
 - `probe-failed` (exit 1): git did not answer (outside a repository, for example). Run inside a checkout.
 - `spec-store-unusable` (exit 1): there is a retro and the work item's spec folder could not be read, or there is more than one `wi-<id>__*` folder. Fix the folder in the main directory.
-- `invalid-workflow-config` (exit 1): the `.omhl/workflow.toml` of the main directory is not accepted. `close` refuses before it evaluates the gate and before it records anything, with a retro or without one, and the error never turns a native check on or off. Fix the file; `omhl load --dry-run` details it.
+- `invalid-workflow-config` (exit 1): the `.omhl/workflow.toml` of the main directory is not accepted. `close` refuses before it evaluates the gate and before it records anything, with a retro or without one, and the error never turns a native check on or off. Two paths do not refuse: `--abandon`, and the repair pull request (`--base` naming a diff that only fixes the file). Fix the file; `omhl load --dry-run` details it.
 - `main-dir-unknown` (exit 1): the main directory could not be resolved from this checkout. Check the repository.
 - `invalid-session-id` (exit 1): `CLAUDE_CODE_SESSION_ID` is set but empty, is not UTF-8, exceeds 100 UTF-16 units or equals the marker `outside-claude-code`; nothing is recorded and the error does not show the value (empty `path`). Remove the variable or run `omhl` in a Claude Code session.
 - `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
@@ -74,20 +79,6 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 Tries to close the work item. The gate fails (the attestations are missing and the spec is not valid; the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`). A failed `refuse` question stops `close`: it records nothing, so the work item stays open and the next call refuses the same way. The `warn` question is listed, but only the `refuse` ones block:
 
 ```omhl-example fixture=native-checks
-$ omhl close work-items.w1
-2> ✘ close-refused · a refuse question failed, and --force does not override it: fix its cause before the merge, use --abandon for work that will not be delivered, or --failed-delivery --note when the evaluated commit is already on the integration branch
-2>   - /questions/0 · warn · the gate question did not pass
-2>     label: checks.run-tests
-2>   - /questions/1 · refuse · the gate question did not pass
-2>     label: checks.ci-green-before-merge
-2>   - /questions/2 · refuse · the gate question did not pass
-2>     label: checks.ok
-2>   - /questions/3 · refuse · the gate question did not pass
-2>     label: spec-digest-match:checks.ok
-2>   - /questions/4 · refuse · the gate question did not pass
-2>     label: requires:spec
-2> Next: make the spec valid with omhl spec validate.
-# exit 1
 $ omhl close work-items.w1
 2> ✘ close-refused · a refuse question failed, and --force does not override it: fix its cause before the merge, use --abandon for work that will not be delivered, or --failed-delivery --note when the evaluated commit is already on the integration branch
 2>   - /questions/0 · warn · the gate question did not pass
@@ -151,6 +142,15 @@ $ omhl close work-items.w1
 2>     label: requires:spec
 2> Next: make the spec valid with omhl spec validate.
 # exit 1
+```
+
+With the gate failed and the work item not to be delivered, the owner closes it with `--abandon`, which does not evaluate the gate:
+
+```omhl-example fixture=native-checks
+$ omhl close work-items.w1 --abandon --reason not-delivered --note owner-authorized
+✔ close · retro · 1 abandonment
+- abandoned · not-delivered · owner-authorized
+Next: propose one improvement per item to the owner and change nothing without the answer.
 ```
 
 Refusal: the `.omhl/workflow.toml` lists an id that is not a native check. Nothing is recorded:

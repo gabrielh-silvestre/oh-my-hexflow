@@ -66,6 +66,8 @@ Each error carries the code (`error.code` in the JSON) and, in the details, the 
 - `origin-immutable` (exit 1): the revision adds, changes or removes the `origin` of the premise. Keep what it already has, or record a new premise.
 - `origin-required` (exit 1): the work item already has a `decision` and the new business premise does not carry `origin: late`. On creation, add `origin: late` and record again; on a revision that makes the premise a business one, record a new premise with `origin: late`, because adding `origin` in a revision gives `origin-immutable`.
 - `work-item-not-found` (exit 1): the `work_item` of the premise, gap or divergence does not exist. Record the work item first.
+- `type-change-loosens` (exit 1): the new work item type asks for less than the current one. Keep the current type, or ask the owner to change it with `--owner-override`, outside Claude Code.
+- `check-loosening-refused` (exit 1): the revised check loosens a check already stored. Keep it blocking, with its run and on a required event, or ask the owner to retire it and declare a new one.
 - `work-item-closed` (exit 1): the work item is already closed. Record in an open work item.
 - `use-close-work-item` (exit 1): the `status` of the work item was changed to `closed` through here. Close with `omhl close`.
 - `rests-on-architecture` (exit 1): a guideline rests on a guideline of `kind` `architecture`. Rest it on a business one.

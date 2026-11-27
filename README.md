@@ -199,11 +199,11 @@ Uma entrada por mudança que exige ação de quem atualiza, a mais nova primeiro
 
 O que cada comando recusa e com qual código está na página do comando, em `plugin/skills/directives-flow/references/`. O que muda para quem atualiza:
 
-1. `close` agora recusa onde fechava: um work item que falha na checagem do gate não fecha mais, e o mesmo vale nos caminhos `--force --note`, `--abandon` e `--failed-delivery`.
+1. `close` agora recusa onde fechava: um work item que falha na checagem do gate não fecha mais, e o mesmo vale nos caminhos `--force --note` e `--failed-delivery`.
 2. `require` agora acrescenta, em `[prefix.<tipo>]`, aos padrões do binário em vez de substituí-los. Quem repetia os padrões ali pode tirá-los.
 3. O check `checks.config-loosening-review` pede, antes do PR, a revisão do diff de `.omhl/workflow.toml` e de `.omhl/checks/`. Ele continua desligado até o id entrar em `[native] checks`.
 4. As opções novas são `--base`, para escolher a base do diff, e `--owner-override`, para o dono liberar uma recusa.
-5. Um `workflow.toml` inválido na `main` não trava mais o trabalho: o caminho é o PR de reparo contra a `main`.
+5. Um `workflow.toml` inválido na `main` continua recusando todo PR que não seja o PR de reparo contra a `main`; o `--abandon` passa, porque não avalia o gate.
 6. Plugin e binário se atualizam juntos.
 
 ### Os checks nativos vêm desligados
@@ -214,7 +214,7 @@ O que cada check nativo pede e como ligá-lo está em [native-checks.md](plugin/
 2. Quem quiser manter algum declara o id em `[native] checks`.
 3. `checks.run-tests` e `checks.ci-green-before-merge` declarados são cobrados mesmo com um check próprio no mesmo momento: o check do projeto deixa de substituir o nativo.
 4. Um projeto com `.omhl.toml` e sem repositório git mostra a linha `main-dir-unknown` a cada início de sessão, e `gate-pr` e `close` recusam ali com `probe-failed`. O `git init` tira a linha da sessão, mas `gate-pr` e `close` precisam também de um primeiro commit com a árvore limpa, porque a sonda recusa um repositório sem commits.
-5. O binário anterior recusa um `workflow.toml` com `[native]`. Com o binário novo, um arquivo que ele não aceita faz `gate-pr` e `close` recusarem com `invalid-workflow-config`.
+5. O binário anterior recusa um `workflow.toml` com `[native]`. Com o binário novo, um arquivo que ele não aceita faz `gate-pr` e `close` recusarem com `invalid-workflow-config`, salvo o `--abandon` e o PR de reparo.
 6. Plugin e binário se atualizam juntos.
 
 ### A pasta `.omhl/notes/` nasce com um `.gitignore` próprio
