@@ -738,9 +738,23 @@ fn it_should_enumerate_the_action_leaves_of_the_cli() {
 #[test]
 fn it_should_enumerate_the_options_of_the_cli() {
     let expected = [
+        ("append", vec!["--owner-override"]),
         ("attest", vec!["--note", "--outcome"]),
         ("byproduct", vec!["--tail"]),
+        ("check retire", vec!["--owner-override"]),
         ("check run", vec!["--check", "--event", "--pre-push"]),
+        (
+            "close",
+            vec![
+                "--abandon",
+                "--base",
+                "--failed-delivery",
+                "--force",
+                "--note",
+                "--reason",
+            ],
+        ),
+        ("gate-pr", vec!["--base"]),
         ("gate-worktree", vec!["--branch"]),
         ("guideline retire", vec!["--by"]),
         ("hooks install", vec!["--force"]),
@@ -748,7 +762,7 @@ fn it_should_enumerate_the_options_of_the_cli() {
             "list",
             vec!["--after-seq", "--id-prefix", "--limit", "--type", "--where"],
         ),
-        ("load", vec!["--dry-run"]),
+        ("load", vec!["--dry-run", "--owner-override"]),
         ("report answers", vec!["--work-item"]),
         ("report recurrences", vec!["--min"]),
         ("report sessions", vec!["--work-item"]),

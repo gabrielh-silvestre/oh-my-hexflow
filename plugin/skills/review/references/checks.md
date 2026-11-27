@@ -15,7 +15,7 @@ A check with the `run` field is mechanical: `omhl check run` runs the command, c
 2. `omhl load` for each file created, edited or deleted in `.omhl/`.
 3. `git commit` and `git push` run `omhl check run` on their own and block on failure. `before-merge` has no hook: run `omhl check run --event before-merge` by hand. A manual check (without `run`) belongs to `omhl attest`, after the human reviews.
 4. A failed check: read `omhl byproduct <check> <work-item> --tail 40`, fix it and make a new commit (the outcome of the same snapshot does not change).
-5. `omhl check retire` only when the removal of the check file is already merged; the global sweep (`check sweep`) only after an interrupted `omhl`, with the human's approval.
+5. The global sweep (`check sweep`) only after an interrupted `omhl`, with the human's approval. Retiring a check is the owner's task ([check-retire.md](check-retire.md)).
 
 ## Pages
 

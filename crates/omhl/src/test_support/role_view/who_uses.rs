@@ -55,7 +55,7 @@ pub const WHO_USES_ANCHOR: [(&str, WhoUsesClass); 20] = [
     ("attest", WhoUsesClass::Session),
     ("byproduct", WhoUsesClass::Session),
     ("byproduct prune", WhoUsesClass::Session),
-    ("check retire", WhoUsesClass::Session),
+    ("check retire", WhoUsesClass::NoRole),
     ("hooks install", WhoUsesClass::Session),
     ("check run", WhoUsesClass::Session),
     ("gate-pr", WhoUsesClass::Session),

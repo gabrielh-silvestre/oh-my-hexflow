@@ -10,11 +10,14 @@
 
 After creating, editing or deleting a file in `.omhl/` (check or guideline), so the database reflects the files. Run it before any `omhl check run` that comes after a change to a check: `check run` refuses with `spec-stale` if the TOML and the database diverge. `--dry-run` shows the plan without recording anything.
 
+Edit `.omhl/workflow.toml` and `.omhl/checks/` only inside a worktree, never in the main directory.
+
 ## Inputs
 
 - No positional arguments. It reads the project files in `.omhl/`.
 - `--dry-run`: reports what it would do, without recording.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
+- `--owner-override`: belongs to the owner, outside Claude Code; an agent never passes it ([config-loosening-review.md](../../review/references/config-loosening-review.md)).
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
 ## Output

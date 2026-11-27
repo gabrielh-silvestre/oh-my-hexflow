@@ -2,18 +2,17 @@
 
 ## Who uses it, at which stage and with which filter
 
-| Role | Stage | Command |
-|---|---|---|
-| session | review rules | `omhl check retire` |
+No stage of the cycle runs it.
 
 ## When to use
 
-To discard for good a check whose file was deleted from the tree and whose deletion was already merged. Without this, `omhl load` only lists the id in `orphans`, `omhl check run` warns `check-orphaned` on every run and the pull request gate keeps asking for an attestation nobody records anymore. **The retirement is final** and holds for all clones and branches: the id never comes back. If your branch predates the check (the file did not exist in it yet), do not retire: rebase onto `main` or restore the file.
+Retiring a check is the owner's task: the agent never runs it. To discard for good a check whose file was deleted from the tree and whose deletion was already merged. Without this, `omhl load` only lists the id in `orphans`, `omhl check run` warns `check-orphaned` on every run and the pull request gate keeps asking for an attestation nobody records anymore. **The retirement is final** and holds for all clones and branches: the id never comes back. If your branch predates the check (the file did not exist in it yet), do not retire: rebase onto `main` or restore the file.
 
 ## Inputs
 
 - `<CHECK>`: the check id, like `checks.ok`. It must be a live check of the project, with the file `.omhl/checks/<slug>.toml` absent from the tree.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
+- `--owner-override`: belongs to the owner, outside Claude Code; an agent never passes it ([config-loosening-review.md](../../review/references/config-loosening-review.md)).
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
 
 ## Output

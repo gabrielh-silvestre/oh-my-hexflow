@@ -15,6 +15,7 @@ Before opening or merging the pull request of a work item, to know whether every
 - `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
+- `--base <ref>`: the base of the loosening review; the review reads the diff from the merge-base it prints to `HEAD`, and a pull request without `--base` is not recognized as a repair PR.
 - It needs a git repository with a clean tree: the gate reads `HEAD` and its tree. It also reads the `.omhl/workflow.toml` of the main directory, which says which native checks are on ([native-checks.md](../../directives-flow/references/native-checks.md)).
 
 ## Output

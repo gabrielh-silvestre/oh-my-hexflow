@@ -22,7 +22,11 @@ When the work item's work is finished and the pull request gate was already chec
 - `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist and be open.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
-- It needs a git repository with a clean tree: the closing ties the gate result to `HEAD`. It also reads the `.omhl/workflow.toml` of the main directory, which says which native checks the gate asks about ([native-checks.md](../../directives-flow/references/native-checks.md)).
+- `--base <ref>`: the base of the loosening review, as in [gate-pr.md](gate-pr.md).
+- `--force --note <text>`: closes with the gate failed only by warnings; `--force --note` only for `close-warnings`, and the note carries the owner's literal phrase authorizing it. `--force` does not help in `close-refused`.
+- `--failed-delivery --note <text>`: closes a work item whose pull request was merged with the gate failed; the note carries the owner's literal phrase.
+- `--abandon --reason <text> --note <text>` (`--abandon --reason --note` together): closes a work item that will not be delivered, or whose merge `--failed-delivery` does not cover. The `--reason` says how the merge happened, when there was one.
+- It needs a git repository with a clean tree at the tip of the work item branch: the closing ties the gate result to `HEAD`. When every attestation fails at once, check the commit before any other exit: the checkout is probably not at that tip. It also reads the `.omhl/workflow.toml` of the main directory, which says which native checks the gate asks about ([native-checks.md](../../directives-flow/references/native-checks.md)).
 
 ## Output
 
@@ -38,13 +42,21 @@ With `--format json` it is a JSON line with three fields:
 - `report`: the same report as `omhl gate-pr` (`gate`, `passed`, `questions`, `chain_head`).
 - `retro`: `null` when there is no divergence or gap answered without a criterion; otherwise, the report of `omhl report retro`. The retro reads the facts before recording, so `close` never returns an error after recording.
 
-**`close` closes even with the gate failed** (`report.passed: false` in the JSON, `⚠` in the text): the result stays recorded on the work item. After the closing, the work item's premise leaves the session context (`omhl render`) and stays in the projection. When `retro` comes filled in, propose one improvement per item, as in [fechamento.md](fechamento.md).
+**With the gate failed, `close` refuses** (`close-refused`, or `close-warnings` when only warnings failed) and records nothing. Closing is the last step, with no commit after the merge: a commit after it asks for the checks again. After the closing, the work item's premise leaves the session context (`omhl render`) and stays in the projection.
+
+Closing a work item that was already merged:
+
+- A merged work item never closes with `--abandon`, unless the merge is one `--failed-delivery` does not cover. It closes with `--failed-delivery --note`, with the owner's literal phrase in the `--note`.
+- The limit: `--failed-delivery` does not cover squash or rebase merges or a project without `develop`. There the owner uses `--abandon`, and the `--reason` says how the merge happened.
+- The retro is required only after `--failed-delivery`: propose one improvement per item, and one improvement per failed `refuse` question, as in [fechamento.md](fechamento.md). `--abandon` has no required retro.
 
 ## Errors
 
 An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--format json`, as a JSON line). A missing `<WORK_ITEM>` is a clap usage error, with exit 2 and no code. When there is a retro and reading the facts fails, `close` refuses without recording anything. The errors common to all commands are in [errors.md](../../directives-flow/references/errors.md).
 
 - `work-item-not-found` (exit 1): the work item does not exist. The pointer is `/work_item`. Check the id.
+- `close-refused` (exit 1): the gate failed. `--force` does not help here: fix each failed question, or the owner decides on `--abandon` or `--failed-delivery`.
+- `close-warnings` (exit 1): the gate failed only by warnings. Close with `--force --note`, only with the owner's phrase.
 - `invalid-transition` (exit 1): the work item is already closed. A closed work item does not close again.
 - `INVALID_INPUT` (exit 1): the id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
 - `snapshot-dirty` (exit 1): the tree has an uncommitted change. Commit and repeat.
@@ -59,7 +71,7 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 ## Examples
 
-Closes the work item and then tries to close it again. The gate fails (the attestations are missing; the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`), and the closing is recorded anyway; the retro is `null`:
+Closes the work item and then tries to close it again. The gate fails (the attestations are missing; the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`); the retro is `null`:
 
 ```omhl-example fixture=native-checks
 $ omhl close work-items.w1

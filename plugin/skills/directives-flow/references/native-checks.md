@@ -1,18 +1,19 @@
 # Native checks
 
-The `omhl` binary carries three native checks. They come off: a project turns each one on in `.omhl/workflow.toml`, and until then nothing prints, asks or blocks for it. The two native guidelines are not in this page and stay on.
+The `omhl` binary carries native checks. They come off: a project turns each one on in `.omhl/workflow.toml`, and until then nothing prints, asks or blocks for it. The two native guidelines are not in this page and stay on.
 
 | Check | When | What it asks | Gate |
 |---|---|---|---|
 | `checks.run-tests` | `before-commit` | Run the project's test suite and confirm it passes before creating a commit | `gate-pr` and `close` ask for its attestation |
 | `checks.ci-green-before-merge` | `before-merge` | Wait until every check run on the head commit is green; if one fails, fix it, push and run CI again | `gate-pr` and `close` ask for its attestation |
+| `checks.config-loosening-review` | `before-pr` | Review the diff of `.omhl/workflow.toml` and `.omhl/checks/` for loosened brakes, as in [config-loosening-review.md](../../review/references/config-loosening-review.md) | `gate-pr` and `close` ask for it when the pull request touches configuration |
 | `checks.verify-review-comment-anchoring` | `before-publishing-review-comments` | Compare path, line and side of each inline review comment with the diff of the head commit and post the approved text unchanged | Instruction only: no blocking, outside the gate |
 
 When both `checks.run-tests` and `checks.ci-green-before-merge` are on, `omhl render` prints `after: checks.run-tests` on the second. With only the second on, the line is not printed.
 
 ## Turn them on
 
-List the ids in `[native] checks`. A check is on only when its id is in the list; no file, no table, no key or an empty list leaves the three off. Repeating an id changes nothing.
+List the ids in `[native] checks`. A check is on only when its id is in the list; no file, no table, no key or an empty list leaves them all off. Repeating an id changes nothing.
 
 ```toml
 version = 1
@@ -46,7 +47,8 @@ An invalid `.omhl/workflow.toml` never turns a check on or off.
 
 - `omhl render` and the context of the session start still exit 0, print no native check block and carry one `invalid-workflow-config` warning line.
 - `gate-pr` and `close` refuse with `invalid-workflow-config` before evaluating the gate, and `close` refuses before recording anything, with a retro or without one.
-- The fix is an edit made directly by the owner in the working tree of the main directory, committed on the branch checked out there. A pull request cannot carry it, because `gate-pr` refuses on the invalid file in the main directory, the pull request that fixes it included.
+- The recommended fix is a repair pull request with `--base`: the fix goes through a pull request and the loosening review like any other change.
+- The exception, for when the pull request cannot be used (without `--base`, a pull request is not recognized as a repair), is an edit made directly by the owner in the working tree of the main directory, committed on the branch checked out there.
 
 ## A project without git
 
