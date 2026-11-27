@@ -79,7 +79,7 @@ default_formats!(
 default_formats!(
     check_retire,
     plain(cycle::retire_check()),
-    &["check", "retire", ORPHAN_CHECK],
+    &["check", "retire", ORPHAN_CHECK, "--owner-override"],
     plain(Project::new("acme")),
     &["check", "retire", "checks.ghost-one"]
 );
@@ -224,7 +224,11 @@ fn it_should_open_the_check_sweep_text_with_the_swept_and_unreadable_counts() {
 fn it_should_print_the_retired_check() {
     let state = plain(cycle::retire_check());
 
-    let text = printed(&state, None, &["check", "retire", ORPHAN_CHECK]);
+    let text = printed(
+        &state,
+        None,
+        &["check", "retire", ORPHAN_CHECK, "--owner-override"],
+    );
 
     assert_eq!(
         lines_of(&text),

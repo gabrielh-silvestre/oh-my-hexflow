@@ -283,7 +283,13 @@ fn it_should_record_the_session_on_a_check_retirement() {
         check: CHECK.to_owned(),
     };
 
-    fx.dispatch(&raw_session(SESSION), &retire);
+    let owner = Caller {
+        owner_override: true,
+        ..Caller::cli()
+    };
+    fx.app(&raw_session(SESSION))
+        .dispatch(&owner, &retire)
+        .expect("the owner retires the check");
 
     assert_eq!(fx.last_stamp(), Stamp::new(CHECK, true, SESSION));
 }

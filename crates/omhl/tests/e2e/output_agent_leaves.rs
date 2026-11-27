@@ -1945,7 +1945,7 @@ const CASES: [Case; 85] = [
     Case {
         name: "check retire an orphaned check",
         key: CommandKey::CheckRetire,
-        args: &["check", "retire", cycle::ORPHAN_CHECK],
+        args: &["check", "retire", cycle::ORPHAN_CHECK, "--owner-override"],
         outcome: Outcome::Success,
         error_code: None,
         fixture: retire_check_orphaned,

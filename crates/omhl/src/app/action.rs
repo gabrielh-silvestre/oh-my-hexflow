@@ -105,6 +105,7 @@ pub enum CheckTarget {
 pub struct Caller {
     pub client: &'static str,
     pub agent: &'static str,
+    pub owner_override: bool,
 }
 
 impl Caller {
@@ -112,6 +113,7 @@ impl Caller {
         Caller {
             client: "cli",
             agent: "user",
+            owner_override: false,
         }
     }
 
@@ -122,6 +124,7 @@ impl Caller {
         Caller {
             client: "cli",
             agent: "claude",
+            owner_override: false,
         }
     }
 
@@ -143,6 +146,7 @@ impl Caller {
         Caller {
             client: "hook",
             agent: "hook",
+            owner_override: false,
         }
     }
 
@@ -150,6 +154,7 @@ impl Caller {
         Caller {
             client: "loader",
             agent: "loader",
+            owner_override: false,
         }
     }
 
@@ -157,6 +162,7 @@ impl Caller {
         Caller {
             client: GUIDELINE_RETIRE_CLIENT,
             agent,
+            owner_override: false,
         }
     }
 
@@ -164,6 +170,7 @@ impl Caller {
         Caller {
             client: "executor",
             agent: "executor",
+            owner_override: false,
         }
     }
 

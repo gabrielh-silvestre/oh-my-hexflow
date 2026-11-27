@@ -129,7 +129,7 @@ fn retirement_request(fx: &AppFixture, id: &str) -> Value {
 }
 
 fn retire(fx: &AppFixture, id: &str) {
-    fx.append_as_user(retirement_request(fx, id))
+    fx.append_as_owner(retirement_request(fx, id))
         .expect("the retirement is accepted");
 }
 

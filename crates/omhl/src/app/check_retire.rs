@@ -10,7 +10,11 @@ use crate::extensions::model::ExtensionKind;
 
 impl Engine<'_> {
     /// É o `loader` quem grava, porque a guarda só deixa ele retirar um check com `run`.
-    pub(super) fn check_retire(&mut self, check: &str) -> Result<Value, AppError> {
+    pub(super) fn check_retire(
+        &mut self,
+        check: &str,
+        owner_override: bool,
+    ) -> Result<Value, AppError> {
         let root = require_project_root(self.project_root.as_deref())?.to_path_buf();
         let id = parse_at(SemanticId::parse, check, "/check")?;
         let node = self
@@ -23,6 +27,9 @@ impl Engine<'_> {
             .ok_or_else(|| OmhlError::rule(RuleCode::CheckNotFound, "/check"))?;
         if extension_file_exists(ExtensionKind::Check, &root, id.as_str()) {
             return Err(AppError::check_not_orphaned("/check"));
+        }
+        if !owner_override {
+            return Err(OmhlError::rule(RuleCode::CheckLooseningRefused, "/check").into());
         }
         let item = AppendItem {
             body: ItemBody::Retirement {

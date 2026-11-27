@@ -587,10 +587,12 @@ fn it_should_refuse_reactivating_a_retired_check() {
     let mut omhl = harness.open();
     let data = check_data("before-commit", "run the linter", true);
     let created = append_ok(&mut omhl, vec![node_item(LINT_DOCS, "check", data.clone())]);
-    let retired = append_ok(
+    let retired = append_as(
         &mut omhl,
+        loader_author(),
         vec![retirement_item(LINT_DOCS, &created.records[0].id)],
-    );
+    )
+    .expect("the loader retires the check");
     let reactivation = revision_item(LINT_DOCS, "check", data, &retired.records[0].id);
 
     let error = refusal(&mut omhl, vec![reactivation]);
@@ -1299,7 +1301,103 @@ fn it_should_refuse_to_retire_a_mechanical_check_by_the_agent() {
         vec![retirement_item(SUITE, &base)],
     );
 
-    assert_eq!(result, Err(rule(RuleCode::CheckRunAuthor, BASE_POINTER)));
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::CheckLooseningRefused, BASE_POINTER))
+    );
+}
+
+fn is_loosening_refusal<T>(result: &Result<T, OmhlError>) -> bool {
+    matches!(
+        result,
+        Err(OmhlError::Rule {
+            code: RuleCode::CheckLooseningRefused,
+            ..
+        })
+    )
+}
+
+fn seed_text_check(omhl: &mut Omhl<'_>, blocking: bool) -> RecordId {
+    let data = check_data("before-pr", "Read the diff", blocking);
+    let created = append_ok(omhl, vec![node_item(READ_DIFF, "check", data)]);
+
+    created.records[0].id.clone()
+}
+
+fn retire_text_check_as(author: Author) -> Result<usize, OmhlError> {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    let base = seed_text_check(&mut omhl, false);
+
+    appended(&mut omhl, author, vec![retirement_item(READ_DIFF, &base)])
+}
+
+fn revise_text_check_as(author: Author, how: &str, blocking: bool) -> Result<usize, OmhlError> {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    let base = seed_text_check(&mut omhl, true);
+    let revised = check_data("before-pr", how, blocking);
+
+    appended(
+        &mut omhl,
+        author,
+        vec![revision_item(READ_DIFF, "check", revised, &base)],
+    )
+}
+
+#[test]
+fn it_should_refuse_to_retire_a_text_check_by_the_agent() {
+    let result = retire_text_check_as(agent_author());
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::CheckLooseningRefused, BASE_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_to_retire_a_text_check_through_the_cli() {
+    let result = retire_text_check_as(cli_author());
+
+    assert_eq!(
+        result,
+        Err(rule(RuleCode::CheckLooseningRefused, BASE_POINTER))
+    );
+}
+
+#[test]
+fn it_should_let_the_loader_retire_a_text_check() {
+    let result = retire_text_check_as(loader_author());
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_a_text_check_revision_that_turns_blocking_off_by_the_agent() {
+    let result = revise_text_check_as(agent_author(), "Read the diff", false);
+
+    assert!(is_loosening_refusal(&result), "{result:?}");
+}
+
+#[test]
+fn it_should_refuse_a_text_check_revision_that_turns_blocking_off_through_the_cli() {
+    let result = revise_text_check_as(cli_author(), "Read the diff", false);
+
+    assert!(is_loosening_refusal(&result), "{result:?}");
+}
+
+#[test]
+fn it_should_let_the_loader_revise_a_check_to_non_blocking() {
+    let result = revise_text_check_as(loader_author(), "Read the diff", false);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_accept_a_text_check_revision_that_does_not_loosen_by_the_agent() {
+    let result = revise_text_check_as(agent_author(), "Read the whole diff", true);
+
+    assert_eq!(result, Ok(1));
 }
 
 #[test]

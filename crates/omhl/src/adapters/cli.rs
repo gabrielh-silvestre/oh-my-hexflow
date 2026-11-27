@@ -63,7 +63,11 @@ pub enum ActionCommand {
     /// Print one node, or null when it does not exist.
     Get { id: String },
     /// Append the records of a JSON request read from stdin.
-    Append,
+    Append {
+        /// Owner only: let through the refusals that loosen a check or a work item type.
+        #[arg(long)]
+        owner_override: bool,
+    },
     /// Record a check outcome for a work item.
     Attest {
         check: String,
@@ -111,6 +115,9 @@ pub enum ActionCommand {
         /// Report the plan without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Owner only: let a revision that loosens a stored check through.
+        #[arg(long)]
+        owner_override: bool,
     },
     /// Write the projection of the tenant under `.omhl/projection/`.
     Project,
@@ -161,7 +168,12 @@ pub enum CheckCommand {
     /// Kill the processes that escaped from an earlier check run whose omhl already exited.
     Sweep,
     /// Retire the stored check whose file was deleted from the working tree.
-    Retire { check: String },
+    Retire {
+        check: String,
+        /// Owner only: retiring a check loosens it; this lets the retirement through.
+        #[arg(long)]
+        owner_override: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -569,7 +581,7 @@ fn command_key(command: &Command) -> CommandKey {
         } => CommandKey::HookWtPostStart,
         Command::Action(ActionCommand::List { .. }) => CommandKey::List,
         Command::Action(ActionCommand::Get { .. }) => CommandKey::Get,
-        Command::Action(ActionCommand::Append) => CommandKey::Append,
+        Command::Action(ActionCommand::Append { .. }) => CommandKey::Append,
         Command::Action(ActionCommand::Attest { .. }) => CommandKey::Attest,
         Command::Action(ActionCommand::Render) => CommandKey::Render,
         Command::Action(ActionCommand::GatePr { .. }) => CommandKey::GatePr,
@@ -675,6 +687,23 @@ fn start_dir(project_dir: Option<&Path>) -> Result<PathBuf, AppError> {
     resolved.map_err(|_| AppError::invalid_project_dir())
 }
 
+fn has_owner_override(command: &ActionCommand) -> bool {
+    matches!(
+        command,
+        ActionCommand::Append {
+            owner_override: true
+        } | ActionCommand::Load {
+            owner_override: true,
+            ..
+        } | ActionCommand::Check {
+            command: CheckCommand::Retire {
+                owner_override: true,
+                ..
+            }
+        }
+    )
+}
+
 fn execute(
     command: ActionCommand,
     stdin: &mut impl Read,
@@ -682,9 +711,13 @@ fn execute(
     db: Option<&Path>,
     env: &Env<'_>,
 ) -> Result<Value, AppError> {
+    let owner_override = has_owner_override(&command);
     let action = to_action(command, stdin, env)?;
 
-    let caller = Caller::cli_with_role(env.claude_code, env.role.as_deref())?;
+    let caller = Caller {
+        owner_override,
+        ..Caller::cli_with_role(env.claude_code, env.role.as_deref())?
+    };
 
     run_action(start, db, env, &caller, &action)
 }
@@ -724,7 +757,7 @@ fn to_action(
                 .collect::<Result<_, AppError>>()?,
         },
         ActionCommand::Get { id } => Action::Get { id },
-        ActionCommand::Append => Action::Append {
+        ActionCommand::Append { .. } => Action::Append {
             request: read_json_input(stdin)?,
         },
         ActionCommand::Attest {
@@ -769,7 +802,7 @@ fn to_action(
             base,
         },
         ActionCommand::Verify => Action::Verify,
-        ActionCommand::Load { dry_run } => Action::Load { dry_run },
+        ActionCommand::Load { dry_run, .. } => Action::Load { dry_run },
         ActionCommand::Project => Action::Project,
         ActionCommand::Check {
             command: CheckCommand::Run(args),
@@ -778,7 +811,7 @@ fn to_action(
             command: CheckCommand::Sweep,
         } => Action::CheckSweep,
         ActionCommand::Check {
-            command: CheckCommand::Retire { check },
+            command: CheckCommand::Retire { check, .. },
         } => Action::CheckRetire { check },
         ActionCommand::Guideline {
             command: GuidelineCommand::Retire { id, by },

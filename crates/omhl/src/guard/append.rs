@@ -9,6 +9,7 @@ use serde_json::Value;
 use super::confirmation::check_confirmation;
 use super::rests_on::rests_on_allowed;
 use crate::error::{OmhlError, RuleCode};
+use crate::extensions::loosening::check_loosens;
 use crate::extensions::parse::GUIDELINE_KINDS;
 use crate::graphs::{WORK_ITEM_TYPES, namespace_of};
 use crate::mechanical::is_mechanical;
@@ -73,6 +74,7 @@ pub(super) struct Guard<'a, 'd> {
     pub(super) tenant: &'a TenantId,
     pub(super) author: &'a Author,
     probe: &'a dyn SnapshotProbe,
+    owner_override: bool,
     probed: Option<Result<ProbeOutcome, ProbeError>>,
     probed_index_tree: Option<Result<ProbeOutcome, ProbeError>>,
     pub(super) batch: HashMap<SemanticId, Endpoint>,
@@ -83,12 +85,14 @@ pub(crate) fn check_append(
     hexlog: &mut Hexlog<'_>,
     probe: &dyn SnapshotProbe,
     req: &AppendRequest,
+    owner_override: bool,
 ) -> Result<(), OmhlError> {
     let mut guard = Guard {
         hexlog,
         tenant: &req.tenant,
         author: &req.author,
         probe,
+        owner_override,
         probed: None,
         probed_index_tree: None,
         batch: HashMap::new(),
@@ -270,8 +274,17 @@ impl Guard<'_, '_> {
         if is_mechanical(node.data) {
             return Err(node.error(RuleCode::CheckRunAuthor, "body/data/run"));
         }
-        if node.base.is_some() && self.current_check_has_run(node.id)? {
+        if node.base.is_none() {
+            return Ok(());
+        }
+        let Some(current) = self.current_check(node.id)? else {
+            return Ok(());
+        };
+        if is_mechanical(&current.data) {
             return Err(node.error(RuleCode::CheckRunAuthor, "base"));
+        }
+        if !self.owner_override && check_loosens(&current.data, node.data) {
+            return Err(node.error(RuleCode::CheckLooseningRefused, "base"));
         }
 
         Ok(())
@@ -326,20 +339,19 @@ impl Guard<'_, '_> {
             ));
         }
         if self.author.client != LOADER_CLIENT
+            && !self.owner_override
             && current.type_name.as_str() == "check"
-            && is_mechanical(&current.data)
         {
-            return Err(OmhlError::rule(RuleCode::CheckRunAuthor, &pointer));
+            return Err(OmhlError::rule(RuleCode::CheckLooseningRefused, &pointer));
         }
 
         Ok(())
     }
 
-    fn current_check_has_run(&mut self, id: &SemanticId) -> Result<bool, OmhlError> {
+    fn current_check(&mut self, id: &SemanticId) -> Result<Option<NodeView>, OmhlError> {
         let current = self.hexlog.get(self.tenant, id)?;
 
-        Ok(current
-            .is_some_and(|view| view.type_name.as_str() == "check" && is_mechanical(&view.data)))
+        Ok(current.filter(|view| view.type_name.as_str() == "check"))
     }
 
     /// Revision de um node retirado seria reativação, que o `hexlog` ainda não suporta.

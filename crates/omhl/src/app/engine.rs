@@ -134,10 +134,10 @@ impl Engine<'_> {
 
                 Ok(output::verify(&report))
             }
-            Action::Load { dry_run } => self.load(*dry_run),
+            Action::Load { dry_run } => self.load(*dry_run, caller.owner_override),
             Action::Project => self.project(),
             Action::CheckRun { target, pre_push } => self.check_run(target, pre_push.as_deref()),
-            Action::CheckRetire { check } => self.check_retire(check),
+            Action::CheckRetire { check } => self.check_retire(check, caller.owner_override),
             Action::GuidelineRetire { id, by } => self.guideline_retire(caller, id, by.as_deref()),
             Action::Byproduct {
                 check,
@@ -194,11 +194,15 @@ impl Engine<'_> {
     fn append(&mut self, caller: &Caller, request: &Value) -> Result<Value, AppError> {
         let parsed = append_request(request, &self.tenant, caller)?;
         self.check_amendment_approvals(request)?;
-        self.check_type_changes(&parsed)?;
+        if !caller.owner_override {
+            self.check_type_changes(&parsed)?;
+        }
 
-        let outcome = self
-            .omhl
-            .append(&parsed)
+        let appended = match caller.owner_override {
+            true => self.omhl.append_owner_override(&parsed),
+            false => self.omhl.append(&parsed),
+        };
+        let outcome = appended
             .map_err(|error| AppError::from(error).guide_relation_refusal(&parsed.items))?;
 
         Ok(output::appended(&outcome))

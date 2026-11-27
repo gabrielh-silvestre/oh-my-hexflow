@@ -105,6 +105,15 @@ impl AppFixture {
         self.run(&Caller::cli(), &Action::Append { request })
     }
 
+    /// `append` com o `--owner-override`, o único caminho fora do loader que aposenta um check.
+    pub fn append_as_owner(&self, request: Value) -> Result<Value, Value> {
+        let caller = Caller {
+            owner_override: true,
+            ..Caller::cli()
+        };
+        self.run(&caller, &Action::Append { request })
+    }
+
     /// `append` com o autor do comando `guideline retire`, o único client que a guarda deixa retirar uma diretiva.
     pub fn append_as_guideline_retirer(&self, request: Value) -> Result<Value, Value> {
         self.run(

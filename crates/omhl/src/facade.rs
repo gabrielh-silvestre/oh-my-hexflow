@@ -153,8 +153,24 @@ impl<'d> Omhl<'d> {
     }
 
     pub fn append(&mut self, req: &AppendRequest) -> Result<AppendOutcome, OmhlError> {
+        self.append_checked(req, false)
+    }
+
+    /// Passa pela recusa de afrouxar ou aposentar um check; as demais regras da guarda valem.
+    pub fn append_owner_override(
+        &mut self,
+        req: &AppendRequest,
+    ) -> Result<AppendOutcome, OmhlError> {
+        self.append_checked(req, true)
+    }
+
+    fn append_checked(
+        &mut self,
+        req: &AppendRequest,
+        owner_override: bool,
+    ) -> Result<AppendOutcome, OmhlError> {
         let session = self.session.resolve()?;
-        guard::check_append(&mut self.hexlog, self.probe, req)?;
+        guard::check_append(&mut self.hexlog, self.probe, req, owner_override)?;
 
         Ok(self.hexlog.append_with_session(req, &session)?)
     }

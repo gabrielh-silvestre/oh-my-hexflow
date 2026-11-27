@@ -758,7 +758,16 @@ pub fn load_full() -> Project {
 
     let checks = project.dir().join(".omhl/checks");
     fs::remove_file(checks.join("payroll-retire.toml")).expect("the file is removed");
-    run_ok(&project, &["check", "retire", "checks.payroll-retire"], "");
+    run_ok(
+        &project,
+        &[
+            "check",
+            "retire",
+            "checks.payroll-retire",
+            "--owner-override",
+        ],
+        "",
+    );
     tree.check("payroll-retire", &manual_check("Guards the retire", &[]));
     fs::remove_file(checks.join("payroll-orphan.toml")).expect("the file is removed");
     tree.check(

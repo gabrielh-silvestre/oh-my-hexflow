@@ -24,7 +24,7 @@ const BATCH_SIZE: usize = 50;
 const KEY_PREFIX: &str = "omhl-load-";
 
 impl Engine<'_> {
-    pub(super) fn load(&mut self, dry_run: bool) -> Result<Value, AppError> {
+    pub(super) fn load(&mut self, dry_run: bool, owner_override: bool) -> Result<Value, AppError> {
         let Engine {
             omhl,
             tenant,
@@ -39,7 +39,7 @@ impl Engine<'_> {
                 collected.omitted_errors,
             ));
         }
-        let reconciled = reconcile(omhl, tenant, &collected.extensions)?;
+        let reconciled = reconcile(omhl, tenant, &collected.extensions, owner_override)?;
         let report = report(tenant, dry_run, &reconciled, &collected.warnings);
         if !dry_run {
             write_changes(omhl, tenant, reconciled.changes)?;
@@ -53,6 +53,7 @@ fn reconcile(
     omhl: &mut Omhl<'_>,
     tenant: &TenantId,
     extensions: &[Extension],
+    owner_override: bool,
 ) -> Result<Plan, AppError> {
     let natives: Vec<String> = NativeBase
         .checks()
@@ -69,7 +70,9 @@ fn reconcile(
     };
 
     let plan = plan(&input).map_err(|issues| AppError::extensions_invalid(&issues, 0))?;
-    refuse_loosening(&plan, &existing_nodes)?;
+    if !owner_override {
+        refuse_loosening(&plan, &existing_nodes)?;
+    }
 
     Ok(plan)
 }
