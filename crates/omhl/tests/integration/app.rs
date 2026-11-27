@@ -202,6 +202,7 @@ fn attest_action(check: &str, outcome: &str, note: Option<&str>) -> Action {
 fn gate_pr_action() -> Action {
     Action::GatePr {
         work_item: W1.to_owned(),
+        base: None,
     }
 }
 
@@ -209,6 +210,7 @@ fn close_action() -> Action {
     Action::Close {
         work_item: W1.to_owned(),
         note: None,
+        base: None,
     }
 }
 

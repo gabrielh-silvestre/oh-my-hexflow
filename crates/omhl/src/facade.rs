@@ -236,10 +236,18 @@ impl<'d> Omhl<'d> {
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
         requirements: &WorkRequirements,
+        review_required: bool,
     ) -> Result<GateReport, OmhlError> {
         self.find_work_item(tenant, work_item)?;
 
-        self.gate_report(tenant, work_item, snapshots, enabled, requirements)
+        self.gate_report(
+            tenant,
+            work_item,
+            snapshots,
+            enabled,
+            requirements,
+            review_required,
+        )
     }
 
     pub fn read_projection_state(
@@ -304,11 +312,12 @@ impl<'d> Omhl<'d> {
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
         requirements: &WorkRequirements,
+        review_required: bool,
     ) -> Result<GateReport, OmhlError> {
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
         let (head, reports) = read_consistent(&mut source, tenant, |source| {
             let checks = source.nodes(tenant, &project_checks_filter())?;
-            let required = required_checks(NATIVE.checks(), enabled, &checks);
+            let required = required_checks(NATIVE.checks(), enabled, &checks, review_required);
             let digests = spec_digests(&checks);
             let mut questions = pr_gate_questions(&required, work_item, snapshots, &digests);
             questions.extend(anchor_questions(work_item));
@@ -339,6 +348,7 @@ impl<'d> Omhl<'d> {
     }
 
     /// Os snapshots têm de ser o `HEAD` e a árvore dele, de uma árvore limpa, conferidos na sonda antes do gate.
+    #[allow(clippy::too_many_arguments)]
     pub fn close_work_item(
         &mut self,
         tenant: &TenantId,
@@ -346,11 +356,18 @@ impl<'d> Omhl<'d> {
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
         requirements: &WorkRequirements,
+        review_required: bool,
         closing: &Closing<'_>,
     ) -> Result<ClosedWorkItem, CloseError> {
         let session = self.session.resolve()?;
-        let (current, report) =
-            self.evaluate_closing(tenant, work_item, snapshots, enabled, requirements)?;
+        let (current, report) = self.evaluate_closing(
+            tenant,
+            work_item,
+            snapshots,
+            enabled,
+            requirements,
+            review_required,
+        )?;
         // A recusa é decidida antes de gravar: quem recusa não deixa nenhum registro.
         let forcing = close_verdict(&report, closing.note).map_err(CloseError::Refused)?;
         let request = closing_request(
@@ -374,6 +391,7 @@ impl<'d> Omhl<'d> {
     }
 
     /// Fecha o item já mergeado cujo commit ainda reprova uma pergunta `refuse`; devolve as reprovadas.
+    #[allow(clippy::too_many_arguments)]
     pub fn close_with_failed_delivery(
         &mut self,
         tenant: &TenantId,
@@ -381,11 +399,18 @@ impl<'d> Omhl<'d> {
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
         requirements: &WorkRequirements,
+        review_required: bool,
         delivery: &FailedDelivery<'_>,
     ) -> Result<(ClosedWorkItem, Vec<FailedQuestion>), CloseError> {
         let session = self.session.resolve()?;
-        let (current, report) =
-            self.evaluate_closing(tenant, work_item, snapshots, enabled, requirements)?;
+        let (current, report) = self.evaluate_closing(
+            tenant,
+            work_item,
+            snapshots,
+            enabled,
+            requirements,
+            review_required,
+        )?;
         let failed = delivery_verdict(&report).map_err(CloseError::Refused)?;
         let request = failed_delivery_request(
             tenant,
@@ -415,6 +440,7 @@ impl<'d> Omhl<'d> {
         snapshots: &GateSnapshots,
         enabled: &NativeConfig,
         requirements: &WorkRequirements,
+        review_required: bool,
     ) -> Result<(NodeView, GateReport), CloseError> {
         let current = self.ensure_open(tenant, work_item)?;
         let head_commit = guard::probe_refusal(&self.probe.probe(), &snapshots.head_commit);
@@ -425,7 +451,14 @@ impl<'d> Omhl<'d> {
         if let Some(code) = head_commit.or(head_tree) {
             return Err(OmhlError::rule(code, "/snapshot").into());
         }
-        let report = self.gate_report(tenant, work_item, snapshots, enabled, requirements)?;
+        let report = self.gate_report(
+            tenant,
+            work_item,
+            snapshots,
+            enabled,
+            requirements,
+            review_required,
+        )?;
 
         Ok((current, report))
     }

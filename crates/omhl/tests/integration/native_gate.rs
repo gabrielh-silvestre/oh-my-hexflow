@@ -59,6 +59,7 @@ fn gate_outcomes(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> Outcomes {
             &at_head(),
             enabled,
             &omhl::facade::WorkRequirements::none(),
+            false,
         )
         .expect("the gate is evaluated");
 
@@ -73,6 +74,7 @@ fn close_outcomes(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> (Outcomes, boo
         &at_head(),
         enabled,
         &omhl::facade::WorkRequirements::none(),
+        false,
         &omhl::facade::Closing {
             author: &author(),
             note: None,
@@ -358,6 +360,7 @@ fn it_should_pass_the_gate_with_the_three_method_questions_when_nothing_is_enabl
             &at_head(),
             &native_enabled(&[]),
             &omhl::facade::WorkRequirements::none(),
+            false,
         )
         .expect("the gate is evaluated");
     let (closed, closed_passed) = close_outcomes(&mut omhl, &native_enabled(&[]));

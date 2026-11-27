@@ -115,17 +115,12 @@ impl Engine<'_> {
 
                 context::render_context(&mut self.omhl, &self.tenant, native)
             }
-            Action::GatePr { work_item } => self.gate_pr(work_item, None),
-            Action::Close { work_item, note } => {
-                self.close(caller, work_item, note.as_deref(), None)
-            }
-            Action::ReviewBase { base, action } => match action.as_ref() {
-                Action::GatePr { work_item } => self.gate_pr(work_item, Some(base)),
-                Action::Close { work_item, note } => {
-                    self.close(caller, work_item, note.as_deref(), Some(base))
-                }
-                _ => Err(AppError::action_outside_engine()),
-            },
+            Action::GatePr { work_item, base } => self.gate_pr(work_item, base.as_deref()),
+            Action::Close {
+                work_item,
+                note,
+                base,
+            } => self.close(caller, work_item, note.as_deref(), base.as_deref()),
             Action::CloseFailedDelivery { work_item, note } => {
                 self.close_failed_delivery(caller, work_item, note)
             }
@@ -214,13 +209,14 @@ impl Engine<'_> {
         let snapshots = self.probe_gate_snapshots()?;
         let enabled = self.resolve_native()?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
-        let review_base = self.review_base(base, &enabled)?;
+        let (review_base, review_required) = self.review_base(base, &enabled)?;
         let report = self.omhl.evaluate_pr_gate(
             &self.tenant,
             &work_item,
             &snapshots,
             &enabled,
             &requirements,
+            review_required,
         )?;
         let mut value = output::gate(&report);
         value["review_base"] = review_base;
@@ -240,7 +236,7 @@ impl Engine<'_> {
         let enabled = self.resolve_native()?;
         self.omhl.ensure_open(&self.tenant, &work_item)?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
-        let review_base = self.review_base(base, &enabled)?;
+        let (review_base, review_required) = self.review_base(base, &enabled)?;
         // Lida antes de gravar: o `close` nunca devolve erro depois do record de fechamento.
         let mut facts = self.retro_facts(&work_item, false)?;
         let author = caller.author();
@@ -256,6 +252,7 @@ impl Engine<'_> {
                 &snapshots,
                 &enabled,
                 &requirements,
+                review_required,
                 &closing,
             )
             .map_err(|error| AppError::from(error).with_review_base(&review_base))?;
@@ -270,13 +267,20 @@ impl Engine<'_> {
         Ok(value)
     }
 
-    /// Com `--base` a base é conferida mesmo com o check desligado; sem ela só se avisa quando o check está ligado.
-    fn review_base(&self, base: Option<&str>, enabled: &NativeConfig) -> Result<Value, AppError> {
+    /// Com `--base` a base é conferida mesmo com o check desligado; a revisão só é exigida com o check ligado e, havendo base, com caminho gatilho.
+    fn review_base(
+        &self,
+        base: Option<&str>,
+        enabled: &NativeConfig,
+    ) -> Result<(Value, bool), AppError> {
+        let on = enabled.checks.contains(CONFIG_LOOSENING_REVIEW_ID);
         let Some(base) = base else {
-            return Ok(match enabled.checks.contains(CONFIG_LOOSENING_REVIEW_ID) {
+            let note = match on {
                 true => json!({ "base": null, "note": "no base was given" }),
                 false => Value::Null,
-            });
+            };
+
+            return Ok((note, on));
         };
         let root = require_project_root(self.project_root.as_deref())?;
         let git = GitProbe::new(root);
@@ -287,12 +291,17 @@ impl Engine<'_> {
             return Err(OmhlError::rule(RuleCode::ReviewBaseInvalid, "/base").into());
         };
         let changed = git.changed_names(&merge_base).map_err(probe_failed)?;
+        let paths = review_trigger_paths(&changed);
+        let required = on && !paths.is_empty();
 
-        Ok(json!({
-            "base": base,
-            "merge_base": merge_base,
-            "paths": review_trigger_paths(&changed),
-        }))
+        Ok((
+            json!({
+                "base": base,
+                "merge_base": merge_base,
+                "paths": paths,
+            }),
+            required,
+        ))
     }
 
     fn close_failed_delivery(
@@ -307,6 +316,7 @@ impl Engine<'_> {
         let enabled = self.resolve_native()?;
         let node = self.omhl.ensure_open(&self.tenant, &work_item)?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
+        let (_, review_required) = self.review_base(None, &enabled)?;
         let integration = self.read_integration(&node, &snapshots)?;
         let mut facts = self.retro_facts(&work_item, true)?;
         let author = caller.author();
@@ -323,6 +333,7 @@ impl Engine<'_> {
                 &snapshots,
                 &enabled,
                 &requirements,
+                review_required,
                 &delivery,
             )
             .map_err(AppError::from)?;

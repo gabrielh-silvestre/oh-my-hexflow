@@ -739,7 +739,7 @@ fn to_action(
             note,
         },
         ActionCommand::Render => Action::Render,
-        ActionCommand::GatePr { work_item, base } => with_base(Action::GatePr { work_item }, base),
+        ActionCommand::GatePr { work_item, base } => Action::GatePr { work_item, base },
         ActionCommand::GateWorktree { branch } => Action::GateWorktree { branch },
         ActionCommand::Close {
             work_item,
@@ -763,7 +763,11 @@ fn to_action(
             note,
             base,
             ..
-        } => with_base(Action::Close { work_item, note }, base),
+        } => Action::Close {
+            work_item,
+            note,
+            base,
+        },
         ActionCommand::Verify => Action::Verify,
         ActionCommand::Load { dry_run } => Action::Load { dry_run },
         ActionCommand::Project => Action::Project,
@@ -859,13 +863,3 @@ fn push_input_refused(kind: &str) -> AppError {
 
 #[cfg(test)]
 mod tests;
-
-fn with_base(action: Action, base: Option<String>) -> Action {
-    match base {
-        Some(base) => Action::ReviewBase {
-            base,
-            action: Box::new(action),
-        },
-        None => action,
-    }
-}

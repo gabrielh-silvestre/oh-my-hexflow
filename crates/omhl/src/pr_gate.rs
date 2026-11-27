@@ -37,6 +37,7 @@ pub fn required_checks(
     native: &[NativeCheck],
     enabled: &NativeConfig,
     tenant_checks: &[NodeView],
+    review_required: bool,
 ) -> Vec<(SemanticId, SnapshotKind)> {
     let projects: Vec<&NodeView> = tenant_checks
         .iter()
@@ -44,10 +45,17 @@ pub fn required_checks(
         .collect();
     let natives = native
         .iter()
+        .filter(|check| check.id != CONFIG_LOOSENING_REVIEW_ID)
         .filter(|check| enabled.checks.contains(check.id))
         .filter(|check| check.blocking && REQUIRED_EVENTS.contains(&check.event))
         .filter_map(|check| SemanticId::parse(check.id).ok())
         .map(|id| (id, NATIVE_SNAPSHOT));
+    let review = review_required
+        .then(|| enabled.checks.contains(CONFIG_LOOSENING_REVIEW_ID))
+        .filter(|on| *on)
+        .and_then(|_| SemanticId::parse(CONFIG_LOOSENING_REVIEW_ID).ok())
+        .map(|id| (id, NATIVE_SNAPSHOT));
+    let natives = natives.chain(review);
     let projects = projects
         .iter()
         .map(|node| (node.id.clone(), snapshot_for(&node.data)));

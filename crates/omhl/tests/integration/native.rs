@@ -392,7 +392,7 @@ fn it_should_keep_the_native_review_check_in_the_catalog_and_out_of_the_required
         .find(|check| check.id == "checks.verify-review-comment-anchoring")
         .expect("the review check is in the catalog");
 
-    let required = required_checks(checks, &all_native_enabled(), &[]);
+    let required = required_checks(checks, &all_native_enabled(), &[], false);
 
     assert_eq!(ids, CHECK_IDS.to_vec());
     assert_eq!(

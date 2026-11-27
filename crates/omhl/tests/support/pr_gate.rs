@@ -296,6 +296,24 @@ pub fn gate_with(
         snapshots,
         enabled,
         &omhl::facade::WorkRequirements::none(),
+        false,
+    )
+    .expect("the gate is evaluated")
+}
+
+/// O gate com só o check da revisão ligado, com a exigência dada pelo Engine.
+pub fn gate_with_review(
+    omhl: &mut Omhl<'_>,
+    snapshots: &GateSnapshots,
+    review_required: bool,
+) -> GateReport {
+    omhl.evaluate_pr_gate(
+        &acme(),
+        &sid(PR_7),
+        snapshots,
+        &native_enabled(&[CONFIG_LOOSENING_REVIEW]),
+        &omhl::facade::WorkRequirements::none(),
+        review_required,
     )
     .expect("the gate is evaluated")
 }
@@ -307,6 +325,7 @@ pub fn close(omhl: &mut Omhl<'_>, work_item: &str, snapshots: &GateSnapshots) ->
         snapshots,
         &all_native_enabled(),
         &omhl::facade::WorkRequirements::none(),
+        false,
         &omhl::facade::Closing {
             author: &author(),
             note: None,

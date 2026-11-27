@@ -317,6 +317,7 @@ fn it_should_record_the_session_on_a_close() {
             &snapshots(&snap('a'), &tree('c')),
             &all_native_enabled(),
             &omhl::facade::WorkRequirements::none(),
+            false,
             &omhl::facade::Closing {
                 author: &author(),
                 note: None,
@@ -721,6 +722,7 @@ fn it_should_refuse_the_session_first_in_a_close_before_the_probe_and_the_gate()
         &snapshots(&snap('a'), &tree('c')),
         &all_native_enabled(),
         &omhl::facade::WorkRequirements::none(),
+        false,
         &omhl::facade::Closing {
             author: &author(),
             note: None,

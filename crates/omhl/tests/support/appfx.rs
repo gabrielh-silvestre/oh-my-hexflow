@@ -207,6 +207,7 @@ impl AppFixture {
     pub fn gate_pr(&self, work_item: &str) -> Value {
         let action = Action::GatePr {
             work_item: work_item.to_owned(),
+            base: None,
         };
 
         self.run(&Caller::cli(), &action)
@@ -217,6 +218,7 @@ impl AppFixture {
     pub fn try_gate_pr(&self, work_item: &str) -> Result<Value, Value> {
         let action = Action::GatePr {
             work_item: work_item.to_owned(),
+            base: None,
         };
 
         self.run(&Caller::cli(), &action)
@@ -226,6 +228,7 @@ impl AppFixture {
         let action = Action::Close {
             work_item: work_item.to_owned(),
             note: None,
+            base: None,
         };
 
         self.run(&Caller::cli(), &action)
@@ -236,6 +239,7 @@ impl AppFixture {
         let action = Action::Close {
             work_item: work_item.to_owned(),
             note: Some(note.to_owned()),
+            base: None,
         };
 
         self.run(&Caller::cli(), &action)

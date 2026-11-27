@@ -239,3 +239,169 @@ fn it_should_say_that_no_base_was_given_when_the_review_check_is_on() {
         assert!(text.contains("no base"), "{command}: {text}");
     }
 }
+
+fn review_question(output: &Output) -> Option<Value> {
+    let gate: Value = serde_json::from_str(output.stdout.trim_end()).expect("stdout is JSON");
+
+    gate["questions"]
+        .as_array()
+        .expect("the gate lists its questions")
+        .iter()
+        .find(|question| question["label"] == json!(REVIEW))
+        .cloned()
+}
+
+fn attest_review(project: &Project) {
+    let attested = run(project, &["attest", REVIEW, W1, "--outcome", "passed"]);
+
+    assert_eq!(attested.code, Some(0), "stderr: {}", attested.stderr);
+}
+
+fn project_with_loosened_workflow() -> Project {
+    let project = project_with_review(true);
+    commit_on_topic(&project, ".omhl/workflow.toml");
+
+    project
+}
+
+fn status_of_work_item(project: &Project) -> Value {
+    let fetched = run(project, &["get", W1]);
+
+    serde_json::from_str::<Value>(fetched.stdout.trim_end()).expect("stdout is JSON")["node"]
+        ["data"]["status"]
+        .clone()
+}
+
+#[test]
+fn it_should_fail_the_review_question_as_refuse_when_the_workflow_file_changed_and_nothing_is_attested()
+ {
+    let project = project_with_loosened_workflow();
+
+    let gate = run(&project, &["gate-pr", W1, "--base", "main"]);
+
+    let review = review_question(&gate).expect("the review question is in the gate");
+    assert_eq!(review["passed"], json!(false));
+    assert_eq!(review["class"], json!("refuse"));
+}
+
+#[test]
+fn it_should_refuse_the_close_when_the_review_is_required_and_unattested() {
+    let project = project_with_loosened_workflow();
+
+    let closed = run(&project, &["close", W1, "--base", "main"]);
+
+    assert_refused(&closed, "close-refused");
+    assert_eq!(status_of_work_item(&project), json!("open"));
+}
+
+#[test]
+fn it_should_not_let_force_with_a_note_past_the_unattested_review() {
+    let project = project_with_loosened_workflow();
+
+    let closed = run(
+        &project,
+        &[
+            "close",
+            W1,
+            "--base",
+            "main",
+            "--force",
+            "--note",
+            "owner approved the override",
+        ],
+    );
+
+    assert_refused(&closed, "close-refused");
+    assert_eq!(status_of_work_item(&project), json!("open"));
+}
+
+#[test]
+fn it_should_pass_the_review_question_once_it_is_attested_at_the_head() {
+    let project = project_with_loosened_workflow();
+    attest_review(&project);
+
+    let gate = run(&project, &["gate-pr", W1, "--base", "main"]);
+
+    let review = review_question(&gate).expect("the review question is in the gate");
+    assert_eq!(review["passed"], json!(true));
+}
+
+#[test]
+fn it_should_close_once_the_review_is_attested_at_the_head() {
+    let project = project_with_loosened_workflow();
+    attest_review(&project);
+
+    let closed = run(&project, &["close", W1, "--base", "main"]);
+
+    assert_eq!(closed.code, Some(0), "stderr: {}", closed.stderr);
+    assert_eq!(status_of_work_item(&project), json!("closed"));
+}
+
+#[test]
+fn it_should_fail_the_review_question_again_when_a_commit_follows_the_attestation() {
+    let project = project_with_loosened_workflow();
+    attest_review(&project);
+    git_ok(
+        project.dir(),
+        &["commit", "-q", "--allow-empty", "-m", "after the review"],
+    );
+
+    let gate = run(&project, &["gate-pr", W1, "--base", "main"]);
+
+    let review = review_question(&gate).expect("the review question is in the gate");
+    assert_eq!(review["passed"], json!(false));
+}
+
+#[test]
+fn it_should_require_the_review_when_no_base_is_given_and_the_check_is_on() {
+    let project = project_with_review(true);
+
+    let gate = run(&project, &["gate-pr", W1]);
+
+    let review = review_question(&gate).expect("the review question is in the gate");
+    assert_eq!(review["passed"], json!(false));
+}
+
+#[test]
+fn it_should_leave_the_review_question_out_when_the_check_is_off_even_if_the_workflow_file_changed()
+{
+    let project = project_with_review(false);
+    commit_on_topic(&project, ".omhl/workflow.toml");
+
+    let gate = run(&project, &["gate-pr", W1, "--base", "main"]);
+
+    assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
+    assert_eq!(review_question(&gate), None);
+}
+
+#[test]
+fn it_should_keep_the_review_required_when_the_evaluated_commit_turns_it_off_in_a_worktree() {
+    let project = project_with_review(true);
+    let linked = project.dir().with_extension("linked");
+    git_ok(
+        project.dir(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feat/wi-w1__x",
+            linked.to_str().expect("utf-8"),
+        ],
+    );
+    fs::write(
+        linked.join(".omhl/workflow.toml"),
+        "version = 1\n\n[native]\nchecks = []\n",
+    )
+    .expect("the worktree workflow file is written");
+    git_ok(&linked, &["add", "-A"]);
+    git_ok(&linked, &["commit", "-q", "-m", "turn the review off"]);
+
+    let gate = cmd(&project, &["gate-pr", W1, "--base", "main"])
+        .cwd(&linked)
+        .run();
+
+    let review = review_question(&gate).expect("the review question is in the gate");
+    assert_eq!(review["passed"], json!(false));
+    fs::remove_dir_all(linked).expect("the worktree is removed");
+}

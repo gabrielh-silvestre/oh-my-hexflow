@@ -826,6 +826,7 @@ fn it_should_pass_the_pull_request_gate_when_the_executor_attested_the_before_co
             &Caller::cli(),
             &Action::GatePr {
                 work_item: W1.to_owned(),
+                base: None,
             },
         )
         .unwrap_or_else(|error| panic!("the gate is evaluated: {error}"));

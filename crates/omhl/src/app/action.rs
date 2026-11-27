@@ -28,6 +28,7 @@ pub enum Action {
     Render,
     GatePr {
         work_item: String,
+        base: Option<String>,
     },
     GateWorktree {
         branch: String,
@@ -35,11 +36,7 @@ pub enum Action {
     Close {
         work_item: String,
         note: Option<String>,
-    },
-    /// `GatePr` or `Close` judged against the integration branch the pull request targets.
-    ReviewBase {
-        base: String,
-        action: Box<Action>,
+        base: Option<String>,
     },
     CloseFailedDelivery {
         work_item: String,
