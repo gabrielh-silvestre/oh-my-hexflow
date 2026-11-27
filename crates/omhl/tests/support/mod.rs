@@ -38,7 +38,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 
 use ::omhl::facade::SessionSource;
-use ::omhl::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
+use ::omhl::probe::{
+    DevelopMark, HeadFacts, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe,
+    TreeSource,
+};
+use ::omhl::workflow::config::NativeConfig;
 use hexlog::{
     Author, Clock, IdGenerator, NativeNode, NativeNodes, RelationTypeName, SemanticId, Snapshot,
     SnapshotKind, TenantId, TypeName,
@@ -213,6 +217,35 @@ impl DevelopMark for FakeProbe {
             let _ = log.send(());
         }
         Ok(())
+    }
+}
+
+/// Resolvedor da ativação dos checks nativos: uma resposta fixa, sem git nem arquivo.
+pub struct FakeNative {
+    result: Result<NativeConfig, NativeRefusal>,
+}
+
+impl FakeNative {
+    pub fn enabling(ids: &[&'static str]) -> FakeNative {
+        FakeNative {
+            result: Ok(pr_gate::native_enabled(ids)),
+        }
+    }
+
+    pub fn all_enabled() -> FakeNative {
+        FakeNative::enabling(&pr_gate::ALL_NATIVE_CHECKS)
+    }
+
+    pub fn refusing(refusal: NativeRefusal) -> FakeNative {
+        FakeNative {
+            result: Err(refusal),
+        }
+    }
+}
+
+impl NativeResolver for FakeNative {
+    fn resolve(&self) -> Result<NativeConfig, NativeRefusal> {
+        self.result.clone()
     }
 }
 

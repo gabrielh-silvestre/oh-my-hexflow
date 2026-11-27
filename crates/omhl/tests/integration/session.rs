@@ -20,7 +20,7 @@ use support::ext::ExtTree;
 use support::omhl::{
     PR_7, acme, decision_data, node_item, premise_data, request, seed_pull_request, work_item_data,
 };
-use support::pr_gate::{mechanical_check_data, snapshots};
+use support::pr_gate::{all_native_enabled, mechanical_check_data, snapshots};
 use support::project::Project;
 use support::raw::RawHarness;
 use support::run::{Run, run_omhl_with_session};
@@ -314,6 +314,7 @@ fn it_should_record_the_session_on_a_close() {
             &acme(),
             &sid(PR_7),
             &snapshots(&snap('a'), &tree('c')),
+            &all_native_enabled(),
             &author(),
         )
         .expect("the work item is closed");
@@ -713,6 +714,7 @@ fn it_should_refuse_the_session_first_in_a_close_before_the_probe_and_the_gate()
         &acme(),
         &sid("work-items.missing"),
         &snapshots(&snap('a'), &tree('c')),
+        &all_native_enabled(),
         &author(),
     );
 

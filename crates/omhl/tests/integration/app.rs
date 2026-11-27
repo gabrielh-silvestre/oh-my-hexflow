@@ -23,7 +23,7 @@ use support::omhl::{
 };
 use support::project::Project;
 use support::raw::RawHarness;
-use support::{DEFAULT_INSTANT, FakeProbe, rty, sid, snap};
+use support::{DEFAULT_INSTANT, FakeNative, FakeProbe, rty, sid, snap};
 use tempfile::TempDir;
 
 const W1: &str = "work-items.w1";
@@ -42,6 +42,7 @@ const BUSY_MESSAGE: &str =
 struct Fixture {
     raw: RawHarness,
     probe: FakeProbe,
+    native: FakeNative,
 }
 
 impl Fixture {
@@ -49,6 +50,7 @@ impl Fixture {
         Fixture {
             raw: RawHarness::new(),
             probe,
+            native: FakeNative::all_enabled(),
         }
     }
 
@@ -70,6 +72,7 @@ impl Fixture {
 
     fn try_open(&self, retry: &RetryPolicy) -> Result<App<'_>, AppError> {
         App::open(&self.raw.db_path(), &acme(), self.deps(), retry)
+            .map(|app| app.with_native_resolver(&self.native))
     }
 
     fn open_with(&self, retry: &RetryPolicy) -> App<'_> {

@@ -1,12 +1,19 @@
 use crate::support;
 
+use std::fs;
 use std::path::Path;
 
 use ::omhl::mechanical::plan::{CheckNode, plan_run};
 use ::omhl::mechanical::spec::snapshot_for;
+use ::omhl::pr_gate::REQUIRED_EVENTS;
+use ::omhl::workflow::config::parse_workflow;
 use hexlog::SnapshotKind;
 use serde_json::{Value, json};
 use support::child::{Output, omhl_json};
+use support::git::commit_marker;
+use support::omhl::work_item_data;
+use support::pr_gate::{CI_GREEN, VERIFY_ANCHORING};
+use support::project::Project;
 use support::repo_checks::repo_root;
 use support::sid;
 use tempfile::TempDir;
@@ -20,7 +27,13 @@ const REPO_CHECKS: [&str; 6] = [
     "checks.test-suite",
 ];
 
-// Apoio
+const WORKFLOW_FILE: &str = ".omhl/workflow.toml";
+const WORK_ITEM: &str = "work-items.w1";
+const GATE_BASE_LABELS: [&str; 3] = [
+    "no-open-contradiction",
+    "decisions-anchored",
+    "anchors-confirmed",
+];
 
 /// Roda `omhl` na raiz do repositório com o banco em `xdg`.
 fn load(args: &[&str], xdg: &Path) -> Output {
@@ -185,4 +198,119 @@ fn it_should_derive_git_tree_only_for_the_before_commit_checks() {
             ("checks.test-suite", SnapshotKind::GitCommit),
         ]
     );
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    fs::create_dir_all(to).expect("the target directory is created");
+    for entry in fs::read_dir(from).expect("the source directory is readable") {
+        let entry = entry.expect("the entry is readable");
+        let target = to.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), target).expect("the file is copied");
+        }
+    }
+}
+
+/// Projeto git temporário com a cópia do `.omhl/` deste repositório carregada: o diretório principal do repositório real só ganha o `workflow.toml` com o merge.
+fn project_with_repo_config() -> Project {
+    let project = Project::new("oh-my-hexflow");
+    copy_dir(&repo_root().join(".omhl"), &project.dir().join(".omhl"));
+    commit_marker(project.dir());
+    project_output(&project, &["load"], "");
+
+    project
+}
+
+fn project_output(project: &Project, args: &[&str], stdin: &str) -> Value {
+    let output = omhl_json(args)
+        .cwd(project.dir())
+        .xdg(project.xdg())
+        .stdin(stdin)
+        .run();
+
+    ok_json(&output)
+}
+
+/// Os ids dos checks bloqueantes de `.omhl/checks/` num evento que o gate cobra.
+fn blocking_repo_check_ids() -> Vec<String> {
+    let mut ids: Vec<String> = fs::read_dir(repo_root().join(".omhl/checks"))
+        .expect("the checks directory is readable")
+        .map(|entry| entry.expect("the entry is readable").path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "toml")
+        })
+        .filter_map(|path| {
+            let text = fs::read_to_string(&path).expect("the check file is readable");
+            let check: toml::Table = toml::from_str(&text).expect("the check file is TOML");
+            let covered = check["when"]["event"]
+                .as_str()
+                .is_some_and(|event| REQUIRED_EVENTS.contains(&event));
+
+            (check.get("blocking") == Some(&toml::Value::Boolean(true)) && covered).then(|| {
+                format!(
+                    "checks.{}",
+                    path.file_stem().expect("a stem").to_string_lossy()
+                )
+            })
+        })
+        .collect();
+    ids.sort_unstable();
+
+    ids
+}
+
+#[test]
+fn it_should_enable_only_ci_green_and_anchoring_in_the_repository_workflow() {
+    let path = repo_root().join(WORKFLOW_FILE);
+    let bytes = fs::read(&path).expect("the repository workflow file is readable");
+
+    let config = parse_workflow(&path, &bytes).expect("the repository workflow file is accepted");
+
+    assert_eq!(
+        config.native.checks.into_iter().collect::<Vec<_>>(),
+        [CI_GREEN, VERIFY_ANCHORING]
+    );
+}
+
+#[test]
+fn it_should_render_the_repository_with_ci_green_and_anchoring_and_without_run_tests() {
+    let project = project_with_repo_config();
+
+    let render = project_output(&project, &["render"], "");
+
+    let text = render["text"].as_str().expect("the render has a text");
+    assert!(text.contains(&format!("### {CI_GREEN}\n")), "{text}");
+    assert!(
+        text.contains(&format!("### {VERIFY_ANCHORING}\n")),
+        "{text}"
+    );
+    assert!(!text.contains("checks.run-tests"), "{text}");
+}
+
+#[test]
+fn it_should_require_ci_green_and_the_blocking_repository_checks_in_the_gate() {
+    let project = project_with_repo_config();
+    let work_item = json!({ "items": [{ "body": {
+        "kind": "node", "id": WORK_ITEM, "type": "work-item", "data": work_item_data("t"),
+    } }] });
+    project_output(&project, &["append"], &work_item.to_string());
+
+    let gate = project_output(&project, &["gate-pr", WORK_ITEM], "");
+
+    let mut required: Vec<&str> = gate["questions"]
+        .as_array()
+        .expect("the gate lists its questions")
+        .iter()
+        .map(|question| question["label"].as_str().expect("a label"))
+        .filter(|label| !GATE_BASE_LABELS.contains(label))
+        .filter(|label| !label.starts_with("spec-digest-match:"))
+        .collect();
+    required.sort_unstable();
+    let mut expected = blocking_repo_check_ids();
+    expected.push(CI_GREEN.to_owned());
+    expected.sort_unstable();
+    assert_eq!(required, expected);
 }

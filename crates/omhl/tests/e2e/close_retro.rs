@@ -578,31 +578,45 @@ fn it_should_not_echo_the_spec_or_the_amendment_content_in_the_close_output() {
     );
 }
 
-// `close` só lê a pasta de spec e o `workflow.toml` quando a retro pode existir
-
 const INVALID_WORKFLOW: &str = "version = 1\ncolour = true\n";
 
 #[test]
-fn it_should_close_with_a_null_retro_when_workflow_toml_is_invalid_and_there_is_nothing_to_report()
-{
+fn it_should_refuse_to_close_and_write_nothing_when_workflow_toml_is_invalid_and_there_is_nothing_to_report()
+ {
     let fixture = Fixture::new();
     fixture.write_workflow(INVALID_WORKFLOW);
+    fixture.commit_all();
+    let before = fixture.chain();
 
-    let closed = fixture.close();
+    let closed = fixture.run(&["close", W1]);
 
-    assert_eq!(retro_of(&closed), Value::Null);
+    assert_eq!(
+        (closed.code, error_code(&closed), fixture.chain()),
+        (Some(1), json!("invalid-workflow-config"), before),
+        "stdout: {} stderr: {}",
+        closed.stdout,
+        closed.stderr
+    );
 }
 
 #[test]
-fn it_should_close_with_a_null_retro_when_workflow_toml_is_invalid_and_the_only_finding_is_an_open_gap()
+fn it_should_refuse_to_close_and_write_nothing_when_workflow_toml_is_invalid_and_the_only_finding_is_an_open_gap()
  {
     let fixture = Fixture::new();
     fixture.append(vec![gap(GAP)]);
     fixture.write_workflow(INVALID_WORKFLOW);
+    fixture.commit_all();
+    let before = fixture.chain();
 
-    let closed = fixture.close();
+    let closed = fixture.run(&["close", W1]);
 
-    assert_eq!(retro_of(&closed), Value::Null);
+    assert_eq!(
+        (closed.code, error_code(&closed), fixture.chain()),
+        (Some(1), json!("invalid-workflow-config"), before),
+        "stdout: {} stderr: {}",
+        closed.stdout,
+        closed.stderr
+    );
 }
 
 #[test]

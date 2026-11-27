@@ -53,6 +53,8 @@ const GUIDELINE: &str = "kind = \"business\"\ntext = \"Be brief.\"\n";
 const SPEC_PART: &str = "## Objetivo\n\nGuardar o dinheiro em centavos.\n\n## Diretivas e premissas aplicáveis\n\n- premises.p1\n\n## Comportamentos\n\n- CMP-001: o sistema guarda o valor em centavos.\n\n## Critérios de aceitação\n\n- CA-001: o valor 1,50 vira 150.\n\n## Fora de escopo\n\nMoedas.\n";
 const SESSION_DECISION: &str = r#"{"items":[{"body":{"kind":"node","id":"decisions.d1","type":"decision","data":{"text":"Use integers.","evidence":[{"source":"docs","summary":"Cents are integers."}]}}},{"body":{"kind":"relation","relation_type":"supports","from":"premises.p1","to":"decisions.d1"}}]}"#;
 const SESSION_GAP: &str = r#"{"items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}}]}"#;
+const NATIVE_WORKFLOW: &str = "version = 1\n\n[native]\nchecks = [\"checks.run-tests\", \"checks.ci-green-before-merge\", \"checks.verify-review-comment-anchoring\"]\n";
+const INVALID_WORKFLOW: &str = "version = 1\n\n[native]\nchecks = [\"checks.unknown\"]\n";
 const DEVELOP_MARK: &str = "omhl-develop-mark v1\n";
 
 // Parser dos blocos
@@ -434,13 +436,26 @@ impl Fixture {
                 fixture.seed();
                 fixture.init_git();
             }
+            "natives" | "invalid-workflow" => {
+                let workflow = if name == "natives" {
+                    NATIVE_WORKFLOW
+                } else {
+                    INVALID_WORKFLOW
+                };
+                fixture.write(".omhl/workflow.toml", workflow);
+                fixture.seed();
+                fixture.init_git();
+            }
             "spec" => {
                 fixture.seed();
                 fixture.init_git();
                 fixture.omhl_ok(&["spec", "init", "work-items.w1", "x"]);
                 fixture.write(".omhl/specs/wi-w1__x/part-01.md", SPEC_PART);
             }
-            "checks" | "retire-check" | "dirty-checks" => {
+            "checks" | "native-checks" | "retire-check" | "dirty-checks" => {
+                if name == "native-checks" {
+                    fixture.write(".omhl/workflow.toml", NATIVE_WORKFLOW);
+                }
                 fixture.write(".omhl/checks/ok.toml", MECHANICAL_CHECK);
                 fixture.write(".omhl/checks/review.toml", MANUAL_CHECK);
                 fixture.seed();

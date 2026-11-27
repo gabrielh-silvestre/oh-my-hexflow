@@ -423,6 +423,7 @@ fn it_should_print_the_render_json() {
 #[test]
 fn it_should_evaluate_and_close_a_pull_request_in_a_real_repo() {
     let project = Project::new("acme");
+    project.enable_natives(&[RUN_TESTS, CI_GREEN]);
     let head = commit_marker(&project);
     open_work_item(&project);
 
@@ -442,6 +443,7 @@ fn it_should_evaluate_and_close_a_pull_request_in_a_real_repo() {
 #[test]
 fn it_should_attest_both_required_checks_and_pass_the_gate_in_a_real_repo() {
     let project = Project::new("acme");
+    project.enable_natives(&[RUN_TESTS, CI_GREEN]);
     let head = commit_marker(&project);
     open_work_item(&project);
 

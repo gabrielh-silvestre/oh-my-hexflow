@@ -1,6 +1,8 @@
 use hexlog::Snapshot;
 
 pub use crate::mechanical::branch::HeadFacts;
+use crate::project::ProjectError;
+use crate::workflow::config::NativeConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TreeSource {
@@ -21,6 +23,17 @@ pub trait DevelopMark: Send + Sync {
     fn present(&self) -> Result<bool, ProbeError>;
     /// Marca ausente também é `Ok`.
     fn consume(&self) -> Result<(), ProbeError>;
+}
+
+/// Resolve quais checks nativos o projeto ligou; recusa em vez de assumir um padrão.
+pub trait NativeResolver: Send + Sync {
+    fn resolve(&self) -> Result<NativeConfig, NativeRefusal>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NativeRefusal {
+    MainDirUnknown,
+    InvalidWorkflow(ProjectError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

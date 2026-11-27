@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 
+use super::git::commit_marker;
+
 /// Projeto de teste: uma pasta com `.omhl.toml` e uma pasta de dados (XDG) fora dela.
 pub struct Project {
     dir: TempDir,
@@ -22,6 +24,41 @@ impl Project {
         .expect("marker is written");
 
         project
+    }
+
+    /// O diretório principal resolve e o `render` não traz o aviso `main-dir-unknown`.
+    pub fn with_git(tenant: &str) -> Project {
+        let project = Project::new(tenant);
+        commit_marker(project.dir());
+
+        project
+    }
+
+    pub fn with_workflow(workflow: Option<&str>) -> Project {
+        let project = Project::new("acme");
+        if let Some(text) = workflow {
+            project.write_workflow(text);
+        }
+        commit_marker(project.dir());
+
+        project
+    }
+
+    pub fn write_workflow(&self, text: &str) {
+        let dir = self.dir.path().join(".omhl");
+        fs::create_dir_all(&dir).expect("the .omhl directory is created");
+        fs::write(dir.join("workflow.toml"), text).expect("the workflow file is written");
+    }
+
+    /// O `Project::new` não liga nenhum check nativo.
+    pub fn enable_natives(&self, ids: &[&str]) {
+        let list = ids
+            .iter()
+            .map(|id| format!("\"{id}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        self.write_workflow(&format!("version = 1\n\n[native]\nchecks = [{list}]\n"));
     }
 
     pub fn dir(&self) -> &Path {

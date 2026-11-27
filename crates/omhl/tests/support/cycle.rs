@@ -16,6 +16,7 @@ use super::ext::ExtTree;
 use super::git::{commit_marker, git_ok};
 use super::inproc::run_inproc;
 use super::omhl::work_item_data;
+use super::pr_gate::ALL_NATIVE_CHECKS;
 use super::project::Project;
 use super::sweep_lock::serialize_sweeps;
 
@@ -108,7 +109,18 @@ pub fn check_file(concern: &str, variant: &str, command: &str) -> String {
 
 /// Repositório git na branch do work item, com os checks no commit base, o work item gravado e o `load` feito.
 pub fn check_repo(checks: &[(&str, &str)]) -> Project {
+    repo_with_natives(checks, &[])
+}
+
+fn gate_repo(checks: &[(&str, &str)]) -> Project {
+    repo_with_natives(checks, &ALL_NATIVE_CHECKS)
+}
+
+fn repo_with_natives(checks: &[(&str, &str)], natives: &[&str]) -> Project {
     let project = Project::new("acme");
+    if !natives.is_empty() {
+        project.enable_natives(natives);
+    }
     let dir = project.dir();
     git_ok(dir, &["init", "-q", "-b", "main"]);
     git_ok(dir, &["config", "user.name", "Test Author"]);
@@ -331,13 +343,13 @@ fn attest_natives(project: &Project) {
 
 /// Nenhum check atestado: as duas perguntas dos nativos reprovam, sem `next_step`.
 pub fn gate_unattested() -> Project {
-    check_repo(&[])
+    gate_repo(&[])
 }
 
 /// Os nativos atestados, mais um check mecânico que o `check run` gravou com o selo: sete perguntas, todas aprovadas.
 pub fn gate_approved() -> Project {
     let toml = check_file("style", "format", "exit 0");
-    let project = check_repo(&[("payroll-format", &toml)]);
+    let project = gate_repo(&[("payroll-format", &toml)]);
     omhl_succeeds(
         &project,
         &["--format", "json", "check", "run", "--event", "before-pr"],
@@ -351,7 +363,7 @@ pub fn gate_approved() -> Project {
 /// Os nativos atestados; uma decisão sem `rests-on` e outra apoiada numa premissa só assumida: duas perguntas
 /// reprovam, cada uma com o seu `next_step`.
 pub fn gate_failed() -> Project {
-    let project = check_repo(&[]);
+    let project = gate_repo(&[]);
     attest_natives(&project);
     let evidence = json!([{ "source": "docs", "summary": "the finance docs ask for it" }]);
     append_wires(
@@ -388,7 +400,7 @@ pub fn gate_failed() -> Project {
 
 /// Um arquivo solto na árvore: o gate recusa com `snapshot-dirty`.
 pub fn gate_dirty() -> Project {
-    let project = check_repo(&[]);
+    let project = gate_repo(&[]);
     fs::write(project.dir().join("loose-note.txt"), "not committed\n")
         .expect("the loose file is written");
 

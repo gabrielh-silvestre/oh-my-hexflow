@@ -65,7 +65,7 @@ Um node que representa uma unidade de trabalho em qualquer escopo: commit, pull 
 _Avoid_: unit (não tem relação com unit test nem com o unit of work de Fowler), deliverable, change
 
 **Native**:
-O conteúdo de fábrica embutido no binário e comum a todos os projetos (checks e diretrizes).
+O conteúdo de fábrica embutido no binário (checks e diretrizes). As diretrizes valem em todos os projetos; cada check vem desligado até o projeto ligá-lo.
 _Avoid_: built-in, base, default
 
 **Extension**:

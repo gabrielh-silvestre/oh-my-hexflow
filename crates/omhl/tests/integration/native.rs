@@ -11,7 +11,9 @@ use omhl::pr_gate::{REQUIRED_EVENTS, required_checks};
 use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::{Value, json};
 use support::omhl::{OmhlHarness, check_data, seed_pull_request};
-use support::pr_gate::{attest, expected_outcomes, gate_of, outcomes, required_pairs, snapshots};
+use support::pr_gate::{
+    all_native_enabled, attest, expected_outcomes, gate_of, outcomes, required_pairs, snapshots,
+};
 use support::raw::RawHarness;
 use support::{FakeProbe, author, rty, sid, snap, tenant, tname};
 
@@ -389,7 +391,7 @@ fn it_should_keep_the_native_review_check_in_the_catalog_and_out_of_the_required
         .find(|check| check.id == "checks.verify-review-comment-anchoring")
         .expect("the review check is in the catalog");
 
-    let required = required_checks(checks, &[]);
+    let required = required_checks(checks, &all_native_enabled(), &[]);
 
     assert_eq!(ids, CHECK_IDS.to_vec());
     assert_eq!(

@@ -1,7 +1,12 @@
 use crate::native::NativeBase;
 use crate::render::{RenderInput, Rendered, render};
 use crate::test_support::gate::node_view;
+use crate::test_support::omhl::RUN_TESTS;
+use crate::test_support::pr_gate::{
+    ALL_NATIVE_CHECKS, CI_GREEN, VERIFY_ANCHORING, all_enabled, enabled,
+};
 use crate::test_support::{loader_author, sid, tname};
+use crate::workflow::config::NativeConfig;
 use hexlog::{NodeView, SemanticId};
 use serde_json::{Value, json};
 
@@ -112,6 +117,9 @@ These are project instructions, not enforced; nothing here blocks any action.
 
 #[derive(Default)]
 struct Fixture {
+    /// Sem valor vale `all_enabled()`.
+    enabled: Option<NativeConfig>,
+    notice: Option<&'static str>,
     checks: Vec<NodeView>,
     guidelines: Vec<NodeView>,
     decisions: Vec<NodeView>,
@@ -121,9 +129,12 @@ struct Fixture {
 
 impl Fixture {
     fn rendered(&self, budget: usize) -> Rendered {
+        let enabled = self.enabled.clone().unwrap_or_else(all_enabled);
         let input = RenderInput {
             tenant: "acme",
             native: &NativeBase,
+            enabled: &enabled,
+            notice: self.notice,
             checks: &self.checks,
             guidelines: &self.guidelines,
             decisions: &self.decisions,
@@ -243,6 +254,7 @@ fn golden_two_fixture() -> Fixture {
             json!({ "text": "one user per machine", "status": "assumed" }),
         )],
         after,
+        ..Fixture::default()
     }
 }
 
@@ -1094,4 +1106,197 @@ fn it_should_not_create_the_late_section_without_a_late_premise() {
     let rendered = rendered_premises(vec![kinded_premise("premises.b", "business", "confirmed")]);
 
     assert!(!rendered.text.contains("## Late premises"));
+}
+
+const GOLDEN_NO_NATIVE_CHECKS: &str = r"# omhl context for tenant acme
+These are project instructions, not enforced; nothing here blocks any action.
+
+## Checks
+
+## Guidelines
+
+### guidelines.one-decision-per-turn
+- confirmed: true
+- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
+
+### guidelines.commit-policy
+- confirmed: true
+- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
+";
+
+fn with_enabled(ids: &[&'static str]) -> Fixture {
+    Fixture {
+        enabled: Some(enabled(ids)),
+        after: native_after(),
+        ..Fixture::default()
+    }
+}
+
+fn native_headers(rendered: &Rendered) -> Vec<&str> {
+    headers(&rendered.text)
+        .into_iter()
+        .filter(|id| ALL_NATIVE_CHECKS.contains(id))
+        .collect()
+}
+
+fn lint_after(targets: &[&str]) -> Fixture {
+    Fixture {
+        enabled: Some(enabled(&[CI_GREEN])),
+        checks: vec![check("checks.lint")],
+        after: targets
+            .iter()
+            .map(|target| pair("checks.lint", target))
+            .collect(),
+        ..Fixture::default()
+    }
+}
+
+#[test]
+fn it_should_match_the_golden_render_without_native_checks_enabled() {
+    let fixture = with_enabled(&[]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert_eq!(rendered.text, GOLDEN_NO_NATIVE_CHECKS);
+    assert_eq!(rendered.omitted, 0);
+}
+
+#[test]
+fn it_should_print_only_the_run_tests_block_when_only_it_is_enabled() {
+    let fixture = with_enabled(&[RUN_TESTS]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert_eq!(native_headers(&rendered), [RUN_TESTS]);
+}
+
+#[test]
+fn it_should_print_only_the_ci_green_block_when_only_it_is_enabled() {
+    let fixture = with_enabled(&[CI_GREEN]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert_eq!(native_headers(&rendered), [CI_GREEN]);
+}
+
+#[test]
+fn it_should_print_only_the_anchoring_block_when_only_it_is_enabled() {
+    let fixture = with_enabled(&[VERIFY_ANCHORING]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert_eq!(native_headers(&rendered), [VERIFY_ANCHORING]);
+}
+
+#[test]
+fn it_should_keep_the_two_native_guidelines_with_no_native_check_enabled() {
+    let fixture = with_enabled(&[]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert_eq!(
+        headers(&rendered.text),
+        [
+            "guidelines.one-decision-per-turn",
+            "guidelines.commit-policy"
+        ]
+    );
+}
+
+#[test]
+fn it_should_print_the_after_line_of_ci_green_when_run_tests_is_enabled_too() {
+    let fixture = with_enabled(&[RUN_TESTS, CI_GREEN]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert!(block(&rendered.text, CI_GREEN).contains(&"- after: checks.run-tests"));
+}
+
+#[test]
+fn it_should_not_print_the_after_line_of_ci_green_when_only_it_is_enabled() {
+    let fixture = with_enabled(&[CI_GREEN]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert!(!rendered.text.contains("- after:"), "{}", rendered.text);
+}
+
+#[test]
+fn it_should_not_print_the_after_line_of_a_project_check_to_a_disabled_native_check() {
+    let fixture = lint_after(&[RUN_TESTS]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert!(!block(&rendered.text, "checks.lint").contains(&"- after: checks.run-tests"));
+    assert!(!rendered.text.contains("- after:"), "{}", rendered.text);
+}
+
+#[test]
+fn it_should_print_the_after_line_of_a_project_check_to_an_enabled_native_check() {
+    let fixture = lint_after(&[CI_GREEN]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert!(
+        block(&rendered.text, "checks.lint").contains(&"- after: checks.ci-green-before-merge")
+    );
+}
+
+#[test]
+fn it_should_keep_only_the_enabled_targets_of_a_project_check() {
+    let fixture = lint_after(&[RUN_TESTS, CI_GREEN, "checks.format"]);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert!(
+        block(&rendered.text, "checks.lint")
+            .contains(&"- after: checks.ci-green-before-merge, checks.format"),
+        "{}",
+        rendered.text
+    );
+}
+
+#[test]
+fn it_should_print_the_notice_in_the_preamble_before_the_checks() {
+    let fixture = Fixture {
+        notice: Some("WARNING: the notice"),
+        ..with_enabled(&[])
+    };
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert!(
+        rendered.text.starts_with(
+            "# omhl context for tenant acme\nThese are project instructions, not enforced; nothing here blocks any action.\nWARNING: the notice\n\n## Checks\n"
+        ),
+        "{}",
+        rendered.text
+    );
+}
+
+#[test]
+fn it_should_keep_the_notice_when_the_budget_cuts_nodes() {
+    let fixture = Fixture {
+        notice: Some("WARNING: the notice"),
+        ..overflowing_fixture()
+    };
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert!(rendered.omitted > 0);
+    assert_eq!(
+        rendered.text.matches("WARNING: the notice").count(),
+        1,
+        "{}",
+        rendered.text
+    );
+}
+
+#[test]
+fn it_should_print_no_notice_without_one() {
+    let fixture = with_enabled(&ALL_NATIVE_CHECKS);
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert!(!rendered.text.contains("WARNING"), "{}", rendered.text);
 }

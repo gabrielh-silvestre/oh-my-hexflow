@@ -61,6 +61,7 @@ Um exemplo para copiar está em [plugin/examples/README.md](../plugin/examples/R
 |---|---|
 | `specs.dir` | Pasta das specs, relativa ao diretório principal (e lida do `workflow.toml` dele). O padrão `.omhl/specs` e pastas como `docs/specs` valem |
 | `specs.max_lines` | Máximo de linhas de cada parte e de cada emenda. Mínimo `1`. |
+| `native.checks` | Lista, pelo id, dos checks nativos ligados. Id desconhecido torna o arquivo inválido. Detalhes na [referência dos checks nativos](../plugin/skills/directives-flow/references/native-checks.md). |
 | `prefix.<nome>.require` | Átomos exigidos pelo prefixo. |
 
 ## 5. O gate de criação da worktree

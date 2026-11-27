@@ -3,6 +3,10 @@
 //! regra está escrita, não o comportamento do agente. Nada no binário impõe a entrevista.
 
 use std::fs;
+use std::path::Path;
+
+use omhl::native::NativeBase;
+use omhl::workflow::config::parse_workflow;
 
 use crate::skills::coverage::{leaf_commands, read_docs, skills_dir};
 use crate::skills::orchestration::{line_with, numbered_steps, read, step_with};
@@ -589,4 +593,53 @@ fn it_should_tell_the_review_retirements_note_to_use_write_and_say_why() {
     let step = step_with(&text, &needles);
 
     assert!(step.is_some(), "step 4 writes the note with Write, and why");
+}
+
+const NATIVE_CHECKS_PAGE: &str = "directives-flow/references/native-checks.md";
+
+#[test]
+fn it_should_cite_the_native_ids_and_the_steps_for_a_project_without_git_in_native_checks_md() {
+    let text = read(NATIVE_CHECKS_PAGE);
+    let mut needles: Vec<&str> = NativeBase.checks().iter().map(|check| check.id).collect();
+    needles.extend(["main-dir-unknown", "git init", "first commit"]);
+
+    let missing: Vec<&str> = needles
+        .into_iter()
+        .filter(|needle| !text.contains(needle))
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "native-checks.md does not cite {missing:?}"
+    );
+}
+
+#[test]
+fn it_should_give_native_checks_md_toml_examples_that_parse_as_a_workflow() {
+    let text = read(NATIVE_CHECKS_PAGE);
+    let examples: Vec<&str> = text
+        .split("```toml\n")
+        .skip(1)
+        .filter_map(|block| block.split("```").next())
+        .collect();
+
+    assert!(
+        !examples.is_empty(),
+        "native-checks.md has a workflow.toml example"
+    );
+    for example in examples {
+        let parsed = parse_workflow(Path::new(".omhl/workflow.toml"), example.as_bytes());
+
+        assert!(parsed.is_ok(), "the example is not accepted:\n{example}");
+    }
+}
+
+#[test]
+fn it_should_link_native_checks_md_from_the_directives_flow_skill() {
+    let text = read("directives-flow/SKILL.md");
+
+    assert!(
+        text.contains("](references/native-checks.md)"),
+        "SKILL.md links native-checks.md"
+    );
 }

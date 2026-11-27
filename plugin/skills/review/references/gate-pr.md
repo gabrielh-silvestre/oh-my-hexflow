@@ -15,13 +15,13 @@ Before opening or merging the pull request of a work item, to know whether every
 - `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
-- It needs a git repository with a clean tree: the gate reads `HEAD` and its tree.
+- It needs a git repository with a clean tree: the gate reads `HEAD` and its tree. It also reads the `.omhl/workflow.toml` of the main directory, which says which native checks are on ([native-checks.md](../../directives-flow/references/native-checks.md)).
 
 ## Output
 
 Text on stdout, exit 0, **even with the gate failed**: the header symbol says the result (`✔ gate-pr · pull-request · passed · 7 questions` when it passes, `✘ gate-pr · pull-request · not passed · 7 questions · 4 failed` when it fails). Each question gets a `✔` or `✘` line with the `label`, the `kind` (omitted when it repeats the `label`), `matched N` (how many records answer it) and, when there are any, `failing <ids>` (the ids that fail) and `N omitted` (how many the report left unlisted). The `next_step` of the first failing question that carries one goes in the `Next:`; that of the others stays in the `next_step` field below its own line. With `--format json` it is a JSON line with `gate` (`pull-request`), `passed`, `questions` and `chain_head`; each question carries `label`, `kind`, `passed`, `matched`, `failing`, `omitted` and, when an anchor question fails, `next_step`. The gate passes when all the questions pass, in order:
 
-- one `occurred` question per required check: there must be an attestation with `ok: true` for the check and work item pair, tied to `HEAD` (to the tree of `HEAD`, for a check with a tree `snapshot`). The required ones are the native checks `checks.run-tests` (`before-commit`) and `checks.ci-green-before-merge` (`before-merge`), plus the project checks with `blocking = true` and event `before-commit`, `before-pr` or `before-merge`. A mechanical project check on the same event replaces the native one of that event;
+- one `occurred` question per required check: there must be an attestation with `ok: true` for the check and work item pair, tied to `HEAD` (to the tree of `HEAD`, for a check with a tree `snapshot`). The required ones are the native checks `checks.run-tests` (`before-commit`) and `checks.ci-green-before-merge` (`before-merge`) that `[native] checks` turns on, plus the project checks with `blocking = true` and event `before-commit`, `before-pr` or `before-merge`. A native check that is off gets no question, and a project check never replaces a native one that is on: both are asked, each with its own attestation;
 - for a check with `run`, the question `spec-digest-match:<check>`: the attestation must have been recorded with the check's current definition (if you edited the TOML after `check run`, run `omhl load` and the check again);
 - `no-open-contradiction`: no decision of the work item contradicts another;
 - `decisions-anchored` and `anchors-confirmed`: every decision of the work item rests (`rests-on`) on a confirmed guideline or premise.
@@ -35,16 +35,18 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 - `work-item-not-found` (exit 1): the work item does not exist (or the id belongs to another node type). The pointer is `/work_item`. Check the id.
 - `INVALID_INPUT` (exit 1): the id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
 - `snapshot-dirty` (exit 1): the tree has an uncommitted change. Commit and repeat.
-- `probe-failed` (exit 1): git did not answer (outside a repository, for example). Run inside a checkout.
+- `probe-failed` (exit 1): git did not answer (outside a repository, or in one with no commits). Run inside a checkout with at least one commit.
+- `invalid-workflow-config` (exit 1): the `.omhl/workflow.toml` of the main directory is not accepted (a bad key or value, an unsupported version, a symbolic link, a file that is not UTF-8 or one above the size limit). The gate refuses before asking anything, and the error never turns a native check on or off. Fix the file; `omhl load --dry-run` details it.
+- `main-dir-unknown` (exit 1): the main directory could not be resolved from this checkout. Check the repository.
 - `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
 - `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
 - `invalid-project-dir` (exit 1): `--project-dir` does not exist. The CLI does not climb to a project in a folder above: fix the path.
 
 ## Examples
 
-With no attestation at all, the gate fails. Each required check appears with `matched 0`:
+With no attestation at all, the gate fails. Each required check appears with `matched 0` (the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`):
 
-```omhl-example fixture=checks
+```omhl-example fixture=native-checks
 $ omhl gate-pr work-items.w1
 ✘ gate-pr · pull-request · not passed · 7 questions · 4 failed
 ✘ checks.run-tests · occurred · matched 0
@@ -58,14 +60,14 @@ $ omhl gate-pr work-items.w1
 
 The same gate, in JSON (the `passed` and the fields of each question that the text summarizes):
 
-```omhl-example fixture=checks
+```omhl-example fixture=native-checks
 $ omhl gate-pr work-items.w1 --format json
 {"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]}
 ```
 
 With the two native checks attested by hand and the mechanical check run, on the same commit, the gate passes:
 
-```omhl-example fixture=checks
+```omhl-example fixture=native-checks
 $ omhl attest checks.run-tests work-items.w1 --outcome passed
 ✔ attest · checks.run-tests · work-items.w1 · passed · snapshot <snapshot>
 $ omhl attest checks.ci-green-before-merge work-items.w1 --outcome passed
@@ -81,6 +83,28 @@ $ omhl gate-pr work-items.w1
 ✔ no-open-contradiction · matched 0
 ✔ decisions-anchored · anchored · matched 0
 ✔ anchors-confirmed · anchored · matched 0
+```
+
+With no `[native]` table, the gate asks only about the project checks and the decisions:
+
+```omhl-example fixture=checks
+$ omhl gate-pr work-items.w1
+✘ gate-pr · pull-request · not passed · 5 questions · 2 failed
+✘ checks.ok · occurred · matched 0
+✘ spec-digest-match:checks.ok · occurred · matched 0
+✔ no-open-contradiction · matched 0
+✔ decisions-anchored · anchored · matched 0
+✔ anchors-confirmed · anchored · matched 0
+```
+
+Refusal: the `.omhl/workflow.toml` lists an id that is not a native check:
+
+```omhl-example fixture=invalid-workflow
+$ omhl gate-pr work-items.w1
+2> ✘ invalid-workflow-config · <repo>/.omhl/workflow.toml: native.checks must list only native check ids at line 4, column 11
+2>   - /workflow
+2> Next: fix the workflow file named in the message; `omhl load --dry-run` details the problem.
+# exit 1
 ```
 
 Refusal: the work item does not exist and the id has an invalid form:

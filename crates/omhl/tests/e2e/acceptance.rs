@@ -142,6 +142,7 @@ fn it_should_report_the_limit_error_from_the_cli() {
 #[test]
 fn it_should_run_a_full_session_across_hook_and_cli() {
     let project = Project::new("acme");
+    project.enable_natives(&[RUN_TESTS]);
     commit_marker(project.dir());
     let (dir, xdg) = (project.dir(), project.xdg());
 

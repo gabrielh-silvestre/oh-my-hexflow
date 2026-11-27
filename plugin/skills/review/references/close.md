@@ -22,7 +22,7 @@ When the work item's work is finished and the pull request gate was already chec
 - `<WORK_ITEM>`: the work item id, like `work-items.w1`. It must exist and be open.
 - `--db <path>` and `--project-dir <dir>`: as in the other commands. A `--db` with a new path creates the database; `--project-dir` must exist.
 - `--format <agent|human|json>`: global option, valid before or after the subcommand. The default is `agent`; `human` shows the same facts in blocks; `json` is the output for machines.
-- It needs a git repository with a clean tree: the closing ties the gate result to `HEAD`.
+- It needs a git repository with a clean tree: the closing ties the gate result to `HEAD`. It also reads the `.omhl/workflow.toml` of the main directory, which says which native checks the gate asks about ([native-checks.md](../../directives-flow/references/native-checks.md)).
 
 ## Output
 
@@ -50,7 +50,8 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 - `snapshot-dirty` (exit 1): the tree has an uncommitted change. Commit and repeat.
 - `probe-failed` (exit 1): git did not answer (outside a repository, for example). Run inside a checkout.
 - `spec-store-unusable` (exit 1): there is a retro and the work item's spec folder could not be read, or there is more than one `wi-<id>__*` folder. Fix the folder in the main directory.
-- `invalid-workflow-config` (exit 1): there is a retro and `.omhl/workflow.toml` is invalid. Fix the file. Without a retro, `close` records even with the file invalid.
+- `invalid-workflow-config` (exit 1): the `.omhl/workflow.toml` of the main directory is not accepted. `close` refuses before it evaluates the gate and before it records anything, with a retro or without one, and the error never turns a native check on or off. Fix the file; `omhl load --dry-run` details it.
+- `main-dir-unknown` (exit 1): the main directory could not be resolved from this checkout. Check the repository.
 - `invalid-session-id` (exit 1): `CLAUDE_CODE_SESSION_ID` is set but empty, is not UTF-8, exceeds 100 UTF-16 units or equals the marker `outside-claude-code`; nothing is recorded and the error does not show the value (empty `path`). Remove the variable or run `omhl` in a Claude Code session.
 - `no-marker` (exit 1): there is no `.omhl.toml` in the folder or above it. Run inside the project; on a branch older than the marker, rebase onto `main`.
 - `db-inside-project` (exit 1): `--db` points inside the project. Use a path outside it.
@@ -58,9 +59,9 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 
 ## Examples
 
-Closes the work item and then tries to close it again. The gate fails (the attestations are missing), and the closing is recorded anyway; the retro is `null`:
+Closes the work item and then tries to close it again. The gate fails (the attestations are missing; the fixture turns on `checks.run-tests` and `checks.ci-green-before-merge`), and the closing is recorded anyway; the retro is `null`:
 
-```omhl-example fixture=checks
+```omhl-example fixture=native-checks
 $ omhl close work-items.w1
 ⚠ close · pull-request · not passed · 7 questions · 4 failed
 ✘ checks.run-tests · occurred · matched 0
@@ -80,14 +81,14 @@ $ omhl close work-items.w1
 
 The same closing, in JSON:
 
-```omhl-example fixture=checks
+```omhl-example fixture=native-checks
 $ omhl close work-items.w1 --format json
 {"outcome":{"chain_head":{"hash":"<hash>","seq":5},"records":[{"id":"<record-id>","seq":5}],"replayed":false},"report":{"chain_head":{"hash":"<hash>","seq":4},"gate":"pull-request","passed":false,"questions":[{"failing":[],"kind":"occurred","label":"checks.run-tests","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ci-green-before-merge","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"occurred","label":"spec-digest-match:checks.ok","matched":0,"omitted":0,"passed":false},{"failing":[],"kind":"no-open-contradiction","label":"no-open-contradiction","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"decisions-anchored","matched":0,"omitted":0,"passed":true},{"failing":[],"kind":"anchored","label":"anchors-confirmed","matched":0,"omitted":0,"passed":true}]},"retro":null}
 ```
 
 With the gate green (the two native checks attested and the mechanical check run), `report.passed` is `true`:
 
-```omhl-example fixture=checks
+```omhl-example fixture=native-checks
 $ omhl attest checks.run-tests work-items.w1 --outcome passed
 ✔ attest · checks.run-tests · work-items.w1 · passed · snapshot <snapshot>
 $ omhl attest checks.ci-green-before-merge work-items.w1 --outcome passed
@@ -109,7 +110,7 @@ $ omhl close work-items.w1
 
 With an open divergence, the retro comes filled in (only ids, never the divergence text):
 
-```omhl-example fixture=checks
+```omhl-example fixture=native-checks
 $ omhl append <<'EOF'
 {"items":[{"body":{"kind":"node","id":"divergences.limit","type":"divergence","data":{"source_ref":"CMP-001","kind":"missing","text":"The export has no row limit.","evidence":[{"source":"src/export.rs","summary":"No limit is applied."}],"resolution":"open","work_item":"work-items.w1"}}}]}
 EOF
@@ -129,6 +130,16 @@ $ omhl close work-items.w1
 ✔ retro · 1 divergence
 - divergence · missing · open · divergences.limit
 Next: propose one improvement per item to the owner and change nothing without the answer.
+```
+
+Refusal: the `.omhl/workflow.toml` lists an id that is not a native check. Nothing is recorded:
+
+```omhl-example fixture=invalid-workflow
+$ omhl close work-items.w1
+2> ✘ invalid-workflow-config · <repo>/.omhl/workflow.toml: native.checks must list only native check ids at line 4, column 11
+2>   - /workflow
+2> Next: fix the workflow file named in the message; `omhl load --dry-run` details the problem.
+# exit 1
 ```
 
 Refusal: the work item does not exist, the id is malformed and the id belongs to a premise:

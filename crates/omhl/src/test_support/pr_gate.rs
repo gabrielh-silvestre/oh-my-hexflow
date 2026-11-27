@@ -1,5 +1,6 @@
 use crate::native::NativeCheck;
 use crate::pr_gate::GateSnapshots;
+use crate::workflow::config::NativeConfig;
 use hexlog::{NodeView, RecordId, SemanticId, Snapshot, SnapshotKind};
 use serde_json::json;
 
@@ -20,6 +21,19 @@ pub fn native_check(id: &'static str, event: &'static str, blocking: bool) -> Na
         how: "run it",
         blocking,
     }
+}
+
+pub const VERIFY_ANCHORING: &str = "checks.verify-review-comment-anchoring";
+pub const ALL_NATIVE_CHECKS: [&str; 3] = [RUN_TESTS, CI_GREEN, VERIFY_ANCHORING];
+
+pub fn enabled(ids: &[&'static str]) -> NativeConfig {
+    NativeConfig {
+        checks: ids.iter().copied().collect(),
+    }
+}
+
+pub fn all_enabled() -> NativeConfig {
+    enabled(&ALL_NATIVE_CHECKS)
 }
 
 pub fn default_natives() -> Vec<NativeCheck> {
