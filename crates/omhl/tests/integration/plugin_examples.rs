@@ -28,14 +28,14 @@ const TOOLCHAIN_VARIABLES: [&str; 5] = [
     "CARGO_ENCODED_RUSTFLAGS",
     "CARGO_BUILD_RUSTFLAGS",
 ];
-const FORBIDDEN_KEYS: [&str; 7] = [
-    "branch",
-    "git",
-    "github",
-    "worktree",
-    "hooks",
-    "exception",
-    "integration",
+const FORBIDDEN_KEYS: [&str; 4] = ["branch", "github", "exception", "integration"];
+const INTEGRATION_KEYS: [(&str, &str); 6] = [
+    ("git", "hooks"),
+    ("creation_gate", "enabled"),
+    ("provider", "name"),
+    ("provider", "host"),
+    ("provider", "require_ci"),
+    ("worktree", "dir"),
 ];
 const FORBIDDEN_PROGRAMS: [&str; 3] = ["gh", "wt", "git"];
 const LINT_CHECK: &str = "checks/lint-sources.toml";
@@ -413,8 +413,45 @@ fn it_should_have_a_workflow_file_with_only_the_settings_the_loader_accepts_toda
     let keys: BTreeSet<&str> = workflow.keys().map(String::as_str).collect();
     assert_eq!(
         keys,
-        BTreeSet::from(["version", "specs", "promotion", "prefix"])
+        BTreeSet::from([
+            "version",
+            "specs",
+            "promotion",
+            "prefix",
+            "git",
+            "creation_gate",
+            "provider",
+            "worktree",
+        ])
     );
+}
+
+// CA-005: cada chave das integrações aparece no exemplo com a linha do efeito logo acima
+
+#[test]
+fn it_should_give_each_integration_key_of_the_workflow_example_an_effect_comment() {
+    let tree = tracked_examples();
+    let text = &tree[WORKFLOW_FILE];
+    let rows: Vec<&str> = text.lines().map(str::trim).collect();
+
+    let unexplained: Vec<String> = INTEGRATION_KEYS
+        .iter()
+        .filter(|(table, key)| {
+            let header = format!("[{table}]");
+            let start = rows.iter().position(|row| *row == header);
+            let at = start.and_then(|start| {
+                rows[start..]
+                    .iter()
+                    .position(|row| row.starts_with(&format!("{key} =")))
+                    .map(|offset| start + offset)
+            });
+
+            !matches!(at, Some(at) if at > 0 && rows[at - 1].starts_with('#'))
+        })
+        .map(|(table, key)| format!("{table}.{key}"))
+        .collect();
+
+    assert_eq!(unexplained, Vec::<String>::new());
 }
 
 #[test]

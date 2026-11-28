@@ -28,7 +28,7 @@ It reports every problem and warning by file. When it is clean, run `omhl load`.
 - `checks/release-notes`: a text check, with no `run`: the instruction is in the `.md` file next to the `.toml`, and the session answers it.
 - `guidelines/plain-language`: a `business` guideline with the text inside the `.toml`.
 - `guidelines/layered-dependencies`: an `architecture` guideline with the text in the `.md` file next to the `.toml`.
-- `workflow.toml`: the settings a project can change, such as the size of a spec, the threshold of promotion and what a branch prefix requires.
+- `workflow.toml`: the settings a project can change, such as the size of a spec, the threshold of promotion, what a branch prefix requires, and the optional integrations (`[git]`, `[creation_gate]`, `[provider]`, `[worktree]`).
 - `checks/rust-fmt.toml`, `checks/rust-clippy.toml` and `checks/rust-test.toml`: the Rust format, lint and test checks, each unsetting the Rust flag variables before `cargo`.
 - `checks/node-test.toml`: a test check that runs `npm test` before push.
 - `checks/python-test.toml`: a test check that runs `pytest` before push.

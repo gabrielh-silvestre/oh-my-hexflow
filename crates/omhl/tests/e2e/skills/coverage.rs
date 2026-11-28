@@ -717,6 +717,7 @@ fn it_should_enumerate_the_action_leaves_of_the_cli() {
         "guideline retire",
         "hooks install",
         "hooks post-commit",
+        "hooks post-merge",
         "list",
         "load",
         "project",

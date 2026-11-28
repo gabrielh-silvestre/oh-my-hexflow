@@ -37,7 +37,7 @@ pub struct Cli {
 pub enum Command {
     #[command(flatten)]
     Action(ActionCommand),
-    /// Run one hook of the `omhl hook` group (see the subcommands).
+    /// Run one hook of the `omhl hook` group: session-start, spec-lock, agent-role, subagent-start, branch-birth, command-guard, mcp-merge-guard, mcp-write-warning and wt-post-start.
     Hook {
         #[command(subcommand)]
         event: HookEvent,
@@ -215,13 +215,18 @@ pub enum OutputFormat {
 
 #[derive(Debug, Subcommand)]
 pub enum HooksCommand {
-    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit) of this clone; these are git hooks, unrelated to the `omhl hook` group (Claude Code events and the `wt` hook).
+    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit, post-merge) of this clone; these are git hooks, unrelated to the `omhl hook` group (Claude Code events and the `wt` hook).
     Install {
         #[arg(long)]
         force: bool,
     },
     /// Consume the commit mark after a commit on a dry-run-with-mark exception branch.
     PostCommit,
+    /// Consume the commit mark after a merge on a dry-run-with-mark exception branch; the squash flag 1 keeps it.
+    PostMerge {
+        /// The flag git passes to post-merge: 1 for a squash merge.
+        squash_flag: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -284,6 +289,14 @@ pub enum HookEvent {
         #[arg(long)]
         branch: String,
     },
+    /// Write the freeze mark of every work item with a local branch after a Bash command that created a branch; reads the PostToolUse event on stdin and prints nothing.
+    BranchBirth,
+    /// Run the creation gate on a Bash branch creation and warn on a push that reaches main; reads the PreToolUse event on stdin.
+    CommandGuard,
+    /// Guard the merge of a pull request through an MCP tool; reads the PreToolUse event on stdin.
+    McpMergeGuard,
+    /// Warn when an MCP write tool targets main or the default branch; reads the PreToolUse event on stdin.
+    McpWriteWarning,
 }
 
 pub fn run(
@@ -331,6 +344,18 @@ pub fn run(
         Command::Hook {
             event: HookEvent::SubagentStart,
         } => hook::subagent_start(stdin, out, env),
+        Command::Hook {
+            event: HookEvent::BranchBirth,
+        } => hook::branch_birth(stdin, err),
+        Command::Hook {
+            event: HookEvent::CommandGuard,
+        } => hook::command_guard(stdin, out, err),
+        Command::Hook {
+            event: HookEvent::McpMergeGuard,
+        } => hook::mcp_merge_guard(stdin, out, err),
+        Command::Hook {
+            event: HookEvent::McpWriteWarning,
+        } => hook::mcp_write_warning(stdin, out, err),
         Command::Hook {
             event: HookEvent::WtPostStart { branch },
         } => {
@@ -549,6 +574,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::ByproductPrune => "byproduct prune",
         CommandKey::HooksInstall => "hooks install",
         CommandKey::HooksPostCommit => "hooks post-commit",
+        CommandKey::HooksPostMerge => "hooks post-merge",
         CommandKey::SpecInit => "spec init",
         CommandKey::SpecValidate => "spec validate",
         CommandKey::ReportAnswers => "report answers",
@@ -560,6 +586,10 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::HookAgentRole => "hook agent-role",
         CommandKey::HookSubagentStart => "hook subagent-start",
         CommandKey::HookWtPostStart => "hook wt-post-start",
+        CommandKey::HookBranchBirth => "hook branch-birth",
+        CommandKey::HookCommandGuard => "hook command-guard",
+        CommandKey::HookMcpMergeGuard => "hook mcp-merge-guard",
+        CommandKey::HookMcpWriteWarning => "hook mcp-write-warning",
     }
 }
 
@@ -581,6 +611,18 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Hook {
             event: HookEvent::WtPostStart { .. },
         } => CommandKey::HookWtPostStart,
+        Command::Hook {
+            event: HookEvent::BranchBirth,
+        } => CommandKey::HookBranchBirth,
+        Command::Hook {
+            event: HookEvent::CommandGuard,
+        } => CommandKey::HookCommandGuard,
+        Command::Hook {
+            event: HookEvent::McpMergeGuard,
+        } => CommandKey::HookMcpMergeGuard,
+        Command::Hook {
+            event: HookEvent::McpWriteWarning,
+        } => CommandKey::HookMcpWriteWarning,
         Command::Action(ActionCommand::List { .. }) => CommandKey::List,
         Command::Action(ActionCommand::Get { .. }) => CommandKey::Get,
         Command::Action(ActionCommand::Append { .. }) => CommandKey::Append,
@@ -615,6 +657,9 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Action(ActionCommand::Hooks {
             command: HooksCommand::PostCommit,
         }) => CommandKey::HooksPostCommit,
+        Command::Action(ActionCommand::Hooks {
+            command: HooksCommand::PostMerge { .. },
+        }) => CommandKey::HooksPostMerge,
         Command::Action(ActionCommand::Spec {
             command: SpecCommand::Init { .. },
         }) => CommandKey::SpecInit,
@@ -713,6 +758,14 @@ fn execute(
     db: Option<&Path>,
     env: &Env<'_>,
 ) -> Result<Value, AppError> {
+    // Depois do `git merge --squash` o commit que fecha ainda precisa da marca.
+    if let ActionCommand::Hooks {
+        command: HooksCommand::PostMerge { squash_flag },
+    } = &command
+        && squash_flag == "1"
+    {
+        return Ok(json!({ "consumed": false }));
+    }
     let owner_override = has_owner_override(&command);
     let action = to_action(command, stdin, env)?;
 
@@ -845,6 +898,9 @@ fn to_action(
         } => Action::HooksInstall { force },
         ActionCommand::Hooks {
             command: HooksCommand::PostCommit,
+        } => Action::ConsumeCommitMark,
+        ActionCommand::Hooks {
+            command: HooksCommand::PostMerge { .. },
         } => Action::ConsumeCommitMark,
         ActionCommand::Spec {
             command: SpecCommand::Init { work_item, slug },

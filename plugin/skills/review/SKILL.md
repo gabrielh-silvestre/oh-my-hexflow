@@ -40,7 +40,7 @@ Every answer ends with the fields **Next role:** and **Open questions for the ma
 - **Stored output disappears after 7 days.** `omhl check run` deletes on its own, at most once a day per (database, project), the output older than 7 days that no live attestation uses; `omhl byproduct prune` does the same right away and is the main session's alone: no role has it in its matrix ([byproduct-prune.md](references/byproduct-prune.md)).
 - **Events.** A check is bound to one of 4 events, and each one has its own moment: [events.md](references/events.md).
 - **Retiring is the owner's.** Retiring a check is final and belongs to the owner: [check-retire.md](references/check-retire.md).
-- **Hooks belong to the clone.** Run `omhl hooks install` once in each clone, with an `omhl` installed outside any worktree ([hooks-install.md](references/hooks-install.md)). Never use `--no-verify` to get around a check, and `--force` only with the human's approval, showing what will be overwritten.
+- **Hooks belong to the clone.** Run `omhl hooks install` once in each clone, with an `omhl` installed outside any worktree ([hooks-install.md](references/hooks-install.md)); the `post-merge` script consumes the commit mark after a merge ([hooks-post-merge.md](references/hooks-post-merge.md)). Never use `--no-verify` to get around a check, and `--force` only with the human's approval, showing what will be overwritten.
 - **The global sweep is the owner's.** The global sweep (`check sweep`) sends `TERM` and `KILL` to every project on the machine: only with the human's approval, after an interrupted `omhl`.
 - **Clean tree and current commit.** `omhl gate-delivery` and `omhl close` read `HEAD` and refuse with `snapshot-dirty` if there is an uncommitted change; a new commit asks for the checks again (`omhl check run`, `omhl attest`).
 - **A failed gate is not an error.** `omhl gate-delivery` exits 0 even when failed: read the symbol and the count of the first line before opening the PR.
@@ -53,7 +53,7 @@ Open the command's reference before using it: it has the inputs, the output, the
 
 | Command | Reference |
 |---|---|
-| `omhl load`, `omhl check run`, `omhl check sweep`, `omhl byproduct`, `omhl byproduct prune`, `omhl hooks install`, `omhl hooks post-commit`, `omhl attest` | [references/checks.md](references/checks.md) and [gates-operation.md](references/gates-operation.md) |
+| `omhl load`, `omhl check run`, `omhl check sweep`, `omhl byproduct`, `omhl byproduct prune`, `omhl hooks install`, `omhl hooks post-commit`, `omhl hooks post-merge`, `omhl attest` | [references/checks.md](references/checks.md) and [gates-operation.md](references/gates-operation.md) |
 | `omhl gate-delivery`, `omhl close`, `omhl report retro` | [references/fechamento.md](references/fechamento.md) |
 | `omhl check retire` (the owner's) | [references/check-retire.md](references/check-retire.md) |
 | The loosening review of `workflow.toml` and the checks | [references/config-loosening-review.md](references/config-loosening-review.md) |

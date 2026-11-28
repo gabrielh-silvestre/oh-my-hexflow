@@ -14,6 +14,7 @@ mod check_sweep_cli;
 mod cli;
 mod close_retro;
 mod directives_flow_e2e;
+mod edge_hooks;
 mod extensions_e2e;
 mod gate_worktree;
 mod guideline_retire;

@@ -391,6 +391,11 @@ const LEAF_SAMPLES: &[(&str, &str)] = &[
     ("check retire", "omhl check retire checks.lint"),
     ("hooks install", "omhl hooks install"),
     ("hooks post-commit", "omhl hooks post-commit"),
+    ("hooks post-merge", "omhl hooks post-merge 0"),
+    ("hook branch-birth", "omhl hook branch-birth"),
+    ("hook command-guard", "omhl hook command-guard"),
+    ("hook mcp-merge-guard", "omhl hook mcp-merge-guard"),
+    ("hook mcp-write-warning", "omhl hook mcp-write-warning"),
     ("hook session-start", "omhl hook session-start"),
     ("hook spec-lock", "omhl hook spec-lock"),
     ("hook agent-role", "omhl hook agent-role"),
@@ -607,8 +612,12 @@ fn it_should_deny_omhl_report_sessions_to_every_role() {
 }
 
 #[test]
-fn it_should_deny_omhl_hooks_install_and_post_commit_to_every_role() {
-    let cases = cases_for(&samples_of(&["hooks install", "hooks post-commit"]));
+fn it_should_deny_omhl_hooks_install_post_commit_and_post_merge_to_every_role() {
+    let cases = cases_for(&samples_of(&[
+        "hooks install",
+        "hooks post-commit",
+        "hooks post-merge",
+    ]));
 
     cases.iter().for_each(assert_case);
 }
@@ -620,6 +629,10 @@ fn it_should_deny_every_hook_event_to_every_role() {
         "hook spec-lock",
         "hook agent-role",
         "hook subagent-start",
+        "hook branch-birth",
+        "hook command-guard",
+        "hook mcp-merge-guard",
+        "hook mcp-write-warning",
     ]));
 
     cases.iter().for_each(assert_case);

@@ -953,17 +953,12 @@ fn it_should_treat_an_append_type_change_as_one_without_a_recorded_type_when_the
 }
 
 #[test]
-fn it_should_refuse_gate_worktree_with_prefix_not_allowed_naming_the_format_without_a_type() {
+fn it_should_refuse_gate_worktree_with_work_item_type_unknown_for_a_format_without_a_type() {
     let repo = Repo::with_branch_table(Some(NO_TYPE_FORMAT), &[]);
 
     let output = repo.gate_worktree(&repo.main, "w1/x");
 
-    assert_refused(&output, "prefix-not-allowed");
-    assert!(
-        output.stderr.contains(NO_TYPE_FORMAT),
-        "stderr: {}",
-        output.stderr
-    );
+    assert_refused(&output, "work-item-type-unknown");
 }
 
 #[test]

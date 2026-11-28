@@ -5,6 +5,7 @@ mod byproduct_tail;
 mod check_retire;
 mod check_run;
 mod context;
+mod edge_hooks;
 mod engine;
 mod gate_worktree;
 mod git_version;
@@ -19,6 +20,7 @@ mod spec;
 mod spec_facts;
 mod wire;
 mod work_item;
+mod worktree_exclude;
 
 pub mod action;
 pub mod error;
@@ -36,10 +38,14 @@ pub use crate::workflow::lock::{EditInput, Replacement, Tool, Verdict};
 pub use crate::workflow::omhl_leaf::Group;
 
 pub use self::agent_role::{AgentRoleEnv, RoleVerdict, agent_role};
+pub use self::edge_hooks::{
+    BashEvent, GuardOutcome, McpMergeEvent, McpWriteEvent, PUSH_WARNING_TIMEOUT, ProviderAccess,
+    branch_birth, command_guard, mcp_merge_guard, mcp_write_warning,
+};
 pub use self::language::{
     LanguageRungs, language_line, resolve_language, settings_language, user_settings_language,
 };
-pub use self::spec::{SpecLockEvent, SpecLockOutcome, spec_lock, wt_post_start};
+pub use self::spec::{SpecLockEvent, SpecLockOutcome, heal_branch_marks, spec_lock, wt_post_start};
 
 use std::path::{Path, PathBuf};
 
@@ -138,6 +144,14 @@ impl<'d> App<'d> {
 
     pub fn work_item_refusal(&mut self, id: &SemanticId) -> Result<Option<RuleCode>, AppError> {
         work_item::work_item_refusal(&mut self.engine, id)
+    }
+
+    pub fn git_hooks_notice(&self) -> Option<String> {
+        self.engine.git_hooks_notice()
+    }
+
+    pub fn work_item_type(&mut self, id: &SemanticId) -> Result<Option<String>, AppError> {
+        work_item::work_item_type(&mut self.engine, id)
     }
 
     pub fn premise_facts(&mut self, work_item: &SemanticId) -> Result<Vec<PremiseFact>, AppError> {

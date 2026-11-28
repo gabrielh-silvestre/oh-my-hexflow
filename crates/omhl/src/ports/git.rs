@@ -496,11 +496,52 @@ impl CommitMark for GitProbe {
 impl GitProbe {
     /// Diretório de trabalho principal, o mesmo de qualquer worktree ligada.
     pub fn main_dir(&self) -> Result<PathBuf, ProbeError> {
-        let common_dir = self.line(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
-        Path::new(&common_dir)
+        let common_dir = self.common_dir()?;
+        common_dir
             .parent()
             .map(Path::to_path_buf)
             .ok_or_else(|| error("unexpected git output"))
+    }
+
+    pub fn common_dir(&self) -> Result<PathBuf, ProbeError> {
+        self.line(&["rev-parse", "--path-format=absolute", "--git-common-dir"])
+            .map(PathBuf::from)
+    }
+
+    /// Raízes das worktrees ligadas, sem a principal.
+    pub fn linked_worktrees(&self) -> Result<Vec<PathBuf>, ProbeError> {
+        let stdout = self.run_ok(self.git(&["worktree", "list", "--porcelain"]))?;
+        let text = utf8_output(stdout)?;
+        Ok(text
+            .lines()
+            .filter_map(|line| line.strip_prefix("worktree "))
+            .skip(1)
+            .map(PathBuf::from)
+            .collect())
+    }
+
+    /// Saída 0 é ignorado, 1 não é; qualquer outra é falha de leitura.
+    pub fn is_ignored(&self, path: &str) -> Result<bool, ProbeError> {
+        let mut command = self.git(&["check-ignore", "-q", "--", path]);
+        // O arquivo global de excludes vale aqui: tirar o `GIT_CONFIG_GLOBAL` mudaria a resposta.
+        if let Some(global) = std::env::var_os("GIT_CONFIG_GLOBAL") {
+            command.env("GIT_CONFIG_GLOBAL", global);
+        }
+        let output = self.run(command)?;
+        match output.status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            _ => Err(git_error(&output)),
+        }
+    }
+
+    pub fn origin_url(&self) -> Result<Option<String>, ProbeError> {
+        let output = self.run(self.git(&["config", "--get", "remote.origin.url"]))?;
+        match output.status.code() {
+            Some(0) => text_line(output.stdout).map(Some),
+            Some(1) => Ok(None),
+            _ => Err(git_error(&output)),
+        }
     }
 
     /// Branches com worktree (a principal inclusive), em ordem crescente.

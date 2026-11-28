@@ -1356,3 +1356,244 @@ fn it_should_accept_an_integration_of_200_characters() {
 
     assert_eq!(config.branch.integration, Some(name));
 }
+
+// CA-001: as tabelas das integrações ([git], [creation_gate], [provider], [worktree])
+
+mod integrations {
+    use std::path::PathBuf;
+
+    use super::{CANARY, ERROR_CODE, accepted, assert_refused_at_line, lines, refusal};
+    use crate::workflow::config::{
+        CreationGateConfig, DEFAULT_PROVIDER_HOST, DEFAULT_WORKTREE_DIR, GitConfig, ProviderConfig,
+        ProviderName, WorktreeConfig,
+    };
+
+    const FULL: &str = "version = 1\n\n[git]\nhooks = true\n\n[creation_gate]\nenabled = true\n\n[provider]\nname = \"github\"\nhost = \"ghe.example.com\"\nrequire_ci = true\n\n[worktree]\ndir = \"build/wt\"\n";
+
+    fn refused_at_line_three(table: &str, row: &str) {
+        let text = lines(&["version = 1", table, row]);
+
+        let error = refusal(&text);
+
+        assert_refused_at_line(&error, 3);
+    }
+
+    #[test]
+    fn it_should_read_the_git_table_when_all_four_tables_are_given() {
+        let config = accepted(FULL);
+
+        assert_eq!(config.git, GitConfig { hooks: true });
+    }
+
+    #[test]
+    fn it_should_read_the_creation_gate_table_when_all_four_tables_are_given() {
+        let config = accepted(FULL);
+
+        assert_eq!(config.creation_gate, CreationGateConfig { enabled: true });
+    }
+
+    #[test]
+    fn it_should_read_the_provider_table_when_all_four_tables_are_given() {
+        let config = accepted(FULL);
+
+        assert_eq!(
+            config.provider,
+            Some(ProviderConfig {
+                name: ProviderName::Github,
+                host: "ghe.example.com".to_owned(),
+                require_ci: true,
+            })
+        );
+    }
+
+    #[test]
+    fn it_should_read_the_worktree_table_when_all_four_tables_are_given() {
+        let config = accepted(FULL);
+
+        assert_eq!(
+            config.worktree,
+            WorktreeConfig {
+                dir: PathBuf::from("build/wt")
+            }
+        );
+    }
+
+    #[test]
+    fn it_should_accept_an_absolute_worktree_dir() {
+        let config = accepted(&lines(&["version = 1", "[worktree]", "dir = \"/srv/wt\""]));
+
+        assert_eq!(config.worktree.dir, PathBuf::from("/srv/wt"));
+    }
+
+    #[test]
+    fn it_should_spell_the_github_provider_name_as_github() {
+        assert_eq!(ProviderName::Github.as_str(), "github");
+    }
+
+    #[test]
+    fn it_should_default_git_hooks_to_false_without_the_git_table() {
+        let config = accepted("version = 1\n");
+
+        assert!(!config.git.hooks);
+    }
+
+    #[test]
+    fn it_should_default_the_creation_gate_to_off_without_its_table() {
+        let config = accepted("version = 1\n");
+
+        assert!(!config.creation_gate.enabled);
+    }
+
+    #[test]
+    fn it_should_leave_the_integration_off_without_the_provider_table() {
+        let config = accepted("version = 1\n");
+
+        assert_eq!(config.provider, None);
+    }
+
+    #[test]
+    fn it_should_default_the_worktree_dir_to_dot_worktrees_without_its_table() {
+        let config = accepted("version = 1\n");
+
+        assert_eq!(config.worktree.dir, PathBuf::from(DEFAULT_WORKTREE_DIR));
+        assert_eq!(DEFAULT_WORKTREE_DIR, ".worktrees");
+    }
+
+    #[test]
+    fn it_should_default_the_provider_host_to_github_com_and_require_ci_to_false() {
+        let config = accepted(&lines(&["version = 1", "[provider]", "name = \"github\""]));
+
+        let provider = config.provider.expect("the integration is on");
+        assert_eq!(provider.host, DEFAULT_PROVIDER_HOST);
+        assert_eq!(DEFAULT_PROVIDER_HOST, "github.com");
+        assert!(!provider.require_ci);
+    }
+
+    #[test]
+    fn it_should_refuse_an_unknown_key_in_each_new_table_with_its_position() {
+        for table in ["[git]", "[creation_gate]", "[provider]", "[worktree]"] {
+            refused_at_line_three(table, "colour = true");
+        }
+    }
+
+    #[test]
+    fn it_should_refuse_a_wrong_type_for_each_new_key_with_its_position() {
+        for (table, row) in [
+            ("[git]", "hooks = \"yes\""),
+            ("[creation_gate]", "enabled = 1"),
+            ("[provider]", "name = 1"),
+            ("[worktree]", "dir = true"),
+        ] {
+            refused_at_line_three(table, row);
+        }
+    }
+
+    #[test]
+    fn it_should_refuse_a_wrong_type_for_host_and_require_ci_with_their_position() {
+        for row in ["host = 1", "require_ci = \"yes\""] {
+            let text = lines(&["version = 1", "[provider]", "name = \"github\"", row]);
+
+            let error = refusal(&text);
+
+            assert_refused_at_line(&error, 4);
+        }
+    }
+
+    #[test]
+    fn it_should_refuse_a_provider_name_other_than_github_and_list_github() {
+        let text = lines(&["version = 1", "[provider]", "name = \"gitlab\""]);
+
+        let error = refusal(&text);
+
+        assert_refused_at_line(&error, 3);
+        assert!(
+            error.message.contains("github"),
+            "message: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn it_should_refuse_an_empty_host_with_its_position() {
+        let text = lines(&[
+            "version = 1",
+            "[provider]",
+            "name = \"github\"",
+            "host = \"\"",
+        ]);
+
+        let error = refusal(&text);
+
+        assert_refused_at_line(&error, 4);
+    }
+
+    #[test]
+    fn it_should_refuse_a_host_with_a_slash_a_colon_or_a_space() {
+        for host in ["github.com/x", "https:github.com", "git hub.com"] {
+            let text = lines(&[
+                "version = 1",
+                "[provider]",
+                "name = \"github\"",
+                &format!("host = \"{host}\""),
+            ]);
+
+            let error = refusal(&text);
+
+            assert_refused_at_line(&error, 4);
+        }
+    }
+
+    #[test]
+    fn it_should_refuse_host_or_require_ci_without_a_provider_name() {
+        for row in ["host = \"github.com\"", "require_ci = true"] {
+            let text = lines(&["version = 1", "[provider]", row]);
+
+            let error = refusal(&text);
+
+            assert_eq!(error.code, ERROR_CODE, "{row}");
+            assert!(error.message.contains("line "), "{row}: {}", error.message);
+        }
+    }
+
+    #[test]
+    fn it_should_refuse_an_empty_worktree_dir_with_its_position() {
+        refused_at_line_three("[worktree]", "dir = \"\"");
+    }
+
+    #[test]
+    fn it_should_refuse_a_worktree_dir_with_a_parent_component() {
+        refused_at_line_three("[worktree]", "dir = \"wt/../..\"");
+    }
+
+    #[test]
+    fn it_should_refuse_a_worktree_dir_equal_to_dot_git() {
+        refused_at_line_three("[worktree]", "dir = \".git\"");
+    }
+
+    #[test]
+    fn it_should_not_repeat_the_file_text_in_the_refusals_of_the_new_tables() {
+        let refused = [
+            lines(&["version = 1", "[git]", &format!("hooks = \"{CANARY}\"")]),
+            lines(&["version = 1", "[provider]", &format!("name = \"{CANARY}\"")]),
+            lines(&[
+                "version = 1",
+                "[provider]",
+                "name = \"github\"",
+                &format!("host = \"{CANARY}/x\""),
+            ]),
+            lines(&[
+                "version = 1",
+                "[worktree]",
+                &format!("dir = \"../{CANARY}/..\""),
+            ]),
+        ];
+
+        let leaked: Vec<String> = refused
+            .iter()
+            .map(|text| refusal(text).message)
+            .filter(|message| message.contains(CANARY))
+            .collect();
+
+        assert_eq!(leaked, Vec::<String>::new());
+    }
+}

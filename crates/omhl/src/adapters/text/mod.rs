@@ -55,6 +55,7 @@ pub enum CommandKey {
     ByproductPrune,
     HooksInstall,
     HooksPostCommit,
+    HooksPostMerge,
     SpecInit,
     SpecValidate,
     ReportAnswers,
@@ -66,10 +67,14 @@ pub enum CommandKey {
     HookAgentRole,
     HookSubagentStart,
     HookWtPostStart,
+    HookBranchBirth,
+    HookCommandGuard,
+    HookMcpMergeGuard,
+    HookMcpWriteWarning,
 }
 
 impl CommandKey {
-    pub const ALL: [CommandKey; 30] = [
+    pub const ALL: [CommandKey; 35] = [
         Self::List,
         Self::Get,
         Self::Append,
@@ -89,6 +94,7 @@ impl CommandKey {
         Self::ByproductPrune,
         Self::HooksInstall,
         Self::HooksPostCommit,
+        Self::HooksPostMerge,
         Self::SpecInit,
         Self::SpecValidate,
         Self::ReportAnswers,
@@ -100,6 +106,10 @@ impl CommandKey {
         Self::HookAgentRole,
         Self::HookSubagentStart,
         Self::HookWtPostStart,
+        Self::HookBranchBirth,
+        Self::HookCommandGuard,
+        Self::HookMcpMergeGuard,
+        Self::HookMcpWriteWarning,
     ];
 }
 
@@ -137,10 +147,15 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::Close => Some(&BaseRenderer(gate::Close)),
         CommandKey::GateWorktree
         | CommandKey::HooksPostCommit
+        | CommandKey::HooksPostMerge
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole
         | CommandKey::HookSubagentStart
+        | CommandKey::HookBranchBirth
+        | CommandKey::HookCommandGuard
+        | CommandKey::HookMcpMergeGuard
+        | CommandKey::HookMcpWriteWarning
         | CommandKey::HookWtPostStart => None,
     }
 }
@@ -172,10 +187,15 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::SpecValidate => &spec_validate::PROFILE,
         CommandKey::GateWorktree
         | CommandKey::HooksPostCommit
+        | CommandKey::HooksPostMerge
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole
         | CommandKey::HookSubagentStart
+        | CommandKey::HookBranchBirth
+        | CommandKey::HookCommandGuard
+        | CommandKey::HookMcpMergeGuard
+        | CommandKey::HookMcpWriteWarning
         | CommandKey::HookWtPostStart => &Profile::EMPTY,
     }
 }
@@ -215,7 +235,12 @@ pub fn deferred(key: CommandKey) -> bool {
         | CommandKey::HookAgentRole
         | CommandKey::HookSubagentStart
         | CommandKey::HookWtPostStart
+        | CommandKey::HookBranchBirth
+        | CommandKey::HookCommandGuard
+        | CommandKey::HookMcpMergeGuard
+        | CommandKey::HookMcpWriteWarning
         | CommandKey::HooksPostCommit
+        | CommandKey::HooksPostMerge
         | CommandKey::GateWorktree => true,
         CommandKey::List
         | CommandKey::Get

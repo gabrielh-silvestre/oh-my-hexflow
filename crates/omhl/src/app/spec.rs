@@ -9,6 +9,7 @@ use super::engine::{Engine, parse_at, require_project_root};
 use super::error::AppError;
 use super::spec_facts::GraphFacts;
 use super::work_item::work_item_refusal;
+use super::worktree_exclude::ensure_worktree_exclude;
 use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::branch::{BranchKind, classify};
 use crate::ports::files::{FILE_TOO_LARGE, read_regular_utf8};
@@ -781,6 +782,40 @@ pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
     let (marked, already) = mark_folders(&store, folders).map_err(spec_store_refusal)?;
 
     Ok(json!({ "marked": marked, "already": already }))
+}
+
+/// A marca de nascimento e a garantia do `info/exclude`, da lista das branches locais; o `branch-birth` e o `session-start` a chamam.
+pub fn heal_branch_marks(start: &Path) -> Result<(), AppError> {
+    let Some(located) = find_marker(start)? else {
+        return Ok(());
+    };
+    let probe = GitProbe::new(&located.root);
+    let probe_failed = |error: ProbeError| AppError::probe_failed(&error.message);
+    let main_dir = probe.main_dir().map_err(probe_failed)?;
+    let read = read_workflow(&main_dir);
+    let policy = match &read {
+        Ok(config) => config.branch.clone(),
+        Err(_) => stable_branch_policy(&probe.rooted_at(&main_dir)),
+    };
+    let specs_dir = match &read {
+        Ok(config) => config.specs.dir.clone(),
+        Err(_) => WorkflowConfig::default().specs.dir,
+    };
+    let branches = probe.local_branches().map_err(probe_failed)?;
+    let store = SpecStore::new(main_dir.join(specs_dir));
+    if let Some(error) = heal_freeze_marks(&store, &branches, &policy)
+        .into_iter()
+        .next()
+    {
+        return Err(error);
+    }
+    // Com o `workflow.toml` ilegível a pasta declarada é desconhecida: nada se escreve.
+    if let Ok(config) = read {
+        let common_dir = probe.common_dir().map_err(probe_failed)?;
+        ensure_worktree_exclude(&main_dir, &common_dir, &config.worktree.dir)?;
+    }
+
+    Ok(())
 }
 
 fn branch_work_item(policy: &BranchConfig, branch: &str) -> Option<SemanticId> {

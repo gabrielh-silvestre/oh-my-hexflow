@@ -21,6 +21,7 @@ mod clock_ids;
 mod command_pages;
 mod delivery_gate;
 mod directives_flow_e2e;
+mod edge_hooks;
 mod error_codes;
 mod ext_scan;
 mod extensions_e2e;

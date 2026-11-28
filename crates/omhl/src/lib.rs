@@ -15,6 +15,7 @@ pub mod ports;
 pub mod probe;
 pub mod project;
 pub mod projection;
+pub mod provider;
 pub mod render;
 pub mod runner;
 #[cfg(test)]

@@ -15,8 +15,100 @@ use crate::app::{
     agent_role as check_agent_role, language_line, resolve_language, settings_language,
     spec_lock as check_spec_lock, user_settings_language,
 };
+use crate::app::{
+    BashEvent, GuardOutcome, McpMergeEvent, McpWriteEvent, PUSH_WARNING_TIMEOUT, ProviderAccess,
+    branch_birth as check_branch_birth, command_guard as check_command_guard, heal_branch_marks,
+    mcp_merge_guard as check_mcp_merge_guard, mcp_write_warning as check_mcp_write_warning,
+};
 use crate::app::{ExtensionKind, Group};
+use crate::ports::process::ProcessRunner;
 use crate::project::Env;
+
+/// Nunca bloqueia: uma falha de leitura vai ao stderr, e a rede do `session-start` cobre a marca que faltou.
+pub fn branch_birth(stdin: &mut impl Read, err: &mut impl Write) -> ExitCode {
+    let result = read_json_input(stdin)
+        .and_then(|input| bash_event(&input))
+        .and_then(|event| check_branch_birth(&event));
+    if let Err(error) = result {
+        let _ = writeln!(err, "{}", error.to_json());
+    }
+
+    ExitCode::SUCCESS
+}
+
+pub fn command_guard(
+    stdin: &mut impl Read,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> ExitCode {
+    let runner = ProcessRunner::new();
+    let gh = ProviderAccess {
+        runner: &runner,
+        timeout: PUSH_WARNING_TIMEOUT,
+    };
+    pre_tool_use(stdin, out, err, |input| {
+        check_command_guard(&bash_event(input)?, &gh).map(|outcome| guard_output(&outcome))
+    })
+}
+
+pub fn mcp_merge_guard(
+    stdin: &mut impl Read,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> ExitCode {
+    pre_tool_use(stdin, out, err, |input| {
+        let event = McpMergeEvent {
+            cwd: absolute_path(&input["cwd"])?,
+        };
+        check_mcp_merge_guard(&event).map(|outcome| guard_output(&outcome))
+    })
+}
+
+pub fn mcp_write_warning(
+    stdin: &mut impl Read,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> ExitCode {
+    let runner = ProcessRunner::new();
+    let gh = ProviderAccess {
+        runner: &runner,
+        timeout: PUSH_WARNING_TIMEOUT,
+    };
+    pre_tool_use(stdin, out, err, |input| {
+        let field = |name: &str| input["tool_input"][name].as_str().map(str::to_owned);
+        let event = McpWriteEvent {
+            cwd: absolute_path(&input["cwd"])?,
+            owner: field("owner"),
+            repo: field("repo"),
+            branch: field("branch"),
+        };
+        check_mcp_write_warning(&event, &gh).map(|outcome| guard_output(&outcome))
+    })
+}
+
+fn bash_event(input: &Value) -> Result<BashEvent, AppError> {
+    Ok(BashEvent {
+        cwd: absolute_path(&input["cwd"])?,
+        command: input["tool_input"]["command"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+    })
+}
+
+/// Sem negação nem aviso, nada sai no stdout.
+fn guard_output(outcome: &GuardOutcome) -> Option<Value> {
+    let mut decision = json!({});
+    if let Some(reason) = &outcome.deny {
+        decision["permissionDecision"] = json!("deny");
+        decision["permissionDecisionReason"] = json!(reason);
+    }
+    if !outcome.context.is_empty() {
+        decision["additionalContext"] = json!(outcome.context.join("\n"));
+    }
+
+    (outcome.deny.is_some() || !outcome.context.is_empty()).then_some(decision)
+}
 
 pub fn session_start(
     stdin: &mut impl Read,
@@ -227,6 +319,8 @@ fn context_for_session(
         Err(error) if error.code() == "no-marker" => return Ok(None),
         Err(error) => return Err(error),
     };
+    // A rede da marca de nascimento: uma falha aqui não tira o contexto da sessão.
+    let _ = heal_branch_marks(&cwd);
     let mut app = runtime.app()?;
     let caller = Caller::hook();
     let mut rendered = app.dispatch(&caller, &Action::Render)?;
@@ -238,10 +332,14 @@ fn context_for_session(
     if let Some(line) = extension_notice(&checked) {
         text.push_str(&format!("\n{line}\n"));
     }
-    let git_notice = runtime.git_notice();
-    if let Some(line) = &git_notice {
+    let notices: Vec<String> = [runtime.git_notice(), app.git_hooks_notice()]
+        .into_iter()
+        .flatten()
+        .collect();
+    for line in &notices {
         text.push_str(&format!("\n{line}\n"));
     }
+    let git_notice = (!notices.is_empty()).then(|| notices.join("\n"));
 
     Ok(Some((text, git_notice)))
 }

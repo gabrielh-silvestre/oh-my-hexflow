@@ -8,5 +8,6 @@ pub mod notes;
 pub(crate) mod paths;
 pub mod pipes;
 pub mod process;
+pub mod provider;
 pub mod specs;
 pub mod workflow;

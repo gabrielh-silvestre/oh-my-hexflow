@@ -141,6 +141,21 @@ pub(super) fn work_item_refusal(
     })
 }
 
+/// O `type` gravado; vazio conta como ausente, como no `close`.
+pub(super) fn work_item_type(
+    engine: &mut Engine<'_>,
+    id: &SemanticId,
+) -> Result<Option<String>, AppError> {
+    let view = with_retry(&engine.retry, || Ok(engine.omhl.get(&engine.tenant, id)?))?;
+
+    Ok(view.and_then(|view| {
+        view.data["type"]
+            .as_str()
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+    }))
+}
+
 fn branch_context(kind: &str, event: &str, branch: &str, hint: &str) -> Value {
     json!({ "kind": kind, "event": event, "branch": branch, "hint": hint })
 }

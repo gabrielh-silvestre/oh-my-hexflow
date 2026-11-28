@@ -57,3 +57,29 @@ fn it_should_run_the_pre_push_hook_on_before_push() {
 
     assert_eq!(command, Some("check run --event before-push --pre-push"));
 }
+
+#[test]
+fn it_should_install_a_post_merge_script_that_passes_the_squash_flag() {
+    let command = SCRIPTS
+        .iter()
+        .find(|(name, _)| *name == "post-merge")
+        .map(|(_, command)| *command);
+
+    assert_eq!(command, Some("hooks post-merge \"$1\" >/dev/null"));
+}
+
+#[test]
+fn it_should_install_five_scripts() {
+    let names: Vec<&str> = SCRIPTS.iter().map(|(name, _)| *name).collect();
+
+    assert_eq!(
+        names,
+        [
+            "pre-commit",
+            "pre-merge-commit",
+            "pre-push",
+            "post-commit",
+            "post-merge"
+        ]
+    );
+}

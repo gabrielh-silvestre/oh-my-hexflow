@@ -138,7 +138,7 @@ fn it_should_list_the_commands_in_help() {
         assert!(words.contains(&command), "help lists {command}");
     }
     assert!(!output.stdout.contains("sync"), "help does not cite sync");
-    assert!(!output.stdout.contains("mcp"), "help does not cite mcp");
+    assert!(!words.contains(&"mcp"), "help does not list an mcp command");
 }
 
 #[test]

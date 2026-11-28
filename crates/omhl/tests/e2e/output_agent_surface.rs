@@ -47,8 +47,8 @@ const ACTIVE: [(&str, &[&str]); 23] = [
     ("report sessions", &["report", "sessions"]),
 ];
 
-/// Os 7 comandos adiados (padrão `json`, só JSON).
-const DEFERRED: [(&str, &[&str]); 7] = [
+/// Os 12 comandos adiados (padrão `json`, só JSON).
+const DEFERRED: [(&str, &[&str]); 12] = [
     ("hook session-start", &["hook", "session-start"]),
     ("hook spec-lock", &["hook", "spec-lock"]),
     ("hook agent-role", &["hook", "agent-role"]),
@@ -62,6 +62,11 @@ const DEFERRED: [(&str, &[&str]); 7] = [
         &["hook", "wt-post-start", "--branch", "feat/wi-x__y"],
     ),
     ("hook subagent-start", &["hook", "subagent-start"]),
+    ("hooks post-merge", &["hooks", "post-merge", "0"]),
+    ("hook branch-birth", &["hook", "branch-birth"]),
+    ("hook command-guard", &["hook", "command-guard"]),
+    ("hook mcp-merge-guard", &["hook", "mcp-merge-guard"]),
+    ("hook mcp-write-warning", &["hook", "mcp-write-warning"]),
 ];
 
 const INPUT_ERROR: &str = "{\"error\":{\"code\":\"input-invalid-json\",\"details\":[],\"message\":\"input is not valid JSON at line 1 column 0\"}}\n";
@@ -324,7 +329,7 @@ fn it_should_list_the_twenty_three_agent_commands_in_the_root_help() {
 }
 
 #[test]
-fn it_should_list_the_seven_json_commands_in_the_root_help() {
+fn it_should_list_the_twelve_json_commands_in_the_root_help() {
     let help = omhl(&["--help"]).run().stdout;
 
     assert_eq!(listed_under(&help, "json"), sorted_paths(&DEFERRED));

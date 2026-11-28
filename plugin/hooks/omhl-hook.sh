@@ -69,6 +69,10 @@ if command -v omhl >/dev/null 2>&1; then
     version-check) version_check ;;
     spec-lock) omhl hook spec-lock || exit 2 ;;
     agent-role) omhl hook agent-role || exit 1 ;;
+    branch-birth) omhl hook branch-birth || exit 1 ;;
+    command-guard) omhl hook command-guard || exit 1 ;;
+    mcp-merge-guard) omhl hook mcp-merge-guard || exit 2 ;;
+    mcp-write-warning) omhl hook mcp-write-warning || exit 1 ;;
     session-start) exec omhl hook session-start ;;
     subagent-start) subagent_start ;;
   esac

@@ -17,7 +17,13 @@ const W1: &str = "feat/wi-w1__x";
 const W2: &str = "feat/wi-w2__y";
 const WI_W1: &str = "work-items.w1";
 const WI_W2: &str = "work-items.w2";
-const SCRIPTS: [&str; 4] = ["pre-commit", "pre-merge-commit", "pre-push", "post-commit"];
+const SCRIPTS: [&str; 5] = [
+    "pre-commit",
+    "pre-merge-commit",
+    "pre-push",
+    "post-commit",
+    "post-merge",
+];
 const MARK_BYTES: &str = "omhl-commit-mark v1\n";
 const BUILD_DIR_HINT: &str = "install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks";
 const UNWRITABLE_HINT: &str =
@@ -36,6 +42,7 @@ fn script_command(name: &str) -> &'static str {
         "pre-commit" | "pre-merge-commit" => "check run --event before-commit",
         "pre-push" => "check run --event before-push --pre-push",
         "post-commit" => "hooks post-commit >/dev/null",
+        "post-merge" => "hooks post-merge \"$1\" >/dev/null",
         other => panic!("unknown hook script {other}"),
     }
 }
@@ -1502,7 +1509,7 @@ fn it_should_let_a_no_ff_merge_outside_main_pass_through_the_pre_merge_commit_ho
 }
 
 #[test]
-fn it_should_require_the_commit_mark_for_a_clean_merge_on_develop_and_keep_it_afterwards() {
+fn it_should_require_the_commit_mark_for_a_clean_merge_on_develop_and_consume_it_afterwards() {
     let repo = HookRepo::new();
     repo.check("green").seed();
     repo.git(&["switch", "-c", W1]);
@@ -1529,10 +1536,7 @@ fn it_should_require_the_commit_mark_for_a_clean_merge_on_develop_and_keep_it_af
         stderr(&with_mark)
     );
     assert_eq!(repo.head_parents_fields(), 3);
-    assert_eq!(
-        fs::read_to_string(repo.mark()).expect("the mark stays"),
-        MARK_BYTES
-    );
+    assert!(!repo.mark().exists(), "post-merge consumes the mark");
 }
 
 #[test]
@@ -1563,4 +1567,110 @@ fn it_should_spend_the_commit_mark_when_a_conflicted_merge_on_develop_is_closed_
     assert_eq!(commit.status.code(), Some(0), "stderr: {}", stderr(&commit));
     assert_eq!(repo.head_parents_fields(), 3);
     assert!(!repo.mark().exists());
+}
+
+// EMD-006/EMD-007: o quinto script, `post-merge`
+
+#[test]
+fn it_should_consume_the_commit_mark_after_a_fast_forward_merge_on_develop() {
+    let repo = HookRepo::new();
+    repo.check("green").seed();
+    repo.declare_develop();
+    repo.git(&["switch", "-c", "develop"]);
+    repo.git(&["switch", "-c", W1]);
+    repo.commit_before("g.txt", "g\n");
+    repo.git(&["switch", "develop"]);
+    repo.installed();
+    repo.put_mark();
+
+    let merge = repo.git_hooked(&["merge", "--ff-only", W1]);
+
+    assert_eq!(merge.status.code(), Some(0), "stderr: {}", stderr(&merge));
+    assert!(!repo.mark().exists(), "post-merge consumes the mark");
+}
+
+#[test]
+fn it_should_keep_the_commit_mark_after_a_squash_merge_on_develop() {
+    let repo = HookRepo::new();
+    repo.check("green").seed();
+    repo.git(&["switch", "-c", W1]);
+    repo.commit_before("g.txt", "g\n");
+    repo.declare_develop();
+    repo.git(&["switch", "-c", "develop", "main"]);
+    repo.installed();
+    repo.put_mark();
+
+    let merge = repo.git_hooked(&["merge", "--squash", W1]);
+
+    assert_eq!(merge.status.code(), Some(0), "stderr: {}", stderr(&merge));
+    assert_eq!(
+        fs::read_to_string(repo.mark()).expect("the mark stays"),
+        MARK_BYTES
+    );
+}
+
+#[test]
+fn it_should_let_the_commit_after_a_squash_merge_on_develop_pass_with_the_kept_mark() {
+    let repo = HookRepo::new();
+    repo.check("green").seed();
+    repo.git(&["switch", "-c", W1]);
+    repo.commit_before("g.txt", "g\n");
+    repo.declare_develop();
+    repo.git(&["switch", "-c", "develop", "main"]);
+    repo.installed();
+    repo.put_mark();
+    repo.git_hooked(&["merge", "--squash", W1]);
+
+    let commit = repo.git_hooked(&["commit", "-m", "squashed"]);
+
+    assert_eq!(commit.status.code(), Some(0), "stderr: {}", stderr(&commit));
+    assert!(!repo.mark().exists(), "the commit consumes the mark");
+}
+
+#[test]
+fn it_should_leave_the_commit_mark_as_it_was_after_a_merge_on_a_work_item_branch() {
+    let repo = HookRepo::new();
+    repo.check("green").seed();
+    repo.git(&["switch", "-c", W1]);
+    repo.git(&["switch", "-c", W2]);
+    repo.commit_before("g.txt", "g\n");
+    repo.git(&["switch", W1]);
+    repo.installed();
+    repo.put_mark();
+
+    let merge = repo.git_hooked(&["merge", "--ff-only", W2]);
+
+    assert_eq!(merge.status.code(), Some(0), "stderr: {}", stderr(&merge));
+    assert_eq!(
+        fs::read_to_string(repo.mark()).expect("the mark stays"),
+        MARK_BYTES
+    );
+}
+
+#[test]
+fn it_should_consume_nothing_in_hooks_post_merge_with_the_squash_flag() {
+    let repo = HookRepo::new();
+    repo.seed();
+    repo.declare_develop();
+    repo.git(&["switch", "-c", "develop"]);
+    repo.put_mark();
+
+    let output = repo.omhl_in(&["hooks", "post-merge", "1"]).run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(repo.mark().exists(), "the squash flag keeps the mark");
+}
+
+#[test]
+fn it_should_consume_the_mark_in_hooks_post_merge_without_the_squash_flag() {
+    let repo = HookRepo::new();
+    repo.seed();
+    repo.declare_develop();
+    repo.git(&["switch", "-c", "develop"]);
+    repo.put_mark();
+
+    let output = repo.omhl_in(&["hooks", "post-merge", "0"]).run();
+
+    assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
+    assert!(!repo.mark().exists(), "the mark is consumed");
 }

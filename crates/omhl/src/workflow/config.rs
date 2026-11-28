@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 use toml::Spanned;
@@ -29,6 +29,57 @@ pub struct WorkflowConfig {
     pub interview: InterviewConfig,
     pub prefixes: BTreeMap<String, Vec<RequireAtom>>,
     pub branch: BranchConfig,
+    pub git: GitConfig,
+    pub creation_gate: CreationGateConfig,
+    /// `None` é a integração desligada.
+    pub provider: Option<ProviderConfig>,
+    pub worktree: WorktreeConfig,
+}
+
+pub const DEFAULT_PROVIDER_HOST: &str = "github.com";
+pub const DEFAULT_WORKTREE_DIR: &str = ".worktrees";
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GitConfig {
+    pub hooks: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CreationGateConfig {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderConfig {
+    pub name: ProviderName,
+    pub host: String,
+    pub require_ci: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderName {
+    Github,
+}
+
+impl ProviderName {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ProviderName::Github => "github",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeConfig {
+    pub dir: PathBuf,
+}
+
+impl Default for WorktreeConfig {
+    fn default() -> Self {
+        WorktreeConfig {
+            dir: PathBuf::from(DEFAULT_WORKTREE_DIR),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -156,6 +207,10 @@ impl Default for WorkflowConfig {
                 .map(|(prefix, atoms)| (prefix.to_owned(), atoms))
                 .collect(),
             branch: BranchConfig::default(),
+            git: GitConfig::default(),
+            creation_gate: CreationGateConfig::default(),
+            provider: None,
+            worktree: WorktreeConfig::default(),
         }
     }
 }
@@ -170,6 +225,36 @@ struct RawWorkflow {
     interview: Option<RawInterview>,
     prefix: Option<BTreeMap<String, RawPrefix>>,
     branch: Option<RawBranch>,
+    git: Option<RawGit>,
+    creation_gate: Option<RawCreationGate>,
+    provider: Option<RawProvider>,
+    worktree: Option<RawWorktree>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawGit {
+    hooks: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCreationGate {
+    enabled: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawProvider {
+    name: Option<Spanned<String>>,
+    host: Option<Spanned<String>>,
+    require_ci: Option<Spanned<bool>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawWorktree {
+    dir: Option<Spanned<String>>,
 }
 
 #[derive(Deserialize)]
@@ -384,6 +469,65 @@ fn parse_branch(path: &Path, text: &str, raw: RawBranch) -> Result<BranchConfig,
     Ok(branch)
 }
 
+fn parse_provider(
+    path: &Path,
+    text: &str,
+    raw: RawProvider,
+) -> Result<ProviderConfig, ProjectError> {
+    let Some(name) = raw.name else {
+        let span = raw
+            .host
+            .as_ref()
+            .map(Spanned::span)
+            .or_else(|| raw.require_ci.as_ref().map(Spanned::span))
+            .unwrap_or(0..0);
+        return Err(invalid_at(
+            path,
+            text,
+            span,
+            "provider.host and provider.require_ci need provider.name",
+        ));
+    };
+    if name.as_ref() != ProviderName::Github.as_str() {
+        return Err(invalid_at(
+            path,
+            text,
+            name.span(),
+            "provider.name must be one of: github",
+        ));
+    }
+    let host = match raw.host {
+        Some(host) => {
+            let value = host.as_ref();
+            if value.is_empty()
+                || value.contains(['/', ':'])
+                || value.chars().any(char::is_whitespace)
+            {
+                return Err(invalid_at(
+                    path,
+                    text,
+                    host.span(),
+                    "provider.host must be a host name without scheme, port or path",
+                ));
+            }
+            host.into_inner()
+        }
+        None => DEFAULT_PROVIDER_HOST.to_owned(),
+    };
+    Ok(ProviderConfig {
+        name: ProviderName::Github,
+        host,
+        require_ci: raw.require_ci.is_some_and(Spanned::into_inner),
+    })
+}
+
+fn is_usable_worktree_dir(dir: &str) -> bool {
+    !dir.is_empty()
+        && !Path::new(dir)
+            .components()
+            .any(|c| c == Component::ParentDir || c == Component::Normal(DOT_GIT_DIR.as_ref()))
+}
+
 /// O `*` só vale no fim de `prefixo/*`.
 fn is_valid_pattern(pattern: &str) -> bool {
     let name = match pattern.strip_suffix("/*") {
@@ -508,6 +652,26 @@ fn parse_with(path: &Path, bytes: &[u8], lenient: bool) -> Result<WorkflowConfig
     }
     if let Some(branch) = raw.branch {
         config.branch = parse_branch(path, text, branch)?;
+    }
+    if let Some(git) = raw.git {
+        config.git.hooks = git.hooks.unwrap_or(false);
+    }
+    if let Some(gate) = raw.creation_gate {
+        config.creation_gate.enabled = gate.enabled.unwrap_or(false);
+    }
+    if let Some(provider) = raw.provider {
+        config.provider = Some(parse_provider(path, text, provider)?);
+    }
+    if let Some(dir) = raw.worktree.and_then(|worktree| worktree.dir) {
+        if !is_usable_worktree_dir(dir.as_ref()) {
+            return Err(invalid_at(
+                path,
+                text,
+                dir.span(),
+                "worktree.dir must be a non-empty folder without .. and outside .git",
+            ));
+        }
+        config.worktree.dir = PathBuf::from(dir.into_inner());
     }
     for (prefix, table) in raw.prefix.unwrap_or_default() {
         // O projeto soma os átomos aos padrões do tipo: uma lista vazia não os tira.

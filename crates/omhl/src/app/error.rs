@@ -181,6 +181,13 @@ impl AppError {
         )
     }
 
+    pub(crate) fn worktree_exclude_unreadable() -> AppError {
+        AppError::plain(
+            "worktree-exclude-unreadable",
+            "git check-ignore could not tell whether the worktree folder is ignored; nothing was written to info/exclude",
+        )
+    }
+
     pub(crate) fn notes_folder_unwritable() -> AppError {
         AppError::plain(
             "notes-folder-unwritable",

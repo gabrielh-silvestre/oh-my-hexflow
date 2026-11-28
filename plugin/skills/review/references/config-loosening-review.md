@@ -41,13 +41,20 @@ A type the project added (a prefix not in the default table) is judged at every 
 | `native.checks` | an item goes from on to off (native activation item going from on to off) |
 | `prefix` and `require` | an atom leaves the closure of a type, as in the tables above |
 | `[branch]` | as in the paragraphs on `branch.exception`, `branch.integration` and `branch.format` below |
-| the CI-on-merge requirement and the git hooks declaration | either is removed |
+| `[git]` and `git.hooks` | it goes from true to false (turning the git hooks declaration off loosens; turning it on tightens) |
+| `[creation_gate]` and `creation_gate.enabled` | it goes from true to false (turning the creation gate off loosens; turning it on tightens) |
+| `[provider]` and `provider.name` | the table or `name` is removed: turning the integration off loosens (turning it on tightens) |
+| `provider.require_ci` | it goes from true to false, or is removed (removing require_ci loosens; turning it on tightens) |
+| `provider.host` | never loosens by itself, but a change needs attention: it sends the `gh` calls to another server |
+| `[worktree]` and `worktree.dir` | never: the folder of the worktrees is neutral |
 | `specs.dir` | outside this review: a separate guard already protects it |
 | `promotion.min_work_items` | outside this review |
 
 The native activation ids are `checks.run-tests`, `checks.ci-green-before-merge`, `checks.verify-review-comment-anchoring` and `checks.config-loosening-review`. Turning off `checks.config-loosening-review` itself is a loosening like any other.
 
 The `[interview]` table (threshold and weights) is outside the brake: any edit to it is free.
+
+The `[provider]` table turns the integration with the provider on: turning it off (removing `[provider]` or its `name`) or removing `require_ci` loosens the merge, and turning the integration or `require_ci` on tightens it. Changing `provider.host` is neither, but it redirects every `gh` call to another server, so read it with attention and flag a change the PR does not explain.
 
 In `[native.run]`, removing the native command loosens: the native goes back to being an instruction, attested by hand.
 
