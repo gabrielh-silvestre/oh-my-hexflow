@@ -6,6 +6,7 @@ use std::process::ExitCode;
 
 use serde_json::{Value, json};
 
+use crate::app::ProcessRunner;
 use crate::app::action::{Action, Caller};
 use crate::app::error::AppError;
 use crate::app::input::{absolute_path, read_json_input};
@@ -16,12 +17,11 @@ use crate::app::{
     spec_lock as check_spec_lock, user_settings_language,
 };
 use crate::app::{
-    BashEvent, GuardOutcome, McpMergeEvent, McpWriteEvent, PUSH_WARNING_TIMEOUT, ProviderAccess,
+    BashEvent, GuardOutcome, MergeToolEvent, PUSH_WARNING_TIMEOUT, ProviderAccess, WriteToolEvent,
     branch_birth as check_branch_birth, command_guard as check_command_guard, heal_branch_marks,
-    mcp_merge_guard as check_mcp_merge_guard, mcp_write_warning as check_mcp_write_warning,
+    merge_tool_guard as check_mcp_merge_guard, write_tool_warning as check_mcp_write_warning,
 };
 use crate::app::{ExtensionKind, Group};
-use crate::ports::process::ProcessRunner;
 use crate::project::Env;
 
 /// Nunca bloqueia: uma falha de leitura vai ao stderr, e a rede do `session-start` cobre a marca que faltou.
@@ -58,7 +58,7 @@ pub fn mcp_merge_guard(
 ) -> ExitCode {
     let mut failed = false;
     let code = pre_tool_use(stdin, out, err, |input| {
-        let event = McpMergeEvent {
+        let event = MergeToolEvent {
             cwd: absolute_path(&input["cwd"])?,
         };
         check_mcp_merge_guard(&event)
@@ -85,7 +85,7 @@ pub fn mcp_write_warning(
     };
     pre_tool_use(stdin, out, err, |input| {
         let field = |name: &str| input["tool_input"][name].as_str().map(str::to_owned);
-        let event = McpWriteEvent {
+        let event = WriteToolEvent {
             cwd: absolute_path(&input["cwd"])?,
             owner: field("owner"),
             repo: field("repo"),

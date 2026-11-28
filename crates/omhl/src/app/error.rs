@@ -943,7 +943,7 @@ impl AppError {
 
     /// Soma campos ao `context` do erro todo, mantendo os que já estavam.
     pub(crate) fn with_error_context(mut self, fields: Value) -> AppError {
-        let mut context = match self.context.take() {
+        let mut context = match std::mem::take(&mut self.context) {
             Some(Value::Object(existing)) => existing,
             _ => serde_json::Map::new(),
         };

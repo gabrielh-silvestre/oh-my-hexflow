@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use clap::builder::PossibleValuesParser;
 use clap::error::ErrorKind;
 use clap::{ArgGroup, Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
-use hexlog::SemanticId;
+
 use serde_json::{Value, json};
 
 use super::hook;
@@ -16,8 +16,8 @@ use crate::app::error::AppError;
 use crate::app::input::{INPUT_MAX_BYTES, read_json_input};
 use crate::app::runtime::run_action;
 use crate::app::{Group, RUNNABLE_EVENTS};
+use crate::app::{SemanticId, Strategy};
 use crate::project::Env;
-use crate::provider::Strategy;
 
 #[derive(Debug, Parser)]
 #[command(name = "omhl", version, arg_required_else_help = true)]

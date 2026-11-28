@@ -96,6 +96,8 @@ const NUMERIC_CUTS_IN_APP: &[(&str, usize)] = &[
     ("input.rs", 1),
     // lotes de BATCH_SIZE; nada é descartado, o resto vai no lote seguinte
     ("load.rs", 1),
+    // recusa da remoção de worktree suja mostra até STATUS_LINES (20) linhas do git status --porcelain; o resto fica na saída do git
+    ("tidy.rs", 1),
 ];
 const PARENT_PID_CALL: &str = "std::os::unix::process::parent_id()";
 const UNIT_TEST_FILE: &str = "tests.rs";

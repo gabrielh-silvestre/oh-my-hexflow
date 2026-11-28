@@ -6,7 +6,7 @@ Index of the closing order and of the command pages. The rules that always apply
 
 1. Check that the checks of the current commit are attested: `omhl check run` (the hooks already run `before-commit` and `before-push`; `before-merge` is by hand) and `omhl attest` for the manual checks. A new commit asks for everything again.
 2. `omhl gate-delivery <work-item>` and resolve each failed question, the line with `✘` (with `--format json`, `passed: false`; it includes `decisions-anchored`, see `directives-flow`).
-3. With the integration on (`[provider]` in the main-directory `workflow.toml`), run the merge command of [merge.md](merge.md): it merges, closes the work item and tidies the clone. With the integration off, a person merges the PR on the provider and then you run `omhl close` with the `--base` that `gate-delivery` printed, not before.
+3. With the integration on (`[provider]` in the main-directory `workflow.toml`), run the merge command of [merge.md](merge.md): it merges, closes the work item and tidies the clone. With the integration off, a person merges the PR on the provider and then you run `omhl close` with the `--base` that `gate-delivery` printed, not before. The review base follows `branch.integration`: before the merge the base is that integration branch; after the merge, a `--base` you pass must be an ancestor of it.
 4. `omhl report retro` and propose improvements, as in "After `close`" below.
 
 ## `close` and the retro

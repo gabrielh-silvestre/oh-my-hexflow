@@ -41,8 +41,8 @@ pub use crate::workflow::omhl_leaf::Group;
 
 pub use self::agent_role::{AgentRoleEnv, RoleVerdict, agent_role};
 pub use self::edge_hooks::{
-    BashEvent, GuardOutcome, McpMergeEvent, McpWriteEvent, PUSH_WARNING_TIMEOUT, ProviderAccess,
-    branch_birth, command_guard, mcp_merge_guard, mcp_write_warning,
+    BashEvent, GuardOutcome, MergeToolEvent, PUSH_WARNING_TIMEOUT, ProviderAccess, WriteToolEvent,
+    branch_birth, command_guard, merge_tool_guard, write_tool_warning,
 };
 pub use self::language::{
     LanguageRungs, language_line, resolve_language, settings_language, user_settings_language,
@@ -50,11 +50,14 @@ pub use self::language::{
 pub use self::spec::{
     SpecLockEvent, SpecLockOutcome, branch_created, heal_branch_marks, spec_lock,
 };
+pub use crate::ports::process::ProcessRunner;
+pub use crate::provider::Strategy;
+pub use hexlog::SemanticId;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use hexlog::{Config, ErrorCode, SemanticId, TenantId};
+use hexlog::{Config, ErrorCode, TenantId};
 use serde_json::Value;
 
 use self::action::{Action, Caller};

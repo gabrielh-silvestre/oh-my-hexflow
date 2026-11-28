@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use omhl::app::error::AppError;
 use omhl::app::{
-    BashEvent, GuardOutcome, McpMergeEvent, McpWriteEvent, ProviderAccess, command_guard,
-    mcp_merge_guard, mcp_write_warning,
+    BashEvent, GuardOutcome, MergeToolEvent, ProviderAccess, WriteToolEvent, command_guard,
+    merge_tool_guard, write_tool_warning,
 };
 use omhl::runner::{RunError, RunReport, RunSpec};
 use support::git::git_ok;
@@ -98,7 +98,7 @@ fn guard(cwd: &Path, command: &str, runner: &FakeRunner) -> GuardOutcome {
 }
 
 fn write(cwd: &Path, owner: &str, branch: Option<&str>, runner: &FakeRunner) -> GuardOutcome {
-    let event = McpWriteEvent {
+    let event = WriteToolEvent {
         cwd: cwd.to_path_buf(),
         owner: Some(owner.to_owned()),
         repo: Some("widgets".to_owned()),
@@ -109,7 +109,7 @@ fn write(cwd: &Path, owner: &str, branch: Option<&str>, runner: &FakeRunner) -> 
         timeout: SMALL_TIMEOUT,
     };
 
-    mcp_write_warning(&event, &access).expect("the warning answers")
+    write_tool_warning(&event, &access).expect("the warning answers")
 }
 
 fn warned(outcome: &GuardOutcome) -> bool {
@@ -338,11 +338,11 @@ const BROKEN: &str = "version = 1\ncolour = true\n";
 const PROVIDER_OFF: &str = "version = 1\n";
 
 fn merge_guard(cwd: &Path) -> Result<GuardOutcome, AppError> {
-    let event = McpMergeEvent {
+    let event = MergeToolEvent {
         cwd: cwd.to_path_buf(),
     };
 
-    mcp_merge_guard(&event)
+    merge_tool_guard(&event)
 }
 
 fn unmarked() -> TempDir {

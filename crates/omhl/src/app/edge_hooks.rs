@@ -34,14 +34,14 @@ pub struct BashEvent {
     pub command: String,
 }
 
-pub struct McpWriteEvent {
+pub struct WriteToolEvent {
     pub cwd: PathBuf,
     pub owner: Option<String>,
     pub repo: Option<String>,
     pub branch: Option<String>,
 }
 
-pub struct McpMergeEvent {
+pub struct MergeToolEvent {
     pub cwd: PathBuf,
 }
 
@@ -98,8 +98,8 @@ pub fn command_guard(event: &BashEvent, gh: &ProviderAccess<'_>) -> Result<Guard
     Ok(outcome)
 }
 
-pub fn mcp_write_warning(
-    event: &McpWriteEvent,
+pub fn write_tool_warning(
+    event: &WriteToolEvent,
     gh: &ProviderAccess<'_>,
 ) -> Result<GuardOutcome, AppError> {
     let Some(branch) = event.branch.as_deref() else {
@@ -130,7 +130,7 @@ pub fn mcp_write_warning(
 }
 
 /// Lê só a declaração da integração, nunca o banco: um banco travado não segura a decisão.
-pub fn mcp_merge_guard(event: &McpMergeEvent) -> Result<GuardOutcome, AppError> {
+pub fn merge_tool_guard(event: &MergeToolEvent) -> Result<GuardOutcome, AppError> {
     Ok(GuardOutcome {
         deny: integration_on(&event.cwd)?.then(merge_denial),
         context: Vec::new(),
