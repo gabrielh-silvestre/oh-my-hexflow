@@ -1,6 +1,6 @@
 # Mechanical checks
 
-A check with the `run` field is mechanical: `omhl check run` runs the command, compares the result with `expect`, records an attestation (`passed`, `passed_with_warning` or `failed`) and stores the command's output. The pull request gate reads only the outcome. What to do when the check or the hook refuses is in [gates-operation.md](gates-operation.md). The rules that always apply are in the `SKILL.md` of `review`.
+A check with the `run` field is mechanical: `omhl check run` runs the command, compares the result with `expect`, records an attestation (`passed`, `passed_with_warning` or `failed`) and stores the command's output. The delivery gate (`omhl gate-delivery`) reads only the outcome. What to do when the check or the hook refuses is in [gates-operation.md](gates-operation.md). The rules that always apply are in the `SKILL.md` of `review`.
 
 ## Check rules
 
@@ -11,7 +11,7 @@ A check with the `run` field is mechanical: `omhl check run` runs the command, c
 
 ## The cycle
 
-1. `omhl hooks install`, once per clone: it wires `pre-commit` (event `before-commit`) and `pre-push` (event `before-pr`).
+1. `omhl hooks install`, once per clone: it wires `pre-commit` (event `before-commit`) and `pre-push` (event `before-push`).
 2. `omhl load` for each file created, edited or deleted in `.omhl/`.
 3. `git commit` and `git push` run `omhl check run` on their own and block on failure. `before-merge` has no hook: run `omhl check run --event before-merge` by hand. A manual check (without `run`) belongs to `omhl attest`, after the human reviews.
 4. A failed check: read `omhl byproduct <check> <work-item> --tail 40`, fix it and make a new commit (the outcome of the same snapshot does not change).

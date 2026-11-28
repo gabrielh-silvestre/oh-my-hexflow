@@ -19,10 +19,10 @@ use omhl::runner::{CommandRunner, RunError, RunReport, RunSpec};
 use serde_json::{Value, json};
 use support::busy::with_write_lock;
 use support::check_run_tree::{BRANCH, W1, copy_index, node_wire, tree_json};
+use support::delivery_gate::CI_GREEN;
 use support::ext::write_check_file;
 use support::git::GitRepo;
 use support::omhl::{RUN_TESTS, acme, check_data, work_item_data};
-use support::pr_gate::CI_GREEN;
 use support::raw::RawHarness;
 use support::runner::FakeRunner;
 use support::{FakeNative, FakeProbe, snap, tenant, wi_head_facts};
@@ -383,12 +383,12 @@ fn it_should_refuse_before_pr_when_an_untracked_file_exists() {
         repo.path(),
         &[(
             "checks.lint",
-            mechanical_check("before-pr", &["true"], true),
+            mechanical_check("before-push", &["true"], true),
         )],
     );
     repo.write("u.txt", "u\n");
 
-    let error = run_event(&mut app, "before-pr").expect_err("an untracked file is refused");
+    let error = run_event(&mut app, "before-push").expect_err("an untracked file is refused");
 
     assert_eq!(error.code(), "worktree-dirty");
     assert_eq!(received(&specs), Vec::<Vec<String>>::new());
@@ -583,16 +583,11 @@ fn it_should_not_leak_the_hook_git_index_into_the_command() {
     assert_eq!(
         removed,
         argv(&[
-            "CARGO_BUILD_RUSTFLAGS",
-            "CARGO_ENCODED_RUSTFLAGS",
             "GIT_COMMON_DIR",
             "GIT_DIR",
             "GIT_INDEX_FILE",
             "GIT_PREFIX",
-            "GIT_WORK_TREE",
-            "RUSTC_WORKSPACE_WRAPPER",
-            "RUSTC_WRAPPER",
-            "RUSTFLAGS"
+            "GIT_WORK_TREE"
         ])
     );
 }
@@ -616,10 +611,12 @@ fn it_should_keep_inheriting_the_rest_of_the_environment() {
     let _ = run_event(&mut app, "before-commit");
 
     let spec = specs.try_recv().expect("the runner received a spec");
-    assert_eq!(spec.env_remove.len(), 10);
+    assert_eq!(spec.env_remove.len(), 5);
     for kept in [
         "PATH",
         "HOME",
+        "RUSTFLAGS",
+        "RUSTC_WRAPPER",
         "GIT_AUTHOR_NAME",
         "GIT_CONFIG_GLOBAL",
         "OMHL_RUN_ID",
@@ -734,16 +731,16 @@ fn it_should_stop_and_report_when_a_before_pr_command_creates_an_untracked_file(
         &[
             (
                 "checks.a-touch",
-                mechanical_check("before-pr", &["sh", "-c", "echo u > u.txt"], true),
+                mechanical_check("before-push", &["sh", "-c", "echo u > u.txt"], true),
             ),
             (
                 "checks.b-true",
-                mechanical_check("before-pr", &["true"], true),
+                mechanical_check("before-push", &["true"], true),
             ),
         ],
     );
 
-    let error = run_event(&mut app, "before-pr").expect_err("the new file stops the run");
+    let error = run_event(&mut app, "before-push").expect_err("the new file stops the run");
 
     assert_eq!(error.code(), "check-not-run");
     let details = details(&error);
@@ -824,7 +821,7 @@ fn it_should_pass_the_pull_request_gate_when_the_executor_attested_the_before_co
     let gate = app
         .dispatch(
             &Caller::cli(),
-            &Action::GatePr {
+            &Action::GateDelivery {
                 work_item: W1.to_owned(),
                 base: None,
             },

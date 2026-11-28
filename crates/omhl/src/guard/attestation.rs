@@ -2,7 +2,7 @@ use hexlog::{NativeNodes, SemanticId};
 use serde_json::Value;
 
 use super::append::{Guard, NodeItem, status_of};
-use super::attestation_id;
+use super::{Origin, attestation_id};
 use crate::error::{OmhlError, RuleCode};
 use crate::mechanical::is_mechanical;
 use crate::native::NativeBase;
@@ -14,17 +14,23 @@ const ATTESTER: &str = "executor";
 struct FoundCheck {
     id: SemanticId,
     mechanical: bool,
+    native: bool,
 }
 
 impl Guard<'_, '_> {
     pub(super) fn check_attestation(&mut self, node: &NodeItem<'_>) -> Result<(), OmhlError> {
         let work_item = self.find_open_work_item(node)?;
         let check = self.find_check(node)?;
-        check_derived_id(
-            node,
-            check.as_ref().map(|found| &found.id),
-            work_item.as_ref(),
-        )?;
+        let found_id = check.as_ref().map(|found| &found.id);
+        let evaluated_allowed =
+            check.as_ref().is_some_and(|found| found.native) && node.has_field("spec_digest");
+        check_derived_id(node, found_id, work_item.as_ref(), Origin::InForce).or_else(|error| {
+            if evaluated_allowed {
+                check_derived_id(node, found_id, work_item.as_ref(), Origin::Evaluated)
+            } else {
+                Err(error)
+            }
+        })?;
         // `spec_digest` é o selo do `check run`: quem o declara também é o `executor`
         if check.is_some_and(|found| found.mechanical) || node.has_field("spec_digest") {
             self.check_mechanical_authorship(node)?;
@@ -56,16 +62,20 @@ impl Guard<'_, '_> {
         let id = SemanticId::parse(raw)
             .map_err(|_| node.error(RuleCode::CheckNotFound, "body/data/check"))?;
         // check nativo nunca tem `run`
-        let (type_name, mechanical) = match NativeBase.lookup(&id) {
-            Some(native) => (Some(native.type_name), false),
+        let (type_name, mechanical, native) = match NativeBase.lookup(&id) {
+            Some(native) => (Some(native.type_name), false, true),
             None => match self.hexlog.get(self.tenant, &id)? {
-                Some(view) => (Some(view.type_name), is_mechanical(&view.data)),
-                None => (None, false),
+                Some(view) => (Some(view.type_name), is_mechanical(&view.data), false),
+                None => (None, false, false),
             },
         };
 
         match type_name {
-            Some(found) if found.as_str() == "check" => Ok(Some(FoundCheck { id, mechanical })),
+            Some(found) if found.as_str() == "check" => Ok(Some(FoundCheck {
+                id,
+                mechanical,
+                native,
+            })),
             _ => Err(node.error(RuleCode::CheckNotFound, "body/data/check")),
         }
     }
@@ -135,12 +145,13 @@ fn check_derived_id(
     node: &NodeItem<'_>,
     check: Option<&SemanticId>,
     work_item: Option<&SemanticId>,
+    origin: Origin,
 ) -> Result<(), OmhlError> {
     let (Some(snapshot), Some(check), Some(work_item)) = (node.snapshot, check, work_item) else {
         return Ok(());
     };
 
-    match attestation_id(snapshot, check, work_item) {
+    match attestation_id(snapshot, check, work_item, origin) {
         Ok(derived) if &derived == node.id => Ok(()),
         Ok(_) => Err(node.error(RuleCode::AttestationIdMismatch, "body/id")),
         Err(OmhlError::Rule { code, .. }) => Err(node.error(code, "body/id")),

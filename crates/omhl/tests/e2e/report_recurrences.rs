@@ -429,7 +429,8 @@ fn it_should_keep_the_group_when_the_confirmed_guideline_has_a_different_text() 
 }
 
 #[test]
-fn it_should_not_suggest_a_recurrence_covered_by_a_native_directive() {
+fn it_should_suggest_the_recurrence_of_a_former_native_text_now_that_the_plugin_carries_no_guideline()
+ {
     let project = Project::new("acme");
     let native_text = "By default, ask before committing and pushing at the end of a task; a project guideline may state a different policy.";
     seed(
@@ -443,7 +444,7 @@ fn it_should_not_suggest_a_recurrence_covered_by_a_native_directive() {
 
     let report = report(&project);
 
-    assert!(group_texts(&report).is_empty(), "{report}");
+    assert!(!group_texts(&report).is_empty(), "{report}");
 }
 
 #[test]

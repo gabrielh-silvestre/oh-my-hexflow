@@ -88,7 +88,7 @@ impl Fixture {
     }
 
     fn seed_check(&self, id: &str, run: &[&str]) {
-        self.seed_check_data(id, mechanical_check("before-pr", run));
+        self.seed_check_data(id, mechanical_check("before-push", run));
     }
 
     fn seed_check_data(&self, id: &str, data: Value) {
@@ -127,7 +127,7 @@ impl Fixture {
     }
 }
 
-/// Fixture com `checks.fmt` (`before-pr`, `["true"]`) gravado.
+/// Fixture com `checks.fmt` (`before-push`, `["true"]`) gravado.
 fn fixture_with_fmt() -> Fixture {
     let fx = Fixture::new();
     fx.seed_check("checks.fmt", &["true"]);
@@ -177,9 +177,9 @@ fn byproduct_hash(text: &str) -> ByproductHash {
     ByproductHash::parse(text).expect("a valid byproduct hash")
 }
 
-fn run_before_pr(app: &mut App<'_>) -> Result<Value, AppError> {
+fn run_before_push(app: &mut App<'_>) -> Result<Value, AppError> {
     let action = Action::CheckRun {
-        target: CheckTarget::Event("before-pr".to_owned()),
+        target: CheckTarget::Event("before-push".to_owned()),
         pre_push: None,
     };
 
@@ -299,7 +299,7 @@ fn it_should_store_the_full_output_in_the_blob_store_and_record_its_hash() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    let output = run_before_pr(&mut app);
+    let output = run_before_push(&mut app);
 
     assert!(output.is_ok(), "the run succeeds: {output:?}");
     assert_eq!(
@@ -316,7 +316,7 @@ fn it_should_put_stderr_after_stdout_in_the_blob() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
 
     assert_eq!(
         get(&mut app, FMT_ATTESTATION)["data"]["byproduct"],
@@ -336,7 +336,7 @@ fn it_should_record_the_truncated_flag_when_the_output_was_cut() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    let output = run_before_pr(&mut app).expect("the run succeeds");
+    let output = run_before_push(&mut app).expect("the run succeeds");
 
     assert_eq!(output["results"][0]["truncated"], json!(true));
     let data = get(&mut app, FMT_ATTESTATION)["data"].clone();
@@ -361,7 +361,7 @@ fn it_should_keep_the_byproduct_when_the_attestation_append_is_refused() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    let error = run_before_pr(&mut app).expect_err("the guard refuses the new outcome");
+    let error = run_before_push(&mut app).expect_err("the guard refuses the new outcome");
 
     assert_eq!(error.code(), "attestation-refused");
     let details = details(&error);
@@ -388,7 +388,7 @@ fn it_should_print_the_byproduct_hash_when_the_append_stays_busy() {
     };
     let mut app = fx.app(&probe, &runner, &fx.blobs, &open_retry);
 
-    let result = with_write_lock(&fx.raw.config(), &acme(), |_| run_before_pr(&mut app));
+    let result = with_write_lock(&fx.raw.config(), &acme(), |_| run_before_push(&mut app));
 
     let error = result.expect_err("the append stays busy");
     assert_eq!(error.code(), "attestation-not-recorded");
@@ -409,9 +409,9 @@ fn it_should_keep_the_byproduct_hash_stable_for_identical_output() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    run_before_pr(&mut app).expect("the first run succeeds");
+    run_before_push(&mut app).expect("the first run succeeds");
     let after_first = get(&mut app, FMT_ATTESTATION)["data"]["byproduct"].clone();
-    run_before_pr(&mut app).expect("the second run succeeds");
+    run_before_push(&mut app).expect("the second run succeeds");
     let after_second = get(&mut app, FMT_ATTESTATION)["data"]["byproduct"].clone();
 
     assert_eq!(after_first, json!(B1_HASH));
@@ -434,7 +434,7 @@ fn it_should_serve_through_byproduct_the_blob_that_check_run_wrote() {
     let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(b"a\nb\n", b"warn\n"))]);
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
     let action = Action::Byproduct {
         check: "checks.fmt".to_owned(),
         work_item: W1.to_owned(),
@@ -454,7 +454,7 @@ fn it_should_rewrite_a_truncated_blob_when_the_check_runs_again() {
     let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(b"ok\n", b""))]);
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
-    run_before_pr(&mut app).expect("the first run succeeds");
+    run_before_push(&mut app).expect("the first run succeeds");
     let path = fx
         .raw
         .dir
@@ -464,7 +464,7 @@ fn it_should_rewrite_a_truncated_blob_when_the_check_runs_again() {
         .join(B1_HASH);
     std::fs::write(&path, b"").expect("the blob is truncated");
 
-    run_before_pr(&mut app).expect("the second run succeeds");
+    run_before_push(&mut app).expect("the second run succeeds");
 
     assert_eq!(fx.stored_blob(B1_HASH), Some(B1_BLOB.to_vec()));
 }
@@ -476,7 +476,7 @@ fn it_should_not_store_the_environment_in_the_byproduct_or_in_the_attestation() 
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
 
     assert_eq!(fx.stored_blob(B1_HASH), Some(B1_BLOB.to_vec()));
     let data = get(&mut app, FMT_ATTESTATION)["data"].clone();
@@ -517,7 +517,7 @@ fn it_should_store_the_byproduct_before_appending_the_attestation() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &store, &RetryPolicy::default());
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
 
     assert_eq!(counted.try_iter().collect::<Vec<_>>(), vec![0]);
     let listed = attestations(&mut app);
@@ -540,7 +540,7 @@ fn it_should_stop_and_report_when_the_blob_store_cannot_be_written_recording_not
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &FullDiskStore, &RetryPolicy::default());
 
-    let error = run_before_pr(&mut app).expect_err("the blob store failure stops the run");
+    let error = run_before_push(&mut app).expect_err("the blob store failure stops the run");
 
     assert_eq!(error.code(), "check-not-run");
     let details = details(&error);
@@ -563,7 +563,7 @@ fn it_should_stop_and_report_when_the_blob_store_cannot_be_written_recording_not
 #[test]
 fn it_should_fail_a_stream_rule_and_say_so_when_the_output_was_cut() {
     let fx = Fixture::new();
-    let mut data = mechanical_check("before-pr", &["true"]);
+    let mut data = mechanical_check("before-push", &["true"]);
     data["expect"] = json!([{ "exit": 0, "stdout": "done$", "outcome": "passed" }]);
     fx.seed_check_data("checks.fmt", data);
     let cut = RunReport {
@@ -574,7 +574,7 @@ fn it_should_fail_a_stream_rule_and_say_so_when_the_output_was_cut() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    let error = run_before_pr(&mut app).expect_err("the stream rule cannot be checked");
+    let error = run_before_push(&mut app).expect_err("the stream rule cannot be checked");
 
     assert_eq!(error.code(), "checks-failed");
     assert_eq!(
@@ -592,7 +592,7 @@ fn it_should_fail_a_stream_rule_and_say_so_when_the_output_was_cut() {
 #[test]
 fn it_should_not_blame_the_cut_when_the_failure_comes_from_the_exit_code() {
     let fx = Fixture::new();
-    let mut data = mechanical_check("before-pr", &["true"]);
+    let mut data = mechanical_check("before-push", &["true"]);
     data["expect"] = json!([{ "exit": 0, "stdout": "x$", "outcome": "passed" }]);
     fx.seed_check_data("checks.fmt", data);
     let cut = RunReport {
@@ -604,7 +604,7 @@ fn it_should_not_blame_the_cut_when_the_failure_comes_from_the_exit_code() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    let error = run_before_pr(&mut app).expect_err("the exit code has no rule");
+    let error = run_before_push(&mut app).expect_err("the exit code has no rule");
 
     assert_eq!(error.code(), "checks-failed");
     let message = details(&error)[0]["message"]
@@ -621,7 +621,7 @@ fn it_should_store_the_masked_output_and_record_the_hash_of_the_masked_blob() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
 
     assert_eq!(
         get(&mut app, FMT_ATTESTATION)["data"]["byproduct"],
@@ -636,7 +636,7 @@ fn it_should_serve_the_masked_output_through_byproduct() {
     let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(SECRET_LINE, b""))]);
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
     let action = Action::Byproduct {
         check: "checks.fmt".to_owned(),
         work_item: W1.to_owned(),
@@ -653,14 +653,14 @@ fn it_should_serve_the_masked_output_through_byproduct() {
 #[test]
 fn it_should_evaluate_the_check_on_the_raw_output_not_on_the_masked_one() {
     let fx = Fixture::new();
-    let mut data = mechanical_check("before-pr", &["true"]);
+    let mut data = mechanical_check("before-push", &["true"]);
     data["expect"] = json!([{ "exit": 0, "stdout": "abcdef123456", "outcome": "passed" }]);
     fx.seed_check_data("checks.fmt", data);
     let (runner, _specs) = FakeRunner::new(vec![answer(&["true"], report(SECRET_LINE, b""))]);
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &fx.blobs, &RetryPolicy::default());
 
-    run_before_pr(&mut app).expect("the pattern matches the raw output");
+    run_before_push(&mut app).expect("the pattern matches the raw output");
 
     assert_eq!(
         get(&mut app, FMT_ATTESTATION)["data"]["outcome"],
@@ -675,7 +675,7 @@ fn it_should_keep_the_output_tail_unmasked_when_the_blob_cannot_be_stored() {
     let probe = probe();
     let mut app = fx.app(&probe, &runner, &FullDiskStore, &RetryPolicy::default());
 
-    let error = run_before_pr(&mut app).expect_err("the blob store failure stops the run");
+    let error = run_before_push(&mut app).expect_err("the blob store failure stops the run");
 
     assert_eq!(
         details(&error)[0]["context"]["output_tail"]["stdout"],

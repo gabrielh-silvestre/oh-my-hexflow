@@ -7,12 +7,12 @@ use omhl::facade::{Omhl, OmhlDeps, SessionSource};
 use omhl::graphs;
 use omhl::native::NativeBase;
 use serde_json::{Value, json};
+use support::delivery_gate::{mechanical_check_data, relation_retirement_item};
 use support::gate::relation_item;
 use support::omhl::{
     acme, decision_data, node_item, premise_data, pull_request_data, request, retirement_item,
     revision_item, work_item_data,
 };
-use support::pr_gate::{mechanical_check_data, relation_retirement_item};
 use support::project::Project;
 use support::run::{Run, run_omhl_with_session};
 use support::session::{chain_head, raw_session, stamps};
@@ -35,7 +35,6 @@ const W2: &str = "work-items.w2";
 const W3: &str = "work-items.w3";
 const PR: &str = "work-items.pr-7";
 const GHOST: &str = "work-items.ghost";
-const NATIVE_GUIDELINE: &str = "guidelines.one-decision-per-turn";
 
 const FIRST_RECORD_OF_A: &str = "2026-11-10T10:00:00.000Z";
 const LAST_RECORD_OF_A: &str = "2026-11-10T17:00:00.000Z";
@@ -220,7 +219,7 @@ fn seeded() -> Db {
         ],
     );
 
-    let check = mechanical_check_data("before-pr", "x", true);
+    let check = mechanical_check_data("before-push", "x", true);
     db.write_as(
         Some(SESSION_B),
         &on_day("11:00"),
@@ -238,7 +237,7 @@ fn seeded() -> Db {
         Some(SESSION_B),
         &on_day("11:30"),
         vec![
-            relation_item("supports", NATIVE_GUIDELINE, "premises.pn"),
+            relation_item("supports", "guidelines.g1", "premises.pn"),
             relation_item("supports", "premises.pn", "decisions.dn"),
         ],
     );

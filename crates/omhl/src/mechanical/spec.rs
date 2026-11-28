@@ -40,7 +40,14 @@ pub struct SpecError {
 
 pub const CHECK_DATA_MAX_UNITS: usize = 15_000;
 pub const RUN_MAX_UNITS: usize = 6_000;
-pub const RUNNABLE_EVENTS: [&str; 3] = ["before-commit", "before-pr", "before-merge"];
+pub const EVENTS: [&str; 4] = [
+    "before-commit",
+    "before-push",
+    "before-merge",
+    "before-publishing-review-comments",
+];
+pub const RUNNABLE_EVENTS: [&str; 3] = [EVENTS[0], EVENTS[1], EVENTS[2]];
+pub const INSTRUCTION_EVENT: &str = EVENTS[3];
 
 const REGEX_SIZE_LIMIT: usize = 1 << 20;
 const RUN_MAX_ITEMS: usize = 64;

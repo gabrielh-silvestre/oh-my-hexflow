@@ -11,7 +11,7 @@ use support::project::Project;
 
 const W1: &str = "work-items.w1";
 const REVIEW: &str = "checks.config-loosening-review";
-const COMMANDS: [&str; 2] = ["gate-pr", "close"];
+const COMMANDS: [&str; 2] = ["gate-delivery", "close"];
 
 fn run(project: &Project, args: &[&str]) -> Output {
     cmd(project, args).run()
@@ -134,7 +134,7 @@ fn it_should_accept_a_valid_base_with_the_review_check_off() {
     let project = project_with_review(false);
     commit_on_topic(&project, "src/a.rs");
 
-    let output = run(&project, &["gate-pr", W1, "--base", "main"]);
+    let output = run(&project, &["gate-delivery", W1, "--base", "main"]);
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
 }
@@ -147,7 +147,7 @@ fn it_should_keep_probe_failed_when_git_fails_to_find_the_merge_base() {
     let output = with_git_that_fails_on(
         &project,
         &["merge-base", "diff"],
-        &["gate-pr", W1, "--base", "main"],
+        &["gate-delivery", W1, "--base", "main"],
     );
 
     assert_refused(&output, "probe-failed");
@@ -173,7 +173,7 @@ fn it_should_refuse_with_the_main_directory_error_before_judging_the_base() {
     let output = with_git_that_fails_on(
         &project,
         &["--git-common-dir"],
-        &["gate-pr", W1, "--base", "no-such-ref"],
+        &["gate-delivery", W1, "--base", "no-such-ref"],
     );
 
     assert_refused(&output, "main-dir-unknown");
@@ -224,7 +224,7 @@ fn it_should_leave_the_review_question_out_of_the_gate_when_only_a_source_file_c
     let project = project_with_review(true);
     commit_on_topic(&project, "src/a.rs");
 
-    let output = run(&project, &["gate-pr", W1, "--base", "main"]);
+    let output = run(&project, &["gate-delivery", W1, "--base", "main"]);
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert!(!output.stdout.contains(REVIEW), "{}", output.stdout);
@@ -278,7 +278,7 @@ fn it_should_fail_the_review_question_as_refuse_when_the_workflow_file_changed_a
  {
     let project = project_with_loosened_workflow();
 
-    let gate = run(&project, &["gate-pr", W1, "--base", "main"]);
+    let gate = run(&project, &["gate-delivery", W1, "--base", "main"]);
 
     let review = review_question(&gate).expect("the review question is in the gate");
     assert_eq!(review["passed"], json!(false));
@@ -321,7 +321,7 @@ fn it_should_pass_the_review_question_once_it_is_attested_at_the_head() {
     let project = project_with_loosened_workflow();
     attest_review(&project);
 
-    let gate = run(&project, &["gate-pr", W1, "--base", "main"]);
+    let gate = run(&project, &["gate-delivery", W1, "--base", "main"]);
 
     let review = review_question(&gate).expect("the review question is in the gate");
     assert_eq!(review["passed"], json!(true));
@@ -347,7 +347,7 @@ fn it_should_fail_the_review_question_again_when_a_commit_follows_the_attestatio
         &["commit", "-q", "--allow-empty", "-m", "after the review"],
     );
 
-    let gate = run(&project, &["gate-pr", W1, "--base", "main"]);
+    let gate = run(&project, &["gate-delivery", W1, "--base", "main"]);
 
     let review = review_question(&gate).expect("the review question is in the gate");
     assert_eq!(review["passed"], json!(false));
@@ -357,7 +357,7 @@ fn it_should_fail_the_review_question_again_when_a_commit_follows_the_attestatio
 fn it_should_require_the_review_when_no_base_is_given_and_the_check_is_on() {
     let project = project_with_review(true);
 
-    let gate = run(&project, &["gate-pr", W1]);
+    let gate = run(&project, &["gate-delivery", W1]);
 
     let review = review_question(&gate).expect("the review question is in the gate");
     assert_eq!(review["passed"], json!(false));
@@ -369,7 +369,7 @@ fn it_should_leave_the_review_question_out_when_the_check_is_off_even_if_the_wor
     let project = project_with_review(false);
     commit_on_topic(&project, ".omhl/workflow.toml");
 
-    let gate = run(&project, &["gate-pr", W1, "--base", "main"]);
+    let gate = run(&project, &["gate-delivery", W1, "--base", "main"]);
 
     assert_eq!(gate.code, Some(0), "stderr: {}", gate.stderr);
     assert_eq!(review_question(&gate), None);
@@ -398,7 +398,7 @@ fn it_should_keep_the_review_required_when_the_evaluated_commit_turns_it_off_in_
     git_ok(&linked, &["add", "-A"]);
     git_ok(&linked, &["commit", "-q", "-m", "turn the review off"]);
 
-    let gate = cmd(&project, &["gate-pr", W1, "--base", "main"])
+    let gate = cmd(&project, &["gate-delivery", W1, "--base", "main"])
         .cwd(&linked)
         .run();
 
@@ -479,7 +479,7 @@ fn it_should_evaluate_the_repair_pull_request_with_the_review_required_and_a_war
     let (project, linked) =
         repair_pr_with(|dir| write_in(dir, ".omhl/workflow.toml", REPAIRED_WORKFLOW));
 
-    let gate = run_in(&project, &linked, &["gate-pr", W1, "--base", "main"]);
+    let gate = run_in(&project, &linked, &["gate-delivery", W1, "--base", "main"]);
 
     let review = review_question(&gate).expect("the review question is in the gate");
     assert_eq!(review["passed"], json!(false));
@@ -538,7 +538,7 @@ fn it_should_ask_a_native_check_that_is_on_only_in_the_head_version_of_the_workf
         )
     });
 
-    let gate = run_in(&project, &linked, &["gate-pr", W1, "--base", "main"]);
+    let gate = run_in(&project, &linked, &["gate-delivery", W1, "--base", "main"]);
 
     let asked = text_of(&gate);
     assert!(asked.contains(RUN_TESTS), "{asked}");

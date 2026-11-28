@@ -214,9 +214,9 @@ fn no_facts(_value: &Value) -> Vec<String> {
 
 // ---------------------------------------------------------------- fixtures do `check run` (sempre pelo binário)
 
-const CHECK_RUN: &[&str] = &["check", "run", "--event", "before-pr"];
+const CHECK_RUN: &[&str] = &["check", "run", "--event", "before-push"];
 
-const CHECK_RUN_ON_PUSH: &[&str] = &["check", "run", "--event", "before-pr", "--pre-push"];
+const CHECK_RUN_ON_PUSH: &[&str] = &["check", "run", "--event", "before-push", "--pre-push"];
 
 /// Um push que só apaga uma ref: não há nada a atestar.
 const DELETE_ONLY_PUSH: &str = "(delete) 0000000000000000000000000000000000000000 refs/heads/old bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n";
@@ -1198,7 +1198,7 @@ fn attest_absent(value: &Value) -> Vec<String> {
     absent
 }
 
-// ---------------------------------------------------------------- fixtures e fatos de `gate-pr` e `close`
+// ---------------------------------------------------------------- fixtures e fatos de `gate-delivery` e `close`
 
 fn gate_state(project: fn() -> Project) -> Fixture {
     Fixture::spawned(project(), "")
@@ -1241,7 +1241,7 @@ fn failing_ids(question: &Value) -> Vec<&str> {
         .collect()
 }
 
-/// O `next_step` da primeira pergunta que reprova e traz um: o `gate-pr` o promove a `Next:`.
+/// O `next_step` da primeira pergunta que reprova e traz um: o `gate-delivery` o promove a `Next:`.
 fn first_failed_step(report: &Value) -> Option<&str> {
     questions_of(report)
         .iter()
@@ -1308,13 +1308,16 @@ fn question_facts(report: &Value, promoted: Option<&str>) -> Vec<String> {
     facts
 }
 
-fn gate_pr_facts(value: &Value) -> Vec<String> {
+fn gate_delivery_facts(value: &Value) -> Vec<String> {
     let symbol = match value["passed"] == true {
         true => SYMBOL_OK,
         false => SYMBOL_ERROR,
     };
     let promoted = first_failed_step(value);
-    let mut facts = vec![format!("{symbol} gate-pr · {}", gate_summary_text(value))];
+    let mut facts = vec![format!(
+        "{symbol} gate-delivery · {}",
+        gate_summary_text(value)
+    )];
     facts.extend(question_facts(value, promoted));
     facts.extend(promoted.map(|step| format!("{NEXT_LABEL} {step}")));
 
@@ -1341,7 +1344,7 @@ fn gate_absent_facts(report: &Value) -> Vec<String> {
     absent
 }
 
-fn gate_pr_absent(value: &Value) -> Vec<String> {
+fn gate_delivery_absent(value: &Value) -> Vec<String> {
     let mut absent = gate_absent_facts(value);
     if first_failed_step(value).is_none() {
         absent.push(NEXT_LABEL.to_owned());
@@ -2215,39 +2218,39 @@ const CASES: [Case; 85] = [
         absent: no_facts,
     },
     Case {
-        name: "gate-pr passed",
-        key: CommandKey::GatePr,
-        args: &["gate-pr", cycle::WORK_ITEM],
+        name: "gate-delivery passed",
+        key: CommandKey::GateDelivery,
+        args: &["gate-delivery", cycle::WORK_ITEM],
         outcome: Outcome::Success,
         error_code: None,
         fixture: gate_approved,
-        derived: gate_pr_facts,
-        absent: gate_pr_absent,
+        derived: gate_delivery_facts,
+        absent: gate_delivery_absent,
     },
     Case {
-        name: "gate-pr failed without next step",
-        key: CommandKey::GatePr,
-        args: &["gate-pr", cycle::WORK_ITEM],
+        name: "gate-delivery failed without next step",
+        key: CommandKey::GateDelivery,
+        args: &["gate-delivery", cycle::WORK_ITEM],
         outcome: Outcome::Success,
         error_code: None,
         fixture: gate_unattested,
-        derived: gate_pr_facts,
-        absent: gate_pr_absent,
+        derived: gate_delivery_facts,
+        absent: gate_delivery_absent,
     },
     Case {
-        name: "gate-pr failed with two anchor questions",
-        key: CommandKey::GatePr,
-        args: &["gate-pr", cycle::WORK_ITEM],
+        name: "gate-delivery failed with two anchor questions",
+        key: CommandKey::GateDelivery,
+        args: &["gate-delivery", cycle::WORK_ITEM],
         outcome: Outcome::Success,
         error_code: None,
         fixture: gate_failed,
-        derived: gate_pr_facts,
-        absent: gate_pr_absent,
+        derived: gate_delivery_facts,
+        absent: gate_delivery_absent,
     },
     Case {
-        name: "gate-pr snapshot-dirty",
-        key: CommandKey::GatePr,
-        args: &["gate-pr", cycle::WORK_ITEM],
+        name: "gate-delivery snapshot-dirty",
+        key: CommandKey::GateDelivery,
+        args: &["gate-delivery", cycle::WORK_ITEM],
         outcome: Outcome::Failure,
         error_code: Some("snapshot-dirty"),
         fixture: gate_dirty,
@@ -2811,7 +2814,7 @@ fn it_should_print_a_single_json_line_for_check_run_success_with_format_json() {
     assert_eq!(output.stdout.trim_end().lines().count(), 1);
     assert_eq!(
         serde_json::from_str::<Value>(output.stdout.trim_end()).expect("the line is JSON")["event"],
-        json!("before-pr")
+        json!("before-push")
     );
 }
 

@@ -13,14 +13,14 @@
             "required": ["vocabulary", "event"],
             "properties": {
               "vocabulary": {"const": "closed"},
-              "event": {"enum": ["before-commit", "before-pr", "before-merge"]},
+              "event": {"enum": ["before-commit", "before-push", "before-merge", "before-publishing-review-comments"]},
               "matcher": {"type": "string", "minLength": 1, "maxLength": 200}
             }
           },
           "how": {"type": "string", "minLength": 1, "maxLength": 8000},
           "blocking": {"type": "boolean"},
-          "concern": {"enum": ["style", "test", "compile"]},
-          "variant": {"enum": ["format", "lint", "suite", "coverage", "validate", "build"]},
+          "concern": {"type": "string", "minLength": 1, "maxLength": 40},
+          "variant": {"type": "string", "minLength": 1, "maxLength": 40},
           "run": {
             "type": "array",
             "minItems": 1,
@@ -52,9 +52,7 @@
         ],
         "oneOf": [
           {"not": {"anyOf": [{"required": ["concern"]}, {"required": ["variant"]}]}},
-          {"required": ["concern", "variant"], "properties": {"concern": {"const": "style"}, "variant": {"enum": ["format", "lint"]}}},
-          {"required": ["concern", "variant"], "properties": {"concern": {"const": "test"}, "variant": {"enum": ["suite", "coverage"]}}},
-          {"required": ["concern", "variant"], "properties": {"concern": {"const": "compile"}, "variant": {"enum": ["validate", "build"]}}}
+          {"required": ["concern", "variant"]}
         ]
       }
     },

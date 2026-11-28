@@ -107,3 +107,32 @@ fn it_should_refuse_a_byproduct_without_check_and_work_item_that_clap_did_not_ca
         Some(ErrorKind::MissingRequiredArgument)
     );
 }
+
+#[test]
+fn it_should_refuse_a_check_run_event_outside_the_list() {
+    let refused = parsed(&["omhl", "check", "run", "--event", "before-lunch"]);
+
+    assert!(refused.is_err());
+}
+
+#[test]
+fn it_should_refuse_the_instruction_event_in_check_run() {
+    let refused = parsed(&[
+        "omhl",
+        "check",
+        "run",
+        "--event",
+        "before-publishing-review-comments",
+    ]);
+
+    assert!(refused.is_err());
+}
+
+#[test]
+fn it_should_accept_each_runnable_event_in_check_run() {
+    for event in crate::mechanical::RUNNABLE_EVENTS {
+        let accepted = parsed(&["omhl", "check", "run", "--event", event]);
+
+        assert!(accepted.is_ok(), "{event} is refused");
+    }
+}

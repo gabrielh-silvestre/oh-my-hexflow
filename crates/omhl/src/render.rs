@@ -136,11 +136,6 @@ fn push_checks(
 fn push_guidelines(text: &mut String, cuts: &mut Vec<usize>, input: &RenderInput<'_>) {
     begin_unit(text);
     text.push_str("## Guidelines\n");
-    for guideline in input.native.guidelines() {
-        begin_block(text, guideline.id);
-        push_line(text, "confirmed", "true");
-        push_line(text, "text", guideline.text);
-    }
     let cut_at = text.len();
     let mut nodes = visible_sorted(input.guidelines);
     // Estável: dentro de cada grupo a ordem por id se mantém.

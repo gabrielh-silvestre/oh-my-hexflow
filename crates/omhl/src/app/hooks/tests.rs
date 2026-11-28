@@ -1,4 +1,5 @@
-use super::double_quoted;
+use super::{SCRIPTS, double_quoted};
+use crate::mechanical::RUNNABLE_EVENTS;
 
 #[test]
 fn it_should_escape_a_double_quote() {
@@ -33,4 +34,26 @@ fn it_should_keep_the_characters_the_shell_does_not_interpret_inside_double_quot
     let quoted = double_quoted("/a b/c'd");
 
     assert_eq!(quoted, "/a b/c'd");
+}
+
+#[test]
+fn it_should_bind_each_hook_event_to_an_event_of_the_runnable_list() {
+    let events: Vec<&str> = SCRIPTS
+        .iter()
+        .filter_map(|(_, command)| command.split("--event ").nth(1))
+        .filter_map(|rest| rest.split_whitespace().next())
+        .collect();
+
+    assert_eq!(events, ["before-commit", "before-commit", "before-push"]);
+    assert!(events.iter().all(|event| RUNNABLE_EVENTS.contains(event)));
+}
+
+#[test]
+fn it_should_run_the_pre_push_hook_on_before_push() {
+    let command = SCRIPTS
+        .iter()
+        .find(|(name, _)| *name == "pre-push")
+        .map(|(_, command)| *command);
+
+    assert_eq!(command, Some("check run --event before-push --pre-push"));
 }

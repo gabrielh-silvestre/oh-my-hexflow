@@ -11,13 +11,14 @@ use crate::gate::{
     GateQuestion, GateReport, Predicate, Question, QuestionClass, QuestionReport, TargetCheck,
     TargetFact,
 };
+use crate::guard::Origin;
 use crate::mechanical::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
 use crate::native::{CI_GREEN_ID, CONFIG_LOOSENING_REVIEW_ID, NativeCheck};
-use crate::workflow::config::{NativeConfig, RequireAtom};
+use crate::workflow::config::{NativeConfig, RequireAtom, native_run_digest};
 use crate::workflow::gap::{is_confirmed_guideline, is_confirmed_premise};
 use crate::workflow::retro::{FailedQuestion, GateOverride};
 
-pub const GATE_NAME: &str = "pull-request";
+pub const GATE_NAME: &str = "delivery";
 const ABANDONED_GATE_NAME: &str = "abandoned";
 pub const REQUIRED_EVENTS: [&str; 3] = RUNNABLE_EVENTS;
 pub const NATIVE_SNAPSHOT: SnapshotKind = SnapshotKind::GitCommit;
@@ -33,40 +34,99 @@ pub struct GateSnapshots {
     pub head_tree: Snapshot,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequiredCheck {
+    pub id: SemanticId,
+    pub kind: SnapshotKind,
+    pub digests: Vec<(Origin, String)>,
+}
+
+impl RequiredCheck {
+    fn instruction(id: SemanticId) -> Self {
+        Self {
+            id,
+            kind: NATIVE_SNAPSHOT,
+            digests: Vec::new(),
+        }
+    }
+}
+
 pub fn required_checks(
     native: &[NativeCheck],
     enabled: &NativeConfig,
+    evaluated: &NativeConfig,
     tenant_checks: &[NodeView],
     review_required: bool,
-) -> Vec<(SemanticId, SnapshotKind)> {
-    let projects: Vec<&NodeView> = tenant_checks
-        .iter()
-        .filter(|node| is_required_project_check(node))
-        .collect();
+) -> Vec<RequiredCheck> {
+    let is_on = |id: &str| enabled.checks.contains(id) || evaluated.checks.contains(id);
     let natives = native
         .iter()
         .filter(|check| check.id != CONFIG_LOOSENING_REVIEW_ID)
-        .filter(|check| enabled.checks.contains(check.id))
+        .filter(|check| is_on(check.id))
         .filter(|check| check.blocking && REQUIRED_EVENTS.contains(&check.event))
-        .filter_map(|check| SemanticId::parse(check.id).ok())
-        .map(|id| (id, NATIVE_SNAPSHOT));
+        .filter_map(|check| SemanticId::parse(check.id).ok());
     let review = review_required
-        .then(|| enabled.checks.contains(CONFIG_LOOSENING_REVIEW_ID))
+        .then(|| is_on(CONFIG_LOOSENING_REVIEW_ID))
         .filter(|on| *on)
-        .and_then(|_| SemanticId::parse(CONFIG_LOOSENING_REVIEW_ID).ok())
-        .map(|id| (id, NATIVE_SNAPSHOT));
-    let natives = natives.chain(review);
-    let projects = projects
+        .and_then(|_| SemanticId::parse(CONFIG_LOOSENING_REVIEW_ID).ok());
+    let mut required: Vec<RequiredCheck> = natives
+        .chain(review)
+        .flat_map(|id| native_entries(id, enabled, evaluated))
+        .collect();
+    let projects = tenant_checks
         .iter()
-        .map(|node| (node.id.clone(), snapshot_for(&node.data)));
-    let mut required: Vec<(SemanticId, SnapshotKind)> = Vec::new();
-    for (id, kind) in natives.chain(projects) {
-        if required.iter().all(|(existing, _)| *existing != id) {
-            required.push((id, kind));
+        .filter(|node| is_required_project_check(node));
+    for node in projects {
+        if required.iter().all(|existing| existing.id != node.id) {
+            required.push(RequiredCheck {
+                id: node.id.clone(),
+                kind: snapshot_for(&node.data),
+                digests: Vec::new(),
+            });
         }
     }
 
     required
+}
+
+// Um comando só em uma das declarações mantém também a instrução, que a outra ainda exige.
+fn native_entries(
+    id: SemanticId,
+    enabled: &NativeConfig,
+    evaluated: &NativeConfig,
+) -> Vec<RequiredCheck> {
+    let in_force = enabled.run.get(id.as_str()).map(native_run_digest);
+    let on_head = evaluated
+        .run
+        .get(id.as_str())
+        .map(native_run_digest)
+        .or_else(|| evaluated.invalid_run.get(id.as_str()).cloned());
+    let forced = enabled.checks.contains(id.as_str());
+    let digests = match (in_force, on_head) {
+        // Declaração avaliada só soma exigência quando traz o comando.
+        (None, None) if !forced => return Vec::new(),
+        (None, None) => return vec![RequiredCheck::instruction(id)],
+        (Some(d1), Some(d2)) if d1 == d2 => vec![(Origin::InForce, d1)],
+        (Some(d1), Some(d2)) => vec![(Origin::InForce, d1), (Origin::Evaluated, d2)],
+        (Some(d1), None) => vec![(Origin::InForce, d1)],
+        (None, Some(d2)) => vec![(Origin::Evaluated, d2)],
+    };
+    let lacks_command_but_enabled = [enabled, evaluated].iter().any(|config| {
+        config.checks.contains(id.as_str())
+            && !config.run.contains_key(id.as_str())
+            && !config.invalid_run.contains_key(id.as_str())
+    });
+    let command = RequiredCheck {
+        id: id.clone(),
+        kind: SnapshotKind::GitTree,
+        digests,
+    };
+
+    if lacks_command_but_enabled {
+        vec![command, RequiredCheck::instruction(id)]
+    } else {
+        vec![command]
+    }
 }
 
 fn is_required_project_check(node: &NodeView) -> bool {
@@ -85,39 +145,88 @@ pub fn spec_digests(tenant_checks: &[NodeView]) -> Vec<(SemanticId, String)> {
         .collect()
 }
 
-pub fn pr_gate_questions(
-    required: &[(SemanticId, SnapshotKind)],
+pub fn delivery_gate_questions(
+    required: &[RequiredCheck],
     work_item: &SemanticId,
     snapshots: &GateSnapshots,
     digests: &[(SemanticId, String)],
 ) -> Vec<GateQuestion> {
     required
         .iter()
-        .flat_map(|(check, kind)| {
-            let snapshot = match kind {
+        .flat_map(|entry| {
+            let check = &entry.id;
+            let snapshot = match entry.kind {
                 SnapshotKind::GitTree => &snapshots.head_tree,
                 _ => &snapshots.head_commit,
             };
-            let sealed = digests
-                .iter()
-                .find(|(id, _)| id == check)
-                .map(|(_, digest)| {
-                    GateQuestion::new(
-                        format!("{SPEC_DIGEST_LABEL}:{}", check.as_str()),
-                        occurred(check, work_item, snapshot, Some(digest)),
-                        QuestionClass::Refuse,
-                    )
-                });
+            let project_digest = digests.iter().find(|(id, _)| id == check);
+            let sealed: Vec<GateQuestion> = if entry.digests.is_empty() {
+                project_digest
+                    .map(|(_, digest)| {
+                        sealed_question(
+                            &format!("{SPEC_DIGEST_LABEL}:{}", check.as_str()),
+                            check,
+                            work_item,
+                            snapshot,
+                            digest,
+                        )
+                    })
+                    .into_iter()
+                    .collect()
+            } else {
+                entry
+                    .digests
+                    .iter()
+                    .map(|(origin, digest)| {
+                        let label = origin_label(
+                            format!("{SPEC_DIGEST_LABEL}:{}", check.as_str()),
+                            *origin,
+                        );
+                        sealed_question(&label, check, work_item, snapshot, digest)
+                    })
+                    .collect()
+            };
+            let head_only = !entry.digests.is_empty()
+                && entry
+                    .digests
+                    .iter()
+                    .all(|(origin, _)| *origin == Origin::Evaluated);
+            let plain_label = if head_only {
+                origin_label(check.as_str().to_owned(), Origin::Evaluated)
+            } else {
+                check.as_str().to_owned()
+            };
             let plain = GateQuestion::new(
-                check.as_str(),
+                plain_label,
                 occurred(check, work_item, snapshot, None),
-                plain_check_class(check, sealed.is_some()),
+                plain_check_class(check, !sealed.is_empty()),
             );
 
             once(plain).chain(sealed)
         })
         .chain(once(contradiction_question(work_item)))
         .collect()
+}
+
+fn origin_label(label: String, origin: Origin) -> String {
+    match origin {
+        Origin::InForce => label,
+        Origin::Evaluated => format!("{label}@head"),
+    }
+}
+
+fn sealed_question(
+    label: &str,
+    check: &SemanticId,
+    work_item: &SemanticId,
+    snapshot: &Snapshot,
+    digest: &str,
+) -> GateQuestion {
+    GateQuestion::new(
+        label,
+        occurred(check, work_item, snapshot, Some(digest)),
+        QuestionClass::Refuse,
+    )
 }
 
 // Um check mecânico ou o CI verde do merge recusa sem `--force`; os demais são aviso.
@@ -133,7 +242,7 @@ fn occurred(
     check: &SemanticId,
     work_item: &SemanticId,
     snapshot: &Snapshot,
-    digest: Option<&String>,
+    digest: Option<&str>,
 ) -> Question {
     Question::Occurred {
         select: attestation_filter(check, work_item, snapshot, digest),
@@ -145,7 +254,7 @@ fn attestation_filter(
     check: &SemanticId,
     work_item: &SemanticId,
     snapshot: &Snapshot,
-    digest: Option<&String>,
+    digest: Option<&str>,
 ) -> ListFilter {
     let mut where_eq = vec![
         pair("check", Scalar::Str(check.as_str().to_owned())),
@@ -153,7 +262,7 @@ fn attestation_filter(
         pair("ok", Scalar::Bool(true)),
     ];
     if let Some(digest) = digest {
-        where_eq.push(pair("spec_digest", Scalar::Str(digest.clone())));
+        where_eq.push(pair("spec_digest", Scalar::Str(digest.to_owned())));
     }
 
     ListFilter {

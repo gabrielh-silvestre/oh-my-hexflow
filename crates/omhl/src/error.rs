@@ -71,6 +71,7 @@ pub enum RuleCode {
     ConfirmationInvalid,
     KindMissing,
     KindInvalid,
+    CheckLabelInvalid,
     OriginInvalid,
     OriginImmutable,
     OriginRequired,
@@ -115,6 +116,7 @@ impl RuleCode {
             RuleCode::ConfirmationInvalid => "confirmation-invalid",
             RuleCode::KindMissing => "kind-missing",
             RuleCode::KindInvalid => "kind-invalid",
+            RuleCode::CheckLabelInvalid => "check-label-invalid",
             RuleCode::OriginInvalid => "origin-invalid",
             RuleCode::OriginImmutable => "origin-immutable",
             RuleCode::OriginRequired => "origin-required",
@@ -144,6 +146,10 @@ impl RuleCode {
             RuleCode::KindInvalid => Some(Guidance {
                 cause: "the guideline kind must be business or architecture",
                 next_step: "set kind to business or architecture in the item data and append again",
+            }),
+            RuleCode::CheckLabelInvalid => Some(Guidance {
+                cause: "a check concern or variant can only use lowercase letters a-z, digits 0-9 and hyphen",
+                next_step: "rewrite concern and variant with only [a-z0-9-], 1 to 40 characters each, and append again",
             }),
             RuleCode::OriginInvalid => Some(Guidance {
                 cause: "only a business premise can carry origin late; a technical premise or one without kind cannot",

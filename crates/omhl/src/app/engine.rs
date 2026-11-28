@@ -7,12 +7,13 @@ use hexlog::{
 use serde_json::{Value, json};
 
 use super::action::{Action, Caller};
-use super::error::AppError;
+use super::error::{AppError, INVALID_WORKFLOW_NEXT_STEP};
 use super::list_filter::validate_list_filter;
 use super::retry::RetryPolicy;
 use super::wire::append_request;
 use super::{context, output, work_item};
 use crate::byproduct::{ByproductRetention, ByproductStore};
+use crate::delivery_gate::{Abandonment, FailedDelivery, Forcing, GateSnapshots, Integration};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::{Closing, Omhl, WorkRequirements};
 use crate::graphs::WORK_ITEM_TYPES;
@@ -20,15 +21,17 @@ use crate::mechanical::branch::{
     BranchKind, DEVELOP_BRANCH, branch_prefix, classify, work_item_id,
 };
 use crate::native::{CONFIG_LOOSENING_REVIEW_ID, review_trigger_paths};
-use crate::ports::git::GitProbe;
-use crate::pr_gate::{Abandonment, FailedDelivery, Forcing, GateSnapshots, Integration};
+use crate::ports::git::{BlobReason, GitProbe, WorkflowSource, workflow_text};
 use crate::probe::{
     DevelopMark, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
 };
-use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, PROJECTION_DIR};
+use crate::project::ProjectError;
+use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
-use crate::workflow::config::{NativeConfig, RequireAtom, parse_workflow};
+use crate::workflow::config::{
+    NativeConfig, RequireAtom, parse_evaluated_workflow, parse_workflow,
+};
 use crate::workflow::matrix::unsatisfied_atoms;
 use crate::workflow::retro::{DeliveryFailure, Retro, RetroAbandonment, retro};
 use crate::workflow::work_type::{effective_type, loosens};
@@ -115,7 +118,9 @@ impl Engine<'_> {
 
                 context::render_context(&mut self.omhl, &self.tenant, native)
             }
-            Action::GatePr { work_item, base } => self.gate_pr(work_item, base.as_deref()),
+            Action::GateDelivery { work_item, base } => {
+                self.gate_delivery(work_item, base.as_deref())
+            }
             Action::Close {
                 work_item,
                 note,
@@ -210,14 +215,14 @@ impl Engine<'_> {
         Ok(output::appended(&outcome))
     }
 
-    fn gate_pr(&mut self, work_item: &str, base: Option<&str>) -> Result<Value, AppError> {
+    fn gate_delivery(&mut self, work_item: &str, base: Option<&str>) -> Result<Value, AppError> {
         let work_item = parse_at(SemanticId::parse, work_item, "/work_item")?;
         let snapshots = self.probe_gate_snapshots()?;
         let (enabled, repair) = self.resolve_native_for_pr(base)?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
         let (mut review_base, review_required) = self.review_base(base, &enabled)?;
         mark_repair(&mut review_base, repair);
-        let report = self.omhl.evaluate_pr_gate(
+        let report = self.omhl.evaluate_delivery_gate(
             &self.tenant,
             &work_item,
             &snapshots,
@@ -229,6 +234,7 @@ impl Engine<'_> {
         if !review_base.is_null() {
             value["review_base"] = review_base;
         }
+        self.add_ignored_run_warnings(&mut value, &enabled);
 
         Ok(value)
     }
@@ -275,6 +281,7 @@ impl Engine<'_> {
         if !review_base.is_null() {
             value["review_base"] = review_base;
         }
+        self.add_ignored_run_warnings(&mut value, &enabled);
 
         Ok(value)
     }
@@ -455,7 +462,7 @@ impl Engine<'_> {
     }
 
     /// Sem resolvedor injetado não há diretório principal: nunca vale um conjunto vazio no lugar.
-    fn native_refusal(&self) -> Result<NativeConfig, NativeRefusal> {
+    pub(super) fn native_refusal(&self) -> Result<NativeConfig, NativeRefusal> {
         self.native.ok_or(NativeRefusal::MainDirUnknown)?.resolve()
     }
 
@@ -478,6 +485,26 @@ impl Engine<'_> {
         }
     }
 
+    /// Tabela `[native.run.<id>]` de nativo desligado no próprio arquivo é aceita e ignorada; o aviso diz de qual arquivo.
+    fn add_ignored_run_warnings(&self, value: &mut Value, main: &NativeConfig) {
+        add_warnings(
+            value,
+            run_warnings(main, self.read_evaluated_head(), "HEAD"),
+        );
+    }
+
+    pub(super) fn evaluated_native(&self) -> NativeConfig {
+        self.read_evaluated_head().0.unwrap_or_default()
+    }
+
+    fn read_evaluated_head(&self) -> (Option<NativeConfig>, Option<Value>) {
+        read_evaluated_native(
+            self.project_root.as_deref(),
+            WorkflowSource::Rev("HEAD"),
+            "HEAD",
+        )
+    }
+
     fn repaired_native(&self, base: &str) -> Option<NativeConfig> {
         let git = GitProbe::new(self.project_root.as_deref()?);
         let merge_base = git.merge_base(base).ok()??;
@@ -485,16 +512,15 @@ impl Engine<'_> {
         if !review_trigger_paths(&changed).contains(&REPAIR_PATH.to_owned()) {
             return None;
         }
-        let blob = git.read_blob("HEAD", REPAIR_PATH).ok()??;
-        if !matches!(blob.mode.as_str(), "100644" | "100755") || blob.size > EXT_FILE_MAX_BYTES {
-            return None;
-        }
-        let config = parse_workflow(Path::new(REPAIR_PATH), &blob.content).ok()?;
+        let text = workflow_text(&git, WorkflowSource::Rev("HEAD")).ok()?;
+        let config = parse_workflow(Path::new(REPAIR_PATH), text.as_bytes()).ok()?;
         let mut checks = config.native.checks;
         checks.insert(CONFIG_LOOSENING_REVIEW_ID);
 
         Some(NativeConfig {
             checks,
+            run: Default::default(),
+            invalid_run: Default::default(),
             prefixes: config.prefixes,
         })
     }
@@ -504,12 +530,14 @@ impl Engine<'_> {
         work_item: &SemanticId,
         enabled: &NativeConfig,
     ) -> Result<WorkRequirements, AppError> {
+        let evaluated = self.evaluated_native();
         let node = self.omhl.find_work_item(&self.tenant, work_item)?;
         let atoms = self.type_atoms(&node, enabled)?;
         if atoms.is_empty() {
             return Ok(WorkRequirements {
                 head: None,
                 atoms: Vec::new(),
+                evaluated,
             });
         }
         let head = self.omhl.chain_head(&self.tenant)?;
@@ -523,6 +551,7 @@ impl Engine<'_> {
                 .into_iter()
                 .map(|atom| (atom, !unsatisfied.contains(&atom)))
                 .collect(),
+            evaluated,
         })
     }
 
@@ -669,5 +698,98 @@ const REPAIR_WARNING: &str = "the main workflow file is not accepted; this pull 
 fn mark_repair(review_base: &mut Value, repair: bool) {
     if repair {
         review_base["warning"] = json!(REPAIR_WARNING);
+    }
+}
+
+pub(super) fn ignored_run_warnings<'a>(
+    config: &'a NativeConfig,
+    from: &'a str,
+) -> impl Iterator<Item = Value> + 'a {
+    config
+        .run
+        .keys()
+        .filter(|id| !config.checks.iter().any(|enabled| enabled == id))
+        .map(move |id| {
+            json!({
+                "code": "native-run-ignored",
+                "check": id,
+                "from": from,
+                "hint": format!("enable the native in [native] checks or delete the table [native.run.\"{id}\"]"),
+            })
+        })
+}
+
+/// Avisos de tabela ignorada: do principal, do arquivo avaliado em `from` e o de leitura que falhou.
+pub(super) fn run_warnings(
+    main: &NativeConfig,
+    (evaluated, unreadable): (Option<NativeConfig>, Option<Value>),
+    from: &str,
+) -> Vec<Value> {
+    ignored_run_warnings(main, "main-directory")
+        .chain(evaluated_run_warnings(
+            main,
+            &evaluated.unwrap_or_default(),
+            from,
+        ))
+        .chain(unreadable)
+        .collect()
+}
+
+/// Tabela igual à do diretório principal já foi avisada por ele; repetir o aviso só duplicaria.
+fn evaluated_run_warnings<'a>(
+    main: &'a NativeConfig,
+    evaluated: &'a NativeConfig,
+    from: &'a str,
+) -> impl Iterator<Item = Value> + 'a {
+    ignored_run_warnings(evaluated, from).filter(|warning| {
+        warning["check"]
+            .as_str()
+            .is_none_or(|id| evaluated.run.get(id) != main.run.get(id))
+    })
+}
+
+/// Declaração avaliada de uma origem (índice ou `HEAD`) e o aviso de arquivo ilegível.
+pub(super) fn read_evaluated_native(
+    root: Option<&Path>,
+    source: WorkflowSource<'_>,
+    from: &str,
+) -> (Option<NativeConfig>, Option<Value>) {
+    let Some(root) = root else {
+        return (None, None);
+    };
+    match workflow_text(&GitProbe::new(root), source) {
+        Ok(text) => (
+            parse_evaluated_workflow(Path::new(REPAIR_PATH), text.as_bytes())
+                .ok()
+                .map(|config| config.native),
+            None,
+        ),
+        Err(BlobReason::NotUtf8) => (
+            None,
+            Some(json!({
+                "code": "evaluated-workflow-unreadable",
+                "from": from,
+                "reason": "not-utf8",
+            })),
+        ),
+        Err(_) => (None, None),
+    }
+}
+
+pub(super) fn invalid_workflow_warning(error: &ProjectError) -> Value {
+    json!({
+        "code": error.code,
+        "message": error.message,
+        "hint": INVALID_WORKFLOW_NEXT_STEP,
+    })
+}
+
+pub(super) fn add_warnings(value: &mut Value, warnings: Vec<Value>) {
+    if warnings.is_empty() {
+        return;
+    }
+    match value["warnings"].as_array_mut() {
+        Some(existing) => existing.extend(warnings),
+        None => value["warnings"] = json!(warnings),
     }
 }

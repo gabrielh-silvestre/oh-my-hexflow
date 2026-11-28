@@ -6,4 +6,6 @@ pub mod redact;
 pub mod spec;
 pub mod sweep;
 
-pub use spec::{RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest};
+pub use spec::{
+    EVENTS, INSTRUCTION_EVENT, RUNNABLE_EVENTS, is_mechanical, snapshot_for, spec_digest,
+};

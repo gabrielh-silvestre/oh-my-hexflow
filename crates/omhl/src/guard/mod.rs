@@ -23,14 +23,25 @@ const ATTESTATION_ID_MAX: usize = 200;
 /// O SHA entra em pedaços de 32 porque cada segmento do id aceita no máximo 63 caracteres.
 const SNAPSHOT_SEGMENT: usize = 32;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    InForce,
+    Evaluated,
+}
+
 pub fn attestation_id(
     snapshot: &Snapshot,
     check: &SemanticId,
     work_item: &SemanticId,
+    origin: Origin,
 ) -> Result<SemanticId, OmhlError> {
     let (head, tail) = snapshot.id().split_at(SNAPSHOT_SEGMENT);
     let (check, work_item) = (check.as_str(), work_item.as_str());
-    let text = format!("attestations.{head}.{tail}.{check}.{work_item}");
+    let prefix = match origin {
+        Origin::InForce => "attestations",
+        Origin::Evaluated => "attestations.evaluated",
+    };
+    let text = format!("{prefix}.{head}.{tail}.{check}.{work_item}");
     if text.len() > ATTESTATION_ID_MAX {
         return Err(OmhlError::rule(RuleCode::AttestationIdTooLong, ""));
     }

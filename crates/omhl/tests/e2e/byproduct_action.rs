@@ -23,7 +23,7 @@ timeout_secs = 60
 expect = [{ exit = 0, outcome = "passed" }]
 
 [when]
-event = "before-pr"
+event = "before-push"
 "#;
 const CHECK: &str = "checks.lint";
 const W1: &str = "work-items.w1";

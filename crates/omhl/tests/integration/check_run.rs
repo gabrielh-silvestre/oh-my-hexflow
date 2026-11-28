@@ -141,8 +141,8 @@ impl Fixture {
         }
         let probe = FakeProbe::clean(snap('a'))
             .with_tree(TreeSource::Head, Ok(ProbeOutcome::Reproducible(tree('c'))));
-        let snapshots = support::pr_gate::snapshots(&snap('a'), &tree('c'));
-        support::pr_gate::close(&mut self.omhl(&probe), W1, &snapshots);
+        let snapshots = support::delivery_gate::snapshots(&snap('a'), &tree('c'));
+        support::delivery_gate::close(&mut self.omhl(&probe), W1, &snapshots);
     }
 
     fn app<'a>(&'a self, probe: &'a FakeProbe, runner: &'a dyn CommandRunner) -> App<'a> {
@@ -349,13 +349,13 @@ fn on_check(id: &str) -> Action {
 
 fn on_push(stdin: &str) -> Action {
     Action::CheckRun {
-        target: CheckTarget::Event("before-pr".to_owned()),
+        target: CheckTarget::Event("before-push".to_owned()),
         pre_push: Some(stdin.to_owned()),
     }
 }
 
 fn run_pr(app: &mut App<'_>) -> Result<Value, AppError> {
-    app.dispatch(&Caller::cli(), &on_event("before-pr"))
+    app.dispatch(&Caller::cli(), &on_event("before-push"))
 }
 
 fn att(slug: &str) -> String {
@@ -449,7 +449,7 @@ fn no_attestations() -> Vec<Value> {
 #[test]
 fn it_should_record_the_environment_session_on_the_attestation_of_a_check_run() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, _specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let session = raw_session("5b1c0f3e-77a2-4c1e-9d0b-2f6a8e41c9aa");
@@ -477,8 +477,8 @@ fn it_should_record_the_environment_session_on_the_attestation_of_a_check_run() 
 fn it_should_run_the_first_check_then_refuse_the_attestation_and_stop_when_the_session_is_invalid()
 {
     let fx = Fixture::new();
-    fx.seed_check("checks.docs", run_data("before-pr", true, DOCS));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.docs", run_data("before-push", true, DOCS));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(DOCS), ok(LINT)]);
     let probe = wi_probe();
     let session = raw_session("");
@@ -507,7 +507,7 @@ fn it_should_run_the_first_check_then_refuse_the_attestation_and_stop_when_the_s
 fn it_should_name_the_session_variable_and_not_its_value_in_the_hint_of_an_invalid_session_refusal()
 {
     let fx = Fixture::new();
-    fx.seed_check("checks.docs", run_data("before-pr", true, DOCS));
+    fx.seed_check("checks.docs", run_data("before-push", true, DOCS));
     let (runner, _specs) = FakeRunner::new(vec![ok(DOCS)]);
     let probe = wi_probe();
     let value = "q".repeat(101);
@@ -539,7 +539,7 @@ fn it_should_name_the_session_variable_and_not_its_value_in_the_hint_of_an_inval
 #[test]
 fn it_should_attest_a_passing_check_with_the_head_commit() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, &["true"]));
+    fx.seed_check("checks.lint", run_data("before-push", true, &["true"]));
     let (runner, specs) = FakeRunner::new(vec![ok(&["true"])]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -549,7 +549,7 @@ fn it_should_attest_a_passing_check_with_the_head_commit() {
     assert_eq!(
         output,
         json!({
-            "event": "before-pr",
+            "event": "before-push",
             "work_item": "work-items.w1",
             "snapshot": { "kind": "git-commit", "id": SHA },
             "recorded": true,
@@ -587,7 +587,7 @@ fn it_should_attest_a_passing_check_with_the_head_commit() {
 #[test]
 fn it_should_record_command_exit_code_duration_ms_timed_out_and_truncated_in_the_attestation() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let truncated = RunReport {
         truncated: true,
         ..report(Some(0))
@@ -604,7 +604,7 @@ fn it_should_record_command_exit_code_duration_ms_timed_out_and_truncated_in_the
             "check": "checks.lint", "work_item": "work-items.w1", "outcome": "passed", "ok": true,
             "command": ["cargo", "clippy"], "exit_code": 0, "duration_ms": 1500,
             "timed_out": false, "truncated": true,
-            "spec_digest": spec_digest(&run_data("before-pr", true, LINT)),
+            "spec_digest": spec_digest(&run_data("before-push", true, LINT)),
             "byproduct": "a939fea7c32eeb59326e08723c45c1bba9bebea969012c3b7b02710e5e773c48",
         })
     );
@@ -613,9 +613,9 @@ fn it_should_record_command_exit_code_duration_ms_timed_out_and_truncated_in_the
 #[test]
 fn it_should_run_every_check_of_the_event_in_after_order() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.docs", run_data("before-pr", true, DOCS));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.docs", run_data("before-push", true, DOCS));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     fx.seed_after("checks.build", "checks.lint");
     let (runner, specs) = FakeRunner::new(vec![ok(BUILD), ok(DOCS), ok(LINT)]);
     let probe = wi_probe();
@@ -643,8 +643,8 @@ fn it_should_run_every_check_of_the_event_in_after_order() {
 #[test]
 fn it_should_run_only_the_check_named_by_id() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(BUILD), ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -654,7 +654,7 @@ fn it_should_run_only_the_check_named_by_id() {
         .expect("the check run succeeds");
 
     assert_eq!(received(&specs), vec![argv(LINT)]);
-    assert_eq!(output["event"], json!("before-pr"));
+    assert_eq!(output["event"], json!("before-push"));
     assert_eq!(output["results"][0]["check"], json!("checks.lint"));
     assert_eq!(output["results"].as_array().map(Vec::len), Some(1));
     let ids: Vec<Value> = list(&mut app, "attestation")
@@ -667,7 +667,7 @@ fn it_should_run_only_the_check_named_by_id() {
 #[test]
 fn it_should_answer_check_not_found_for_an_unknown_id() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -687,7 +687,7 @@ fn it_should_answer_check_not_found_for_an_unknown_id() {
 #[test]
 fn it_should_answer_check_not_mechanical_for_a_text_only_check() {
     let fx = Fixture::new();
-    fx.seed_check("checks.text", check_data("before-pr", "x", true));
+    fx.seed_check("checks.text", check_data("before-push", "x", true));
     let (runner, specs) = FakeRunner::new(vec![]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -711,7 +711,7 @@ fn it_should_report_an_empty_result_when_the_event_has_no_checks() {
 
     let output = run_pr(&mut app).expect("the check run succeeds");
 
-    assert_eq!(output["event"], json!("before-pr"));
+    assert_eq!(output["event"], json!("before-push"));
     assert_eq!(output["work_item"], json!("work-items.w1"));
     assert_eq!(output["recorded"], json!(true));
     assert_eq!(output["results"], json!([]));
@@ -750,7 +750,7 @@ fn it_should_not_execute_native_text_only_checks() {
 #[test]
 fn it_should_refuse_a_branch_whose_name_is_outside_the_pattern() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let (probe, _consumed) = probe_on(facts(Some("random-branch"), &["random-branch"]), false);
     let mut app = fx.app(&probe, &runner);
@@ -763,7 +763,7 @@ fn it_should_refuse_a_branch_whose_name_is_outside_the_pattern() {
         details(&error)[0]["context"],
         json!({
             "kind": "branch-name-invalid",
-            "event": "before-pr",
+            "event": "before-push",
             "branch": "random-branch",
             "hint": "rename the branch to type/wi-<id>__<slug> with git branch -m",
         })
@@ -774,9 +774,9 @@ fn it_should_refuse_a_branch_whose_name_is_outside_the_pattern() {
 #[test]
 fn it_should_run_every_check_and_report_all_even_when_the_first_fails() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.docs", run_data("before-pr", false, DOCS));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.docs", run_data("before-push", false, DOCS));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![exit(BUILD, 1), exit(DOCS, 1), ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -817,7 +817,7 @@ fn it_should_run_every_check_and_report_all_even_when_the_first_fails() {
 #[test]
 fn it_should_fail_with_checks_failed_when_a_blocking_check_fails() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, _specs) = FakeRunner::new(vec![exit(LINT, 1)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -842,7 +842,7 @@ fn it_should_fail_with_checks_failed_when_a_blocking_check_fails() {
 #[test]
 fn it_should_succeed_when_only_a_non_blocking_check_fails() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", false, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", false, LINT));
     let (runner, _specs) = FakeRunner::new(vec![exit(LINT, 1)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -863,7 +863,7 @@ fn it_should_succeed_when_only_a_non_blocking_check_fails() {
 #[test]
 fn it_should_not_echo_the_command_output_in_the_error_details_when_the_attestation_was_recorded() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let noisy = RunReport {
         stdout: b"SECRET-OUT-7f2\n".to_vec(),
         stderr: b"SECRET-ERR-7f2\n".to_vec(),
@@ -905,7 +905,7 @@ fn it_should_not_echo_the_command_output_in_the_error_details_when_the_attestati
 #[test]
 fn it_should_not_rerun_commands_when_the_append_is_busy() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let (clock, attempts) = AttemptClock::new();
@@ -923,7 +923,7 @@ fn it_should_not_rerun_commands_when_the_append_is_busy() {
 #[test]
 fn it_should_retry_the_append_with_its_own_budget_after_the_run() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let (clock, attempts) = AttemptClock::new();
@@ -941,7 +941,7 @@ fn it_should_retry_the_append_with_its_own_budget_after_the_run() {
 #[test]
 fn it_should_report_outcome_when_the_append_stays_busy_after_the_run() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app_with(&probe, &runner, &busy_policy());
@@ -969,7 +969,7 @@ fn it_should_report_outcome_when_the_append_stays_busy_after_the_run() {
 #[test]
 fn it_should_report_the_guard_refusal_when_the_append_is_refused_after_the_run() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let seeded = fx.seed_attestation("lint", "failed");
     let (runner, _specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
@@ -991,7 +991,7 @@ fn it_should_report_the_guard_refusal_when_the_append_is_refused_after_the_run()
 #[test]
 fn it_should_record_timed_out_and_fail_on_timeout() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let timed_out = RunReport {
         timed_out: true,
         duration: Duration::from_millis(60_000),
@@ -1009,7 +1009,7 @@ fn it_should_record_timed_out_and_fail_on_timeout() {
         json!({
             "check": "checks.lint", "work_item": "work-items.w1", "outcome": "failed", "ok": false,
             "command": ["cargo", "clippy"], "duration_ms": 60000, "timed_out": true,
-            "truncated": false, "spec_digest": spec_digest(&run_data("before-pr", true, LINT)),
+            "truncated": false, "spec_digest": spec_digest(&run_data("before-push", true, LINT)),
             "byproduct": "a939fea7c32eeb59326e08723c45c1bba9bebea969012c3b7b02710e5e773c48",
         })
     );
@@ -1018,7 +1018,7 @@ fn it_should_record_timed_out_and_fail_on_timeout() {
 #[test]
 fn it_should_fail_when_no_rule_matches_the_exit_code() {
     let fx = Fixture::new();
-    let mut data = run_data("before-pr", true, LINT);
+    let mut data = run_data("before-push", true, LINT);
     data["expect"] = json!([
         { "exit": 0, "outcome": "passed" },
         { "exit": 1, "outcome": "passed_with_warning" },
@@ -1040,7 +1040,7 @@ fn it_should_fail_when_no_rule_matches_the_exit_code() {
 #[test]
 fn it_should_refuse_to_run_when_the_head_is_dirty() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = dirty_probe();
     let mut app = fx.app(&probe, &runner);
@@ -1060,7 +1060,7 @@ fn it_should_refuse_to_run_when_the_head_is_dirty() {
 #[test]
 fn it_should_reuse_the_attestation_id_and_base_on_a_repeat_with_the_same_outcome() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, _specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -1079,9 +1079,9 @@ fn it_should_reuse_the_attestation_id_and_base_on_a_repeat_with_the_same_outcome
 #[test]
 fn it_should_keep_running_the_other_checks_after_an_immutable_outcome_conflict() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.docs", run_data("before-pr", true, DOCS));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.docs", run_data("before-push", true, DOCS));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     fx.seed_attestation("build", "failed");
     let (runner, specs) = FakeRunner::new(vec![ok(BUILD), exit(DOCS, 1), ok(LINT)]);
     let probe = wi_probe();
@@ -1121,8 +1121,8 @@ fn it_should_keep_running_the_other_checks_after_an_immutable_outcome_conflict()
 #[test]
 fn it_should_keep_running_the_other_checks_after_a_spawn_error() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let not_found = run_error(
         RunErrorKind::NotFound,
         "No such file or directory (os error 2)",
@@ -1154,7 +1154,7 @@ fn it_should_fit_the_attestation_of_the_worst_valid_check_in_the_record_limit() 
     let check = format!("checks.{}", "c".repeat(63));
     let branch = format!("feat/wi-{}__x", "w".repeat(63));
     let run = vec!["a".repeat(854); 7];
-    let mut data = check_data("before-pr", &"h".repeat(8000), true);
+    let mut data = check_data("before-push", &"h".repeat(8000), true);
     data["run"] = json!(run);
     data["timeout_secs"] = json!(7200);
     data["expect"] = json!([{ "exit": -2_147_483_648_i64, "outcome": "passed_with_warning" }]);
@@ -1192,7 +1192,7 @@ fn it_should_fit_the_attestation_of_the_worst_valid_check_in_the_record_limit() 
 #[test]
 fn it_should_record_nothing_and_carry_the_spawn_context_for_the_check_that_could_not_be_spawned() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
     let not_found = run_error(
         RunErrorKind::NotFound,
         "No such file or directory (os error 2)",
@@ -1218,7 +1218,7 @@ fn it_should_record_nothing_and_carry_the_spawn_context_for_the_check_that_could
             "code": "spawn-failed",
             "context": {
                 "kind": "spawn-not-found",
-                "event": "before-pr",
+                "event": "before-push",
                 "check": "checks.build",
                 "work_item": "work-items.w1",
                 "branch": "feat/wi-w1__x",
@@ -1235,16 +1235,16 @@ fn it_should_record_nothing_and_carry_the_spawn_context_for_the_check_that_could
 #[test]
 fn it_should_author_the_attestation_as_the_executor() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, _specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
     let executor = json!({ "agent": "executor", "client": "executor" });
 
-    app.dispatch(&Caller::cli(), &on_event("before-pr"))
+    app.dispatch(&Caller::cli(), &on_event("before-push"))
         .expect("the cli run succeeds");
     let after_cli = get(&mut app, &att("lint"))["author"].clone();
-    app.dispatch(&Caller::hook(), &on_event("before-pr"))
+    app.dispatch(&Caller::hook(), &on_event("before-push"))
         .expect("the hook run succeeds");
     let after_hook = get(&mut app, &att("lint"))["author"].clone();
 
@@ -1259,8 +1259,8 @@ fn it_should_author_the_attestation_as_the_executor() {
 #[test]
 fn it_should_not_rerun_the_first_check_when_the_second_append_stays_busy() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (inner, specs) = FakeRunner::new(vec![ok(BUILD), ok(LINT)]);
     let reached = Barrier::new(2);
     let locked = Barrier::new(2);
@@ -1310,7 +1310,7 @@ fn it_should_not_rerun_the_first_check_when_the_second_append_stays_busy() {
 #[test]
 fn it_should_let_another_connection_append_while_a_command_runs() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (inner, _specs) = FakeRunner::new(vec![ok(LINT)]);
     let tenant = acme();
     let (appended_tx, appended) = mpsc::channel();
@@ -1337,8 +1337,8 @@ fn it_should_let_another_connection_append_while_a_command_runs() {
 #[test]
 fn it_should_keep_running_the_other_checks_after_the_append_stays_busy() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(BUILD), ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app_with(&probe, &runner, &busy_policy());
@@ -1362,10 +1362,10 @@ fn it_should_keep_running_the_other_checks_after_the_append_stays_busy() {
 fn it_should_report_spec_invalid_and_keep_running_the_other_checks_when_a_stored_spec_cannot_be_decoded()
  {
     let fx = Fixture::new();
-    let mut bad = run_data("before-pr", true, &["cargo", "fmt"]);
+    let mut bad = run_data("before-push", true, &["cargo", "fmt"]);
     bad["expect"] = json!([{ "exit": 0, "stdout": "(", "outcome": "passed" }]);
     fx.seed_check("checks.a-bad", bad);
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -1390,7 +1390,7 @@ fn it_should_report_spec_invalid_and_keep_running_the_other_checks_when_a_stored
 #[test]
 fn it_should_report_spec_invalid_for_a_check_run_by_id_when_its_stored_spec_cannot_be_decoded() {
     let fx = Fixture::new();
-    let mut bad = run_data("before-pr", true, &["cargo", "fmt"]);
+    let mut bad = run_data("before-push", true, &["cargo", "fmt"]);
     bad["expect"] = json!([{ "exit": 0, "stdout": "(", "outcome": "passed" }]);
     fx.seed_check("checks.a-bad", bad);
     let (runner, specs) = FakeRunner::new(vec![]);
@@ -1411,8 +1411,8 @@ fn it_should_report_spec_invalid_for_a_check_run_by_id_when_its_stored_spec_cann
 #[test]
 fn it_should_stop_and_report_unsupported_platform_without_running_the_remaining_checks() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let unsupported = run_error(RunErrorKind::UnsupportedPlatform, "unsupported platform");
     let (runner, specs) = FakeRunner::new(vec![answer(BUILD, unsupported), ok(LINT)]);
     let probe = wi_probe();
@@ -1435,7 +1435,7 @@ fn it_should_stop_and_report_unsupported_platform_without_running_the_remaining_
     assert_eq!(
         details[1]["context"],
         json!({
-            "kind": "not-run", "event": "before-pr", "check": "checks.lint",
+            "kind": "not-run", "event": "before-push", "check": "checks.lint",
             "work_item": "work-items.w1", "branch": "feat/wi-w1__x",
             "argv": ["cargo", "clippy"], "cwd": fx.root(),
         })
@@ -1447,7 +1447,7 @@ fn it_should_stop_and_report_unsupported_platform_without_running_the_remaining_
 fn it_should_resolve_the_work_item_from_the_branch_name() {
     let fx = Fixture::new();
     fx.seed_work_item("work-items.w2");
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, _specs) = FakeRunner::new(vec![ok(LINT)]);
     let (probe, _consumed) = probe_on(
         facts(Some("fix/wi-w2__parser/edge"), &["fix/wi-w2__parser/edge"]),
@@ -1494,7 +1494,7 @@ fn it_should_refuse_the_main_branch_without_running_anything() {
 #[test]
 fn it_should_refuse_a_detached_head_contained_in_several_branches() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let (probe, _consumed) = probe_on(facts(None, &["feat/wi-w1__x", "feat/wi-w2__y"]), false);
     let mut app = fx.app(&probe, &runner);
@@ -1506,7 +1506,7 @@ fn it_should_refuse_a_detached_head_contained_in_several_branches() {
         details(&error)[0]["context"],
         json!({
             "kind": "head-ambiguous",
-            "event": "before-pr",
+            "event": "before-push",
             "hint": "HEAD is detached and zero or several local branches contain it; switch to your branch with git switch",
         })
     );
@@ -1528,7 +1528,7 @@ fn it_should_answer_work_item_not_found_for_a_branch_whose_work_item_does_not_ex
         details(&error)[0]["context"],
         json!({
             "kind": "work-item-not-found",
-            "event": "before-pr",
+            "event": "before-push",
             "branch": "feat/wi-w9__x",
             "work_item": "work-items.w9",
         })
@@ -1561,11 +1561,11 @@ fn it_should_answer_work_item_closed_for_a_branch_whose_work_item_is_closed() {
 #[test]
 fn it_should_check_the_work_item_before_running_any_command() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     fx.close_w1(&[
-        ("build", run_data("before-pr", true, BUILD)),
-        ("lint", run_data("before-pr", true, LINT)),
+        ("build", run_data("before-push", true, BUILD)),
+        ("lint", run_data("before-push", true, LINT)),
     ]);
     let (runner, specs) = FakeRunner::new(vec![ok(BUILD), ok(LINT)]);
     let probe = dirty_probe();
@@ -1582,7 +1582,7 @@ fn it_should_check_the_work_item_before_running_any_command() {
 #[test]
 fn it_should_run_without_recording_on_develop() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let (probe, _consumed) = probe_on(develop(), false);
     let mut app = fx.app(&probe, &runner);
@@ -1592,7 +1592,7 @@ fn it_should_run_without_recording_on_develop() {
     assert_eq!(
         output,
         json!({
-            "event": "before-pr",
+            "event": "before-push",
             "work_item": null,
             "snapshot": { "kind": "git-commit", "id": SHA },
             "recorded": false,
@@ -1611,7 +1611,7 @@ fn it_should_run_without_recording_on_develop() {
 #[test]
 fn it_should_fail_on_develop_with_the_output_tail_when_a_blocking_check_fails() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let failing = RunReport {
         stdout: b"line1\nline2\n".to_vec(),
         stderr: b"boom\n".to_vec(),
@@ -1685,7 +1685,7 @@ fn it_should_not_consume_the_mark_when_develop_passes_with_it() {
 #[test]
 fn it_should_not_consume_the_mark_when_develop_fails() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, _specs) = FakeRunner::new(vec![exit(LINT, 1)]);
     let (probe, consumed) = probe_on(develop(), true);
     let mut app = fx.app(&probe, &runner);
@@ -1700,7 +1700,7 @@ fn it_should_not_consume_the_mark_when_develop_fails() {
 #[test]
 fn it_should_carry_the_output_tail_when_the_append_stays_busy_after_the_run() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let stdout: String = (1..=25).map(|n| format!("out-{n}\n")).collect();
     let loud = RunReport {
         stdout: stdout.into_bytes(),
@@ -1725,7 +1725,7 @@ fn it_should_carry_the_output_tail_when_the_append_stays_busy_after_the_run() {
 #[test]
 fn it_should_carry_the_stored_outcome_when_the_outcome_is_immutable() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     fx.seed_attestation("lint", "failed");
     let (runner, _specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
@@ -1737,7 +1737,7 @@ fn it_should_carry_the_stored_outcome_when_the_outcome_is_immutable() {
         details(&error)[0]["context"],
         json!({
             "kind": "guard-refused",
-            "event": "before-pr",
+            "event": "before-push",
             "check": "checks.lint",
             "work_item": "work-items.w1",
             "branch": "feat/wi-w1__x",
@@ -1755,7 +1755,7 @@ fn it_should_carry_the_stored_outcome_when_the_outcome_is_immutable() {
 #[test]
 fn it_should_not_require_the_develop_mark_for_a_before_pr_event() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let (probe, _consumed) = probe_on(develop(), false);
     let mut app = fx.app(&probe, &runner);
@@ -1855,12 +1855,12 @@ fn assert_marker_not_persisted(fx: &Fixture, app: &mut App<'_>) {
 #[test]
 fn it_should_never_persist_the_error_context_in_the_database() {
     let busy = Fixture::new();
-    busy.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    busy.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (busy_runner, _busy_specs) = FakeRunner::new(vec![answer(LINT, Ok(marked_report(0)))]);
     let busy_probe = wi_probe();
     let mut busy_app = busy.app_with(&busy_probe, &busy_runner, &busy_policy());
     let failed = Fixture::new();
-    failed.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    failed.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (failed_runner, _failed_specs) = FakeRunner::new(vec![answer(LINT, Ok(marked_report(1)))]);
     let failed_probe = wi_probe();
     let mut failed_app = failed.app(&failed_probe, &failed_runner);
@@ -1881,7 +1881,7 @@ fn it_should_never_persist_the_error_context_in_the_database() {
 #[test]
 fn it_should_refuse_a_pushed_ref_that_is_not_the_checked_out_head_before_running_anything() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -1908,7 +1908,7 @@ fn it_should_refuse_a_pushed_ref_that_is_not_the_checked_out_head_before_running
 #[test]
 fn it_should_report_nothing_to_attest_when_the_push_only_deletes_refs_or_pushes_tags() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -1920,7 +1920,7 @@ fn it_should_report_nothing_to_attest_when_the_push_only_deletes_refs_or_pushes_
 
     assert_eq!(
         output,
-        json!({ "event": "before-pr", "push": "nothing-to-attest", "results": [] })
+        json!({ "event": "before-push", "push": "nothing-to-attest", "results": [] })
     );
     assert_eq!(received(&specs), Vec::<Vec<String>>::new());
     assert_eq!(list(&mut app, "attestation"), no_attestations());
@@ -1929,7 +1929,7 @@ fn it_should_report_nothing_to_attest_when_the_push_only_deletes_refs_or_pushes_
 #[test]
 fn it_should_bar_a_push_to_main_before_running_anything() {
     let fx = Fixture::new();
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let probe = wi_probe();
     let mut app = fx.app(&probe, &runner);
@@ -1953,8 +1953,8 @@ fn it_should_bar_a_push_to_main_before_running_anything() {
 #[test]
 fn it_should_stop_and_report_a_lost_parent_without_running_the_remaining_checks() {
     let fx = Fixture::new();
-    fx.seed_check("checks.build", run_data("before-pr", true, BUILD));
-    fx.seed_check("checks.lint", run_data("before-pr", true, LINT));
+    fx.seed_check("checks.build", run_data("before-push", true, BUILD));
+    fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let gone = run_error(RunErrorKind::ParentGone, "parent gone");
     let (runner, specs) = FakeRunner::new(vec![answer(BUILD, gone), ok(LINT)]);
     let probe = wi_probe();
@@ -1978,7 +1978,7 @@ fn it_should_stop_and_report_a_lost_parent_without_running_the_remaining_checks(
     assert_eq!(
         details[1]["context"],
         json!({
-            "kind": "not-run", "event": "before-pr", "check": "checks.lint",
+            "kind": "not-run", "event": "before-push", "check": "checks.lint",
             "work_item": "work-items.w1", "branch": "feat/wi-w1__x",
             "argv": ["cargo", "clippy"], "cwd": fx.root(),
         })

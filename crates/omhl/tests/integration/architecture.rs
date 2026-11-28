@@ -10,9 +10,9 @@ use crate::support;
 use support::scan::prove_both_sides;
 
 const MAIN_LINES_MAX: usize = 30;
-const NATIVE_FORBIDDEN_MODULES: &[&str] = &["gate", "facade", "guard", "pr_gate"];
+const NATIVE_FORBIDDEN_MODULES: &[&str] = &["gate", "facade", "guard", "delivery_gate"];
 const NATIVE_FORBIDDEN_PATHS: &[&str] = &["omhl::"];
-const GATE_FORBIDDEN_MODULES: &[&str] = &["native", "graphs", "pr_gate"];
+const GATE_FORBIDDEN_MODULES: &[&str] = &["native", "graphs", "delivery_gate"];
 const GATE_FORBIDDEN_LITERALS: &[&str] = &["check", "work-item", "work_item", "attestation"];
 const HEXLOG_PATHS: &[&str] = &["hexlog::"];
 const HEXLOG_IMPORTS: &[&str] = &["use hexlog", "extern crate hexlog"];
@@ -711,7 +711,23 @@ fn it_should_keep_main_free_of_domain_logic_and_hexlog_paths() {
 }
 
 #[test]
-fn it_should_keep_the_native_sources_free_of_gate_facade_guard_and_pr_gate_imports() {
+fn it_should_have_a_source_for_every_module_the_forbidden_lists_name() {
+    let dir = src_dir();
+    let missing: Vec<String> = NATIVE_FORBIDDEN_MODULES
+        .iter()
+        .chain(GATE_FORBIDDEN_MODULES)
+        .filter(|module| {
+            !dir.join(format!("{module}.rs")).is_file()
+                && !dir.join(module).join("mod.rs").is_file()
+        })
+        .map(|module| format!("no source file for module {module}"))
+        .collect();
+
+    assert_no_failures(&missing);
+}
+
+#[test]
+fn it_should_keep_the_native_sources_free_of_gate_facade_guard_and_delivery_gate_imports() {
     let count = |source: &str| {
         Ok(module_refs(source, NATIVE_FORBIDDEN_MODULES)?
             + path_refs(source, NATIVE_FORBIDDEN_PATHS)?)
@@ -722,7 +738,7 @@ fn it_should_keep_the_native_sources_free_of_gate_facade_guard_and_pr_gate_impor
             "use crate::gate::Question;",
             "use crate::facade::Omhl;",
             "use crate::guard::attestation_id;",
-            "let name = crate::pr_gate::GATE_NAME;",
+            "let name = crate::delivery_gate::GATE_NAME;",
             "use crate::{error::OmhlError, facade::Omhl};",
             "use crate::{error::OmhlError, gate::{GateReport, Question}};",
             "use omhl::facade::Omhl;",
@@ -753,7 +769,7 @@ fn it_should_keep_the_gate_sources_free_of_domain_names_and_native_imports() {
         &[
             "use crate::native::NativeBase;",
             "use crate::graphs::catalog;",
-            "use crate::pr_gate::GATE_NAME;",
+            "use crate::delivery_gate::GATE_NAME;",
             "use crate::{error::OmhlError, native::NativeCheck};",
             "let kind = \"check\";",
             "let kind = \"work-item\";",

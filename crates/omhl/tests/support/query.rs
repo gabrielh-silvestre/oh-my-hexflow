@@ -35,11 +35,11 @@ fn confirmation(question: &str, answer: &str) -> Value {
 
 fn project_check() -> Value {
     json!({
-        "when": { "vocabulary": "closed", "event": "before-pr" },
+        "when": { "vocabulary": "closed", "event": "before-push" },
         "how": "Guards the payroll totals.",
         "blocking": true,
-        "concern": "style",
-        "variant": "format",
+        "concern": "docs",
+        "variant": "review",
         "run": ["sh", "-c", "exit 0"],
         "timeout_secs": 60,
         "expect": [{ "exit": 0, "outcome": "passed" }],
@@ -70,7 +70,7 @@ fn closed_work_item() -> Value {
         "title": "Archived rollout",
         "status": "closed",
         "gate": {
-            "name": "pr-gate",
+            "name": "delivery-gate",
             "passed": true,
             "chain_head_seq": 11,
             "snapshot": { "kind": "git-commit", "id": GATE_SHA },

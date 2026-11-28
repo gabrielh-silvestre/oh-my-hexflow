@@ -382,7 +382,7 @@ const LEAF_SAMPLES: &[(&str, &str)] = &[
     ("attest", ATTEST),
     ("load", "omhl load --dry-run"),
     ("close", "omhl close work-items.w1"),
-    ("gate-pr", "omhl gate-pr work-items.w1"),
+    ("gate-delivery", "omhl gate-delivery work-items.w1"),
     ("gate-worktree", "omhl gate-worktree --branch feat/x"),
     ("project", "omhl project"),
     ("guideline retire", "omhl guideline retire guidelines.g1"),
@@ -573,12 +573,12 @@ fn it_should_allow_omhl_spec_validate_only_to_the_planner_the_critic_and_the_ver
 }
 
 #[test]
-fn it_should_deny_omhl_attest_load_close_gate_pr_and_gate_worktree_to_every_role() {
+fn it_should_deny_omhl_attest_load_close_gate_delivery_and_gate_worktree_to_every_role() {
     let cases = cases_for(&samples_of(&[
         "attest",
         "load",
         "close",
-        "gate-pr",
+        "gate-delivery",
         "gate-worktree",
     ]));
 

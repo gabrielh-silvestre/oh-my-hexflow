@@ -89,12 +89,7 @@ pub fn extension_file_exists(kind: ExtensionKind, root: &Path, id: &str) -> bool
 }
 
 fn is_native_id(id: &str) -> bool {
-    let native = NativeBase;
-    native.checks().iter().any(|check| check.id == id)
-        || native
-            .guidelines()
-            .iter()
-            .any(|guideline| guideline.id == id)
+    NativeBase.checks().iter().any(|check| check.id == id)
 }
 
 #[cfg(test)]

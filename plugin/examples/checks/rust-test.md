@@ -1,0 +1,1 @@
+Runs `cargo test --workspace` with the Rust flag variables unset; it passes when the command exits with code 0. Read the output with `omhl byproduct checks.rust-test <work-item>` and fix each failing test.

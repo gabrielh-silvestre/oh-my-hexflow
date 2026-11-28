@@ -5,7 +5,10 @@ use std::path::{Component, Path};
 use serde::Deserialize;
 use toml::Spanned;
 
-use crate::native::NativeBase;
+use serde_json::{Value, json};
+
+use crate::mechanical::spec::{CheckSpec, spec_digest};
+use crate::native::{NativeBase, RUN_TESTS_ID};
 use crate::project::ProjectError;
 use crate::project::layout::{
     CHECKS_DIR, DOT_GIT_DIR, GUIDELINES_DIR, OMHL_DIR, PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE,
@@ -15,12 +18,41 @@ use crate::project::text::{position_at, toml_error_position};
 const SUPPORTED_VERSION: u32 = 1;
 pub const INVALID_WORKFLOW_CONFIG: &str = "invalid-workflow-config";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WorkflowConfig {
     pub specs: SpecsConfig,
     pub promotion: PromotionConfig,
     pub native: NativeConfig,
+    pub interview: InterviewConfig,
     pub prefixes: BTreeMap<String, Vec<RequireAtom>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterviewConfig {
+    pub threshold: f64,
+    pub weights: InterviewWeights,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterviewWeights {
+    pub objective: f64,
+    pub constraints: f64,
+    pub success: f64,
+    pub context: f64,
+}
+
+impl Default for InterviewConfig {
+    fn default() -> Self {
+        InterviewConfig {
+            threshold: 0.20,
+            weights: InterviewWeights {
+                objective: 0.35,
+                constraints: 0.25,
+                success: 0.25,
+                context: 0.15,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +72,33 @@ pub struct PromotionConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeConfig {
     pub checks: BTreeSet<&'static str>,
+    pub run: BTreeMap<String, NativeRun>,
+    pub invalid_run: BTreeMap<String, String>,
     pub prefixes: BTreeMap<String, Vec<RequireAtom>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeRun {
+    pub run: Vec<String>,
+    pub timeout_secs: u32,
+    pub expect: Value,
+}
+
+fn default_expect() -> Value {
+    json!([{ "exit": 0, "outcome": "passed" }])
+}
+
+pub fn native_run_digest(entry: &NativeRun) -> String {
+    spec_digest(&json!({
+        "run": entry.run,
+        "timeout_secs": entry.timeout_secs,
+        "expect": entry.expect,
+    }))
+}
+
+/// Digest da tabela como escrita, sem padrão preenchido: é o que o gate pergunta de uma entrada inválida.
+pub fn raw_native_run_digest(table: &toml::Table) -> String {
+    spec_digest(&serde_json::to_value(table).unwrap_or(Value::Null))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -86,6 +144,7 @@ impl Default for WorkflowConfig {
             },
             promotion: PromotionConfig { min_work_items: 3 },
             native: NativeConfig::default(),
+            interview: InterviewConfig::default(),
             prefixes: prefixes
                 .into_iter()
                 .map(|(prefix, atoms)| (prefix.to_owned(), atoms))
@@ -101,6 +160,7 @@ struct RawWorkflow {
     specs: Option<RawSpecs>,
     promotion: Option<RawPromotion>,
     native: Option<RawNative>,
+    interview: Option<RawInterview>,
     prefix: Option<BTreeMap<String, RawPrefix>>,
 }
 
@@ -123,6 +183,31 @@ struct RawPromotion {
 #[serde(deny_unknown_fields)]
 struct RawNative {
     checks: Option<Vec<Spanned<String>>>,
+    run: Option<BTreeMap<String, RawNativeRun>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawNativeRun {
+    run: Value,
+    timeout_secs: Option<Value>,
+    expect: Option<Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawInterview {
+    threshold: Option<f64>,
+    weights: Option<RawInterviewWeights>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawInterviewWeights {
+    objective: Option<f64>,
+    constraints: Option<f64>,
+    success: Option<f64>,
+    context: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -165,7 +250,77 @@ fn is_usable_specs_dir(dir: &str) -> bool {
     }
 }
 
+/// Só o `checks.run-tests` aceita comando; a régua é a do `CheckSpec`.
+fn parse_native_run(id: &str, entry: RawNativeRun) -> Result<NativeRun, String> {
+    if id != RUN_TESTS_ID {
+        return Err(format!(
+            "native.run.{id}: only {RUN_TESTS_ID} takes a command"
+        ));
+    }
+    let expect = entry.expect.unwrap_or_else(default_expect);
+    let mut data = json!({
+        "when": { "event": "before-commit" },
+        "run": entry.run,
+        "expect": expect,
+    });
+    if let Some(timeout) = entry.timeout_secs {
+        data["timeout_secs"] = timeout;
+    }
+    let spec = CheckSpec::from_data(&data)
+        .map_err(|error| format!("native.run.{id}: {} at {}", error.code, error.path))?
+        .ok_or_else(|| format!("native.run.{id}: run is required"))?;
+
+    Ok(NativeRun {
+        run: spec.run,
+        timeout_secs: spec.timeout_secs,
+        expect,
+    })
+}
+
+fn parse_interview(raw: RawInterview) -> Result<InterviewConfig, String> {
+    let mut interview = InterviewConfig::default();
+    if let Some(threshold) = raw.threshold {
+        if !(threshold > 0.0 && threshold <= 1.0) {
+            return Err("interview.threshold must be in (0, 1]".to_owned());
+        }
+        interview.threshold = threshold;
+    }
+    if let Some(raw) = raw.weights {
+        let w = &mut interview.weights;
+        w.objective = raw.objective.unwrap_or(w.objective);
+        w.constraints = raw.constraints.unwrap_or(w.constraints);
+        w.success = raw.success.unwrap_or(w.success);
+        w.context = raw.context.unwrap_or(w.context);
+        let all = [w.objective, w.constraints, w.success, w.context];
+        if !all.iter().all(|weight| (0.0..=1.0).contains(weight)) {
+            return Err("interview.weights must each be in [0, 1]".to_owned());
+        }
+        if (all.iter().sum::<f64>() - 1.0).abs() > 1e-9 {
+            return Err("interview.weights must sum to 1".to_owned());
+        }
+    }
+    Ok(interview)
+}
+
 pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, ProjectError> {
+    parse_with(path, bytes, false)
+}
+
+pub fn parse_evaluated_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, ProjectError> {
+    parse_with(path, bytes, true)
+}
+
+fn raw_run_table(text: &str, id: &str) -> toml::Table {
+    let table = text.parse::<toml::Table>().unwrap_or_default();
+    table
+        .get("native")
+        .and_then(|native| native.get("run"))
+        .and_then(|run| run.get(id))
+        .and_then(|entry| entry.as_table().cloned())
+        .unwrap_or_default()
+}
+
+fn parse_with(path: &Path, bytes: &[u8], lenient: bool) -> Result<WorkflowConfig, ProjectError> {
     let text = std::str::from_utf8(bytes).map_err(|_| invalid(path, "not valid UTF-8"))?;
     let raw: RawWorkflow = toml::from_str(text).map_err(|error| {
         let (line, column) = toml_error_position(text, &error);
@@ -225,11 +380,26 @@ pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, Proje
         }
         config.promotion.min_work_items = min_work_items.into_inner();
     }
-    for id in raw
+    if let Some(interview) = raw.interview {
+        config.interview = parse_interview(interview).map_err(|reason| invalid(path, reason))?;
+    }
+    let (native_checks, native_run) = raw
         .native
-        .and_then(|native| native.checks)
-        .unwrap_or_default()
-    {
+        .map(|native| (native.checks, native.run))
+        .unwrap_or_default();
+    for (id, entry) in native_run.unwrap_or_default() {
+        match parse_native_run(&id, entry) {
+            Ok(run) => {
+                config.native.run.insert(id, run);
+            }
+            Err(_) if lenient => {
+                let digest = raw_native_run_digest(&raw_run_table(text, &id));
+                config.native.invalid_run.insert(id, digest);
+            }
+            Err(reason) => return Err(invalid(path, reason)),
+        }
+    }
+    for id in native_checks.unwrap_or_default() {
         let Some(check) = NativeBase
             .checks()
             .iter()

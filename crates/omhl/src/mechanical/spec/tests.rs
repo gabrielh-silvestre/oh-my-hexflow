@@ -46,7 +46,7 @@ fn units(data: &Value) -> usize {
 }
 
 fn big_data(total_units: usize) -> Value {
-    let mut data = check_data("before-pr", &"h".repeat(8_000), true);
+    let mut data = check_data("before-push", &"h".repeat(8_000), true);
     data["run"] = json!(vec!["r".repeat(1_000); 5]);
     data["timeout_secs"] = json!(600);
     data["expect"] = json!([{"exit": 0, "stdout": "", "outcome": "passed"}]);
@@ -64,7 +64,7 @@ fn error(path: &str, code: &'static str) -> SpecError {
 }
 
 fn run_with_last_item(last: &str) -> Value {
-    let mut data = run_data("before-pr", passed_on_zero());
+    let mut data = run_data("before-push", passed_on_zero());
     data["run"] = json!(vec!["r".repeat(1_000); 5]);
     data["run"]
         .as_array_mut()
@@ -147,7 +147,7 @@ fn it_should_decode_the_lint_check_of_the_report() {
 
 #[test]
 fn it_should_reject_a_run_with_an_empty_argv() {
-    let mut data = run_data("before-pr", passed_on_zero());
+    let mut data = run_data("before-push", passed_on_zero());
     data["run"] = json!([]);
 
     let result = CheckSpec::from_data(&data);
@@ -157,7 +157,7 @@ fn it_should_reject_a_run_with_an_empty_argv() {
 
 #[test]
 fn it_should_reject_a_timeout_of_zero() {
-    let mut data = run_data("before-pr", passed_on_zero());
+    let mut data = run_data("before-push", passed_on_zero());
     data["timeout_secs"] = json!(0);
 
     let result = CheckSpec::from_data(&data);
@@ -171,7 +171,7 @@ fn it_should_reject_a_timeout_of_zero() {
 #[test]
 fn it_should_reject_an_invalid_regex_without_echoing_it() {
     let data = run_data(
-        "before-pr",
+        "before-push",
         json!([{"exit": 0, "stdout": "(unclosed", "outcome": "passed"}]),
     );
 
@@ -185,11 +185,11 @@ fn it_should_reject_an_invalid_regex_without_echoing_it() {
 #[test]
 fn it_should_reject_a_regex_whose_compiled_size_exceeds_the_limit() {
     let too_big = run_data(
-        "before-pr",
+        "before-push",
         json!([{"exit": 0, "stderr": "\\w{100}", "outcome": "passed"}]),
     );
     let fits = run_data(
-        "before-pr",
+        "before-push",
         json!([{"exit": 0, "stderr": "\\w{10}", "outcome": "passed"}]),
     );
 
@@ -206,7 +206,7 @@ fn it_should_reject_a_regex_whose_compiled_size_exceeds_the_limit() {
 #[test]
 fn it_should_reject_a_rule_without_exit() {
     let data = run_data(
-        "before-pr",
+        "before-push",
         json!([{"exit": 0, "outcome": "passed"}, {"outcome": "passed"}]),
     );
 
@@ -265,7 +265,7 @@ fn it_should_derive_git_tree_for_a_before_commit_check_with_run() {
 
 #[test]
 fn it_should_derive_git_commit_for_a_before_pr_check_with_run() {
-    let data = run_data("before-pr", passed_on_zero());
+    let data = run_data("before-push", passed_on_zero());
 
     let kind = snapshot_for(&data);
 
@@ -293,7 +293,7 @@ fn it_should_derive_git_commit_for_a_before_commit_check_that_is_only_text() {
 #[test]
 fn it_should_reject_a_rule_with_both_a_stdout_and_a_stderr_regex() {
     let data = run_data(
-        "before-pr",
+        "before-push",
         json!([{"exit": 0, "stdout": "ok", "stderr": "warn", "outcome": "passed"}]),
     );
 
@@ -304,7 +304,7 @@ fn it_should_reject_a_rule_with_both_a_stdout_and_a_stderr_regex() {
 
 #[test]
 fn it_should_keep_the_spec_digest_when_only_unrelated_fields_change() {
-    let base = run_data("before-pr", passed_on_zero());
+    let base = run_data("before-push", passed_on_zero());
     let mut other = base.clone();
     other["blocking"] = json!(false);
     other["concern"] = json!("style");
@@ -315,7 +315,7 @@ fn it_should_keep_the_spec_digest_when_only_unrelated_fields_change() {
 
 #[test]
 fn it_should_change_the_spec_digest_when_run_changes() {
-    let base = run_data("before-pr", passed_on_zero());
+    let base = run_data("before-push", passed_on_zero());
     let mut other = base.clone();
     other["run"] = json!(["true"]);
 
@@ -324,7 +324,7 @@ fn it_should_change_the_spec_digest_when_run_changes() {
 
 #[test]
 fn it_should_change_the_spec_digest_when_timeout_secs_changes() {
-    let base = run_data("before-pr", passed_on_zero());
+    let base = run_data("before-push", passed_on_zero());
     let mut other = base.clone();
     other["timeout_secs"] = json!(121);
 
@@ -333,8 +333,8 @@ fn it_should_change_the_spec_digest_when_timeout_secs_changes() {
 
 #[test]
 fn it_should_change_the_spec_digest_when_expect_changes() {
-    let base = run_data("before-pr", passed_on_zero());
-    let other = run_data("before-pr", json!([{"exit": 0, "outcome": "failed"}]));
+    let base = run_data("before-push", passed_on_zero());
+    let other = run_data("before-push", json!([{"exit": 0, "outcome": "failed"}]));
 
     assert_ne!(spec_digest(&other), spec_digest(&base));
 }
@@ -352,7 +352,7 @@ fn it_should_treat_a_check_as_mechanical_when_run_is_present_whatever_its_value(
 
 #[test]
 fn it_should_treat_a_check_without_run_as_text_only() {
-    let data = json!({ "when": { "event": "before-pr" } });
+    let data = json!({ "when": { "event": "before-push" } });
 
     assert!(!is_mechanical(&data));
 }

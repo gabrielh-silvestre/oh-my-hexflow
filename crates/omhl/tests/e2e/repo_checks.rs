@@ -3,16 +3,16 @@ use crate::support;
 use std::fs;
 use std::path::Path;
 
+use ::omhl::delivery_gate::REQUIRED_EVENTS;
 use ::omhl::mechanical::plan::{CheckNode, plan_run};
 use ::omhl::mechanical::spec::snapshot_for;
-use ::omhl::pr_gate::REQUIRED_EVENTS;
 use ::omhl::workflow::config::parse_workflow;
 use hexlog::SnapshotKind;
 use serde_json::{Value, json};
 use support::child::{Output, omhl_json};
+use support::delivery_gate::{CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING};
 use support::git::commit_marker;
 use support::omhl::typed_work_item_data;
-use support::pr_gate::{CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING};
 use support::project::Project;
 use support::repo_checks::repo_root;
 use support::sid;
@@ -93,10 +93,12 @@ fn it_should_load_the_repository_checks_without_errors() {
 
 #[test]
 fn it_should_list_the_checks_and_the_guidelines_in_the_dry_run() {
-    const REPO_GUIDELINES: [&str; 5] = [
+    const REPO_GUIDELINES: [&str; 7] = [
         "guidelines.boundary-classification",
         "guidelines.code-in-english-no-emoji",
+        "guidelines.commit-policy",
         "guidelines.diferencial",
+        "guidelines.one-decision-per-turn",
         "guidelines.premissa-so-vale-confirmada",
         "guidelines.proposito",
     ];
@@ -298,7 +300,7 @@ fn it_should_require_ci_green_and_the_blocking_repository_checks_in_the_gate() {
     } }] });
     project_output(&project, &["append"], &work_item.to_string());
 
-    let gate = project_output(&project, &["gate-pr", WORK_ITEM], "");
+    let gate = project_output(&project, &["gate-delivery", WORK_ITEM], "");
 
     let mut required: Vec<&str> = gate["questions"]
         .as_array()

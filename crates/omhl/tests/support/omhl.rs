@@ -167,7 +167,7 @@ pub fn typed_work_item_data(title: &str) -> Value {
 pub fn closed_with_gate(mut data: Value) -> Value {
     data["status"] = json!("closed");
     data["gate"] = json!({
-        "name": "pr-gate",
+        "name": "delivery-gate",
         "passed": true,
         "chain_head_seq": 3,
         "snapshot": { "kind": "git-commit", "id": "a".repeat(40) },
@@ -340,4 +340,15 @@ pub fn list_refusal(pointer: &str, message: &str) -> Value {
             }],
         }
     })
+}
+
+/// Id da attestation do digest que só a declaração avaliada exige.
+pub fn evaluated_attestation_id_for(snapshot: &Snapshot, check: &str, work_item: &str) -> String {
+    let sha = snapshot.id();
+
+    format!(
+        "attestations.evaluated.{}.{}.{check}.{work_item}",
+        &sha[..32],
+        &sha[32..]
+    )
 }

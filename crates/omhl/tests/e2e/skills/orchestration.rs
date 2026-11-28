@@ -128,12 +128,12 @@ fn it_should_call_the_verifier_before_spec_validate_in_plan_consensus() {
 }
 
 #[test]
-fn it_should_call_the_verifier_in_an_isolated_context_before_gate_pr_in_review() {
+fn it_should_call_the_verifier_in_an_isolated_context_before_gate_delivery_in_review() {
     let text = body(&read("review/SKILL.md"));
 
     let verifier = line_with(&text, &["oh-my-hexflow:verifier", "isolated context"])
         .expect("a step that calls the verifier in an isolated context");
-    let gate = line_with(&text, &["omhl gate-pr"]).expect("a step that cites gate-pr");
+    let gate = line_with(&text, &["omhl gate-delivery"]).expect("a step that cites gate-delivery");
 
     assert!(verifier < gate, "the verifier step comes first");
 }
@@ -428,7 +428,7 @@ fn it_should_define_acceptance_and_the_loop_exits_in_plan_consensus() {
         "third",
         "impasse",
         "owner",
-        "gate-pr",
+        "gate-delivery",
         "`REJECT`",
         "`REVISE`",
         "another round",
@@ -571,7 +571,7 @@ fn it_should_state_each_cycle_step_with_its_role() {
                 "oh-my-hexflow:verifier",
             ],
         ),
-        (10, &["omhl gate-pr", "omhl close"]),
+        (10, &["omhl gate-delivery", "omhl close"]),
     ];
 
     for (number, needles) in expectations {
@@ -840,7 +840,7 @@ fn it_should_order_the_review_steps_by_number() {
     let verifier = step_with(&text, &["oh-my-hexflow:verifier", "isolated context"])
         .expect("the verifier step");
     let table = step_with(&text, &["Build the PR table"]).expect("the table step");
-    let gate = step_with(&text, &["omhl gate-pr"]).expect("the gate step");
+    let gate = step_with(&text, &["omhl gate-delivery"]).expect("the gate step");
 
     assert!(reviewers < fix && fix < verifier && verifier < table && table < gate);
     let step = &steps[reviewers];

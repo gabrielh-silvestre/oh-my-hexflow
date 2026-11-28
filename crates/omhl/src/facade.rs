@@ -7,17 +7,17 @@ use hexlog::{
     Snapshot, TenantId, TenantInfo, TypeName,
 };
 
+use crate::delivery_gate::{
+    Abandonment, CloseRefusal, FailedDelivery, Forcing, GATE_NAME, GateSnapshots,
+    abandonment_request, anchor_questions, close_verdict, closing_request, delivery_gate_questions,
+    delivery_verdict, failed_delivery_request, project_checks_filter, required_checks,
+    requirement_questions, spec_digests,
+};
 use crate::error::{OmhlError, RuleCode};
 use crate::gate::{self, GateQuestion, GateReport, GateSource, HexlogSource, read_consistent};
 use crate::graphs::WORK_ITEM_TYPES;
 use crate::mechanical::plan::CheckNode;
 use crate::native::NativeBase;
-use crate::pr_gate::{
-    Abandonment, CloseRefusal, FailedDelivery, Forcing, GATE_NAME, GateSnapshots,
-    abandonment_request, anchor_questions, close_verdict, closing_request, delivery_verdict,
-    failed_delivery_request, pr_gate_questions, project_checks_filter, required_checks,
-    requirement_questions, spec_digests,
-};
 use crate::probe::{SnapshotProbe, TreeSource};
 use crate::projection::ProjectionState;
 use crate::workflow::config::{NativeConfig, RequireAtom};
@@ -82,6 +82,8 @@ pub struct OmhlDeps<'d> {
 pub struct WorkRequirements {
     pub head: Option<ChainHead>,
     pub atoms: Vec<(RequireAtom, bool)>,
+    /// Declaração nativa do `HEAD`, lida antes de o gate abrir a leitura consistente.
+    pub evaluated: NativeConfig,
 }
 
 impl WorkRequirements {
@@ -89,6 +91,7 @@ impl WorkRequirements {
         WorkRequirements {
             head: None,
             atoms: Vec::new(),
+            evaluated: NativeConfig::default(),
         }
     }
 }
@@ -252,7 +255,7 @@ impl<'d> Omhl<'d> {
         Ok(GateReport::assemble(gate, head, reports))
     }
 
-    pub fn evaluate_pr_gate(
+    pub fn evaluate_delivery_gate(
         &mut self,
         tenant: &TenantId,
         work_item: &SemanticId,
@@ -337,12 +340,19 @@ impl<'d> Omhl<'d> {
         requirements: &WorkRequirements,
         review_required: bool,
     ) -> Result<GateReport, OmhlError> {
+        let evaluated = &requirements.evaluated;
         let mut source = HexlogSource::new(&mut self.hexlog, self.page_size);
         let (head, reports) = read_consistent(&mut source, tenant, |source| {
             let checks = source.nodes(tenant, &project_checks_filter())?;
-            let required = required_checks(NATIVE.checks(), enabled, &checks, review_required);
+            let required = required_checks(
+                NATIVE.checks(),
+                enabled,
+                evaluated,
+                &checks,
+                review_required,
+            );
             let digests = spec_digests(&checks);
-            let mut questions = pr_gate_questions(&required, work_item, snapshots, &digests);
+            let mut questions = delivery_gate_questions(&required, work_item, snapshots, &digests);
             questions.extend(anchor_questions(work_item));
             questions.extend(requirement_questions(&requirements.atoms));
 

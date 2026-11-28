@@ -199,8 +199,8 @@ fn attest_action(check: &str, outcome: &str, note: Option<&str>) -> Action {
     }
 }
 
-fn gate_pr_action() -> Action {
-    Action::GatePr {
+fn gate_delivery_action() -> Action {
+    Action::GateDelivery {
         work_item: W1.to_owned(),
         base: None,
     }
@@ -979,10 +979,7 @@ fn it_should_refuse_where_on_a_field_name_that_is_not_a_valid_name() {
 fn it_should_refuse_where_with_a_value_outside_the_enum() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();
-    let cases = [
-        ("premise", "status", "confimed"),
-        ("check", "concern", "nope"),
-    ];
+    let cases = [("premise", "status", "confimed")];
 
     for (type_name, field, value) in cases {
         let refusal = filter_refusal(&mut app, Some(type_name), None, &[(field, value)]);
@@ -1346,26 +1343,26 @@ fn it_should_verify_a_fresh_chain() {
 // Gate, atestado e fechamento
 
 #[test]
-fn it_should_evaluate_the_pr_gate_with_the_probe_snapshot() {
+fn it_should_evaluate_the_delivery_gate_with_the_probe_snapshot() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();
     open_work_item(&mut app);
 
-    let report = run(&mut app, &gate_pr_action());
+    let report = run(&mut app, &gate_delivery_action());
 
-    assert_eq!(report["gate"], json!("pull-request"));
+    assert_eq!(report["gate"], json!("delivery"));
     assert_eq!(report["passed"], json!(false));
     assert!(report["chain_head"]["seq"].is_u64());
     assert!(report["chain_head"]["hash"].is_string());
 }
 
 #[test]
-fn it_should_refuse_the_pr_gate_when_the_probe_fails() {
+fn it_should_refuse_the_delivery_gate_when_the_probe_fails() {
     let fixture = Fixture::new(FakeProbe::failing());
     let mut app = fixture.open();
     open_work_item(&mut app);
 
-    let error = refuse(&mut app, &gate_pr_action());
+    let error = refuse(&mut app, &gate_delivery_action());
 
     assert_eq!(error.code(), "probe-failed");
     assert_eq!(
@@ -1375,7 +1372,7 @@ fn it_should_refuse_the_pr_gate_when_the_probe_fails() {
 }
 
 #[test]
-fn it_should_pass_the_pr_gate_when_every_required_check_is_attested() {
+fn it_should_pass_the_delivery_gate_when_every_required_check_is_attested() {
     let fixture = Fixture::clean();
     let mut app = fixture.open();
     open_work_item(&mut app);
@@ -1385,7 +1382,7 @@ fn it_should_pass_the_pr_gate_when_every_required_check_is_attested() {
         &attest_action(CI_GREEN, "passed_with_warning", None),
     );
 
-    let report = run(&mut app, &gate_pr_action());
+    let report = run(&mut app, &gate_delivery_action());
 
     let matched: Vec<&Value> = report["questions"]
         .as_array()

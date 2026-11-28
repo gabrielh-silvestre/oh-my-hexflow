@@ -525,7 +525,7 @@ fn it_should_pass_the_pull_request_gate_after_the_cycle() {
     flow.approve_the_amendment();
     flow.attest_the_required_checks();
 
-    let gate = flow.run_ok(&["gate-pr", W1]);
+    let gate = flow.run_ok(&["gate-delivery", W1]);
 
     assert_eq!(gate["passed"], json!(true));
 }
@@ -535,10 +535,10 @@ fn it_should_fail_the_gate_for_an_unanchored_decision_and_pass_once_anchored() {
     let flow = Flow::with_frozen_spec();
     flow.attest_the_required_checks();
     flow.record_a_decision();
-    let unanchored = flow.run_ok(&["gate-pr", W1]);
+    let unanchored = flow.run_ok(&["gate-delivery", W1]);
 
     flow.rest_the_decision_on_the_business_premise();
-    let anchored = flow.run_ok(&["gate-pr", W1]);
+    let anchored = flow.run_ok(&["gate-delivery", W1]);
 
     assert_eq!(
         (unanchored["passed"].clone(), anchored["passed"].clone()),
@@ -552,7 +552,7 @@ fn it_should_serialize_the_next_step_only_on_a_failing_question() {
     flow.attest_the_required_checks();
     flow.record_a_decision();
 
-    let gate = flow.run_ok(&["gate-pr", W1]);
+    let gate = flow.run_ok(&["gate-delivery", W1]);
 
     let failing = gate_question(&gate, "decisions-anchored");
     let passing = gate_question(&gate, "anchors-confirmed");
@@ -571,7 +571,7 @@ fn it_should_fail_the_unanchored_decision_with_a_next_step_when_guidelines_exist
     let flow = Flow::with_guideline_chain();
     flow.record_a_decision();
 
-    let gate = flow.run_ok(&["gate-pr", W1]);
+    let gate = flow.run_ok(&["gate-delivery", W1]);
 
     let question = gate_question(&gate, "decisions-anchored");
     assert_eq!(question["passed"], json!(false));
@@ -589,7 +589,7 @@ fn it_should_pass_the_anchor_questions_once_the_decision_rests_on_the_architectu
     flow.record_a_decision();
     flow.rest_on(DECISION, ARCHITECTURE_GUIDELINE);
 
-    let gate = flow.run_ok(&["gate-pr", W1]);
+    let gate = flow.run_ok(&["gate-delivery", W1]);
 
     assert_eq!(
         (

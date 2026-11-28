@@ -1,8 +1,8 @@
 use hexlog::{NativeNode, NativeNodes, RelationTypeName, SemanticId, TypeName};
 
-pub const NATIVE_CATALOG_VERSION: &str = "1.1.0";
+pub const NATIVE_CATALOG_VERSION: &str = "2.0.0";
 
-const RUN_TESTS_ID: &str = "checks.run-tests";
+pub const RUN_TESTS_ID: &str = "checks.run-tests";
 pub(crate) const CI_GREEN_ID: &str = "checks.ci-green-before-merge";
 pub(crate) const CONFIG_LOOSENING_REVIEW_ID: &str = "checks.config-loosening-review";
 
@@ -14,13 +14,7 @@ pub struct NativeCheck {
     pub blocking: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NativeGuideline {
-    pub id: &'static str,
-    pub text: &'static str,
-}
-
-// A ordem é a do contrato: o plugin nunca remove nem reordena um id nativo.
+// A ordem é a do contrato: o plugin não reordena um id nativo; remover um exige nova versão maior do catálogo.
 static CHECKS: [NativeCheck; 4] = [
     NativeCheck {
         id: RUN_TESTS_ID,
@@ -42,20 +36,9 @@ static CHECKS: [NativeCheck; 4] = [
     },
     NativeCheck {
         id: CONFIG_LOOSENING_REVIEW_ID,
-        event: "before-pr",
+        event: "before-push",
         how: "have oh-my-hexflow:code-reviewer review every loosening of a check or gate configuration in .omhl/workflow.toml or .omhl/checks/ in the diff, fix the findings and let the human attest it before opening the PR",
         blocking: true,
-    },
-];
-
-static GUIDELINES: [NativeGuideline; 2] = [
-    NativeGuideline {
-        id: "guidelines.one-decision-per-turn",
-        text: "when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next",
-    },
-    NativeGuideline {
-        id: "guidelines.commit-policy",
-        text: "by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy",
     },
 ];
 
@@ -86,29 +69,16 @@ impl NativeBase {
     pub fn checks(&self) -> &'static [NativeCheck] {
         &CHECKS
     }
-
-    pub fn guidelines(&self) -> &'static [NativeGuideline] {
-        &GUIDELINES
-    }
 }
 
 impl NativeNodes for NativeBase {
     fn lookup(&self, id: &SemanticId) -> Option<NativeNode> {
-        let type_name = if self.checks().iter().any(|check| check.id == id.as_str()) {
-            "check"
-        } else if self
-            .guidelines()
-            .iter()
-            .any(|guideline| guideline.id == id.as_str())
-        {
-            "guideline"
-        } else {
-            return None;
-        };
+        let type_name = TypeName::parse("check").ok()?;
 
-        Some(NativeNode {
-            type_name: TypeName::parse(type_name).ok()?,
-        })
+        self.checks()
+            .iter()
+            .any(|check| check.id == id.as_str())
+            .then_some(NativeNode { type_name })
     }
 
     fn native_relations(&self, relation_type: &RelationTypeName) -> Vec<(SemanticId, SemanticId)> {

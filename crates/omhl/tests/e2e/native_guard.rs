@@ -2,9 +2,9 @@ use crate::support;
 
 use serde_json::{Value, json};
 use support::child::{omhl, omhl_json};
+use support::delivery_gate::{ALL_NATIVE_CHECKS, CI_GREEN};
 use support::git::git_ok;
 use support::omhl::{RUN_TESTS, typed_work_item_data};
-use support::pr_gate::{ALL_NATIVE_CHECKS, CI_GREEN};
 use support::project::Project;
 
 const W1: &str = "work-items.w1";
@@ -39,7 +39,7 @@ fn surfaces(project: &Project) -> Surfaces {
     };
     run(&["append"], &open_work_item_request());
     let render = run(&["render"], "");
-    let gate = run(&["gate-pr", W1], "");
+    let gate = run(&["gate-delivery", W1], "");
     let hook_input = json!({
         "hook_event_name": "SessionStart",
         "session_id": "s1",
@@ -100,7 +100,7 @@ fn violations(surfaces: &Surfaces) -> Vec<String> {
         }
     }
     if surfaces.labels != BASE_LABELS {
-        found.push(format!("gate-pr asks {:?}", surfaces.labels));
+        found.push(format!("gate-delivery asks {:?}", surfaces.labels));
     }
 
     found
@@ -155,7 +155,7 @@ fn it_should_flag_the_gate_when_run_tests_or_ci_green_is_enabled() {
     for id in [RUN_TESTS, CI_GREEN] {
         let found = violations(&enabling(&[id]));
 
-        assert!(has(&found, "gate-pr asks"), "{id}: {found:?}");
+        assert!(has(&found, "gate-delivery asks"), "{id}: {found:?}");
     }
 }
 
@@ -185,5 +185,5 @@ fn it_should_flag_a_block_and_a_question_of_a_native_id_that_does_not_exist() {
         has(&found, "additionalContext has blocks in ## Checks"),
         "{found:?}"
     );
-    assert!(has(&found, "gate-pr asks"), "{found:?}");
+    assert!(has(&found, "gate-delivery asks"), "{found:?}");
 }

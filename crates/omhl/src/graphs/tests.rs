@@ -109,7 +109,7 @@ fn evidence() -> Value {
 
 fn gate() -> Value {
     json!({
-        "name": "pr-gate",
+        "name": "delivery-gate",
         "passed": true,
         "chain_head_seq": 3,
         "snapshot": { "kind": "git-commit", "id": "a".repeat(40) },
@@ -521,13 +521,64 @@ fn it_should_accept_a_check_that_is_only_text() {
     assert_eq!(accepted, (true, true));
 }
 
+fn labeled(concern: &str, variant: &str) -> Value {
+    with(
+        with(mechanical_check(), "concern", json!(concern)),
+        "variant",
+        json!(variant),
+    )
+}
+
 #[test]
-fn it_should_reject_a_style_check_with_the_suite_variant() {
-    let check = with(mechanical_check(), "variant", json!("suite"));
+fn it_should_accept_a_style_check_with_the_suite_variant() {
+    let check = labeled("style", "suite");
 
-    let found = violations_of("check", &check);
+    assert!(is_accepted("check", &check));
+}
 
-    assert_eq!(found, vec![violation("", "one-of")]);
+#[test]
+fn it_should_accept_free_labels_outside_the_former_vocabulary() {
+    let check = labeled("docs", "review");
+
+    assert!(is_accepted("check", &check));
+}
+
+#[test]
+fn it_should_accept_labels_of_one_and_of_40_characters() {
+    let accepted = (
+        is_accepted("check", &labeled("a", "b")),
+        is_accepted("check", &labeled(&"a".repeat(40), &"b".repeat(40))),
+    );
+
+    assert_eq!(accepted, (true, true));
+}
+
+#[test]
+fn it_should_reject_a_concern_of_41_characters() {
+    let check = labeled(&"a".repeat(41), "lint");
+
+    assert!(!is_accepted("check", &check));
+}
+
+#[test]
+fn it_should_reject_a_variant_of_41_characters() {
+    let check = labeled("style", &"a".repeat(41));
+
+    assert!(!is_accepted("check", &check));
+}
+
+#[test]
+fn it_should_reject_an_empty_concern() {
+    let check = labeled("", "lint");
+
+    assert!(!is_accepted("check", &check));
+}
+
+#[test]
+fn it_should_reject_an_empty_variant() {
+    let check = labeled("style", "");
+
+    assert!(!is_accepted("check", &check));
 }
 
 #[test]
@@ -674,8 +725,18 @@ fn it_should_reject_an_event_outside_the_closed_list() {
 }
 
 #[test]
-fn it_should_reject_the_native_review_event_in_a_check_record() {
-    let check = check_data("before-publishing-review-comments", "Run the linter", true);
+fn it_should_accept_a_check_record_on_each_event_of_the_list() {
+    let accepted: Vec<bool> = crate::mechanical::EVENTS
+        .iter()
+        .map(|event| is_accepted("check", &check_data(event, "Run the linter", true)))
+        .collect();
+
+    assert_eq!(accepted, vec![true; 4]);
+}
+
+#[test]
+fn it_should_reject_an_invented_event_in_a_check_record() {
+    let check = check_data("before-lunch", "Run the linter", true);
 
     let found = violations_of("check", &check);
 

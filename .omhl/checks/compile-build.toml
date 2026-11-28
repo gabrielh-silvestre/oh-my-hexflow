@@ -2,7 +2,7 @@ concern = "compile"
 variant = "build"
 blocking = true
 after = ["checks.compile-validate"]
-run = ["cargo", "build", "--workspace", "--profile", "checks", "--locked"]
+run = ["env", "-u", "RUSTFLAGS", "-u", "RUSTC_WRAPPER", "-u", "RUSTC_WORKSPACE_WRAPPER", "-u", "CARGO_ENCODED_RUSTFLAGS", "-u", "CARGO_BUILD_RUSTFLAGS", "cargo", "build", "--workspace", "--profile", "checks", "--locked"]
 timeout_secs = 200
 expect = [{ exit = 0, outcome = "passed" }]
-when = { event = "before-pr" }
+when = { event = "before-push" }

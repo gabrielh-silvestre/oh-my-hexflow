@@ -40,7 +40,7 @@ O `command[0]` da attestation é o programa montado a partir do `run`: o caminho
 
 ### Submódulo sujo no `before-commit`
 
-O `before-commit` recusa o commit com `worktree-differs-from-index` quando um submódulo tem arquivo modificado ou não rastreado, igual ao `before-pr` e ao `pre-push`. A recusa vale mesmo com `submodule.<nome>.ignore=all` na configuração. Um check que suja o submódulo ao rodar passa a parar com `command-changed-worktree`. Para sair, limpe o submódulo ou ponha o arquivo gerado no `.gitignore` do próprio submódulo.
+O `before-commit` recusa o commit com `worktree-differs-from-index` quando um submódulo tem arquivo modificado ou não rastreado, igual ao `before-push` e ao `pre-push`. A recusa vale mesmo com `submodule.<nome>.ignore=all` na configuração. Um check que suja o submódulo ao rodar passa a parar com `command-changed-worktree`. Para sair, limpe o submódulo ou ponha o arquivo gerado no `.gitignore` do próprio submódulo.
 
 ## 3. Branch, marca da `develop` e `main`
 
@@ -70,6 +70,15 @@ Condições e limites:
 - Um `omhl` iniciado com `SIGINT` ignorado (tarefa em segundo plano de um shell não interativo) não morre por Ctrl+C, como qualquer programa.
 - **Ctrl+Z** para o `git` e o `omhl`.
 - A forma suportada de desanexar é `nohup sh -c 'omhl check run ...' > arquivo 2>&1 &`.
+
+Os eventos abaixo estão descritos em [events.md](../plugin/skills/review/references/events.md).
+
+| Evento | Disparo |
+| --- | --- |
+| `before-commit` | hooks `pre-commit` e `pre-merge-commit` do git |
+| `before-push` | hook `pre-push` do git |
+| `before-merge` | chamada manual |
+| `before-publishing-review-comments` | instrução ao agente |
 
 ## 5. Escopo dos hooks
 
@@ -131,5 +140,5 @@ Se o timeout estourar muitas vezes, revise o valor. A imutabilidade do `failed` 
 - **Definição velha.** A attestation foi gravada sob uma definição que o banco já trocou.
 - **TOML editado e não carregado (`spec-stale`).** TOML inválido também recusa, porque depois do `omhl load` o banco é a fonte da verdade e o arquivo só a confirma.
 - **Regra de trabalho.** Checks mecânicos devem estar sempre alinhados com o banco: evite alterar checks durante o desenvolvimento; se alterar, rode `omhl load` antes de qualquer `check run`.
-- **Ambiente do comando.** Configuração própria vai explícita no `run` do check (por exemplo `["env", "RUSTFLAGS=...", "cargo", ...]` ou o argumento da própria ferramenta), nunca herdada do shell pessoal.
+- **Ambiente do comando.** O `omhl` remove do comando só as variáveis de hook do git (`GIT_INDEX_FILE`, `GIT_DIR`, `GIT_PREFIX`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`); as variáveis do toolchain Rust (`RUSTFLAGS`, `RUSTC_WRAPPER` e afins) passam como estão, e um check de `cargo` que dependia da remoção põe `env -u` no `run`. Configuração própria vai explícita no `run` do check (por exemplo `["env", "RUSTFLAGS=...", "cargo", ...]` ou o argumento da própria ferramenta), nunca herdada do shell pessoal.
 - **Limite aceito.** Quem edita o TOML, roda `omhl load`, roda o `check run` e restaura o arquivo com `git checkout` obtém uma attestation válida para a definição que ficou no banco. O `omhl` não prova quem chamou a CLI: é um freio, não uma parede (README, "Autoria"). O `spec_digest` fecha o caso sem má-fé e a attestation à mão, não o bypass deliberado pelo `omhl load`.

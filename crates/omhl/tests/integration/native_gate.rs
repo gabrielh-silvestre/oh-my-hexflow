@@ -1,16 +1,16 @@
 use crate::support;
 
 use hexlog::{Snapshot, SnapshotKind};
+use omhl::delivery_gate::{CloseRefusal, GateSnapshots};
 use omhl::facade::{CloseError, Omhl};
-use omhl::pr_gate::{CloseRefusal, GateSnapshots};
 use omhl::probe::{ProbeOutcome, TreeSource};
 use omhl::workflow::config::NativeConfig;
 use serde_json::json;
-use support::omhl::{OmhlHarness, PR_7, RUN_TESTS, acme, append_ok_as, check_data, node_item};
-use support::pr_gate::{
+use support::delivery_gate::{
     ANCHORS_CONFIRMED, CI_GREEN, DECISIONS_ANCHORED, NO_OPEN_CONTRADICTION, VERIFY_ANCHORING,
     all_native_enabled, attest, native_enabled, outcomes, relation_item, snapshots,
 };
+use support::omhl::{OmhlHarness, PR_7, RUN_TESTS, acme, append_ok_as, check_data, node_item};
 use support::{FakeProbe, author, loader_author, sid, snap};
 
 const BASE_LABELS: [&str; 3] = [NO_OPEN_CONTRADICTION, DECISIONS_ANCHORED, ANCHORS_CONFIRMED];
@@ -53,7 +53,7 @@ type Outcomes = Vec<(String, bool)>;
 
 fn gate_outcomes(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> Outcomes {
     let report = omhl
-        .evaluate_pr_gate(
+        .evaluate_delivery_gate(
             &acme(),
             &sid(PR_7),
             &at_head(),
@@ -96,7 +96,7 @@ fn close_outcomes(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> (Outcomes, boo
     }
 }
 
-/// `gate-pr` e depois `close` sobre o mesmo estado: o `close` só avalia o gate e grava.
+/// `gate-delivery` e depois `close` sobre o mesmo estado: o `close` só avalia o gate e grava.
 fn gate_and_close(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> [Outcomes; 2] {
     let gate = gate_outcomes(omhl, enabled);
     let (closed, _) = close_outcomes(omhl, enabled);
@@ -104,7 +104,7 @@ fn gate_and_close(omhl: &mut Omhl<'_>, enabled: &NativeConfig) -> [Outcomes; 2] 
     [gate, closed]
 }
 
-/// Banco novo com o pull request, o `seed` aplicado e `gate-pr` seguido de `close`.
+/// Banco novo com o pull request, o `seed` aplicado e `gate-delivery` seguido de `close`.
 fn scenario(seed: impl FnOnce(&mut Omhl<'_>), enabled: &NativeConfig) -> [Outcomes; 2] {
     let harness = harness();
     let mut omhl = open_pull_request(&harness);
@@ -121,10 +121,10 @@ fn failing(label: &str) -> (String, bool) {
     (label.to_owned(), false)
 }
 
-// CA-005: o que `gate-pr` e `close` perguntam sobre os nativos
+// o que `gate-delivery` e `close` perguntam sobre os nativos
 
 #[test]
-fn it_should_ask_no_native_question_in_gate_pr_and_close_when_none_is_enabled() {
+fn it_should_ask_no_native_question_in_gate_delivery_and_close_when_none_is_enabled() {
     let harness = harness();
     let mut omhl = open_pull_request(&harness);
 
@@ -136,7 +136,8 @@ fn it_should_ask_no_native_question_in_gate_pr_and_close_when_none_is_enabled() 
 }
 
 #[test]
-fn it_should_ask_only_the_run_tests_question_in_gate_pr_and_close_when_only_run_tests_is_enabled() {
+fn it_should_ask_only_the_run_tests_question_in_gate_delivery_and_close_when_only_run_tests_is_enabled()
+ {
     let harness = harness();
     let mut omhl = open_pull_request(&harness);
 
@@ -156,7 +157,8 @@ fn it_should_ask_only_the_run_tests_question_in_gate_pr_and_close_when_only_run_
 }
 
 #[test]
-fn it_should_ask_only_the_ci_green_question_in_gate_pr_and_close_when_only_ci_green_is_enabled() {
+fn it_should_ask_only_the_ci_green_question_in_gate_delivery_and_close_when_only_ci_green_is_enabled()
+ {
     let harness = harness();
     let mut omhl = open_pull_request(&harness);
 
@@ -326,6 +328,25 @@ fn it_should_not_ask_the_review_anchoring_check_when_it_is_the_only_one_enabled(
 }
 
 #[test]
+fn it_should_not_ask_a_blocking_project_check_bound_to_the_review_comments_event() {
+    let harness = harness();
+    let mut omhl = open_pull_request(&harness);
+    seed_project_check(
+        &mut omhl,
+        "checks.comment-tone",
+        "before-publishing-review-comments",
+        true,
+        false,
+    );
+
+    let [gate, closed] = gate_and_close(&mut omhl, &native_enabled(&[]));
+
+    for asked in [gate, closed] {
+        assert_eq!(labels(&asked), BASE_LABELS);
+    }
+}
+
+#[test]
 fn it_should_ask_only_run_tests_and_ci_green_when_the_three_natives_are_enabled() {
     let harness = harness();
     let mut omhl = open_pull_request(&harness);
@@ -354,7 +375,7 @@ fn it_should_pass_the_gate_with_the_three_method_questions_when_nothing_is_enabl
     let mut omhl = open_pull_request(&harness);
 
     let gate = omhl
-        .evaluate_pr_gate(
+        .evaluate_delivery_gate(
             &acme(),
             &sid(PR_7),
             &at_head(),
@@ -409,7 +430,7 @@ fn it_should_ask_the_unattested_native_as_failing_when_close_is_refused() {
 // CA-007: o histórico que cita um nativo desligado segue válido
 
 fn seed_native_history(omhl: &mut Omhl<'_>) {
-    for native in support::pr_gate::ALL_NATIVE_CHECKS {
+    for native in support::delivery_gate::ALL_NATIVE_CHECKS {
         attest(omhl, &snap('a'), native, "passed", true);
     }
     seed_project_check(omhl, LINT, "before-merge", true, false);
@@ -421,7 +442,7 @@ fn seed_native_history(omhl: &mut Omhl<'_>) {
 }
 
 #[test]
-fn it_should_evaluate_gate_pr_and_close_over_the_history_of_disabled_natives() {
+fn it_should_evaluate_gate_delivery_and_close_over_the_history_of_disabled_natives() {
     let harness = harness();
     let mut omhl = open_pull_request(&harness);
     seed_native_history(&mut omhl);

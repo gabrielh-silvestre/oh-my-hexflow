@@ -4,27 +4,30 @@ use hexlog::{
     Author, FieldName, ListFilter, Scalar, Snapshot, SnapshotKind, SnapshotKind::GitCommit,
 };
 use omhl::app::RUNNABLE_EVENTS;
+use omhl::delivery_gate::{
+    CloseRefusal, GATE_NAME, GateSnapshots, REQUIRED_EVENTS, required_checks,
+};
 use omhl::error::{OmhlError, RuleCode};
 use omhl::facade::{CloseError, Omhl, OmhlDeps};
 use omhl::gate::{GateQuestion, GateReport, Question, QuestionClass};
 use omhl::mechanical::spec_digest;
-use omhl::pr_gate::{CloseRefusal, GATE_NAME, GateSnapshots, REQUIRED_EVENTS, required_checks};
 use omhl::probe::{ProbeOutcome, TreeSource};
+use omhl::workflow::config::NativeConfig;
 use serde_json::json;
-use support::legacy::seed_unconfirmed_guideline;
-use support::omhl::{
-    OmhlHarness, PR_7, RUN_TESTS, acme, append_as, append_ok, append_ok_as, attestation_id_for,
-    attestation_item, check_data, decision_data, node_item, premise_data, pull_request_data,
-    refusal, request, retirement_item, revision_item, seed_pull_request, with_snapshot,
-    work_item_data,
-};
-use support::pr_gate::{
+use support::delivery_gate::{
     ANCHOR, ANCHORS_CONFIRMED, CI_GREEN, CONFIG_LOOSENING_REVIEW, CRITIC_DECISION, DECISION,
     DECISIONS_ANCHORED, FEATURE_1, NO_OPEN_CONTRADICTION, PREMISE, all_native_enabled,
     anchor_decision, attest, attest_required, close, closed_data, data_of, default_natives,
     expected_outcomes, gate_of, gate_with_review, head_seq, mechanical_project_check,
     native_enabled, outcomes, project_check, question, relation_item, relation_retirement_item,
     required_pairs, seed_contradicted_decision, seed_critic_contradiction, sids, snapshots,
+};
+use support::legacy::seed_unconfirmed_guideline;
+use support::omhl::{
+    OmhlHarness, PR_7, RUN_TESTS, acme, append_as, append_ok, append_ok_as, attestation_id_for,
+    attestation_item, check_data, decision_data, node_item, premise_data, pull_request_data,
+    refusal, request, retirement_item, revision_item, seed_pull_request, with_snapshot,
+    work_item_data,
 };
 use support::raw::RawHarness;
 use support::{
@@ -301,7 +304,7 @@ fn it_should_refuse_evaluating_the_gate_for_an_unknown_work_item() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
 
-    let result = omhl.evaluate_pr_gate(
+    let result = omhl.evaluate_delivery_gate(
         &acme(),
         &sid("work-items.pr-9"),
         &at_head(),
@@ -383,7 +386,7 @@ fn it_should_refuse_the_gate_when_the_head_changed_after_the_requirements_were_r
     let stale = omhl.chain_head(&acme()).expect("the head is read");
     seed_pull_request(&mut omhl);
 
-    let result = omhl.evaluate_pr_gate(
+    let result = omhl.evaluate_delivery_gate(
         &acme(),
         &sid(PR_7),
         &at_head(),
@@ -391,6 +394,7 @@ fn it_should_refuse_the_gate_when_the_head_changed_after_the_requirements_were_r
         &omhl::facade::WorkRequirements {
             head: Some(stale),
             atoms: Vec::new(),
+            evaluated: NativeConfig::default(),
         },
         false,
     );
@@ -710,13 +714,19 @@ fn it_should_record_the_caller_author_on_the_closing_revision() {
 
 #[test]
 fn it_should_require_the_three_events_in_the_pull_request_gate() {
-    let notes = project_check("checks.review-notes", "before-pr", true, false);
+    let notes = project_check("checks.review-notes", "before-push", true, false);
 
-    let required = required_checks(&default_natives(), &all_native_enabled(), &[notes], false);
+    let required = required_checks(
+        &default_natives(),
+        &all_native_enabled(),
+        &NativeConfig::default(),
+        &[notes],
+        false,
+    );
 
     assert_eq!(
         REQUIRED_EVENTS,
-        ["before-commit", "before-pr", "before-merge"]
+        ["before-commit", "before-push", "before-merge"]
     );
     assert_eq!(REQUIRED_EVENTS, RUNNABLE_EVENTS);
     assert_eq!(
@@ -805,7 +815,7 @@ const UNANCHORED_NEXT_STEP: &str =
     "record a rests-on from the decision to a confirmed guideline or premise";
 const UNCONFIRMED_NEXT_STEP: &str = "ask the human to confirm the target (premise: set status confirmed with confirmed_by) or rest the decision on a confirmed one";
 const KEPT_GUIDELINE: &str = "guidelines.keep-it-simple";
-const NATIVE_GUIDELINE: &str = "guidelines.commit-policy";
+const FORMER_NATIVE_GUIDELINE: &str = "guidelines.commit-policy";
 
 fn seed_decision(omhl: &mut Omhl<'_>) {
     append_ok(
@@ -990,14 +1000,24 @@ fn it_should_fail_a_decision_resting_on_a_guideline_without_confirmation_written
 }
 
 #[test]
-fn it_should_pass_both_anchor_questions_for_a_decision_resting_on_a_native_guideline() {
+fn it_should_pass_both_anchor_questions_for_a_decision_resting_on_a_loaded_former_native_guideline()
+{
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
     seed_pull_request(&mut omhl);
     seed_decision(&mut omhl);
+    append_ok_as(
+        &mut omhl,
+        loader_author(),
+        vec![node_item(
+            FORMER_NATIVE_GUIDELINE,
+            "guideline",
+            json!({ "text": "ask before committing", "kind": "business" }),
+        )],
+    );
     append_ok(
         &mut omhl,
-        vec![relation_item("rests-on", DECISION, NATIVE_GUIDELINE)],
+        vec![relation_item("rests-on", DECISION, FORMER_NATIVE_GUIDELINE)],
     );
 
     let report = gate_of(&mut omhl, &at_head());

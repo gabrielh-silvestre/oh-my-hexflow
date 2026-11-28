@@ -22,13 +22,13 @@ const STRAY_WAIT_SCRIPT: &str = "echo \"$PPID\" > \"$1.owner\"; setsid sh -c 'ec
 
 // Apoio
 
-/// TOML de check `before-pr`, bloqueante, com o `expect` do `GREEN`.
+/// TOML de check `before-push`, bloqueante, com o `expect` do `GREEN`.
 fn check_toml(run: &[&str]) -> String {
     // Uma string JSON é também uma string básica TOML válida.
     let run = serde_json::to_string(run).expect("the argv serializes");
 
     format!(
-        "blocking = true\nhow = \"Always passes.\"\nrun = {run}\ntimeout_secs = 60\nexpect = [{{ exit = 0, outcome = \"passed\" }}]\n\n[when]\nevent = \"before-pr\"\n"
+        "blocking = true\nhow = \"Always passes.\"\nrun = {run}\ntimeout_secs = 60\nexpect = [{{ exit = 0, outcome = \"passed\" }}]\n\n[when]\nevent = \"before-push\"\n"
     )
 }
 
@@ -208,7 +208,7 @@ fn it_should_sweep_a_stray_of_a_finished_run_when_check_run_starts() {
     let p = cli_repo(&[("stray", &stray(&pidfile))]);
     let first = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
     assert_eq!(first.code, Some(0), "first stderr: {}", first.stderr);
@@ -222,7 +222,7 @@ fn it_should_sweep_a_stray_of_a_finished_run_when_check_run_starts() {
 
     let second = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -259,7 +259,7 @@ fn it_should_not_sweep_the_stray_of_a_check_run_still_in_progress() {
     let p = cli_repo(&[("stray", &stray_wait(&pidfile, &go))]);
     let mut background = spawn_omhl(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     );
     let s1 = read_pid(&pidfile, Duration::from_secs(5));
 
@@ -319,7 +319,7 @@ fn it_should_run_the_checks_when_the_sweep_log_cannot_be_written() {
     let p = cli_repo(&[("stray", &stray(&pidfile))]);
     let first = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
     assert_eq!(first.code, Some(0), "first stderr: {}", first.stderr);
@@ -332,7 +332,7 @@ fn it_should_run_the_checks_when_the_sweep_log_cannot_be_written() {
 
     let second = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
 
@@ -354,7 +354,7 @@ fn it_should_append_the_swept_stray_to_the_sweep_log_through_check_sweep() {
     let p = cli_repo(&[("stray", &stray(&pidfile))]);
     let first = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
     assert_eq!(first.code, Some(0), "first stderr: {}", first.stderr);
@@ -392,7 +392,7 @@ fn sweep_a_stray_over_a_log_of(seed_bytes: usize) -> Project {
     let p = cli_repo(&[("stray", &stray(&pidfile))]);
     let first = omhl_in(
         &p,
-        &["check", "run", "--format", "json", "--event", "before-pr"],
+        &["check", "run", "--format", "json", "--event", "before-push"],
     )
     .run();
     assert_eq!(first.code, Some(0), "first stderr: {}", first.stderr);

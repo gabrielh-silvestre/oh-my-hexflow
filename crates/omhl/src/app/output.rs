@@ -2,9 +2,9 @@ use hexlog::{AppendOutcome, Author, BreakReason, ChainReport, NodeView, Page};
 use serde_json::{Value, json};
 
 use super::report::state_name;
+use crate::delivery_gate::Forcing;
 use crate::facade::ClosedWorkItem;
 use crate::gate::{GateReport, QuestionKind, QuestionReport};
-use crate::pr_gate::Forcing;
 use crate::workflow::retro::Retro;
 
 pub fn node(view: &NodeView) -> Value {

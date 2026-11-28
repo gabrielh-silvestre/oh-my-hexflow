@@ -1,0 +1,17 @@
+version = 1
+
+[interview]
+threshold = 0.2
+
+[interview.weights]
+objective = 0.35
+constraints = 0.25
+success = 0.25
+context = 0.15
+
+[native]
+checks = ["checks.run-tests"]
+
+[native.run."checks.run-tests"]
+run = ["make", "test"]
+timeout_secs = 300

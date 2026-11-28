@@ -3132,3 +3132,20 @@ fn it_should_allow_an_edit_of_a_check_file_that_turns_blocking_off_while_a_spec_
 
     assert_allowed(&output);
 }
+
+// `[interview]` fica fora do freio: editar o limiar ou um peso não é recusado
+
+const INTERVIEW_BEFORE: &str = "version = 1\n\n[interview]\nthreshold = 0.2\n\n[interview.weights]\nobjective = 0.35\nconstraints = 0.25\nsuccess = 0.25\ncontext = 0.15\n";
+const INTERVIEW_AFTER: &str = "version = 1\n\n[interview]\nthreshold = 0.5\n\n[interview.weights]\nobjective = 0.45\nconstraints = 0.25\nsuccess = 0.20\ncontext = 0.10\n";
+
+#[test]
+fn it_should_allow_raising_the_interview_threshold_and_changing_a_weight_in_the_workflow_file() {
+    let repo = Repo::with_files(&[(".omhl/workflow.toml", INTERVIEW_BEFORE)]);
+    repo.branch(BRANCH);
+    let workflow = repo.main.join(".omhl/workflow.toml");
+    fs::write(&workflow, INTERVIEW_AFTER).expect("workflow.toml is edited");
+
+    let output = repo.hook_in_main("Write", &workflow);
+
+    assert_allowed(&output);
+}

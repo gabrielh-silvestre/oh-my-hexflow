@@ -1,7 +1,7 @@
+use ::omhl::delivery_gate::{GateSnapshots, RequiredCheck};
 use ::omhl::facade::{ClosedWorkItem, Omhl};
 use ::omhl::gate::{GateReport, QuestionReport};
 use ::omhl::native::NativeCheck;
-use ::omhl::pr_gate::GateSnapshots;
 use ::omhl::workflow::config::{NativeConfig, WorkflowConfig};
 use hexlog::{
     AppendItem, AppendOutcome, ItemBody, Lineage, NodeView, RecordId, SemanticId, Snapshot,
@@ -52,6 +52,7 @@ pub fn native_enabled(ids: &[&'static str]) -> NativeConfig {
         checks: ids.iter().copied().collect(),
         // A tabela que um projeto sem `workflow.toml` lê: a dos padrões do binário.
         prefixes: WorkflowConfig::default().prefixes,
+        ..NativeConfig::default()
     }
 }
 
@@ -102,8 +103,15 @@ pub fn mechanical_project_check(id: &str, event: &str, blocking: bool, shadowed:
 }
 
 /// O que `required_checks` devolve, escrito por ids de texto: `(id, kind)` na ordem dada.
-pub fn required_pairs(pairs: &[(&str, SnapshotKind)]) -> Vec<(SemanticId, SnapshotKind)> {
-    pairs.iter().map(|(id, kind)| (sid(id), *kind)).collect()
+pub fn required_pairs(pairs: &[(&str, SnapshotKind)]) -> Vec<RequiredCheck> {
+    pairs
+        .iter()
+        .map(|(id, kind)| RequiredCheck {
+            id: sid(id),
+            kind: *kind,
+            digests: Vec::new(),
+        })
+        .collect()
 }
 
 pub fn snapshots(commit: &Snapshot, tree: &Snapshot) -> GateSnapshots {
@@ -290,7 +298,7 @@ pub fn gate_with(
     snapshots: &GateSnapshots,
     enabled: &NativeConfig,
 ) -> GateReport {
-    omhl.evaluate_pr_gate(
+    omhl.evaluate_delivery_gate(
         &acme(),
         &sid(PR_7),
         snapshots,
@@ -307,7 +315,7 @@ pub fn gate_with_review(
     snapshots: &GateSnapshots,
     review_required: bool,
 ) -> GateReport {
-    omhl.evaluate_pr_gate(
+    omhl.evaluate_delivery_gate(
         &acme(),
         &sid(PR_7),
         snapshots,
@@ -368,7 +376,7 @@ pub fn closed_data(open: Value, passed: bool, chain_head_seq: u64, snapshot: &Sn
     let mut data = open;
     data["status"] = json!("closed");
     data["gate"] = json!({
-        "name": "pull-request",
+        "name": "delivery",
         "passed": passed,
         "chain_head_seq": chain_head_seq,
         "snapshot": { "kind": "git-commit", "id": snapshot.id() },

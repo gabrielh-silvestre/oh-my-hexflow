@@ -1,10 +1,10 @@
 use crate::native::NativeBase;
 use crate::render::{RenderInput, Rendered, render};
-use crate::test_support::gate::node_view;
-use crate::test_support::omhl::RUN_TESTS;
-use crate::test_support::pr_gate::{
+use crate::test_support::delivery_gate::{
     ALL_NATIVE_CHECKS, CI_GREEN, VERIFY_ANCHORING, all_enabled, enabled,
 };
+use crate::test_support::gate::node_view;
+use crate::test_support::omhl::RUN_TESTS;
 use crate::test_support::{loader_author, sid, tname};
 use crate::workflow::config::NativeConfig;
 use hexlog::{NodeView, SemanticId};
@@ -12,12 +12,10 @@ use serde_json::{Value, json};
 
 const BUDGET: usize = 9_500;
 
-const NATIVE_IDS: [&str; 5] = [
+const NATIVE_IDS: [&str; 3] = [
     "checks.run-tests",
     "checks.ci-green-before-merge",
     "checks.verify-review-comment-anchoring",
-    "guidelines.one-decision-per-turn",
-    "guidelines.commit-policy",
 ];
 
 const GOLDEN_NATIVE_ONLY: &str = r"# omhl context for tenant acme
@@ -42,14 +40,6 @@ These are project instructions, not enforced; nothing here blocks any action.
 - how: compare path, line and side of each inline comment with the diff of the head SHA; post the approved text unchanged
 
 ## Guidelines
-
-### guidelines.one-decision-per-turn
-- confirmed: true
-- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
-
-### guidelines.commit-policy
-- confirmed: true
-- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
 ";
 
 const GOLDEN_WITH_TENANT_NODES: &str = r"# omhl context for tenant acme
@@ -81,14 +71,6 @@ These are project instructions, not enforced; nothing here blocks any action.
 - how: run the linter
 
 ## Guidelines
-
-### guidelines.one-decision-per-turn
-- confirmed: true
-- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
-
-### guidelines.commit-policy
-- confirmed: true
-- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
 
 ### guidelines.small-prs
 - confirmed: false
@@ -380,6 +362,34 @@ fn it_should_omit_the_matcher_and_after_lines_when_absent() {
             "- event: before-commit",
             "- blocking: false",
             "- how: run the linter",
+        ]
+    );
+}
+
+#[test]
+fn it_should_print_the_event_and_the_how_of_a_project_check_bound_to_the_instruction_event() {
+    let fixture = Fixture {
+        checks: vec![node(
+            "checks.comment-tone",
+            "check",
+            json!({
+                "when": { "vocabulary": "closed", "event": "before-publishing-review-comments" },
+                "how": "read each comment aloud before publishing",
+                "blocking": true,
+            }),
+        )],
+        ..Fixture::default()
+    };
+
+    let rendered = fixture.rendered(BUDGET);
+
+    assert_eq!(
+        block(&rendered.text, "checks.comment-tone"),
+        [
+            "### checks.comment-tone",
+            "- event: before-publishing-review-comments",
+            "- blocking: true",
+            "- how: read each comment aloud before publishing",
         ]
     );
 }
@@ -860,18 +870,10 @@ fn it_should_not_mark_a_guideline_without_confirmation_as_confirmed() {
 }
 
 #[test]
-fn it_should_mark_the_native_guidelines_as_confirmed() {
+fn it_should_print_no_native_guideline_without_tenant_guidelines() {
     let rendered = Fixture::default().rendered(BUDGET);
 
-    for id in [
-        "guidelines.one-decision-per-turn",
-        "guidelines.commit-policy",
-    ] {
-        assert!(
-            block(&rendered.text, id).contains(&"- confirmed: true"),
-            "{id}"
-        );
-    }
+    assert!(headers(section(&rendered.text, "Guidelines")).is_empty());
 }
 
 #[test]
@@ -916,8 +918,6 @@ fn it_should_sort_guidelines_by_kind_business_first() {
     assert_eq!(
         headers(section(&rendered.text, "Guidelines")),
         [
-            "guidelines.one-decision-per-turn",
-            "guidelines.commit-policy",
             "guidelines.y-biz",
             "guidelines.z-biz",
             "guidelines.a-arch",
@@ -1114,14 +1114,6 @@ These are project instructions, not enforced; nothing here blocks any action.
 ## Checks
 
 ## Guidelines
-
-### guidelines.one-decision-per-turn
-- confirmed: true
-- text: when walking through pending items, ask one question per turn with 2 to 4 options and wait for the answer before the next
-
-### guidelines.commit-policy
-- confirmed: true
-- text: by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy
 ";
 
 fn with_enabled(ids: &[&'static str]) -> Fixture {
@@ -1186,21 +1178,6 @@ fn it_should_print_only_the_anchoring_block_when_only_it_is_enabled() {
     let rendered = fixture.rendered(BUDGET);
 
     assert_eq!(native_headers(&rendered), [VERIFY_ANCHORING]);
-}
-
-#[test]
-fn it_should_keep_the_two_native_guidelines_with_no_native_check_enabled() {
-    let fixture = with_enabled(&[]);
-
-    let rendered = fixture.rendered(BUDGET);
-
-    assert_eq!(
-        headers(&rendered.text),
-        [
-            "guidelines.one-decision-per-turn",
-            "guidelines.commit-policy"
-        ]
-    );
 }
 
 #[test]

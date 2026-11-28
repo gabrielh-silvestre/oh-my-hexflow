@@ -17,7 +17,7 @@ event = "before-commit"
 "#;
 const NON_BLOCKING: &str =
     "blocking = false\nhow = \"Run lint\"\n\n[when]\nevent = \"before-commit\"\n";
-const TEXT_CHECK: &str = "blocking = false\nhow = \"Read it\"\n\n[when]\nevent = \"before-pr\"\n";
+const TEXT_CHECK: &str = "blocking = false\nhow = \"Read it\"\n\n[when]\nevent = \"before-push\"\n";
 
 fn omhl_in(p: &Project, args: &[&str]) -> Cmd {
     omhl_json(args).cwd(p.dir()).xdg(p.xdg())
@@ -215,7 +215,7 @@ fn it_should_exit_2_for_owner_override_outside_load_check_retire_and_append() {
         &["get", "checks.x", "--owner-override"],
         &["check", "run", "--owner-override"],
         &["guideline", "retire", "guidelines.x", "--owner-override"],
-        &["gate-pr", "work-items.w1", "--owner-override"],
+        &["gate-delivery", "work-items.w1", "--owner-override"],
         &["close", "work-items.w1", "--owner-override"],
     ] {
         let output = omhl_in(&p, args).run();
@@ -225,7 +225,7 @@ fn it_should_exit_2_for_owner_override_outside_load_check_retire_and_append() {
 }
 
 #[test]
-fn it_should_exit_2_for_base_outside_gate_pr_and_close() {
+fn it_should_exit_2_for_base_outside_gate_delivery_and_close() {
     let p = Project::new("acme");
 
     for args in [

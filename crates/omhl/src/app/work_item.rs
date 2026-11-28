@@ -41,7 +41,7 @@ pub(super) fn resolve_work_item(
 ) -> Result<WorkItemRoute, AppError> {
     match classify(branch) {
         BranchKind::Main => {
-            let hint = if event == "before-pr" {
+            let hint = if event == "before-push" {
                 MAIN_PR_HINT
             } else {
                 MAIN_CHANGE_HINT

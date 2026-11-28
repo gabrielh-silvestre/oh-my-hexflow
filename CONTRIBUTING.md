@@ -61,6 +61,10 @@ O hook do [`.claude/settings.json`](.claude/settings.json) roda a sincronizaçã
 
 O projeto não escreve mais ADRs. Os arquivos de `docs/adr/` são histórico congelado: nenhum é editado, renomeado ou movido. A decisão nova mora no grafo, como uma `decision` ancorada por `rests-on`. Onde um ADR deixou de valer, o README e o `docs/` dizem o comportamento atual, e o ADR fica como está.
 
+## Fluxo de PR filho e agregadora
+
+Abra um PR filho quando o work item se divide em entregas revisadas em separado. O PR filho para depois de colar a tabela no corpo. Só o PR agregador recebe o `gate-delivery`, o merge e o `close`.
+
 ## Gate local, CI e merge
 
 ### A `main` com proteção do GitHub
@@ -69,7 +73,7 @@ As camadas que bloqueiam o merge estão na lista "O merge é bloqueado em camada
 
 ### O custo do `pre-push`
 
-Uma worktree nova nasce com o `target/` vazio, então o primeiro `before-commit` e o primeiro `before-pr` dela são frios. Antes do primeiro `git push` numa worktree nova, rode:
+Uma worktree nova nasce com o `target/` vazio, então o primeiro `before-commit` e o primeiro `before-push` dela são frios. Antes do primeiro `git push` numa worktree nova, rode:
 
 ```bash
 cargo check --workspace --all-targets --profile checks --locked

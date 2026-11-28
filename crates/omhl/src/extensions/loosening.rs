@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::pr_gate::REQUIRED_EVENTS;
+use crate::delivery_gate::REQUIRED_EVENTS;
 
 pub fn check_loosens(previous: &Value, revised: &Value) -> bool {
     let blocking = |data: &Value| data["blocking"] == true;

@@ -8,7 +8,7 @@
 
 ## When to use
 
-Once per clone, so git calls the checks on its own: it writes the four scripts (`pre-commit`, `pre-merge-commit`, `pre-push`, `post-commit`) to a single user folder and points the clone's `core.hooksPath` at it. Without this the clone has no hook, and the pull request gate charges for the lack later. These are **git** hooks, unrelated to the Claude Code `omhl hook session-start` hook.
+Once per clone, so git calls the checks on its own: it writes the four scripts (`pre-commit`, `pre-merge-commit`, `pre-push`, `post-commit`) to a single user folder and points the clone's `core.hooksPath` at it. Without this the clone has no hook, and the delivery gate charges for the lack later. These are **git** hooks, unrelated to the Claude Code `omhl hook session-start` hook.
 
 ## Inputs
 

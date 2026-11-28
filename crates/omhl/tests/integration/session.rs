@@ -16,11 +16,13 @@ use omhl::facade::{OUTSIDE_CLAUDE_CODE, Omhl, OmhlDeps, SessionSource};
 use omhl::probe::{ProbeOutcome, TreeSource};
 use omhl::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use serde_json::{Value, json};
+use support::delivery_gate::{
+    all_native_enabled, attest_required, mechanical_check_data, snapshots,
+};
 use support::ext::ExtTree;
 use support::omhl::{
     PR_7, acme, decision_data, node_item, premise_data, request, seed_pull_request, work_item_data,
 };
-use support::pr_gate::{all_native_enabled, attest_required, mechanical_check_data, snapshots};
 use support::project::Project;
 use support::raw::RawHarness;
 use support::run::{Run, run_omhl_with_session};
@@ -270,7 +272,7 @@ fn it_should_record_the_session_on_a_load() {
 #[test]
 fn it_should_record_the_session_on_a_check_retirement() {
     let fx = Fixture::new();
-    let data = mechanical_check_data("before-pr", "x", true);
+    let data = mechanical_check_data("before-push", "x", true);
     let no_session = SessionSource::Absent;
     let request = hexlog::AppendRequest {
         author: loader_author(),
@@ -642,7 +644,7 @@ fn it_should_give_the_node_revision_and_relation_views_no_session() {
     let items = vec![
         node_item(PREMISE, "premise", premise_data("SQLite is fast", None)),
         node_item(DECISION, "decision", decision_data("Use WAL", None)),
-        support::pr_gate::relation_item("supports", PREMISE, DECISION),
+        support::delivery_gate::relation_item("supports", PREMISE, DECISION),
     ];
     omhl.append(&request(items)).expect("the batch is accepted");
 

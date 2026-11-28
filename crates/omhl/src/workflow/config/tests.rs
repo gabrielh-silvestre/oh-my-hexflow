@@ -2,10 +2,11 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::project::ProjectError;
+use crate::test_support::delivery_gate::{CI_GREEN, VERIFY_ANCHORING};
 use crate::test_support::omhl::RUN_TESTS;
-use crate::test_support::pr_gate::{CI_GREEN, VERIFY_ANCHORING};
 use crate::workflow::config::{
-    PromotionConfig, RequireAtom, SpecsConfig, WorkflowConfig, parse_workflow,
+    InterviewConfig, InterviewWeights, PromotionConfig, RequireAtom, SpecsConfig, WorkflowConfig,
+    native_run_digest, parse_workflow, raw_native_run_digest,
 };
 
 const CONFIG_LOOSENING_REVIEW: &str = "checks.config-loosening-review";
@@ -604,7 +605,8 @@ fn it_should_refuse_an_unknown_native_check_id_with_its_position() {
 }
 
 #[test]
-fn it_should_refuse_each_native_guideline_id_in_native_checks_with_its_position() {
+fn it_should_refuse_each_former_native_guideline_id_in_native_checks_as_unknown_with_its_position()
+{
     let errors: Vec<ProjectError> = [
         "guidelines.one-decision-per-turn",
         "guidelines.commit-policy",
@@ -666,4 +668,357 @@ fn it_should_not_echo_a_refused_native_check_id() {
         "the message repeats the file content: {}",
         error.message
     );
+}
+
+// Comando do nativo executável: [native.run."checks.run-tests"]
+
+const RUN_TABLE: &str = "[native.run.\"checks.run-tests\"]";
+
+fn run_text(rows: &[&str]) -> String {
+    let mut all = vec!["version = 1", RUN_TABLE];
+    all.extend_from_slice(rows);
+    lines(&all)
+}
+
+fn run_text_for(id: &str, rows: &[&str]) -> String {
+    let header = format!("[native.run.\"{id}\"]");
+    let mut all = vec!["version = 1", header.as_str()];
+    all.extend_from_slice(rows);
+    lines(&all)
+}
+
+fn run_digest(rows: &[&str]) -> String {
+    let config = accepted(&run_text(rows));
+    native_run_digest(&config.native.run[RUN_TESTS])
+}
+
+#[test]
+fn it_should_accept_the_run_command_table_of_the_run_tests_native() {
+    let config = accepted(&run_text(&[
+        "run = [\"cargo\", \"test\"]",
+        "timeout_secs = 600",
+        "expect = [{ exit = 0, outcome = \"passed\" }]",
+    ]));
+
+    let entry = &config.native.run[RUN_TESTS];
+    assert_eq!(entry.run, ["cargo", "test"]);
+    assert_eq!(entry.timeout_secs, 600);
+}
+
+#[test]
+fn it_should_have_no_run_command_table_by_default() {
+    let config = WorkflowConfig::default();
+
+    assert!(config.native.run.is_empty());
+}
+
+#[test]
+fn it_should_apply_the_default_expect_when_the_table_omits_it() {
+    let omitted = run_digest(&["run = [\"cargo\", \"test\"]", "timeout_secs = 600"]);
+
+    let explicit = run_digest(&[
+        "run = [\"cargo\", \"test\"]",
+        "timeout_secs = 600",
+        "expect = [{ exit = 0, outcome = \"passed\" }]",
+    ]);
+
+    assert_eq!(omitted, explicit);
+}
+
+#[test]
+fn it_should_refuse_the_run_table_of_each_instruction_only_native() {
+    for id in [
+        CI_GREEN,
+        VERIFY_ANCHORING,
+        CONFIG_LOOSENING_REVIEW,
+        "checks.no-such-check",
+    ] {
+        let text = run_text_for(id, &["run = [\"true\"]", "timeout_secs = 60"]);
+
+        assert_eq!(refusal(&text).code, ERROR_CODE, "{id}");
+    }
+}
+
+#[test]
+fn it_should_refuse_a_run_table_with_an_empty_run() {
+    let error = refusal(&run_text(&["run = []", "timeout_secs = 60"]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_a_run_table_with_sixty_five_run_items() {
+    let items = vec!["\"x\""; 65].join(", ");
+
+    let error = refusal(&run_text(&[
+        &format!("run = [{items}]"),
+        "timeout_secs = 60",
+    ]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_a_run_table_without_timeout_secs() {
+    let error = refusal(&run_text(&["run = [\"true\"]"]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_a_run_table_with_a_malformed_expect() {
+    let error = refusal(&run_text(&[
+        "run = [\"true\"]",
+        "timeout_secs = 60",
+        "expect = [{ exit = 0, outcome = \"no-such-outcome\" }]",
+    ]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_a_run_table_with_an_unknown_key() {
+    let error = refusal(&run_text(&[
+        "run = [\"true\"]",
+        "timeout_secs = 60",
+        "shell = true",
+    ]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_give_a_different_native_digest_when_run_changes() {
+    let base = run_digest(&["run = [\"cargo\", \"test\"]", "timeout_secs = 600"]);
+
+    let changed = run_digest(&[
+        "run = [\"cargo\", \"test\", \"--lib\"]",
+        "timeout_secs = 600",
+    ]);
+
+    assert_ne!(base, changed);
+}
+
+#[test]
+fn it_should_give_a_different_native_digest_when_timeout_secs_changes() {
+    let base = run_digest(&["run = [\"cargo\", \"test\"]", "timeout_secs = 600"]);
+
+    let changed = run_digest(&["run = [\"cargo\", \"test\"]", "timeout_secs = 601"]);
+
+    assert_ne!(base, changed);
+}
+
+#[test]
+fn it_should_give_a_different_native_digest_when_the_effective_expect_changes() {
+    let base = run_digest(&["run = [\"cargo\", \"test\"]", "timeout_secs = 600"]);
+
+    let changed = run_digest(&[
+        "run = [\"cargo\", \"test\"]",
+        "timeout_secs = 600",
+        "expect = [{ exit = 1, outcome = \"failed\" }]",
+    ]);
+
+    assert_ne!(base, changed);
+}
+
+fn raw_table(rows: &[&str]) -> toml::Table {
+    rows.join("\n").parse().expect("the table parses")
+}
+
+const INVALID_ROWS: [&str; 2] = ["run = []", "timeout_secs = 60"];
+const VALID_ROWS: [&str; 2] = ["run = [\"true\"]", "timeout_secs = 60"];
+const DEFAULT_EXPECT_ROW: &str = "expect = [{ exit = 0, outcome = \"passed\" }]";
+
+#[test]
+fn it_should_give_the_raw_digest_a_different_value_when_the_default_expect_is_written_out() {
+    let mut spelled = INVALID_ROWS.to_vec();
+    spelled.push(DEFAULT_EXPECT_ROW);
+
+    let omitted = raw_native_run_digest(&raw_table(&INVALID_ROWS));
+    let written = raw_native_run_digest(&raw_table(&spelled));
+
+    assert_ne!(omitted, written);
+}
+
+#[test]
+fn it_should_give_the_raw_digest_a_different_value_from_the_parsed_digest_when_expect_is_omitted() {
+    let raw = raw_native_run_digest(&raw_table(&VALID_ROWS));
+
+    let parsed = run_digest(&VALID_ROWS);
+
+    assert_ne!(raw, parsed);
+}
+
+#[test]
+fn it_should_give_the_raw_digest_the_same_value_for_the_same_table() {
+    let first = raw_native_run_digest(&raw_table(&INVALID_ROWS));
+
+    let second = raw_native_run_digest(&raw_table(&INVALID_ROWS));
+
+    assert_eq!(first, second);
+}
+
+// Entrevista: [interview] com threshold e [interview.weights]
+
+const WEIGHTS_TABLE: &str = "[interview.weights]";
+
+fn interview_text(threshold: &str, weights: [&str; 4]) -> String {
+    let [objective, constraints, success, context] = weights;
+    lines(&[
+        "version = 1",
+        "[interview]",
+        &format!("threshold = {threshold}"),
+        WEIGHTS_TABLE,
+        &format!("objective = {objective}"),
+        &format!("constraints = {constraints}"),
+        &format!("success = {success}"),
+        &format!("context = {context}"),
+    ])
+}
+
+fn with_threshold(threshold: &str) -> String {
+    interview_text(threshold, ["0.35", "0.25", "0.25", "0.15"])
+}
+
+fn with_weights(weights: [&str; 4]) -> String {
+    interview_text("0.2", weights)
+}
+
+fn default_interview() -> InterviewConfig {
+    InterviewConfig {
+        threshold: 0.20,
+        weights: InterviewWeights {
+            objective: 0.35,
+            constraints: 0.25,
+            success: 0.25,
+            context: 0.15,
+        },
+    }
+}
+
+#[test]
+fn it_should_default_the_interview_to_the_compiled_threshold_and_weights() {
+    let config = WorkflowConfig::default();
+
+    assert_eq!(config.interview, default_interview());
+}
+
+#[test]
+fn it_should_keep_the_default_interview_when_the_file_has_no_interview_table() {
+    let config = accepted(&lines(&["version = 1"]));
+
+    assert_eq!(config.interview, default_interview());
+}
+
+#[test]
+fn it_should_accept_the_default_values_written_out_in_the_file() {
+    let config = accepted(&with_threshold("0.20"));
+
+    assert_eq!(config.interview, default_interview());
+}
+
+#[test]
+fn it_should_accept_a_threshold_of_0_35() {
+    let config = accepted(&with_threshold("0.35"));
+
+    assert_eq!(config.interview.threshold, 0.35);
+}
+
+#[test]
+fn it_should_accept_a_threshold_of_1() {
+    let config = accepted(&with_threshold("1"));
+
+    assert_eq!(config.interview.threshold, 1.0);
+}
+
+#[test]
+fn it_should_refuse_a_threshold_of_0() {
+    assert_eq!(refusal(&with_threshold("0")).code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_a_negative_threshold() {
+    assert_eq!(refusal(&with_threshold("-0.1")).code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_a_threshold_of_1_01() {
+    assert_eq!(refusal(&with_threshold("1.01")).code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_accept_weights_that_sum_to_1() {
+    let config = accepted(&with_weights(["0.4", "0.3", "0.2", "0.1"]));
+
+    assert_eq!(config.interview.weights.objective, 0.4);
+    assert_eq!(config.interview.weights.context, 0.1);
+}
+
+#[test]
+fn it_should_refuse_weights_that_sum_to_0_9() {
+    let error = refusal(&with_weights(["0.35", "0.25", "0.25", "0.05"]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_weights_that_sum_to_1_1() {
+    let error = refusal(&with_weights(["0.35", "0.25", "0.25", "0.25"]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_accept_a_weight_of_0() {
+    let config = accepted(&with_weights(["0.5", "0.25", "0.25", "0"]));
+
+    assert_eq!(config.interview.weights.context, 0.0);
+}
+
+#[test]
+fn it_should_accept_a_weight_of_1() {
+    let config = accepted(&with_weights(["1", "0", "0", "0"]));
+
+    assert_eq!(config.interview.weights.objective, 1.0);
+}
+
+#[test]
+fn it_should_refuse_a_weight_of_1_2() {
+    let error = refusal(&with_weights(["1.2", "-0.2", "0", "0"]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_a_weight_of_minus_0_1_even_when_the_sum_is_1() {
+    let error = refusal(&with_weights(["0.6", "0.25", "0.25", "-0.1"]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_key_inside_interview() {
+    let error = refusal(&lines(&["version = 1", "[interview]", "limit = 0.2"]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_key_inside_the_interview_weights() {
+    let error = refusal(&lines(&["version = 1", WEIGHTS_TABLE, "tone = 1"]));
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+#[test]
+fn it_should_refuse_a_repeated_interview_table() {
+    let text = lines(&[
+        "version = 1",
+        "[interview]",
+        "threshold = 0.3",
+        "[interview]",
+        "threshold = 0.4",
+    ]);
+
+    assert_eq!(refusal(&text).code, ERROR_CODE);
 }

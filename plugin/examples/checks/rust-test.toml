@@ -1,0 +1,7 @@
+concern = "test"
+variant = "suite"
+blocking = true
+run = ["env", "-u", "RUSTFLAGS", "-u", "RUSTC_WRAPPER", "-u", "RUSTC_WORKSPACE_WRAPPER", "-u", "CARGO_ENCODED_RUSTFLAGS", "-u", "CARGO_BUILD_RUSTFLAGS", "cargo", "test", "--workspace"]
+timeout_secs = 900
+expect = [{ exit = 0, outcome = "passed" }]
+when = { event = "before-push" }

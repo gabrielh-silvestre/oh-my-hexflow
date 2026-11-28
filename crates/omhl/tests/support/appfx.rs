@@ -67,7 +67,7 @@ impl AppFixture {
         }
     }
 
-    /// Sem resolvedor injetado: o `gate-pr` e o `close` não têm de onde ler a ativação.
+    /// Sem resolvedor injetado: o `gate-delivery` e o `close` não têm de onde ler a ativação.
     pub fn without_native(self) -> AppFixture {
         AppFixture {
             native: None,
@@ -213,8 +213,8 @@ impl AppFixture {
     }
 
     /// O relatório do gate de PR do work item; um gate que reprova é um relatório, não um erro.
-    pub fn gate_pr(&self, work_item: &str) -> Value {
-        let action = Action::GatePr {
+    pub fn gate_delivery(&self, work_item: &str) -> Value {
+        let action = Action::GateDelivery {
             work_item: work_item.to_owned(),
             base: None,
         };
@@ -223,9 +223,9 @@ impl AppFixture {
             .unwrap_or_else(|error| panic!("the gate is evaluated: {error}"))
     }
 
-    /// Como `gate_pr`, mas devolve a recusa em vez de falhar o teste.
-    pub fn try_gate_pr(&self, work_item: &str) -> Result<Value, Value> {
-        let action = Action::GatePr {
+    /// Como `gate_delivery`, mas devolve a recusa em vez de falhar o teste.
+    pub fn try_gate_delivery(&self, work_item: &str) -> Result<Value, Value> {
+        let action = Action::GateDelivery {
             work_item: work_item.to_owned(),
             base: None,
         };

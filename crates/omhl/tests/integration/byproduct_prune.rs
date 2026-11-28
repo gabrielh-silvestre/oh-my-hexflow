@@ -173,9 +173,9 @@ fn no_runs() -> FakeRunner {
     FakeRunner::new(vec![]).0
 }
 
-fn run_before_pr(app: &mut App<'_>) -> Result<Value, AppError> {
+fn run_before_push(app: &mut App<'_>) -> Result<Value, AppError> {
     let action = Action::CheckRun {
-        target: CheckTarget::Event("before-pr".to_owned()),
+        target: CheckTarget::Event("before-push".to_owned()),
         pre_push: None,
     };
 
@@ -222,7 +222,7 @@ fn it_should_delete_a_stale_blob_that_is_not_live_and_a_stale_temporary_file_on_
     let (probe, runner) = (probe(), no_runs());
     let mut app = fx.app(&probe, &runner);
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
 
     assert_eq!((exists(&stale), exists(&temporary)), (false, false));
 }
@@ -237,7 +237,7 @@ fn it_should_keep_a_young_blob_a_live_blob_and_a_file_with_an_odd_name_on_check_
     let (probe, runner) = (probe(), no_runs());
     let mut app = fx.app(&probe, &runner);
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
 
     assert_eq!(
         (exists(&live), exists(&young), exists(&odd)),
@@ -253,7 +253,7 @@ fn it_should_do_nothing_when_the_stamp_is_less_than_a_day_old() {
     let (probe, runner) = (probe(), no_runs());
     let mut app = fx.app(&probe, &runner);
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
 
     assert!(exists(&stale));
 }
@@ -266,7 +266,7 @@ fn it_should_renew_a_stamp_older_than_a_day_and_prune() {
     let (probe, runner) = (probe(), no_runs());
     let mut app = fx.app(&probe, &runner);
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
 
     assert_eq!(
         (
@@ -295,8 +295,8 @@ fn it_should_not_change_the_output_when_a_removal_fails() {
     let mut app = fx.app(&probe, &runner);
     let mut without = fx.app_without_retention(&probe, &runner);
 
-    let pruned = run_before_pr(&mut app);
-    let plain = run_before_pr(&mut without);
+    let pruned = run_before_push(&mut app);
+    let plain = run_before_push(&mut without);
     fs::set_permissions(&folder, fs::Permissions::from_mode(0o700))
         .expect("the folder is unlocked");
 
@@ -313,7 +313,7 @@ fn it_should_prune_on_a_pre_push_run_that_has_nothing_to_attest() {
     let (probe, runner) = (probe(), no_runs());
     let mut app = fx.app(&probe, &runner);
     let action = Action::CheckRun {
-        target: CheckTarget::Event("before-pr".to_owned()),
+        target: CheckTarget::Event("before-push".to_owned()),
         pre_push: Some(String::new()),
     };
 
@@ -364,7 +364,7 @@ fn it_should_neither_prune_nor_create_the_stamp_without_the_retention_wired() {
     let (probe, runner) = (probe(), no_runs());
     let mut app = fx.app_without_retention(&probe, &runner);
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
 
     assert_eq!((exists(&stale), exists(&fx.stamp())), (true, false));
 }
@@ -379,7 +379,7 @@ fn it_should_not_touch_the_blobs_of_another_tenant_in_the_same_database() {
     let mut app = fx.app(&probe, &runner);
     fx.file_aged(B2, days(8));
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
     let pruned = prune(&mut app);
 
     assert_eq!(
@@ -403,7 +403,7 @@ fn it_should_not_touch_the_blobs_of_another_database_in_the_same_folder() {
     let (probe, runner) = (probe(), no_runs());
     let mut app = fx.app(&probe, &runner);
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
     let pruned = prune(&mut app);
 
     assert_eq!(
@@ -424,7 +424,7 @@ fn it_should_keep_the_output_of_a_live_attestation_readable_after_the_next_check
     let (probe, runner) = (probe(), no_runs());
     let mut app = fx.app(&probe, &runner);
 
-    run_before_pr(&mut app).expect("the run succeeds");
+    run_before_push(&mut app).expect("the run succeeds");
     let read = tail(&mut app, FMT, W1).expect("the output is still there");
 
     assert_eq!(read["lines"], json!(["ok"]));

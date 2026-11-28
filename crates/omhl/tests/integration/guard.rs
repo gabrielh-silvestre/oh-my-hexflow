@@ -13,18 +13,18 @@ use omhl::facade::{Omhl, OmhlDeps};
 use omhl::ports::git::GitProbe;
 use omhl::probe::{ProbeOutcome, TreeSource};
 use serde_json::{Value, json};
+use support::delivery_gate::{attest_required, close, snapshots};
 use support::git::GitRepo;
 use support::omhl::{
     LINT_DOCS, OmhlHarness, PR_7, RUN_TESTS, acme, append_as, append_ok, attestation_data,
-    attestation_id_for, attestation_item, check_data, closed_with_gate, decision_data, node_item,
-    premise_data, pull_request_data, refusal, request, retirement_item, revision_item,
-    seed_pull_request, with_snapshot, work_item_data,
+    attestation_id_for, attestation_item, check_data, closed_with_gate, decision_data,
+    evaluated_attestation_id_for, node_item, premise_data, pull_request_data, refusal, request,
+    retirement_item, revision_item, seed_pull_request, with_snapshot, work_item_data,
 };
-use support::pr_gate::{attest_required, close, snapshots};
 use support::raw::RawHarness;
 use support::{
     FakeProbe, agent_author, cli_author, executor_attestation_data, executor_author, loader_author,
-    sid, snap, tname,
+    sid, snap, snap64, tname,
 };
 
 const ITEM_ID_POINTER: &str = "/items/0/body/id";
@@ -104,7 +104,7 @@ fn hook_author() -> Author {
 
 /// Check com `run`: é o campo que o torna mecânico.
 fn mechanical_check_data() -> Value {
-    let mut data = check_data("before-pr", "Run the suite", true);
+    let mut data = check_data("before-push", "Run the suite", true);
     data["concern"] = json!("test");
     data["variant"] = json!("suite");
     data["run"] = json!(["cargo", "test", "--workspace", "--locked"]);
@@ -972,7 +972,7 @@ fn it_should_keep_refusing_a_git_commit_attestation_on_a_dirty_tree() {
         FakeProbe::dirty().with_tree(TreeSource::Index, Ok(ProbeOutcome::Reproducible(tree('a'))));
     let harness = OmhlHarness::new(probe);
     let mut omhl = harness.open();
-    seed_pull_request_and_check(&mut omhl, LINT, "before-pr");
+    seed_pull_request_and_check(&mut omhl, LINT, "before-push");
     let attestation = executor_attestation(&snap('a'), LINT);
 
     let error = refusal_as_executor(&mut omhl, vec![attestation]);
@@ -1057,8 +1057,13 @@ fn it_should_refuse_a_mechanical_check_revised_by_the_agent() {
 fn it_should_still_accept_a_text_only_check_from_any_author() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
-    let text_only =
-        |id: &str| node_item(id, "check", check_data("before-pr", "Read the diff", false));
+    let text_only = |id: &str| {
+        node_item(
+            id,
+            "check",
+            check_data("before-push", "Read the diff", false),
+        )
+    };
 
     let results = vec![
         appended(&mut omhl, agent_author(), vec![text_only(READ_DIFF)]),
@@ -1077,7 +1082,7 @@ fn it_should_still_accept_a_text_only_check_from_any_author() {
 fn it_should_refuse_an_attestation_of_a_mechanical_check_without_byproduct() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
-    seed_pull_request_and_check(&mut omhl, SUITE, "before-pr");
+    seed_pull_request_and_check(&mut omhl, SUITE, "before-push");
     let data = without(
         executor_attestation_data(SUITE, PR_7, "passed", BYPRODUCT),
         "byproduct",
@@ -1102,7 +1107,7 @@ fn it_should_refuse_an_attestation_of_a_mechanical_check_without_byproduct() {
 fn it_should_refuse_an_attestation_of_a_mechanical_check_without_command() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
-    seed_pull_request_and_check(&mut omhl, SUITE, "before-pr");
+    seed_pull_request_and_check(&mut omhl, SUITE, "before-push");
     let data = without(
         executor_attestation_data(SUITE, PR_7, "passed", BYPRODUCT),
         "command",
@@ -1127,7 +1132,7 @@ fn it_should_refuse_an_attestation_of_a_mechanical_check_without_command() {
 fn it_should_refuse_a_passed_attestation_of_a_mechanical_check_without_exit_code() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
-    seed_pull_request_and_check(&mut omhl, SUITE, "before-pr");
+    seed_pull_request_and_check(&mut omhl, SUITE, "before-push");
     let mut attest_without_exit_code = |outcome: &str| {
         let data = without(
             executor_attestation_data(SUITE, PR_7, outcome, BYPRODUCT),
@@ -1161,7 +1166,7 @@ fn it_should_refuse_a_passed_attestation_of_a_mechanical_check_without_exit_code
 fn it_should_accept_a_failed_attestation_of_a_mechanical_check_without_exit_code() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
-    seed_pull_request_and_check(&mut omhl, SUITE, "before-pr");
+    seed_pull_request_and_check(&mut omhl, SUITE, "before-push");
     let mut data = without(
         executor_attestation_data(SUITE, PR_7, "failed", BYPRODUCT),
         "exit_code",
@@ -1181,7 +1186,7 @@ fn it_should_accept_a_failed_attestation_of_a_mechanical_check_without_exit_code
 fn it_should_accept_an_attestation_of_a_mechanical_check_with_byproduct_command_and_exit_code() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
-    seed_pull_request_and_check(&mut omhl, SUITE, "before-pr");
+    seed_pull_request_and_check(&mut omhl, SUITE, "before-push");
     let data = executor_attestation_data(SUITE, PR_7, "passed", BYPRODUCT);
 
     let result = appended(
@@ -1198,7 +1203,7 @@ fn it_should_still_accept_a_manual_attestation_of_a_text_only_check() {
     let raw = RawHarness::new();
     let probe = FakeProbe::clean(snap('a'));
     let mut app = open_app(&raw, &probe);
-    let data = check_data("before-pr", "Read the diff", false);
+    let data = check_data("before-push", "Read the diff", false);
     seed_app(&mut app, READ_DIFF, &data, &Caller::cli());
 
     let response = app
@@ -1249,7 +1254,7 @@ fn it_should_refuse_the_attest_through_the_agent_for_a_mechanical_check() {
 fn it_should_refuse_a_mechanical_attestation_authored_by_anyone_but_the_executor() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
-    seed_pull_request_and_check(&mut omhl, SUITE, "before-pr");
+    seed_pull_request_and_check(&mut omhl, SUITE, "before-push");
     let authors = vec![
         loader_author(),
         cli_author(),
@@ -1278,7 +1283,7 @@ fn it_should_refuse_to_drop_run_from_a_mechanical_check_revised_by_the_agent() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
     let base = seed_suite(&mut omhl);
-    let without_run = check_data("before-pr", "Run the suite", true);
+    let without_run = check_data("before-push", "Run the suite", true);
 
     let result = appended(
         &mut omhl,
@@ -1318,7 +1323,7 @@ fn is_loosening_refusal<T>(result: &Result<T, OmhlError>) -> bool {
 }
 
 fn seed_text_check(omhl: &mut Omhl<'_>, blocking: bool) -> RecordId {
-    let data = check_data("before-pr", "Read the diff", blocking);
+    let data = check_data("before-push", "Read the diff", blocking);
     let created = append_ok(omhl, vec![node_item(READ_DIFF, "check", data)]);
 
     created.records[0].id.clone()
@@ -1336,7 +1341,7 @@ fn revise_text_check_as(author: Author, how: &str, blocking: bool) -> Result<usi
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
     let base = seed_text_check(&mut omhl, true);
-    let revised = check_data("before-pr", how, blocking);
+    let revised = check_data("before-push", how, blocking);
 
     appended(
         &mut omhl,
@@ -1404,7 +1409,7 @@ fn it_should_accept_a_text_check_revision_that_does_not_loosen_by_the_agent() {
 fn it_should_refuse_an_attestation_of_a_mechanical_check_without_spec_digest() {
     let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
     let mut omhl = harness.open();
-    seed_pull_request_and_check(&mut omhl, SUITE, "before-pr");
+    seed_pull_request_and_check(&mut omhl, SUITE, "before-push");
     let data = without(
         executor_attestation_data(SUITE, PR_7, "passed", BYPRODUCT),
         "spec_digest",
@@ -1433,7 +1438,7 @@ fn it_should_refuse_a_spec_digest_in_an_attestation_of_a_text_check_authored_by_
     let text_check = node_item(
         SUITE,
         "check",
-        check_data("before-pr", "Review it by hand", true),
+        check_data("before-push", "Review it by hand", true),
     );
     append_as(&mut omhl, loader_author(), vec![text_check]).expect("the check is accepted");
     let data = executor_attestation_data(SUITE, PR_7, "passed", BYPRODUCT);
@@ -2528,6 +2533,247 @@ fn it_should_accept_turning_a_premise_into_a_business_one_before_any_decision() 
     let base = seeded_premise(&mut omhl, kinded_premise_data("technical", false));
 
     let result = session_revision(&mut omhl, &base, kinded_premise_data("business", false));
+
+    assert_eq!(result, Ok(1));
+}
+
+// Rótulos livres de `concern` e `variant` (o catálogo só limita o tamanho; o charset é do guard)
+
+const LABEL_CODE: &str = "check-label-invalid";
+const CONCERN_POINTER: &str = "/items/0/body/data/concern";
+const VARIANT_POINTER: &str = "/items/0/body/data/variant";
+
+fn append_labeled_check(concern: &str, variant: &str) -> Result<usize, OmhlError> {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let mut data = mechanical_check("before-push", &["true"], true);
+    data["concern"] = json!(concern);
+    data["variant"] = json!(variant);
+
+    appended(
+        &mut omhl,
+        loader_author(),
+        vec![node_item("checks.labeled", "check", data)],
+    )
+}
+
+fn label_refusal(result: Result<usize, OmhlError>) -> Option<(&'static str, String)> {
+    match result {
+        Err(OmhlError::Rule { code, pointer }) => Some((code.as_str(), pointer)),
+        _ => None,
+    }
+}
+
+fn label_refusals_of(label: &str) -> Vec<Option<(&'static str, String)>> {
+    vec![
+        label_refusal(append_labeled_check(label, "ok")),
+        label_refusal(append_labeled_check("ok", label)),
+    ]
+}
+
+fn expected_label_refusals() -> Vec<Option<(&'static str, String)>> {
+    vec![
+        Some((LABEL_CODE, CONCERN_POINTER.to_owned())),
+        Some((LABEL_CODE, VARIANT_POINTER.to_owned())),
+    ]
+}
+
+#[test]
+fn it_should_accept_a_check_with_labels_of_one_character() {
+    let result = append_labeled_check("a", "b");
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_accept_a_check_with_labels_of_40_characters_of_lowercase_digits_and_hyphen() {
+    let label = format!("{}z", "a1-".repeat(13));
+
+    let result = append_labeled_check(&label, &label);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_accept_a_check_with_free_labels_outside_the_former_vocabulary() {
+    let result = append_labeled_check("docs", "review");
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_accept_a_check_with_a_former_pair() {
+    let result = append_labeled_check("style", "lint");
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_a_check_with_a_label_of_41_characters() {
+    let label = "a".repeat(41);
+
+    let results = [
+        append_labeled_check(&label, "ok"),
+        append_labeled_check("ok", &label),
+    ];
+
+    assert!(results.iter().all(Result::is_err), "{results:?}");
+}
+
+#[test]
+fn it_should_refuse_a_check_with_an_empty_label() {
+    let results = [
+        append_labeled_check("", "ok"),
+        append_labeled_check("ok", ""),
+    ];
+
+    assert!(results.iter().all(Result::is_err), "{results:?}");
+}
+
+#[test]
+fn it_should_refuse_a_check_with_a_label_with_an_uppercase_letter() {
+    let found = label_refusals_of("Docs");
+
+    assert_eq!(found, expected_label_refusals());
+}
+
+#[test]
+fn it_should_refuse_a_check_with_a_label_with_a_space() {
+    let found = label_refusals_of("my docs");
+
+    assert_eq!(found, expected_label_refusals());
+}
+
+#[test]
+fn it_should_refuse_a_check_with_a_label_with_an_underscore() {
+    let found = label_refusals_of("my_docs");
+
+    assert_eq!(found, expected_label_refusals());
+}
+
+#[test]
+fn it_should_refuse_a_check_with_a_label_with_a_non_ascii_letter() {
+    let found = label_refusals_of("revisão");
+
+    assert_eq!(found, expected_label_refusals());
+}
+
+#[test]
+fn it_should_refuse_a_check_with_only_a_concern() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let mut data = mechanical_check("before-push", &["true"], true);
+    data["concern"] = json!("docs");
+
+    let result = appended(
+        &mut omhl,
+        loader_author(),
+        vec![node_item("checks.labeled", "check", data)],
+    );
+
+    assert!(result.is_err(), "{result:?}");
+}
+
+#[test]
+fn it_should_refuse_a_check_with_only_a_variant() {
+    let harness = OmhlHarness::new(FakeProbe::failing());
+    let mut omhl = harness.open();
+    let mut data = mechanical_check("before-push", &["true"], true);
+    data["variant"] = json!("review");
+
+    let result = appended(
+        &mut omhl,
+        loader_author(),
+        vec![node_item("checks.labeled", "check", data)],
+    );
+
+    assert!(result.is_err(), "{result:?}");
+}
+
+// Id avaliado da attestation de um nativo com `spec_digest`
+
+fn evaluated_executor_attestation(snapshot: &Snapshot, check: &str, work_item: &str) -> AppendItem {
+    let id = evaluated_attestation_id_for(snapshot, check, work_item);
+    let data = executor_attestation_data(check, work_item, "passed", EMPTY_SHA);
+
+    with_snapshot(node_item(&id, "attestation", data), snapshot)
+}
+
+#[test]
+fn it_should_accept_a_native_attestation_with_spec_digest_under_the_evaluated_id() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let attestation = evaluated_executor_attestation(&snap('a'), RUN_TESTS, PR_7);
+
+    let result = appended(&mut omhl, executor_author(), vec![attestation]);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_keep_the_in_force_native_attestation_with_spec_digest_under_the_base_id() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let attestation = executor_attestation(&snap('a'), RUN_TESTS);
+
+    let result = appended(&mut omhl, executor_author(), vec![attestation]);
+
+    assert_eq!(result, Ok(1));
+}
+
+#[test]
+fn it_should_refuse_the_evaluated_id_on_a_project_check_with_spec_digest() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    seed_suite(&mut omhl);
+    let attestation = evaluated_executor_attestation(&snap('a'), SUITE, PR_7);
+
+    let error = appended(&mut omhl, executor_author(), vec![attestation]);
+
+    assert_eq!(
+        error,
+        Err(rule(RuleCode::AttestationIdMismatch, ITEM_ID_POINTER))
+    );
+}
+
+#[test]
+fn it_should_refuse_the_evaluated_id_on_a_hand_attestation_without_spec_digest() {
+    let harness = OmhlHarness::new(FakeProbe::clean(snap('a')));
+    let mut omhl = harness.open();
+    seed_pull_request(&mut omhl);
+    let id = evaluated_attestation_id_for(&snap('a'), RUN_TESTS, PR_7);
+    let attestation = with_snapshot(
+        node_item(
+            &id,
+            "attestation",
+            attestation_data(RUN_TESTS, PR_7, "passed", true),
+        ),
+        &snap('a'),
+    );
+
+    let error = refusal(&mut omhl, vec![attestation]);
+
+    assert_eq!(
+        error,
+        rule(RuleCode::AttestationIdMismatch, ITEM_ID_POINTER)
+    );
+}
+
+#[test]
+fn it_should_accept_an_evaluated_id_of_180_characters_for_a_sha256_tree_and_a_63_character_slug() {
+    let work_item = format!("work-items.{}", "w".repeat(63));
+    let harness = OmhlHarness::new(FakeProbe::clean(snap64('b')));
+    let mut omhl = harness.open();
+    append_ok(
+        &mut omhl,
+        vec![node_item(&work_item, "work-item", work_item_data("t"))],
+    );
+    let attestation = evaluated_executor_attestation(&snap64('b'), RUN_TESTS, &work_item);
+
+    let result = appended(&mut omhl, executor_author(), vec![attestation]);
 
     assert_eq!(result, Ok(1));
 }
