@@ -13,6 +13,7 @@ mod guideline_retire;
 mod hooks;
 mod language;
 mod load;
+mod merge;
 mod read;
 mod report;
 mod report_sessions;
@@ -48,6 +49,7 @@ pub use self::language::{
 pub use self::spec::{SpecLockEvent, SpecLockOutcome, heal_branch_marks, spec_lock, wt_post_start};
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use hexlog::{Config, ErrorCode, SemanticId, TenantId};
 use serde_json::Value;
@@ -60,6 +62,7 @@ use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::{Omhl, OmhlDeps};
 use crate::probe::{CommitMark, NativeResolver};
+use crate::provider::Provider;
 use crate::runner::CommandRunner;
 use crate::workflow::matrix::PremiseFact;
 
@@ -95,6 +98,8 @@ impl<'d> App<'d> {
                 retry: retry.clone(),
                 retry_after_run: RetryPolicy::after_run(),
                 hooks_dir: None,
+                provider_runner: None,
+                provider: None,
             },
             retry: retry.clone(),
         })
@@ -142,6 +147,22 @@ impl<'d> App<'d> {
         self
     }
 
+    /// O `gh` só é montado depois de o `[provider]` ser lido, dentro do `omhl merge`.
+    pub fn with_provider_runner(
+        mut self,
+        runner: &'d dyn CommandRunner,
+        timeout: Duration,
+    ) -> App<'d> {
+        self.engine.provider_runner = Some((runner, timeout));
+        self
+    }
+
+    /// Para os testes da lógica: vale só depois de o `[provider]` ser lido.
+    pub fn with_provider(mut self, provider: &'d dyn Provider) -> App<'d> {
+        self.engine.provider = Some(provider);
+        self
+    }
+
     pub fn work_item_refusal(&mut self, id: &SemanticId) -> Result<Option<RuleCode>, AppError> {
         work_item::work_item_refusal(&mut self.engine, id)
     }
@@ -166,12 +187,12 @@ impl<'d> App<'d> {
         with_retry(retry, || engine.spec_is_valid(work_item))
     }
 
-    /// O `check run` cuida das próprias tentativas: repeti-lo inteiro rodaria os comandos de novo.
+    /// O `check run` e o `merge` cuidam das próprias tentativas: repeti-los inteiros rodaria os comandos de novo.
     pub fn dispatch(&mut self, caller: &Caller, action: &Action) -> Result<Value, AppError> {
         let App { engine, retry } = self;
 
         match action {
-            Action::CheckRun { .. } => engine.run(caller, action),
+            Action::CheckRun { .. } | Action::Merge { .. } => engine.run(caller, action),
             _ => with_retry(retry, || engine.run(caller, action)),
         }
     }

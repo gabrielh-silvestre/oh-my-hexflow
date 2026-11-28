@@ -5,8 +5,9 @@ use support::cycle::WORK_ITEM;
 use support::project::Project;
 use tempfile::TempDir;
 
-/// Os 23 comandos ativos (padrão `agent`): o caminho na CLI e uma chamada válida de cada um.
-const ACTIVE: [(&str, &[&str]); 23] = [
+/// Os 24 comandos ativos (padrão `agent`): o caminho na CLI e uma chamada válida de cada um.
+const ACTIVE: [(&str, &[&str]); 24] = [
+    ("merge", &["merge", WORK_ITEM]),
     ("list", &["list"]),
     ("get", &["get", "work-items.payroll"]),
     ("append", &["append"]),

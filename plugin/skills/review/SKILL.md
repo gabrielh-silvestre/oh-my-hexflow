@@ -55,5 +55,6 @@ Open the command's reference before using it: it has the inputs, the output, the
 |---|---|
 | `omhl load`, `omhl check run`, `omhl check sweep`, `omhl byproduct`, `omhl byproduct prune`, `omhl hooks install`, `omhl hooks post-commit`, `omhl hooks post-merge`, `omhl attest` | [references/checks.md](references/checks.md) and [gates-operation.md](references/gates-operation.md) |
 | `omhl gate-delivery`, `omhl close`, `omhl report retro` | [references/fechamento.md](references/fechamento.md) |
+| `omhl merge` (with `[provider]` declared) | [references/merge.md](references/merge.md) |
 | `omhl check retire` (the owner's) | [references/check-retire.md](references/check-retire.md) |
 | The loosening review of `workflow.toml` and the checks | [references/config-loosening-review.md](references/config-loosening-review.md) |

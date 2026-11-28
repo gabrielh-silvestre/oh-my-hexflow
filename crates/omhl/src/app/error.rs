@@ -921,6 +921,39 @@ impl AppError {
 
         self
     }
+
+    /// Recusa do `omhl merge`: a mensagem nomeia o que o provedor leu (números, bases), nunca a entrada.
+    pub(crate) fn merge_refusal(code: &str, message: String, next_step: String) -> AppError {
+        AppError {
+            code: code.to_owned(),
+            context: None,
+            details: vec![Detail {
+                next_step: Some(next_step),
+                ..Detail::new("/work_item", code, &message)
+            }],
+            message,
+        }
+    }
+
+    pub(crate) fn next_step(&self) -> Option<&str> {
+        self.details
+            .iter()
+            .find_map(|detail| detail.next_step.as_deref())
+    }
+
+    /// Soma campos ao `context` do erro todo, mantendo os que já estavam.
+    pub(crate) fn with_error_context(mut self, fields: Value) -> AppError {
+        let mut context = match self.context.take() {
+            Some(Value::Object(existing)) => existing,
+            _ => serde_json::Map::new(),
+        };
+        if let Value::Object(fields) = fields {
+            context.extend(fields);
+        }
+        self.context = Some(Value::Object(context));
+
+        self
+    }
 }
 
 pub(crate) struct CheckDetail {

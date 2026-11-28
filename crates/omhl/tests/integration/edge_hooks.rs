@@ -5,8 +5,10 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
+use omhl::app::error::AppError;
 use omhl::app::{
-    BashEvent, GuardOutcome, McpWriteEvent, ProviderAccess, command_guard, mcp_write_warning,
+    BashEvent, GuardOutcome, McpMergeEvent, McpWriteEvent, ProviderAccess, command_guard,
+    mcp_merge_guard, mcp_write_warning,
 };
 use omhl::runner::{RunError, RunReport, RunSpec};
 use support::git::git_ok;
@@ -326,4 +328,148 @@ fn it_should_still_warn_for_main_on_another_repository() {
     let outcome = write(dir.path(), "someone-else", Some("main"), &runner);
 
     assert!(warned(&outcome));
+}
+
+// CA-039 e CA-040: a negação do merge direto (CMP-031, CMP-032)
+
+const MERGE_POINTER: &str = "omhl merge <work-item> [--squash|--rebase]";
+const MERGE_DENIAL: &str = "merge-through-omhl";
+const BROKEN: &str = "version = 1\ncolour = true\n";
+const PROVIDER_OFF: &str = "version = 1\n";
+
+fn merge_guard(cwd: &Path) -> Result<GuardOutcome, AppError> {
+    let event = McpMergeEvent {
+        cwd: cwd.to_path_buf(),
+    };
+
+    mcp_merge_guard(&event)
+}
+
+fn unmarked() -> TempDir {
+    let dir = repo(None);
+    fs::remove_file(dir.path().join(".omhl.toml")).expect("the marker is removed");
+
+    dir
+}
+
+fn assert_merge_denied(outcome: &GuardOutcome) {
+    let reason = outcome.deny.as_deref().unwrap_or_default();
+    assert!(reason.starts_with(MERGE_DENIAL), "{reason}");
+    assert!(reason.contains(MERGE_POINTER), "{reason}");
+    assert!(reason.contains("GitHub"), "{reason}");
+}
+
+#[test]
+fn it_should_deny_the_mcp_merge_pointing_to_omhl_merge_with_the_integration_on() {
+    let dir = repo(Some(PROVIDER_ON));
+
+    let outcome = merge_guard(dir.path()).expect("the guard answers");
+
+    assert_merge_denied(&outcome);
+}
+
+#[test]
+fn it_should_let_the_mcp_merge_pass_without_the_provider_table() {
+    let dir = repo(Some(PROVIDER_OFF));
+
+    let outcome = merge_guard(dir.path()).expect("the guard answers");
+
+    assert_eq!(outcome, GuardOutcome::default());
+}
+
+#[test]
+fn it_should_let_the_mcp_merge_pass_without_a_workflow_file() {
+    let dir = repo(None);
+
+    let outcome = merge_guard(dir.path()).expect("the guard answers");
+
+    assert_eq!(outcome, GuardOutcome::default());
+}
+
+#[test]
+fn it_should_let_the_mcp_merge_pass_without_the_marker() {
+    let dir = unmarked();
+
+    let outcome = merge_guard(dir.path()).expect("the guard answers");
+
+    assert_eq!(outcome, GuardOutcome::default());
+}
+
+#[test]
+fn it_should_fail_the_mcp_merge_guard_on_an_unreadable_workflow() {
+    let dir = repo(Some(BROKEN));
+
+    let outcome = merge_guard(dir.path());
+
+    assert!(outcome.is_err(), "{outcome:?}");
+}
+
+#[test]
+fn it_should_deny_each_recognized_gh_pr_merge_with_the_integration_on() {
+    let dir = repo(Some(PROVIDER_ON));
+    let (runner, _received) = gh_answering(trunk());
+    let commands = [
+        "gh pr merge 3",
+        "gh pr merge --squash",
+        "rtk proxy gh pr merge 3",
+        "cd r && gh pr merge",
+    ];
+
+    let outcomes: Vec<GuardOutcome> = commands
+        .iter()
+        .map(|command| guard(dir.path(), command, &runner))
+        .collect();
+
+    outcomes.iter().for_each(assert_merge_denied);
+}
+
+#[test]
+fn it_should_let_gh_pr_merge_pass_with_the_integration_off() {
+    let dir = repo(Some(PROVIDER_OFF));
+    let (runner, _received) = gh_answering(trunk());
+
+    let outcome = guard(dir.path(), "gh pr merge 3", &runner);
+
+    assert_eq!(outcome.deny, None);
+}
+
+#[test]
+fn it_should_let_gh_pr_merge_pass_without_the_marker() {
+    let dir = unmarked();
+    let (runner, _received) = gh_answering(trunk());
+
+    let outcome = guard(dir.path(), "gh pr merge 3", &runner);
+
+    assert_eq!(outcome.deny, None);
+}
+
+#[test]
+fn it_should_deny_gh_pr_merge_showing_the_error_of_an_unreadable_workflow() {
+    let dir = repo(Some(BROKEN));
+    let (runner, _received) = gh_answering(trunk());
+
+    let outcome = guard(dir.path(), "gh pr merge 3", &runner);
+
+    let reason = outcome.deny.unwrap_or_default();
+    assert!(reason.contains("invalid-workflow-config"), "{reason}");
+}
+
+#[test]
+fn it_should_let_another_command_pass_with_an_unreadable_workflow() {
+    let dir = repo(Some(BROKEN));
+    let (runner, _received) = gh_answering(trunk());
+
+    let outcome = guard(dir.path(), "git status", &runner);
+
+    assert_eq!(outcome.deny, None);
+}
+
+#[test]
+fn it_should_let_gh_pr_view_pass_with_the_integration_on() {
+    let dir = repo(Some(PROVIDER_ON));
+    let (runner, _received) = gh_answering(trunk());
+
+    let outcome = guard(dir.path(), "gh pr view 3", &runner);
+
+    assert_eq!(outcome.deny, None);
 }

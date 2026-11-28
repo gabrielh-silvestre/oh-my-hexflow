@@ -26,6 +26,8 @@ const PROTECTED: &str = "main";
 const PUSH_CODE: &str = "protected-branch-push";
 const GATE_UNAVAILABLE: &str = "creation-gate-unavailable";
 const GATE_REFUSED: &str = "worktree-gate-refused";
+const MERGE_DENIAL_CODE: &str = "merge-through-omhl";
+const MERGE_DENIAL: &str = "with the provider integration on, the agent merges only through omhl merge <work-item> [--squash|--rebase], which checks the CI and the delivery gate before the merge and closes the work item; the owner can still merge on GitHub";
 
 pub struct BashEvent {
     pub cwd: PathBuf,
@@ -73,6 +75,17 @@ pub fn command_guard(event: &BashEvent, gh: &ProviderAccess<'_>) -> Result<Guard
             GitCommand::CreateBranch(BranchName::Literal(name)) if outcome.deny.is_none() => {
                 creation_gate(&event.cwd, &name, &mut outcome);
             }
+            GitCommand::ProviderMerge if outcome.deny.is_none() => {
+                outcome.deny = match integration_on(&event.cwd) {
+                    Ok(true) => Some(merge_denial()),
+                    Ok(false) => None,
+                    Err(error) => Some(format!(
+                        "{}: {}; gh pr merge stays denied until the workflow file is fixed",
+                        error.code(),
+                        error.message()
+                    )),
+                };
+            }
             GitCommand::Push(targets) => {
                 outcome
                     .context
@@ -116,9 +129,31 @@ pub fn mcp_write_warning(
     })
 }
 
-/// A negação do merge pelo MCP só existe com a guarda de merge; aqui ele só responde.
-pub fn mcp_merge_guard(_event: &McpMergeEvent) -> Result<GuardOutcome, AppError> {
-    Ok(GuardOutcome::default())
+/// Lê só a declaração da integração, nunca o banco: um banco travado não segura a decisão.
+pub fn mcp_merge_guard(event: &McpMergeEvent) -> Result<GuardOutcome, AppError> {
+    Ok(GuardOutcome {
+        deny: integration_on(&event.cwd)?.then(merge_denial),
+        context: Vec::new(),
+    })
+}
+
+fn merge_denial() -> String {
+    format!("{MERGE_DENIAL_CODE}: {MERGE_DENIAL}")
+}
+
+/// Sem marcador ou fora de um repositório git, não há integração a ler.
+fn integration_on(cwd: &Path) -> Result<bool, AppError> {
+    let Some(located) = find_marker(cwd)? else {
+        return Ok(false);
+    };
+    let Ok(main_dir) = GitProbe::new(&located.root).main_dir() else {
+        return Ok(false);
+    };
+
+    Ok(read_workflow(&main_dir)
+        .map_err(AppError::invalid_workflow)?
+        .provider
+        .is_some())
 }
 
 fn warning(line: String) -> GuardOutcome {

@@ -56,12 +56,21 @@ pub fn mcp_merge_guard(
     out: &mut impl Write,
     err: &mut impl Write,
 ) -> ExitCode {
-    pre_tool_use(stdin, out, err, |input| {
+    let mut failed = false;
+    let code = pre_tool_use(stdin, out, err, |input| {
         let event = McpMergeEvent {
             cwd: absolute_path(&input["cwd"])?,
         };
-        check_mcp_merge_guard(&event).map(|outcome| guard_output(&outcome))
-    })
+        check_mcp_merge_guard(&event)
+            .map(|outcome| guard_output(&outcome))
+            .inspect_err(|_| failed = true)
+    });
+
+    // Falha fechada: o script troca a saída não zero por 2, que bloqueia o merge.
+    match failed {
+        true => ExitCode::from(1),
+        false => code,
+    }
 }
 
 pub fn mcp_write_warning(

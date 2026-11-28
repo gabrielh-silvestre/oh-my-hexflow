@@ -383,6 +383,7 @@ const LEAF_SAMPLES: &[(&str, &str)] = &[
     ("load", "omhl load --dry-run"),
     ("close", "omhl close work-items.w1"),
     ("gate-delivery", "omhl gate-delivery work-items.w1"),
+    ("merge", "omhl merge work-items.w1"),
     ("gate-worktree", "omhl gate-worktree --branch feat/x"),
     ("project", "omhl project"),
     ("guideline retire", "omhl guideline retire guidelines.g1"),
@@ -643,6 +644,27 @@ fn it_should_deny_hook_wt_post_start_for_every_role() {
     let cases = cases_for(&samples_of(&["hook wt-post-start"]));
 
     cases.iter().for_each(assert_case);
+}
+
+#[test]
+fn it_should_deny_omhl_merge_to_every_role() {
+    let cases = cases_for(&samples_of(&["merge"]));
+
+    assert!(
+        cases.iter().all(|case| !case.allowed),
+        "no role view has merge"
+    );
+    cases.iter().for_each(assert_case);
+}
+
+#[test]
+fn it_should_let_the_main_session_run_omhl_merge() {
+    let output = run_agent_role_in(
+        &fixtures_root(),
+        &bash_call("omhl merge work-items.w1", None),
+    );
+
+    assert_passed(&output);
 }
 
 #[test]

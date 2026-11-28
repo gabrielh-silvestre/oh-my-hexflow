@@ -720,6 +720,7 @@ fn it_should_enumerate_the_action_leaves_of_the_cli() {
         "hooks post-merge",
         "list",
         "load",
+        "merge",
         "project",
         "render",
         "report answers",
@@ -764,6 +765,10 @@ fn it_should_enumerate_the_options_of_the_cli() {
             vec!["--after-seq", "--id-prefix", "--limit", "--type", "--where"],
         ),
         ("load", vec!["--dry-run", "--owner-override"]),
+        (
+            "merge",
+            vec!["--base", "--force", "--note", "--rebase", "--squash"],
+        ),
         ("report answers", vec!["--work-item"]),
         ("report recurrences", vec!["--min"]),
         ("report sessions", vec!["--work-item"]),

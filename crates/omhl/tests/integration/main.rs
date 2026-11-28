@@ -48,6 +48,7 @@ mod process_sweep;
 mod project;
 mod project_action;
 mod projection_write;
+mod provider_isolation;
 mod repo_checks;
 mod report_sessions;
 mod rests_on;

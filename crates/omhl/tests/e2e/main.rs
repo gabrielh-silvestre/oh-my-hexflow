@@ -22,6 +22,8 @@ mod hook;
 mod hooks_install;
 mod integration_branch;
 mod mechanical_e2e;
+mod merge_close;
+mod merge_until_gate;
 mod native_gate;
 mod native_guard;
 mod native_render;

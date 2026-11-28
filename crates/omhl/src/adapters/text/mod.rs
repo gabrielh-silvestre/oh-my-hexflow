@@ -7,6 +7,7 @@ mod get;
 mod layout;
 mod list;
 mod load;
+mod merge;
 mod render;
 mod report;
 mod sessions;
@@ -44,6 +45,7 @@ pub enum CommandKey {
     GateDelivery,
     GateWorktree,
     Close,
+    Merge,
     Verify,
     Load,
     Project,
@@ -74,7 +76,7 @@ pub enum CommandKey {
 }
 
 impl CommandKey {
-    pub const ALL: [CommandKey; 35] = [
+    pub const ALL: [CommandKey; 36] = [
         Self::List,
         Self::Get,
         Self::Append,
@@ -83,6 +85,7 @@ impl CommandKey {
         Self::GateDelivery,
         Self::GateWorktree,
         Self::Close,
+        Self::Merge,
         Self::Verify,
         Self::Load,
         Self::Project,
@@ -145,6 +148,7 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::SpecValidate => Some(&BaseRenderer(spec_validate::SpecValidate)),
         CommandKey::GateDelivery => Some(&BaseRenderer(gate::GateDelivery)),
         CommandKey::Close => Some(&BaseRenderer(gate::Close)),
+        CommandKey::Merge => Some(&BaseRenderer(merge::Merge)),
         CommandKey::GateWorktree
         | CommandKey::HooksPostCommit
         | CommandKey::HooksPostMerge
@@ -183,6 +187,7 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::Attest => &simple::ATTEST_PROFILE,
         CommandKey::GateDelivery => &gate::GATE_DELIVERY_PROFILE,
         CommandKey::Close => &gate::CLOSE_PROFILE,
+        CommandKey::Merge => &merge::PROFILE,
         CommandKey::Load => &load::PROFILE,
         CommandKey::SpecValidate => &spec_validate::PROFILE,
         CommandKey::GateWorktree
@@ -249,6 +254,7 @@ pub fn deferred(key: CommandKey) -> bool {
         | CommandKey::Render
         | CommandKey::GateDelivery
         | CommandKey::Close
+        | CommandKey::Merge
         | CommandKey::Verify
         | CommandKey::Load
         | CommandKey::Project

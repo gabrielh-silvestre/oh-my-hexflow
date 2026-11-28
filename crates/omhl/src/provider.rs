@@ -1,5 +1,9 @@
 //! Porta do provedor de hospedagem: o método fala só por ela, nunca pelo programa do provedor.
 
+use hexlog::SemanticId;
+
+use crate::workflow::config::ProviderName;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoRef {
     pub host: String,
@@ -24,8 +28,225 @@ pub enum ProviderError {
     HeadMoved { expected: String, seen: String },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrState {
+    Open,
+    Merged,
+    Closed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequest {
+    pub number: u64,
+    pub state: PrState,
+    pub head_commit: String,
+    pub base_branch: String,
+    pub cross_repository: bool,
+    pub auto_merge: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckState {
+    Green,
+    NotGreen,
+    Running,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckContext {
+    pub name: String,
+    pub state: CheckState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckRead {
+    pub head_commit: String,
+    pub contexts: Vec<CheckContext>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Required {
+    Yes,
+    No,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RedCheck {
+    pub name: String,
+    pub required: Required,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Strategy {
+    Merge,
+    Squash,
+    Rebase,
+}
+
+impl Strategy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Strategy::Merge => "merge",
+            Strategy::Squash => "squash",
+            Strategy::Rebase => "rebase",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateRead {
+    pub state: PrState,
+    /// Fila de merge ou merge automático ligado.
+    pub pending: bool,
+    pub base_branch: String,
+    pub head_commit: String,
+    pub merge_commit: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergeCall {
+    pub success: bool,
+    pub stderr: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForkParent {
+    pub is_fork: bool,
+    pub parent: Option<String>,
+}
+
 pub trait Provider {
+    fn preflight(&self) -> Result<(), ProviderError>;
     fn default_branch(&self, repo: &RepoRef) -> Result<String, ProviderError>;
+    fn pull_requests(
+        &self,
+        repo: &RepoRef,
+        head_branch: &str,
+    ) -> Result<Vec<PullRequest>, ProviderError>;
+    fn checks(&self, repo: &RepoRef, number: u64) -> Result<CheckRead, ProviderError>;
+    /// `HeadMoved` quando o commit lido não é o esperado.
+    fn classify_red(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+        expected_commit: &str,
+    ) -> Result<Vec<RedCheck>, ProviderError>;
+    /// Só chama: quem decide pelo resultado é a releitura do estado.
+    fn merge(
+        &self,
+        repo: &RepoRef,
+        number: u64,
+        commit: &str,
+        strategy: Strategy,
+    ) -> Result<MergeCall, ProviderError>;
+    fn state(&self, repo: &RepoRef, number: u64) -> Result<StateRead, ProviderError>;
+    fn fork_parent(&self, repo: &RepoRef) -> Result<ForkParent, ProviderError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CiVerdict {
+    Green,
+    None,
+    Running,
+    Red(Vec<String>),
+}
+
+pub fn ci_verdict(read: &CheckRead) -> CiVerdict {
+    let red: Vec<String> = read
+        .contexts
+        .iter()
+        .filter(|context| context.state == CheckState::NotGreen)
+        .map(|context| context.name.clone())
+        .collect();
+    if !red.is_empty() {
+        return CiVerdict::Red(red);
+    }
+    if read.contexts.is_empty() {
+        return CiVerdict::None;
+    }
+    match read
+        .contexts
+        .iter()
+        .any(|context| context.state == CheckState::Running)
+    {
+        true => CiVerdict::Running,
+        false => CiVerdict::Green,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttestResult {
+    Passed,
+    PassedWithWarning,
+}
+
+impl AttestResult {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AttestResult::Passed => "passed",
+            AttestResult::PassedWithWarning => "passed_with_warning",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CiDecision {
+    Attest { result: AttestResult, note: String },
+    Refuse(&'static str),
+}
+
+pub const CI_REQUIRED_MISSING: &str = "ci-required-missing";
+pub const CI_RUNNING: &str = "ci-running";
+pub const CI_NOT_GREEN: &str = "ci-not-green";
+pub const NO_CI_NOTE: &str = "no CI seen at that SHA";
+
+/// Um vermelho que a leitura não classifica conta como exigido: nenhum `--force` o passa.
+pub fn ci_decision(
+    verdict: &CiVerdict,
+    red: &[RedCheck],
+    require_ci: bool,
+    force_note: Option<&str>,
+) -> CiDecision {
+    match verdict {
+        CiVerdict::Green => CiDecision::Attest {
+            result: AttestResult::Passed,
+            note: String::new(),
+        },
+        CiVerdict::None if require_ci => CiDecision::Refuse(CI_REQUIRED_MISSING),
+        CiVerdict::None => CiDecision::Attest {
+            result: AttestResult::PassedWithWarning,
+            note: NO_CI_NOTE.to_owned(),
+        },
+        CiVerdict::Running => CiDecision::Refuse(CI_RUNNING),
+        CiVerdict::Red(names) => {
+            let required = |name: &String| {
+                red.iter()
+                    .find(|check| &check.name == name)
+                    .is_none_or(|check| check.required != Required::No)
+            };
+            match (names.iter().any(required), force_note) {
+                (false, Some(note)) => CiDecision::Attest {
+                    result: AttestResult::PassedWithWarning,
+                    note: format!(
+                        "red CI checks not required by branch protection: {}; owner authorization: {note}",
+                        names.join(", ")
+                    ),
+                },
+                _ => CiDecision::Refuse(CI_NOT_GREEN),
+            }
+        }
+    }
+}
+
+/// Segundo segmento sob o id do work item, que nenhuma branch nomeia.
+pub fn pull_request_id(work_item: &SemanticId, provider: ProviderName, number: u64) -> SemanticId {
+    SemanticId::parse(&format!(
+        "{}.{}-{number}",
+        work_item.as_str(),
+        provider.as_str()
+    ))
+    .expect("a work item id with a provider segment is a valid id")
 }
 
 /// Aceita `https://HOST/OWNER/REPO[.git]`, `ssh://git@HOST/OWNER/REPO[.git]` e `git@HOST:OWNER/REPO[.git]`.

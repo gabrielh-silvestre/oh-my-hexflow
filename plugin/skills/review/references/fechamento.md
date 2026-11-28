@@ -32,5 +32,6 @@ Each proposal only becomes a record with the human's confirmation: record it wit
 |---|---|
 | Check the PR gate | [gate-delivery.md](gate-delivery.md) |
 | Close the work item | [close.md](close.md) |
+| Merge through the provider and close | [merge.md](merge.md) |
 | Read the retro | [report-retro.md](report-retro.md) |
 | Common errors | [errors.md](../../directives-flow/references/errors.md) |

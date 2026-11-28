@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use clap::builder::PossibleValuesParser;
 use clap::error::ErrorKind;
 use clap::{ArgGroup, Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+use hexlog::SemanticId;
 use serde_json::{Value, json};
 
 use super::hook;
@@ -16,6 +17,7 @@ use crate::app::input::{INPUT_MAX_BYTES, read_json_input};
 use crate::app::runtime::run_action;
 use crate::app::{Group, RUNNABLE_EVENTS};
 use crate::project::Env;
+use crate::provider::Strategy;
 
 #[derive(Debug, Parser)]
 #[command(name = "omhl", version, arg_required_else_help = true)]
@@ -106,6 +108,24 @@ pub enum ActionCommand {
         #[arg(long, requires = "mode")]
         note: Option<String>,
         #[arg(long, allow_hyphen_values = true, conflicts_with = "abandon")]
+        base: Option<String>,
+    },
+    /// Merge the pull request of a work item through the provider and close the work item; refuses before the merge when the CI or the delivery gate does not pass.
+    Merge {
+        work_item: String,
+        /// Squash the commits instead of a merge commit.
+        #[arg(long, conflicts_with = "rebase")]
+        squash: bool,
+        /// Rebase the commits instead of a merge commit.
+        #[arg(long)]
+        rebase: bool,
+        /// Pass a red CI check that branch protection does not require, or warn questions of the gate, with the owner's authorization in --note.
+        #[arg(long, requires = "note")]
+        force: bool,
+        #[arg(long, requires = "force")]
+        note: Option<String>,
+        /// The base of the loosening review, as in close.
+        #[arg(long, allow_hyphen_values = true)]
         base: Option<String>,
     },
     /// Verify the hash chain.
@@ -563,6 +583,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::GateDelivery => "gate-delivery",
         CommandKey::GateWorktree => "gate-worktree",
         CommandKey::Close => "close",
+        CommandKey::Merge => "merge",
         CommandKey::Verify => "verify",
         CommandKey::Load => "load",
         CommandKey::Project => "project",
@@ -631,6 +652,7 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Action(ActionCommand::GateDelivery { .. }) => CommandKey::GateDelivery,
         Command::Action(ActionCommand::GateWorktree { .. }) => CommandKey::GateWorktree,
         Command::Action(ActionCommand::Close { .. }) => CommandKey::Close,
+        Command::Action(ActionCommand::Merge { .. }) => CommandKey::Merge,
         Command::Action(ActionCommand::Verify) => CommandKey::Verify,
         Command::Action(ActionCommand::Load { .. }) => CommandKey::Load,
         Command::Action(ActionCommand::Project) => CommandKey::Project,
@@ -859,6 +881,24 @@ fn to_action(
         } => Action::Close {
             work_item,
             note,
+            base,
+        },
+        ActionCommand::Merge {
+            work_item,
+            squash,
+            rebase,
+            note,
+            base,
+            ..
+        } => Action::Merge {
+            work_item: SemanticId::parse(&work_item)
+                .map_err(|error| AppError::from(error.at("/work_item")))?,
+            strategy: match (squash, rebase) {
+                (true, _) => Strategy::Squash,
+                (_, true) => Strategy::Rebase,
+                _ => Strategy::Merge,
+            },
+            force_note: note,
             base,
         },
         ActionCommand::Verify => Action::Verify,

@@ -41,7 +41,8 @@ pub enum WhoUsesClass {
 
 /// Escrita à mão a partir da tabela de condensação do plano: perder um prefixo `omhl <folha>` numa skill de
 /// workflow muda a classe da página e reprova, até a âncora ser editada no mesmo diff.
-pub const WHO_USES_ANCHOR: [(&str, WhoUsesClass); 21] = [
+pub const WHO_USES_ANCHOR: [(&str, WhoUsesClass); 22] = [
+    ("merge", WhoUsesClass::NoRole),
     ("render", WhoUsesClass::NoRole),
     ("verify", WhoUsesClass::NoRole),
     ("hooks post-commit", WhoUsesClass::NoRole),

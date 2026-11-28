@@ -1515,3 +1515,123 @@ fn it_should_name_post_merge_in_the_help_of_hooks_install() {
         output.stdout
     );
 }
+
+// CA-039 e CA-040: a negação do merge direto pelo binário real (CMP-031, CMP-032)
+
+const MERGE_POINTER: &str = "omhl merge <work-item> [--squash|--rebase]";
+
+fn mcp_merge_event(cwd: &Path, tool_name: &str) -> Value {
+    json!({
+        "session_id": "s1",
+        "hook_event_name": "PreToolUse",
+        "cwd": cwd,
+        "tool_name": tool_name,
+        "tool_input": { "owner": "acme", "repo": "widgets", "pullNumber": 3 },
+    })
+}
+
+impl Edge {
+    fn mcp_merge(&self, tool_name: &str) -> Child {
+        self.hook("mcp-merge-guard", &mcp_merge_event(&self.main, tool_name))
+    }
+}
+
+#[test]
+fn it_should_deny_the_github_mcp_merge_with_the_integration_on() {
+    let edge = Edge::new();
+    edge.workflow(PROVIDER_ON);
+
+    let output = edge.mcp_merge("mcp__github-official__merge_pull_request");
+
+    let reason = denial(&output).expect("the merge is denied");
+    assert!(reason.contains(MERGE_POINTER), "{reason}");
+}
+
+#[test]
+fn it_should_deny_the_merge_of_an_mcp_server_with_another_name() {
+    let edge = Edge::new();
+    edge.workflow(PROVIDER_ON);
+
+    let output = edge.mcp_merge("mcp__plugin_x_github__merge_pull_request");
+
+    assert!(denial(&output).is_some_and(|reason| reason.contains(MERGE_POINTER)));
+}
+
+#[test]
+fn it_should_let_the_mcp_merge_pass_with_the_integration_off() {
+    let edge = Edge::new();
+
+    let output = edge.mcp_merge("mcp__github-official__merge_pull_request");
+
+    assert_silent(&output);
+}
+
+#[test]
+fn it_should_let_the_mcp_merge_pass_without_the_marker() {
+    let edge = Edge::unmarked();
+
+    let output = edge.mcp_merge("mcp__github-official__merge_pull_request");
+
+    assert_silent(&output);
+}
+
+#[test]
+fn it_should_fail_the_mcp_merge_guard_showing_the_error_of_an_unreadable_workflow() {
+    let edge = Edge::new();
+    edge.workflow(BROKEN);
+
+    let output = edge.mcp_merge("mcp__github-official__merge_pull_request");
+
+    assert_ne!(output.code, Some(0), "stdout: {}", output.stdout);
+    assert!(
+        output.stderr.contains("invalid-workflow-config"),
+        "{}",
+        output.stderr
+    );
+}
+
+#[test]
+fn it_should_decide_the_mcp_merge_without_opening_the_database() {
+    let edge = Edge::new();
+    edge.workflow(PROVIDER_ON);
+    let not_a_folder = edge.scratch.path().join("data-is-a-file");
+    fs::write(&not_a_folder, "x").expect("the file is written");
+
+    let output = edge
+        .hook_cmd(
+            "mcp-merge-guard",
+            &mcp_merge_event(&edge.main, "mcp__github-official__merge_pull_request"),
+        )
+        .env("XDG_DATA_HOME", &not_a_folder)
+        .run();
+
+    assert!(denial(&output).is_some_and(|reason| reason.contains(MERGE_POINTER)));
+}
+
+#[test]
+fn it_should_deny_gh_pr_merge_in_bash_with_the_integration_on() {
+    let edge = Edge::new();
+    edge.workflow(PROVIDER_ON);
+
+    let output = edge.guard("gh pr merge 3");
+
+    assert!(denial(&output).is_some_and(|reason| reason.contains(MERGE_POINTER)));
+}
+
+#[test]
+fn it_should_keep_the_bash_merge_denial_when_agent_role_also_runs() {
+    let edge = Edge::new();
+    edge.workflow(PROVIDER_ON);
+    let mut event = bash_event("PreToolUse", &edge.main, "gh pr merge 3");
+    event["agent_type"] = json!("oh-my-hexflow:verifier");
+
+    let role = edge.hook("agent-role", &event);
+    let guarded = edge.hook("command-guard", &event);
+
+    assert_ne!(
+        specific(&role)["permissionDecision"],
+        json!("allow"),
+        "agent-role does not allow what the guard denies"
+    );
+    assert!(denial(&guarded).is_some_and(|reason| reason.contains(MERGE_POINTER)));
+}

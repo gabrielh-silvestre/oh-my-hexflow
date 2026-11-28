@@ -6,7 +6,7 @@ use hexlog::{Catalog, RelationTypeDef, TypeDef};
 use omhl::app::list_filter::is_text_field;
 use omhl::graphs;
 use serde_json::{Value, json};
-use support::omhl::{acme, check_data, node_item, request};
+use support::omhl::{acme, check_data, closed_with_gate, node_item, pull_request_data, request};
 use support::raw::RawHarness;
 use support::{EmptyNative, sid, tname};
 
@@ -351,7 +351,17 @@ fn it_should_classify_every_catalog_field_for_where() {
         ),
         (
             "pull-request",
-            &["title", "status", "provider", "repo", "branch", "type"],
+            &[
+                "title",
+                "status",
+                "provider",
+                "repo",
+                "branch",
+                "type",
+                "work_item",
+                "strategy",
+                "merge_commit",
+            ],
             &["abandonment", "delivery_failure", "gate", "number"],
         ),
     ];
@@ -379,4 +389,94 @@ fn it_should_treat_an_enum_field_without_a_type_as_text_for_where() {
 
     assert!(status.get("type").is_none(), "the enum carries no `type`");
     assert!(is_text_field(status));
+}
+
+// CA-036 e CA-031: os campos opcionais novos do `pull-request` (int1)
+
+/// O catálogo de work items de antes do int1, copiado antes dos campos novos do `pull-request`.
+const WORK_ITEMS_BEFORE_INT1: &str =
+    include_str!("../fixtures/work_items_catalog_before_int1.json");
+
+#[test]
+fn it_should_still_verify_a_pull_request_chain_written_before_the_new_fields() {
+    let raw = RawHarness::new();
+    let acme = acme();
+    {
+        let mut old = raw.hexlog(catalog_from(WORK_ITEMS_BEFORE_INT1), &EmptyNative);
+        old.ensure_tenant(&acme).expect("the tenant is created");
+        old.append(&request(vec![node_item(
+            "work-items.pr-7",
+            "pull-request",
+            closed_with_gate(pull_request_data("Ship it")),
+        )]))
+        .expect("the old catalog accepts the pull request");
+    }
+
+    let mut reopened = raw.hexlog(catalog(), &EmptyNative);
+    let report = reopened
+        .verify_chain(&acme, None)
+        .expect("the chain verifies");
+
+    assert_eq!(
+        (report.ok, report.total_records, report.total_breaks),
+        (true, 1, 0)
+    );
+}
+
+fn merged_pull_request() -> Value {
+    let mut data = closed_with_gate(pull_request_data("Ship it"));
+    data["work_item"] = json!("work-items.int1");
+    data["strategy"] = json!("squash");
+    data["merge_commit"] = json!("9".repeat(40));
+
+    data
+}
+
+#[test]
+fn it_should_accept_a_pull_request_with_work_item_strategy_and_merge_commit() {
+    let data = merged_pull_request();
+
+    let accepted = is_accepted("pull-request", &data);
+
+    assert!(accepted);
+}
+
+#[test]
+fn it_should_still_accept_a_pull_request_without_the_new_fields() {
+    let data = closed_with_gate(pull_request_data("Ship it"));
+
+    let accepted = is_accepted("pull-request", &data);
+
+    assert!(accepted);
+}
+
+#[test]
+fn it_should_refuse_a_strategy_outside_merge_squash_and_rebase() {
+    let data = with(merged_pull_request(), "strategy", json!("fast-forward"));
+
+    let accepted = is_accepted("pull-request", &data);
+
+    assert!(!accepted);
+}
+
+#[test]
+fn it_should_refuse_a_merge_commit_shorter_than_a_commit_id() {
+    let data = with(merged_pull_request(), "merge_commit", json!("abc"));
+
+    let accepted = is_accepted("pull-request", &data);
+
+    assert!(!accepted);
+}
+
+#[test]
+fn it_should_accept_the_forced_gate_of_dlv1_in_a_pull_request() {
+    let mut data = merged_pull_request();
+    data["gate"]["passed"] = json!(false);
+    data["gate"]["forced"] = json!(true);
+    data["gate"]["overridden"] = json!(["checks.run-tests"]);
+    data["gate"]["note"] = json!("owner approved the override");
+
+    let accepted = is_accepted("pull-request", &data);
+
+    assert!(accepted);
 }
