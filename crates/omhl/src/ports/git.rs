@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use hexlog::{Snapshot, SnapshotKind};
 
 use crate::probe::{
-    CommitMark, GIT_TIMED_OUT, GitVersion, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe,
-    TreeSource,
+    CommitMark, GIT_TIMED_OUT, GitOutput, GitVersion, HeadFacts, ProbeError, ProbeOutcome,
+    SnapshotProbe, TidyGit, TreeSource,
 };
 use crate::project::layout::EXT_FILE_MAX_BYTES;
 
@@ -86,7 +86,7 @@ fn entry_fields(entry: &str) -> Vec<&str> {
         .collect()
 }
 
-struct GitOutput {
+struct RawOutput {
     status: ExitStatus,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
@@ -181,7 +181,7 @@ impl GitProbe {
         }
     }
 
-    fn run(&self, mut command: Command) -> Result<GitOutput, ProbeError> {
+    fn run(&self, mut command: Command) -> Result<RawOutput, ProbeError> {
         let deadline = self.call_deadline()?;
         let child = command.spawn().map_err(|error| ProbeError {
             message: error.to_string(),
@@ -470,6 +470,18 @@ impl SnapshotProbe for GitProbe {
     }
 }
 
+impl TidyGit for GitProbe {
+    fn git(&self, dir: &Path, args: &[&str]) -> Result<GitOutput, ProbeError> {
+        let rooted = self.rooted_at(dir);
+        let output = rooted.run(rooted.git(args))?;
+        Ok(GitOutput {
+            code: output.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        })
+    }
+}
+
 impl CommitMark for GitProbe {
     fn location(&self) -> Result<PathBuf, ProbeError> {
         self.mark_path()
@@ -568,7 +580,7 @@ impl GitProbe {
     }
 }
 
-fn finish(mut child: Child, deadline: Instant) -> Result<GitOutput, ProbeError> {
+fn finish(mut child: Child, deadline: Instant) -> Result<RawOutput, ProbeError> {
     let (stdout, stderr) = match (child.stdout.take(), child.stderr.take()) {
         (Some(stdout), Some(stderr)) => (stdout, stderr),
         _ => return Err(error("git pipes are unavailable")),
@@ -577,7 +589,7 @@ fn finish(mut child: Child, deadline: Instant) -> Result<GitOutput, ProbeError> 
     let (stdout, stderr) = (spawn_reader(stdout), spawn_reader(stderr));
     let status = wait_until(&mut child, deadline)?;
 
-    Ok(GitOutput {
+    Ok(RawOutput {
         status,
         stdout: collect(&stdout, deadline)?,
         stderr: collect(&stderr, deadline)?,
@@ -594,7 +606,7 @@ fn utf8_output(stdout: Vec<u8>) -> Result<String, ProbeError> {
     String::from_utf8(stdout).map_err(|_| error("unexpected git output"))
 }
 
-fn git_error(output: &GitOutput) -> ProbeError {
+fn git_error(output: &RawOutput) -> ProbeError {
     let message = String::from_utf8_lossy(&output.stderr);
     error(
         message

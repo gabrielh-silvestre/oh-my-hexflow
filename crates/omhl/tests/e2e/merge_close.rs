@@ -22,8 +22,8 @@ event = "before-merge"
 "#;
 
 const GHE: &str = "version = 1\n\n[provider]\nname = \"github\"\nhost = \"ghe.example.com\"\n";
-const ALL_STEPS: [&str; 8] = [
-    "lookup", "head", "base", "checks", "ci", "gate", "merge", "close",
+const ALL_STEPS: [&str; 9] = [
+    "lookup", "head", "base", "checks", "ci", "gate", "merge", "close", "tidy",
 ];
 
 fn with_natives(natives: &[&str]) -> String {

@@ -45,7 +45,7 @@ const CLOSING_ORDER: [&str; 6] = [
     "omhl check run --event before-merge",
     "omhl attest",
     "omhl gate-delivery",
-    "`wt",
+    "omhl merge",
     "omhl close",
     "omhl report retro",
 ];

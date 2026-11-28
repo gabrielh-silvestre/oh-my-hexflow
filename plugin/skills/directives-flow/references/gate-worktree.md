@@ -2,7 +2,7 @@
 
 ## When to use
 
-Before `wt switch -c <branch>`, to check whether the worktree of the branch can be born. `wt` runs the same command in a `pre-switch` hook; running it first shows the refusal and what is missing without creating anything. Only after it exits 0 run `wt switch -c`. Never get around a refusal with `--no-hooks`: the bypass is the owner's decision.
+Before `git worktree add -b <branch> <worktree.dir>/<folder> <start>` or `git switch -c <branch>`, to check whether the branch of the work item can be born. Running it first shows the refusal and what is missing without creating anything. Only after it exits 0 create the branch. After the creation, the `branch-birth` hook (in Claude Code) or `omhl hook branch-created --branch <branch>` writes the freeze mark of the spec. Never get around a refusal: the bypass is the owner's decision.
 
 ## Inputs
 

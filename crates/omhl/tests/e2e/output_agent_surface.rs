@@ -59,8 +59,8 @@ const DEFERRED: [(&str, &[&str]); 12] = [
         &["gate-worktree", "--branch", "feat/wi-payroll__x"],
     ),
     (
-        "hook wt-post-start",
-        &["hook", "wt-post-start", "--branch", "feat/wi-x__y"],
+        "hook branch-created",
+        &["hook", "branch-created", "--branch", "feat/wi-x__y"],
     ),
     ("hook subagent-start", &["hook", "subagent-start"]),
     ("hooks post-merge", &["hooks", "post-merge", "0"]),
@@ -297,7 +297,7 @@ deferred_json!(hooks_post_commit, 3, 1, "", NO_MARKER_ERROR);
 
 deferred_json!(gate_worktree, 4, 0, "", "");
 
-deferred_json!(hook_wt_post_start, 5, 0, "", "");
+deferred_json!(hook_branch_created, 5, 0, "", "");
 
 deferred_json!(hook_subagent_start, 6, 0, "", "");
 

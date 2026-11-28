@@ -187,7 +187,7 @@ fn double_quoted(text: &str) -> String {
     quoted
 }
 
-/// O hook falha fechado se o binário some; um binário dentro de uma worktree ligada some com ela (`wt remove`); a principal não é removida.
+/// O hook falha fechado se o binário some; um binário dentro de uma worktree ligada some com ela (`git worktree remove`); a principal não é removida.
 fn unstable_binary_code(binary: &Path, worktrees: &[PathBuf]) -> Option<&'static str> {
     if in_build_dir(binary) {
         return Some("binary-in-build-dir");

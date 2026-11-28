@@ -13,7 +13,7 @@ const COMMIT_MARK_COMMAND: &str = "plugin/commands/omhl-commit-mark.md";
 const DIRECTIVES_FLOW_PAGE: &str = "docs/directives-flow.md";
 const DIRECTIVES_FLOW_SKILL: &str = "plugin/skills/directives-flow/SKILL.md";
 /// Âncoras da skill, sempre entre crases no texto; origem: bloco S13 do plano e decisões (e), (i) e (j).
-const SKILL_ANCHORS: [&str; 20] = [
+const SKILL_ANCHORS: [&str; 17] = [
     // as quatro categorias de proposta da retro
     "guideline",
     "premise",
@@ -27,10 +27,6 @@ const SKILL_ANCHORS: [&str; 20] = [
     "append",
     "omhl append",
     "omhl attest",
-    // aprovação do hook do `wt`
-    "wt config approvals add",
-    "Cannot prompt for approval",
-    "--no-hooks",
     // emenda (decisão j)
     "divergence",
     "open",

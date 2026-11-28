@@ -75,6 +75,19 @@ impl MergeFixture {
         ] {
             git_ok(project.dir(), args);
         }
+        let bare = scratch.path().join("remote.git");
+        let bare_arg = bare.display().to_string();
+        git_ok(
+            scratch.path(),
+            &["init", "-q", "--bare", "-b", "main", &bare_arg],
+        );
+        // o `origin` continua a URL do GitHub para o `omhl`, e o `git` busca no repositório nu local
+        let rewrite = format!("url.{bare_arg}.insteadOf");
+        git_ok(project.dir(), &["config", &rewrite, ORIGIN]);
+        git_ok(
+            project.dir(),
+            &["push", "-q", "-u", "origin", "main", W1_BRANCH],
+        );
         let fixture = MergeFixture {
             project,
             scratch,
@@ -100,6 +113,11 @@ impl MergeFixture {
 
     pub fn scratch(&self) -> &Path {
         self.scratch.path()
+    }
+
+    /// O `origin` local (repositório nu) que o `url.<nu>.insteadOf` põe no lugar do GitHub.
+    pub fn bare(&self) -> PathBuf {
+        self.scratch.path().join("remote.git")
     }
 
     pub fn git(&self, args: &[&str]) -> String {

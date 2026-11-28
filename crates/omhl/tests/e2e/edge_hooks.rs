@@ -1635,3 +1635,97 @@ fn it_should_keep_the_bash_merge_denial_when_agent_role_also_runs() {
     );
     assert!(denial(&guarded).is_some_and(|reason| reason.contains(MERGE_POINTER)));
 }
+
+// CA-060: um projeto sem `workflow.toml` age como antes do `int1` (CMP-046)
+
+/// Os arquivos do diretório principal fora do `.git`, relativos a ele.
+fn tree_files(root: &Path, dir: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    for entry in fs::read_dir(dir).expect("the folder is read") {
+        let path = entry.expect("the entry is read").path();
+        if path.file_name().is_some_and(|name| name == ".git") {
+            continue;
+        }
+        if path.is_dir() {
+            found.extend(tree_files(root, &path));
+        } else {
+            let relative = path.strip_prefix(root).expect("under the root");
+            found.push(relative.display().to_string());
+        }
+    }
+
+    found
+}
+
+#[test]
+fn it_should_not_mention_git_hooks_at_session_start_without_a_workflow() {
+    let edge = Edge::new();
+
+    let started = edge.session_start();
+
+    let text = context(&started);
+    assert!(!text.contains(INSTALL), "{text}");
+    assert!(!text.contains("git-hooks"), "{text}");
+}
+
+#[test]
+fn it_should_not_open_the_database_on_a_branch_creation_without_a_workflow() {
+    let edge = Edge::new();
+
+    let guarded = edge.guard(&format!("git switch -c {W1_BRANCH}"));
+
+    assert_eq!(guarded.code, Some(0), "stderr: {}", guarded.stderr);
+    assert!(!edge.project.db_path().exists());
+}
+
+#[test]
+fn it_should_never_start_gh_from_any_hook_without_a_workflow() {
+    let edge = Edge::new();
+    let path = path_with(&edge.fake_gh());
+    let push = bash_event("PreToolUse", &edge.main, "git push origin main");
+    let start = json!({ "hook_event_name": "SessionStart", "session_id": "s1", "cwd": edge.main, "source": "startup" });
+
+    let outputs = [
+        edge.hook_cmd("session-start", &start)
+            .env("PATH", &path)
+            .run(),
+        edge.hook_cmd("command-guard", &push)
+            .env("PATH", &path)
+            .run(),
+        edge.hook_cmd(
+            "branch-birth",
+            &bash_event("PostToolUse", &edge.main, "git branch x"),
+        )
+        .env("PATH", &path)
+        .run(),
+        omhl_json(&["gate-worktree", "--branch", W1_BRANCH])
+            .cwd(&edge.main)
+            .xdg(edge.project.xdg())
+            .env("PATH", &path)
+            .run(),
+    ];
+
+    assert!(outputs.iter().all(|output| output.code.is_some()));
+    assert_eq!(edge.gh_log(), "");
+}
+
+#[test]
+fn it_should_write_only_freeze_marks_in_the_tree_without_a_workflow() {
+    let edge = Edge::new();
+    edge.seed_spec(W1_SPEC);
+    let before = tree_files(&edge.main, &edge.main);
+    edge.git(&["branch", W1_BRANCH]);
+
+    edge.session_start();
+    edge.birth(&format!("git branch {W1_BRANCH}"));
+    edge.guard(&format!("git switch -c {W1_BRANCH}"));
+
+    let added: Vec<String> = tree_files(&edge.main, &edge.main)
+        .into_iter()
+        .filter(|file| !before.contains(file))
+        .collect();
+    assert!(
+        added.iter().all(|file| file.ends_with(".frozen")),
+        "{added:?}"
+    );
+}

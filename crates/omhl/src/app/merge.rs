@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use super::action::{Caller, CheckTarget};
 use super::engine::{Engine, require_project_root};
 use super::error::AppError;
+use super::tidy::{StageResult, tidy};
 use crate::delivery_gate::{Forcing, PullRequestRecord, close_verdict};
 use crate::facade::Closing;
 use crate::mechanical::branch::{BranchKind, classify, integration};
@@ -453,6 +454,21 @@ impl Engine<'_> {
             .map_err(AppError::from)?;
         progress.finish(json!({ "step": "close", "result": "done" }));
 
+        let main_dir = std::fs::canonicalize(&main_dir).unwrap_or(main_dir);
+        let declared = integration(&config.branch).is_some();
+        let stages: Vec<Value> = tidy(&git, &main_dir, &record.branch, &expected, declared)
+            .into_iter()
+            .map(|(stage, result)| {
+                let (result, reason) = match result {
+                    StageResult::Done => ("done", None),
+                    StageResult::Skipped(reason) => ("skipped", Some(reason)),
+                    StageResult::NotNeeded => ("not-needed", None),
+                };
+                json!({ "stage": stage.as_str(), "result": result, "reason": reason })
+            })
+            .collect();
+        progress.finish(json!({ "step": "tidy", "result": "done", "stages": stages }));
+
         Ok(json!({
             "work_item": work_item,
             "pull_request": {
@@ -464,7 +480,7 @@ impl Engine<'_> {
             },
             "steps": progress.done,
             "warnings": warnings,
-            "next": format!("the work item is closed; read the retro with omhl report retro {}", work_item.as_str()),
+            "next": format!("cd {}", main_dir.display()),
         }))
     }
 

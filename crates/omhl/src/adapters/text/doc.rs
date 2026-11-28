@@ -75,6 +75,8 @@ pub enum Line {
 pub enum Closing {
     None,
     Next(String),
+    /// Um comando para copiar: sem o ponto final, que entraria no argumento.
+    Command(String),
     NothingBlocked(String),
 }
 

@@ -34,6 +34,7 @@ pub mod scan;
 pub mod session;
 #[cfg(target_os = "linux")]
 pub mod sweep_lock;
+pub mod tidy;
 pub mod views;
 
 use std::sync::atomic::{AtomicU64, Ordering};

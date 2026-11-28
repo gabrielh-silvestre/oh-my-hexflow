@@ -20,7 +20,7 @@ fn it_should_defer_exactly_the_machine_read_commands() {
         CommandKey::HookSpecLock,
         CommandKey::HookAgentRole,
         CommandKey::HookSubagentStart,
-        CommandKey::HookWtPostStart,
+        CommandKey::HookBranchCreated,
         CommandKey::HookBranchBirth,
         CommandKey::HookCommandGuard,
         CommandKey::HookMcpMergeGuard,

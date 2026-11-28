@@ -19,6 +19,7 @@ mod report;
 mod report_sessions;
 mod spec;
 mod spec_facts;
+mod tidy;
 mod wire;
 mod work_item;
 mod worktree_exclude;
@@ -46,7 +47,9 @@ pub use self::edge_hooks::{
 pub use self::language::{
     LanguageRungs, language_line, resolve_language, settings_language, user_settings_language,
 };
-pub use self::spec::{SpecLockEvent, SpecLockOutcome, heal_branch_marks, spec_lock, wt_post_start};
+pub use self::spec::{
+    SpecLockEvent, SpecLockOutcome, branch_created, heal_branch_marks, spec_lock,
+};
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;

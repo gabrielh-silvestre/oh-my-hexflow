@@ -10,6 +10,8 @@
 
 Once per clone, so git calls the checks on its own: it writes the five scripts (`pre-commit`, `pre-merge-commit`, `pre-push`, `post-commit`, `post-merge`) to a single user folder and points the clone's `core.hooksPath` at it. Without this the clone has no hook, and the delivery gate charges for the lack later. These are **git** hooks, unrelated to the Claude Code `omhl hook session-start` hook.
 
+The agent runs it only when the person asks, as the warning of the session start suggests when the project declares `[git] hooks = true` and the clone has no hooks.
+
 ## Inputs
 
 - `--force`: proceeds even if the clone already has hooks of its own or another `core.hooksPath`. **Only run it with the human's explicit approval**, given after you show what will be overwritten (the step is in "Errors"). The command makes no backup: the previous `core.hooksPath` is lost and the hooks in `.git/hooks` stay on disk, but git stops running them (git-lfs and `commit-msg`, for example). Chaining them is not supported.

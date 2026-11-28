@@ -21,7 +21,7 @@ const INVALID_TOML: &str = "not = [valid\n";
 const MARK: &str = ".frozen";
 const SPECS: &str = ".omhl/specs";
 
-// Hook de spec e `wt-post-start` sobre repositório git real: a trava do formato e a política estável
+// Hook de spec e `branch-created` sobre repositório git real: a trava do formato e a política estável
 
 fn declared(format: &str) -> String {
     format!("version = 1\n\n[branch]\nformat = \"{format}\"\n")
@@ -144,8 +144,8 @@ impl Repo {
         )
     }
 
-    fn wt_post_start(&self, cwd: &Path, branch: &str) -> Child {
-        omhl(&["hook", "wt-post-start", "--branch", branch])
+    fn branch_created(&self, cwd: &Path, branch: &str) -> Child {
+        omhl(&["hook", "branch-created", "--branch", branch])
             .cwd(cwd)
             .xdg(self.project.xdg())
             .run()
@@ -276,7 +276,7 @@ fn it_should_deny_with_branch_format_unmarked_naming_the_work_item_the_folder_an
 
     let reason = reason_of(&output);
     assert!(reason.starts_with("branch-format-unmarked: "), "{reason}");
-    for fact in ["w1", FOLDER, "omhl hook wt-post-start --branch"] {
+    for fact in ["w1", FOLDER, "omhl hook branch-created --branch"] {
         assert!(reason.contains(fact), "{fact}: {reason}");
     }
     assert!(!real.join(MARK).exists());
@@ -320,12 +320,12 @@ fn it_should_keep_the_spec_frozen_by_the_head_blob_when_the_main_file_is_invalid
 }
 
 #[test]
-fn it_should_mark_the_spec_folder_at_wt_post_start_by_the_head_blob_when_the_main_file_is_invalid_toml()
+fn it_should_mark_the_spec_folder_at_branch_created_by_the_head_blob_when_the_main_file_is_invalid_toml()
  {
     let repo = Repo::with_item(Some(&declared(WORK_FORMAT)), WORK_BRANCH);
     repo.break_main_file();
 
-    let output = repo.wt_post_start(&repo.main, WORK_BRANCH);
+    let output = repo.branch_created(&repo.main, WORK_BRANCH);
 
     assert_eq!(output.code, Some(0), "stderr: {}", output.stderr);
     assert_eq!(
@@ -350,7 +350,7 @@ fn it_should_ignore_the_version_of_a_linked_worktree_head_for_the_frozen_spec() 
 }
 
 #[test]
-fn it_should_ignore_the_version_of_a_linked_worktree_head_at_wt_post_start() {
+fn it_should_ignore_the_version_of_a_linked_worktree_head_at_branch_created() {
     let repo = Repo::with_item(Some(&declared(WORK_FORMAT)), WORK_BRANCH);
     repo.break_main_file();
     let linked = repo.linked("scratch-topic");
@@ -359,7 +359,7 @@ fn it_should_ignore_the_version_of_a_linked_worktree_head_at_wt_post_start() {
     git_ok(&linked, &["add", "-A"]);
     git_ok(&linked, &["commit", "-q", "-m", "linked copy"]);
 
-    let output = repo.wt_post_start(&linked, WORK_BRANCH);
+    let output = repo.branch_created(&linked, WORK_BRANCH);
 
     assert_eq!(
         json_line(&output.stdout),
@@ -372,7 +372,7 @@ fn it_should_apply_the_default_format_when_the_head_blob_is_invalid_too() {
     let repo = Repo::with_item(Some(INVALID_TOML), WORK_BRANCH);
 
     let edited = repo.edit_spec(&repo.main);
-    let started = repo.wt_post_start(&repo.main, WORK_BRANCH);
+    let started = repo.branch_created(&repo.main, WORK_BRANCH);
 
     assert_released_without_error(&edited);
     assert_eq!(
@@ -449,7 +449,7 @@ fn it_should_apply_the_default_format_without_reading_the_blob_when_the_main_fil
     fs::remove_file(repo.workflow_file()).expect("the main file is removed");
 
     let edited = repo.edit_spec(&repo.main);
-    let started = repo.wt_post_start(&repo.main, WORK_BRANCH);
+    let started = repo.branch_created(&repo.main, WORK_BRANCH);
 
     assert_allowed(&edited);
     assert_eq!(

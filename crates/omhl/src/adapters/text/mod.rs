@@ -68,7 +68,7 @@ pub enum CommandKey {
     HookSpecLock,
     HookAgentRole,
     HookSubagentStart,
-    HookWtPostStart,
+    HookBranchCreated,
     HookBranchBirth,
     HookCommandGuard,
     HookMcpMergeGuard,
@@ -108,7 +108,7 @@ impl CommandKey {
         Self::HookSpecLock,
         Self::HookAgentRole,
         Self::HookSubagentStart,
-        Self::HookWtPostStart,
+        Self::HookBranchCreated,
         Self::HookBranchBirth,
         Self::HookCommandGuard,
         Self::HookMcpMergeGuard,
@@ -160,7 +160,7 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         | CommandKey::HookCommandGuard
         | CommandKey::HookMcpMergeGuard
         | CommandKey::HookMcpWriteWarning
-        | CommandKey::HookWtPostStart => None,
+        | CommandKey::HookBranchCreated => None,
     }
 }
 
@@ -201,7 +201,7 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         | CommandKey::HookCommandGuard
         | CommandKey::HookMcpMergeGuard
         | CommandKey::HookMcpWriteWarning
-        | CommandKey::HookWtPostStart => &Profile::EMPTY,
+        | CommandKey::HookBranchCreated => &Profile::EMPTY,
     }
 }
 
@@ -239,7 +239,7 @@ pub fn deferred(key: CommandKey) -> bool {
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole
         | CommandKey::HookSubagentStart
-        | CommandKey::HookWtPostStart
+        | CommandKey::HookBranchCreated
         | CommandKey::HookBranchBirth
         | CommandKey::HookCommandGuard
         | CommandKey::HookMcpMergeGuard

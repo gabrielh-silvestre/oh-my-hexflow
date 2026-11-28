@@ -279,12 +279,12 @@ pub fn spec_dir_frozen(file_path: &Path, old: &str, new: &str, work_item: &str) 
     }
 }
 
-/// A marca vai para a branch local do work item (`wi-<id>`), pelo `wt-post-start`.
+/// A marca vai para a branch local do work item (`wi-<id>`), pelo `branch-created`.
 pub fn branch_format_unmarked(work_item: &str, folder: &Path, branch: &str) -> Verdict {
     Verdict::Deny {
         code: BRANCH_FORMAT_UNMARKED,
         reason: format!(
-            "{BRANCH_FORMAT_UNMARKED}: this edit would change branch.format while the spec folder {} of work item {} has no freeze mark, which would release the spec lock; write the mark with `omhl hook wt-post-start --branch '{}'` and retry the edit",
+            "{BRANCH_FORMAT_UNMARKED}: this edit would change branch.format while the spec folder {} of work item {} has no freeze mark, which would release the spec lock; write the mark with `omhl hook branch-created --branch '{}'` and retry the edit",
             one_line(&folder.display().to_string()),
             one_line(work_item),
             one_line(branch).replace('\'', "'\\''")

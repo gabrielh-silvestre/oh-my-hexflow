@@ -33,6 +33,11 @@ pub static PROFILE: Profile = Profile {
         Entry::new(Region::Data, "overridden", Shape::Literal)
             .under("steps")
             .optional(),
+        Entry::new(Region::Data, "stage", Shape::Closed).under("stages"),
+        Entry::new(Region::Data, "result", Shape::Closed).under("stages"),
+        Entry::new(Region::Data, "reason", Shape::Closed)
+            .under("stages")
+            .optional(),
     ],
     failure: &FAILURE,
 };
@@ -186,6 +191,16 @@ impl Specialization for Merge {
                     lines.push(field(2, key, joined(step, key)));
                 }
             }
+            for stage in items(step, "stages") {
+                let mut parts = vec![text(stage, "stage"), text(stage, "result")];
+                parts.extend(opt_text(stage, "reason"));
+                lines.push(Line::Item {
+                    depth: 2,
+                    marker: Marker::Dash,
+                    parts,
+                    join: Join::Dot,
+                });
+            }
         }
         lines.extend(
             items(value, "warnings")
@@ -206,7 +221,7 @@ impl Specialization for Merge {
 
     fn closing(&self, value: &Value) -> Closing {
         match opt_text(value, "next") {
-            Some(next) => Closing::Next(next),
+            Some(next) => Closing::Command(next),
             None => Closing::None,
         }
     }

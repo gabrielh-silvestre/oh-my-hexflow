@@ -123,3 +123,25 @@ fn it_should_not_execute_a_hostile_branch_name_in_the_post_start_template() {
     assert_eq!(code, Some(127));
     assert!(!workdir.path().join("pwned").exists());
 }
+
+// CA-053: o `post-start` chama o comando novo; o `pre-switch` e os `case` ficam
+
+#[test]
+fn it_should_call_branch_created_from_the_post_start_hook() {
+    let template = post_start_template();
+
+    assert_eq!(
+        template,
+        "case {{ branch }} in develop|main) exit 0;; esac; omhl hook branch-created --branch {{ branch }}"
+    );
+}
+
+#[test]
+fn it_should_keep_the_pre_switch_hook_as_it_is() {
+    let template = pre_switch_template();
+
+    assert_eq!(
+        template,
+        "case {{ branch }} in develop|main) exit 0;; esac; omhl gate-worktree --branch {{ branch }}"
+    );
+}

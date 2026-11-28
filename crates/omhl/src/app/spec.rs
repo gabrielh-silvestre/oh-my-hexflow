@@ -752,10 +752,10 @@ fn mark_folders(
     first_error.map_or(Ok((marked, already)), Err)
 }
 
-/// O nascimento de uma branch de work item (o `post-start` do `wt`): grava a marca em cada pasta do work item.
+/// O nascimento de uma branch de work item (o hook `branch-created`): grava a marca em cada pasta do work item.
 ///
 /// Não abre o banco nem exige o work item nele; branch que não é de work item não tem efeito.
-pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
+pub fn branch_created(start: &Path, branch: &str) -> Result<Value, AppError> {
     let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
     let probe = GitProbe::new(&located.root);
     let main_dir = probe
@@ -766,6 +766,13 @@ pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
         Ok(config) => config.branch.clone(),
         Err(_) => stable_branch_policy(&probe.rooted_at(&main_dir)),
     };
+    // Com o `workflow.toml` ilegível a pasta declarada é desconhecida: nada se escreve.
+    if let Ok(config) = &read {
+        let common_dir = probe
+            .common_dir()
+            .map_err(|error| AppError::probe_failed(&error.message))?;
+        ensure_worktree_exclude(&main_dir, &common_dir, &config.worktree.dir)?;
+    }
     let config = read.unwrap_or_default();
     let Some(work_item) = branch_work_item(&policy, branch).and_then(|id| {
         id.as_str()

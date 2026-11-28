@@ -39,7 +39,7 @@ pub struct Cli {
 pub enum Command {
     #[command(flatten)]
     Action(ActionCommand),
-    /// Run one hook of the `omhl hook` group: session-start, spec-lock, agent-role, subagent-start, branch-birth, command-guard, mcp-merge-guard, mcp-write-warning and wt-post-start.
+    /// Run one hook of the `omhl hook` group: session-start, spec-lock, agent-role, subagent-start, branch-birth, command-guard, mcp-merge-guard, mcp-write-warning and branch-created.
     Hook {
         #[command(subcommand)]
         event: HookEvent,
@@ -235,7 +235,7 @@ pub enum OutputFormat {
 
 #[derive(Debug, Subcommand)]
 pub enum HooksCommand {
-    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit, post-merge) of this clone; these are git hooks, unrelated to the `omhl hook` group (Claude Code events and the `wt` hook).
+    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit, post-merge) of this clone; these are git hooks, unrelated to the `omhl hook` group (Claude Code events and the `branch-created` hook).
     Install {
         #[arg(long)]
         force: bool,
@@ -293,7 +293,7 @@ pub enum ReportCommand {
 }
 
 #[derive(Debug, Subcommand)]
-// Os eventos do Claude Code leem o evento no stdin; o `wt-post-start` não lê. Quem decide o código de saída que bloqueia é o `omhl-hook.sh`, cujo ramo sem o binário sai com `exit 0` fora de projeto marcado (`docs/directives-flow.md`).
+// Os eventos do Claude Code leem o evento no stdin; o `branch-created` não lê. Quem decide o código de saída que bloqueia é o `omhl-hook.sh`, cujo ramo sem o binário sai com `exit 0` fora de projeto marcado (`docs/directives-flow.md`).
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,
@@ -303,12 +303,6 @@ pub enum HookEvent {
     AgentRole,
     /// Print the conversation language of the person as context for a plugin subagent; reads the SubagentStart event on stdin, never blocks, and prints nothing without a language.
     SubagentStart,
-    /// Write the freeze mark in every spec folder of the work item of a new branch (the `post-start` hook of `wt`); does not read stdin, prints JSON, and stays silent without a project marker.
-    WtPostStart {
-        /// Name of the new branch.
-        #[arg(long)]
-        branch: String,
-    },
     /// Write the freeze mark of every work item with a local branch after a Bash command that created a branch; reads the PostToolUse event on stdin and prints nothing.
     BranchBirth,
     /// Run the creation gate on a Bash branch creation and warn on a push that reaches main; reads the PreToolUse event on stdin.
@@ -317,6 +311,12 @@ pub enum HookEvent {
     McpMergeGuard,
     /// Warn when an MCP write tool targets main or the default branch; reads the PreToolUse event on stdin.
     McpWriteWarning,
+    /// Write the freeze mark in every spec folder of the work item of a new branch and keep the worktree folder ignored; does not read stdin, prints JSON, and stays silent without a project marker.
+    BranchCreated {
+        /// Name of the new branch.
+        #[arg(long)]
+        branch: String,
+    },
 }
 
 pub fn run(
@@ -377,11 +377,11 @@ pub fn run(
             event: HookEvent::McpWriteWarning,
         } => hook::mcp_write_warning(stdin, out, err),
         Command::Hook {
-            event: HookEvent::WtPostStart { branch },
+            event: HookEvent::BranchCreated { branch },
         } => {
             let format = format.unwrap_or_else(|| default_format(key));
             let result = start_dir(project_dir.as_deref())
-                .and_then(|dir| crate::app::wt_post_start(&dir, &branch));
+                .and_then(|dir| crate::app::branch_created(&dir, &branch));
 
             report_silent_without_marker(result, format, key, out, err)
         }
@@ -395,7 +395,7 @@ pub fn run(
     }
 }
 
-/// Os hooks do `wt` (`pre-switch`, `post-start`) rodam em qualquer repositório: sem marcador não há o que decidir nem marcar.
+/// O `gate-worktree` e o `branch-created` rodam em qualquer repositório: sem marcador não há o que decidir nem marcar.
 fn report_silent_without_marker(
     result: Result<Value, AppError>,
     format: OutputFormat,
@@ -403,8 +403,10 @@ fn report_silent_without_marker(
     out: &mut impl std::io::Write,
     err: &mut impl std::io::Write,
 ) -> ExitCode {
-    let silent_without_marker =
-        matches!(key, CommandKey::GateWorktree | CommandKey::HookWtPostStart);
+    let silent_without_marker = matches!(
+        key,
+        CommandKey::GateWorktree | CommandKey::HookBranchCreated
+    );
     match &result {
         Err(error) if silent_without_marker && error.code() == "no-marker" => ExitCode::SUCCESS,
         _ => report(result, format, key, out, err),
@@ -606,7 +608,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::HookSpecLock => "hook spec-lock",
         CommandKey::HookAgentRole => "hook agent-role",
         CommandKey::HookSubagentStart => "hook subagent-start",
-        CommandKey::HookWtPostStart => "hook wt-post-start",
+        CommandKey::HookBranchCreated => "hook branch-created",
         CommandKey::HookBranchBirth => "hook branch-birth",
         CommandKey::HookCommandGuard => "hook command-guard",
         CommandKey::HookMcpMergeGuard => "hook mcp-merge-guard",
@@ -630,8 +632,8 @@ fn command_key(command: &Command) -> CommandKey {
             event: HookEvent::SubagentStart,
         } => CommandKey::HookSubagentStart,
         Command::Hook {
-            event: HookEvent::WtPostStart { .. },
-        } => CommandKey::HookWtPostStart,
+            event: HookEvent::BranchCreated { .. },
+        } => CommandKey::HookBranchCreated,
         Command::Hook {
             event: HookEvent::BranchBirth,
         } => CommandKey::HookBranchBirth,

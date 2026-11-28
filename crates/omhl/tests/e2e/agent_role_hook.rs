@@ -402,8 +402,8 @@ const LEAF_SAMPLES: &[(&str, &str)] = &[
     ("hook agent-role", "omhl hook agent-role"),
     ("hook subagent-start", "omhl hook subagent-start"),
     (
-        "hook wt-post-start",
-        "omhl hook wt-post-start --branch feat/wi-x__y",
+        "hook branch-created",
+        "omhl hook branch-created --branch feat/wi-x__y",
     ),
 ];
 
@@ -640,8 +640,8 @@ fn it_should_deny_every_hook_event_to_every_role() {
 }
 
 #[test]
-fn it_should_deny_hook_wt_post_start_for_every_role() {
-    let cases = cases_for(&samples_of(&["hook wt-post-start"]));
+fn it_should_deny_hook_branch_created_for_every_role() {
+    let cases = cases_for(&samples_of(&["hook branch-created"]));
 
     cases.iter().for_each(assert_case);
 }

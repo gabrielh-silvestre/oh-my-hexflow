@@ -1368,7 +1368,7 @@ mod integrations {
         ProviderName, WorktreeConfig,
     };
 
-    const FULL: &str = "version = 1\n\n[git]\nhooks = true\n\n[creation_gate]\nenabled = true\n\n[provider]\nname = \"github\"\nhost = \"ghe.example.com\"\nrequire_ci = true\n\n[worktree]\ndir = \"build/wt\"\n";
+    const FULL: &str = "version = 1\n\n[git]\nhooks = true\n\n[creation_gate]\nenabled = true\n\n[provider]\nname = \"github\"\nhost = \"ghe.example.com\"\nrequire_ci = true\n\n[worktree]\ndir = \"build/linked\"\n";
 
     fn refused_at_line_three(table: &str, row: &str) {
         let text = lines(&["version = 1", table, row]);
@@ -1413,16 +1413,20 @@ mod integrations {
         assert_eq!(
             config.worktree,
             WorktreeConfig {
-                dir: PathBuf::from("build/wt")
+                dir: PathBuf::from("build/linked")
             }
         );
     }
 
     #[test]
     fn it_should_accept_an_absolute_worktree_dir() {
-        let config = accepted(&lines(&["version = 1", "[worktree]", "dir = \"/srv/wt\""]));
+        let config = accepted(&lines(&[
+            "version = 1",
+            "[worktree]",
+            "dir = \"/srv/linked\"",
+        ]));
 
-        assert_eq!(config.worktree.dir, PathBuf::from("/srv/wt"));
+        assert_eq!(config.worktree.dir, PathBuf::from("/srv/linked"));
     }
 
     #[test]
@@ -1562,7 +1566,7 @@ mod integrations {
 
     #[test]
     fn it_should_refuse_a_worktree_dir_with_a_parent_component() {
-        refused_at_line_three("[worktree]", "dir = \"wt/../..\"");
+        refused_at_line_three("[worktree]", "dir = \"linked/../..\"");
     }
 
     #[test]

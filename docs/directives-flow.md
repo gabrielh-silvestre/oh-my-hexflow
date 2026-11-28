@@ -17,7 +17,7 @@ O humano define diretivas e premissas. O agente escolhe os comportamentos e escr
 | 5 | Retro | `omhl close` | O agente propõe melhorias, cada uma só vale com a confirmação do humano |
 | 6 | Promoção | Agente e humano | O humano confirma |
 
-Ordem do protocolo, antes do código: em `feat` e `fix`, fazer a entrevista de negócio (skill `interview`, seção 12); escolher prefixo, id e slug; gravar o work item (`work-items.<id>`); sugerir as premissas; confirmar com o humano; criar e validar a spec; só então `wt switch -c`.
+Ordem do protocolo, antes do código: em `feat` e `fix`, fazer a entrevista de negócio (skill `interview`, seção 12); escolher prefixo, id e slug; gravar o work item (`work-items.<id>`); sugerir as premissas; confirmar com o humano; criar e validar a spec; só então `git worktree add -b` (ou `git switch -c`).
 
 A tabela descreve o protocolo sem dizer quem o cumpre. Com os agentes do plugin, cada etapa tem um papel `oh-my-hexflow:<papel>` e há uma volta de consenso entre o architect e o critic antes da conferência final da spec: o ciclo passo a passo está na seção 12.
 
@@ -75,7 +75,7 @@ Um exemplo para copiar está em [plugin/examples/README.md](../plugin/examples/R
 
 ## 5. O gate de criação da worktree
 
-O agente roda `omhl gate-worktree --branch <nome>` para conferir antes de chamar o `wt`.
+O agente roda `omhl gate-worktree --branch <nome>` para conferir antes de criar a branch com `git worktree add -b` ou `git switch -c`.
 
 | Código | O que tentar |
 |---|---|
@@ -88,34 +88,19 @@ O agente roda `omhl gate-worktree --branch <nome>` para conferir antes de chamar
 
 Rode `omhl spec validate` para ver a violação da spec.
 
-### O hook `pre-switch` do `wt`
+### A criação da branch com o `git`
 
-- O template é POSIX: no `wt` 0.70.0 o hook rodou sob `sh` (observado no spike; a doc do `wt` diz só que ele roda comandos de shell). O `{{ branch }}` vai **sem aspas**: o `wt` já escapa a variável, e as aspas anulam o escape. Com aspas simples, o nome `a$(id)` executa `id`. Sem aspas, nenhum dos 12 nomes perigosos do spike executou nada.
-- O `pre-switch` roda antes de a branch e a worktree existirem num `wt switch -c`. Uma saída não zero aborta, e não sobra branch nem diretório.
-- Num `wt switch -c`, o `{{ branch }}` é o destino. `^`, `-` e `@` chegam resolvidos. `pr:N` chega literal (observado no `wt` 0.70.0, sem apoio na doc), porque o hook roda antes de o `wt` buscar o PR.
-- Instale o `omhl` fora de qualquer worktree (veja `binary-in-worktree` na seção 5 de [mechanical-gates.md](mechanical-gates.md)), senão um `wt remove` o apaga.
-- O gate só funciona com o `omhl` no `PATH` do `wt`. Sem ele, todo `wt switch` para uma branch que não seja `develop` nem `main` sai com `127` e o `wt` aborta, inclusive `wt switch -c`. Confira com `command -v omhl` antes de rodar `wt config approvals add`.
-- **`wt switch -c` parte da `main`**, a branch padrão, não da `develop`. Para partir da `develop`, passe `--base develop`.
+O plugin ensina a criar a branch de um work item só com o `git`, de preferência numa worktree:
 
-**A aprovação do hook.** O `wt` guarda a aprovação de um comando de projeto pelo projeto e pelo **texto do comando**. Qualquer mudança no texto do comando em `.config/wt.toml` pede uma aprovação nova. Sem aprovação salva e sem terminal interativo, o `wt` aborta todo `wt switch`, inclusive para a `develop`, com `Cannot prompt for approval in non-interactive environment` (saída 1). O `case` do hook não ajuda, porque o `wt` pede a aprovação antes de rodar o hook.
-
-- O dono aprova uma vez, ao ativar, e de novo a cada mudança do texto do comando: `wt config approvals add`.
-- `wt config approvals list` confere. O comando sem aprovação aparece como `UNAPPROVED`.
-- Se um `wt switch` falhar com `Cannot prompt for approval`, o agente para e pede ao dono o `wt config approvals add`. Ele nunca tenta `--no-hooks`.
-
-### O hook `post-start` do `wt`
-
-O `.config/wt.toml` tem um segundo hook, que grava a marca de congelamento da spec no nascimento da branch:
-
-```toml
-[post-start]
-omhl-freeze = "case {{ branch }} in develop|main) exit 0;; esac; omhl hook wt-post-start --branch {{ branch }}"
+```bash
+git worktree add -b feat/wi-x__login .worktrees/feat-wi-x__login develop
 ```
 
-- Ele roda **uma vez**, quando a worktree nasce, **em segundo plano**. Uma worktree que já existia, uma branch que já existia e uma branch criada por `git branch` ou `wt switch --no-hooks` não o disparam.
-- Ele grava a marca `.frozen` em cada pasta `wi-<id>__*` do work item da branch nova (seção 7). O `omhl hook wt-post-start` é o do `PATH`, com o mesmo cuidado do `pre-switch`: o `{{ branch }}` vai sem aspas e o `case` libera `develop` e `main`.
-- A falha é silenciosa: o `wt` não mostra a saída de um hook em segundo plano e não aborta por ele. Se o hook falhar (`omhl` velho, marca não gravável), a branch nasce sem marca. A cura do `spec-lock` é a rede: no primeiro evento de spec ela grava a marca de toda branch `wi-` local que existe (seção 7).
-- O comando do hook entra na aprovação do `wt` como o do `pre-switch` (seção 5, "A aprovação do hook"). Um hook `UNAPPROVED` faz o `wt` abortar todo `wt switch` sem terminal interativo. **O agente nunca usa `-y` nem `--no-hooks` diante de um hook `UNAPPROVED`**: ele para e pede ao dono o `wt config approvals add`. O `-y` aprovaria o hook sozinho, e o `--no-hooks` pularia o `pre-switch` junto.
+- O caminho é `<worktree.dir>/<branch com "/" trocado por "-">`; o `worktree.dir` vem do `.omhl/workflow.toml` e o padrão é `.worktrees`, dentro do repositório. O plugin garante a linha da pasta no `info/exclude`, então a worktree não aparece no `git status` do checkout principal.
+- Sem worktree, `git switch -c <branch>` cria a branch no checkout atual.
+- O portão de criação (quando o projeto o liga), a marca de nascimento e o aviso de push agem sobre esses comandos rodados pelo `Bash` do Claude Code, e sobre nenhum outro. Uma branch criada no terminal recebe a marca pela rede do `session-start`.
+- `omhl hook branch-created --branch <branch>` grava a marca de congelamento em cada pasta `wi-<id>__*` do work item da branch (seção 7) e garante a linha do `info/exclude`. Uma branch que não é de work item devolve `marked` e `already` vazios; sem `.omhl.toml` acima, sai 0 em silêncio. Quem cria a branch fora do Claude Code pode chamá-lo de uma configuração própria; a deste repositório está no [CONTRIBUTING.md](../CONTRIBUTING.md).
+- Instale o `omhl` fora de qualquer worktree (veja `binary-in-worktree` na seção 5 de [mechanical-gates.md](mechanical-gates.md)), senão um `git worktree remove` o apaga.
 
 ## 6. A spec
 
@@ -146,7 +131,7 @@ A correção entra como emenda (seção 9).
 | `spec-frozen` | Registre uma `divergence` e crie a emenda (seção 9). Em `.omhl.toml` ou `.omhl/` dentro da pasta congelada, o arquivo de marcador não se cria nem se edita ali |
 | `spec-lock-unavailable` | O hook não conseguiu ler o git ou a pasta de spec depois de reconhecer a spec: corrija a causa que a mensagem diz; com `git timed out`, tente de novo |
 | `spec-dir-frozen` | A edição do `.omhl/workflow.toml` principal mudaria o `specs.dir` enquanto algum work item tem spec congelada: não mude a chave por nenhuma ferramenta; peça ao dono, que a muda fora do Claude Code |
-| `branch-format-unmarked` | A edição do `.omhl/workflow.toml` principal trocaria o `branch.format` enquanto a pasta de spec de um work item não tem a marca `.frozen`, o que soltaria a trava: grave a marca com o `omhl hook wt-post-start --branch <branch>` que a mensagem mostra e repita a edição |
+| `branch-format-unmarked` | A edição do `.omhl/workflow.toml` principal trocaria o `branch.format` enquanto a pasta de spec de um work item não tem a marca `.frozen`, o que soltaria a trava: grave a marca com o `omhl hook branch-created --branch <branch>` que a mensagem mostra e repita a edição |
 | `git-dir-protected` | O caminho está sob um `.git` de um projeto omhl: não mude arquivo do `.git` por nenhuma ferramenta; peça ao dono, que o muda fora do Claude Code |
 | `marker-protected` | A edição deixaria o `.omhl.toml` do projeto sem ser um marcador válido: mantenha-o válido ou peça ao dono, e não o mude por nenhuma ferramenta |
 | `spec-in-linked-worktree` | Escreva no caminho do diretório principal que a mensagem informa |
@@ -230,14 +215,11 @@ A parte original (`part-NN.md` ou `parte-NN.md`) fica intacta. O valor vigente d
 
 ### Ativação
 
-A ativação seguiu esta ordem, que vale de novo se o texto do comando em `.config/wt.toml` mudar:
+A ativação seguiu esta ordem:
 
 1. Compile e reinstale o `omhl` fora de qualquer worktree, num único binário no `PATH`, por exemplo em `~/.local/bin` ([README](../README.md), "Instalação").
 2. Rode `omhl hooks install`.
-3. Só então versione o `.config/wt.toml` e as entradas `PreToolUse` em `plugin/hooks/hooks.json`: `Edit|Write|MultiEdit` para o `spec-lock` e `Bash|Monitor|Agent|Task` para o `agent-role`.
-4. O dono roda `wt config approvals add` e confere com `wt config approvals list` (seção 5), antes de qualquer `wt switch` do agente.
-5. Para o hook `post-start`: reinstale o `omhl` no `PATH` (passo 1). O hook chama o subcomando `hook wt-post-start`, e um binário velho sai com `2` em segundo plano, sem marcar nada e sem aviso.
-6. O dono roda `wt config approvals add` e confere com `wt config approvals list` que nada aparece `UNAPPROVED`, **antes de qualquer `wt switch`**. O `[post-start]` é um comando novo no `.config/wt.toml`; sem a aprovação e sem terminal interativo, o `wt` aborta todo `wt switch`, inclusive para a `develop`.
+3. Só então versione as entradas `PreToolUse` em `plugin/hooks/hooks.json`: `Edit|Write|MultiEdit` para o `spec-lock` e `Bash|Monitor|Agent|Task` para o `agent-role`.
 
 Depois de puxar mudanças, recompile e reinstale o `omhl` do `PATH` antes de usar o plugin. Com um `omhl` velho, o congelamento fica sem efeito até a reinstalação. O mesmo vale para o binário ausente (saída `127`).
 
@@ -245,24 +227,18 @@ Depois de puxar mudanças, recompile e reinstale o `omhl` do `PATH` antes de usa
 
 O gate é um freio, não uma parede. Estes caminhos o contornam:
 
-- `wt switch -c --no-hooks`. O `-y` não é bypass: ele roda o hook.
-- A aprovação do hook de projeto recusada num terminal interativo. O `wt` segue sem o hook. Sem terminal, a falta de aprovação aborta em vez de liberar (seção 5).
-- `git switch -c` e `git branch`. Nenhum guard os barra.
-- Worktrees criadas antes do `.config/wt.toml`, que não leem o hook.
-
-Para reabrir uma fatia antiga ou entrar numa branch de terceiros, a saída documentada é `wt switch --no-hooks`, decisão do dono e nunca do agente.
+- Uma branch criada fora do `Bash` do Claude Code (terminal, editor, outra ferramenta). O portão não a vê; a rede do `session-start` grava a marca depois.
 
 O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 
 ### Limites
 
-- Numa worktree destacada (sem branch), o `{{ branch }}` do `.config/wt.toml` fica indefinido, segundo a doc do `wt`.
 - Uma `divergence` aberta não bloqueia o `omhl gate-delivery` nem o `omhl close`: o gate não pergunta por divergência. Aceito para a v1; revisar com os dados do piloto.
 - Uma violação de diretiva não bloqueia o PR. A tabela do PR a lista quando o code-reviewer ou o security-reviewer a gravam como `decision` com `contradicts` vigente (skill `review`, passo 7), com o autor marcado; a violação que nenhum revisor grava só a leitura do PR pelo dono cobre. Aceito para a v1; reavaliar no piloto.
 - A razão de uma retirada de `contradicts` pelo verifier não fica no grafo. A razão fica na mensagem dele e na coluna de evidência da tabela do PR.
 - O hook `agent-role` protege contra o erro do agente, não contra a má-fé.
 - A spec vive no diretório principal, fora do git. Ela não vai com um clone e some com o diretório.
-- Uma branch `wi-` criada fora do `wt` (`git branch`, `git switch -c`, `wt switch --no-hooks`) não dispara o `post-start`. Se for apagada sem nenhum evento de spec no meio, também não deixa marca: é o residual do congelamento.
+- Uma branch `wi-` criada fora do Claude Code não passa pelo `branch-birth`. Se for apagada antes do próximo `session-start` e sem nenhum evento de spec no meio, também não deixa marca: é o residual do congelamento.
 - O hook decide no instante da checagem. Se o alvo de um link simbólico mudar depois dela e antes da escrita (TOCTOU), o hook não detecta a troca.
 - Depois de reconhecer a spec (marcador válido achado e `specs.dir` casando), uma falha de git ou de leitura (binário `git` ausente, `.git/config` com erro, pasta de spec ilegível ou com mais de 10 000 entradas) nega com `spec-lock-unavailable` em vez de liberar. As chamadas de git de uma execução dividem um orçamento de 6 segundos, menor que o `timeout` de 10 segundos do `hooks.json`; estourado, a razão diz `git timed out` e pede para tentar de novo. Antes do reconhecimento nada muda: sem marcador, sem pasta `wi-<id>__<slug>`, outra ferramenta ou stdin que não é JSON seguem liberando. Também libera o payload do hook acima de 1 MiB: o hook imprime `input-too-large` no stderr e a edição passa, sem avaliar nenhuma regra; é um limite conhecido (a trava é freio, não cofre), pois ninguém grava 1 MiB numa parte de spec por deslize.
 - O marcador inválido (conteúdo inválido, link, FIFO ou arquivo ilegível) é pulado, e a subida continua até o primeiro marcador válido; um marcador válido sob `.omhl/` também é pulado, porque não é raiz de projeto. Só libera, com a linha de erro do primeiro marcador pulado no stderr, quando nenhum marcador válido existe acima, inclusive o quebrado pelo dono fora do Claude Code (terminal, editor, `git checkout`). Um subprojeto aninhado com o marcador quebrado é julgado pelo projeto de cima. O hook não apaga nem corrige marcador; a limpeza dos já plantados é uma faxina manual única.
@@ -273,7 +249,7 @@ O dono aceitou estes bypasses nesta entrega. Nenhum reforço entra agora.
 - As travas protegem contra deslize, não contra agente hostil: o `Bash` fica fora do `spec-lock`, então mudar o `.git` ou o `.omhl.toml` por ele segue possível. Limites conhecidos, um por linha: um `Write` em `.claude/settings*.json` com `"disableAllHooks": true` desliga o hook se o Claude Code recarregar o arquivo na sessão sem pedir permissão (não verificado); um `git` falso num executável gravável antes de `/usr/bin` no `PATH` (baixa probabilidade, não verificado); um repositório bare com worktrees ligadas (`repo.git`), em que o `main_dir` vira o pai de `repo.git` e o layout parece não ser suportado hoje.
 - Com `specs.dir` customizado, um marcador válido plantado na pasta de specs (fora de `.omhl/`) solta a trava só com `Write`: um repositório bare falso (`HEAD`, `objects/`, `refs/`) na pasta de specs ou numa pasta entre ela e a raiz, que o git aceita sem nenhum componente `.git`, e o git quebrado por `[core` em `~/.gitconfig` ou `$XDG_CONFIG_HOME/git/config`, fora do projeto. É o resíduo documentado, com um teste `residual` para cada forma.
 - Os hooks do plugin passam pelo `plugin/hooks/omhl-hook.sh`, que decide por hook o que fazer quando falta o binário. Sem o binário `omhl` no `PATH`, o `spec-lock` bloqueia só num projeto marcado com `.omhl.toml`, e o `agent-role`, o `session-start` e o `subagent-start` saem com `exit 0` em silêncio. O `|| exit 2` do `spec-lock` e o `|| exit 1` do `agent-role`, dentro do script, valem só para o binário presente que falha: pânico ou saída `1` no `spec-lock` bloqueia toda escrita por ferramenta de arquivo, e o `agent-role` segue liberando (a negação normal sai por JSON com saída `0`). O hook encerrado pelo prazo do Claude Code ainda libera (só a saída `2` bloqueia). Duas aproximações conhecidas do ramo sem binário: o `PATH` do hook pode não ter o `omhl` enquanto o do `Bash` tem (a pasta `bin/` do plugin e o `CLAUDE_ENV_FILE` chegam só ao `Bash`); e o marcador é procurado a partir do diretório da sessão, não do arquivo editado, e só por existência (o binário valida tamanho, UTF-8, versão e tenant), então uma edição fora do projeto numa sessão marcada é bloqueada a mais e um projeto marcado vizinho passa a menos.
-- O `spec-lock` acha o checkout pela raiz do `.omhl.toml`, não pela pasta do arquivo. Numa worktree ligada aninhada dentro do diretório principal e sem `.omhl.toml` próprio (branch anterior ao marcador), o marcador achado é o do principal, `linked_worktree` sai falso e o `spec-in-linked-worktree` não dispara. O fluxo do `wt` cria worktrees irmãs, então isso não acontece nele.
+- O `spec-lock` acha o checkout pela raiz do `.omhl.toml`, não pela pasta do arquivo. Numa worktree ligada aninhada dentro do diretório principal e sem `.omhl.toml` próprio (branch anterior ao marcador), o marcador achado é o do principal, `linked_worktree` sai falso e o `spec-in-linked-worktree` não dispara. O caminho padrão `.worktrees/` fica dentro do diretório principal: a worktree recebe o `.omhl.toml` versionado da branch, e só uma branch anterior ao marcador cai neste caso.
 
 ## 11. Diretivas: `kind`, âncora e retirada
 

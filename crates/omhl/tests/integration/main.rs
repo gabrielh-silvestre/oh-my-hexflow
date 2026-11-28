@@ -30,6 +30,7 @@ mod git_ports;
 mod git_probe;
 mod guard;
 mod guideline_retire;
+mod int1_texts;
 mod load;
 mod mechanical_order;
 mod native;

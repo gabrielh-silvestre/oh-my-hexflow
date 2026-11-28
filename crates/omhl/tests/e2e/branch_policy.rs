@@ -364,14 +364,14 @@ fn it_should_write_the_freeze_mark_for_a_branch_named_with_the_declared_format()
 }
 
 #[test]
-fn it_should_mark_the_spec_folder_at_wt_post_start_for_a_branch_named_with_the_declared_format() {
+fn it_should_mark_the_spec_folder_at_branch_created_for_a_branch_named_with_the_declared_format() {
     let repo = Repo::with_branch_table(Some(WORK_FORMAT), &[]);
     repo.seed_spec();
 
     let output = repo
         .text(
             &repo.main,
-            &["hook", "wt-post-start", "--branch", WORK_BRANCH],
+            &["hook", "branch-created", "--branch", WORK_BRANCH],
         )
         .run();
 
