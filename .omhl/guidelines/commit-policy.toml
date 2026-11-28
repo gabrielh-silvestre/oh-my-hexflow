@@ -1,0 +1,2 @@
+kind = "business"
+text = "by default, ask before committing and pushing at the end of a task; a project guideline may state a different policy"

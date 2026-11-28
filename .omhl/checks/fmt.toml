@@ -1,7 +1,7 @@
 concern = "style"
 variant = "format"
 blocking = true
-run = ["cargo", "fmt", "--all", "--", "--check"]
+run = ["env", "-u", "RUSTFLAGS", "-u", "RUSTC_WRAPPER", "-u", "RUSTC_WORKSPACE_WRAPPER", "-u", "CARGO_ENCODED_RUSTFLAGS", "-u", "CARGO_BUILD_RUSTFLAGS", "cargo", "fmt", "--all", "--", "--check"]
 timeout_secs = 10
 expect = [{ exit = 0, outcome = "passed" }]
 when = { event = "before-commit" }

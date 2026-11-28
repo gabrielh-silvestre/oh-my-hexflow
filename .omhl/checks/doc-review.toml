@@ -1,2 +1,2 @@
 blocking = true
-when = { event = "before-pr" }
+when = { event = "before-push" }

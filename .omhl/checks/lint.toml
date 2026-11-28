@@ -2,7 +2,7 @@ concern = "style"
 variant = "lint"
 blocking = true
 after = ["checks.fmt"]
-run = ["cargo", "clippy", "--workspace", "--all-targets", "--profile", "checks", "--locked", "--", "-D", "warnings"]
+run = ["env", "-u", "RUSTFLAGS", "-u", "RUSTC_WRAPPER", "-u", "RUSTC_WORKSPACE_WRAPPER", "-u", "CARGO_ENCODED_RUSTFLAGS", "-u", "CARGO_BUILD_RUSTFLAGS", "cargo", "clippy", "--workspace", "--all-targets", "--profile", "checks", "--locked", "--", "-D", "warnings"]
 timeout_secs = 149
 expect = [{ exit = 0, outcome = "passed" }]
 when = { event = "before-commit" }
