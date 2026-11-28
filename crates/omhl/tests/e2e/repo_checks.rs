@@ -11,7 +11,7 @@ use hexlog::SnapshotKind;
 use serde_json::{Value, json};
 use support::child::{Output, omhl_json};
 use support::delivery_gate::{CI_GREEN, CONFIG_LOOSENING_REVIEW, VERIFY_ANCHORING};
-use support::git::commit_marker;
+use support::git::{commit_marker, git_ok};
 use support::omhl::typed_work_item_data;
 use support::project::Project;
 use support::repo_checks::repo_root;
@@ -220,6 +220,8 @@ fn project_with_repo_config() -> Project {
     let project = Project::new("oh-my-hexflow");
     copy_dir(&repo_root().join(".omhl"), &project.dir().join(".omhl"));
     commit_marker(project.dir());
+    // O workflow.toml do repositório declara a develop como integração, e o gate lê a ref local dela.
+    git_ok(project.dir(), &["branch", "develop"]);
     project_output(&project, &["load"], "");
 
     project
