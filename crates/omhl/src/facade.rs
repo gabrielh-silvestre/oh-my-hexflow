@@ -113,6 +113,8 @@ pub struct Closing<'a> {
 pub enum CloseError {
     Omhl(OmhlError),
     Refused(CloseRefusal),
+    /// O id do nó do PR já existe.
+    RecordExists(SemanticId),
 }
 
 impl From<OmhlError> for CloseError {
@@ -426,6 +428,16 @@ impl<'d> Omhl<'d> {
             requirements,
             review_required,
         )?;
+        if let Some(record) = pull_request {
+            // Lido sob a mesma cabeça que o gate leu: a gravação direta nunca sobrescreve um nó.
+            let exists = self.get(tenant, &record.id)?.is_some();
+            if self.chain_head(tenant)? != report.chain_head {
+                return Err(OmhlError::rule(RuleCode::GateInconsistent, "").into());
+            }
+            if exists {
+                return Err(CloseError::RecordExists(record.id.clone()));
+            }
+        }
         // A recusa é decidida antes de gravar: quem recusa não deixa nenhum registro.
         let forcing = close_verdict(&report, closing.note).map_err(CloseError::Refused)?;
         let request = closing_request(

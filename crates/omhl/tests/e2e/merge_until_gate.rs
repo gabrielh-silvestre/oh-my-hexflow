@@ -456,8 +456,8 @@ fn it_should_pass_the_graphql_variables_as_separate_f_arguments() {
         .find(|call| call.line().starts_with("api graphql"))
         .expect("the required reading runs");
     for pair in [
-        ["-F", "owner=acme"],
-        ["-F", "name=widgets"],
+        ["-f", "owner=acme"],
+        ["-f", "name=widgets"],
         ["-F", "number=42"],
     ] {
         assert!(
@@ -467,6 +467,80 @@ fn it_should_pass_the_graphql_variables_as_separate_f_arguments() {
         );
     }
     assert!(graphql.has("--paginate") && graphql.has("--slurp") && graphql.has("--hostname"));
+}
+
+// EMD-040: o `omhl merge` mantém as credenciais do Enterprise
+
+#[test]
+fn it_should_keep_the_enterprise_tokens_in_the_gh_calls_of_the_merge() {
+    let fixture = MergeFixture::new();
+
+    let _ = fixture
+        .omhl_cmd(&["--format", "json", "merge", W1])
+        .env("GH_ENTERPRISE_TOKEN", "enterprise-token")
+        .run();
+
+    let list = fixture
+        .gh
+        .calls()
+        .into_iter()
+        .find(|call| call.line().starts_with("pr list"))
+        .expect("the lookup runs");
+    assert_eq!(
+        list.env_value("GH_ENTERPRISE_TOKEN").as_deref(),
+        Some("enterprise-token")
+    );
+}
+
+// EMD-041 e EMD-043: a branch padrão lida que o validador recusa
+
+#[test]
+fn it_should_refuse_a_default_branch_that_fails_the_validator_before_any_later_step() {
+    let fixture = MergeFixture::with_checks(Some(PROVIDER_ON), &[("order", LOGGING_CHECK)]);
+    fixture.answer_open_pull_request();
+    fixture.gh.answer_json(
+        "default",
+        &json!({ "defaultBranchRef": { "name": "--upload-pack=x" } }),
+    );
+    let git_bin = fixture.scratch().join("git-bin");
+    fs::create_dir_all(&git_bin).expect("the folder is created");
+    let git_log = fixture.scratch().join("git.log");
+    let found = std::process::Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .expect("sh runs");
+    let real = String::from_utf8_lossy(&found.stdout).trim().to_owned();
+    support::git::write_executable(
+        &git_bin.join("git"),
+        &format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"{}\"\nexec \"{real}\" \"$@\"\n",
+            git_log.display()
+        ),
+    );
+    let path = format!(
+        "{}:{}",
+        fixture.gh.bin().display(),
+        support::merge::path_with(&git_bin)
+    );
+    let before = fixture.chain();
+
+    let merged = fixture
+        .omhl_cmd_with_path(&["--format", "json", "merge", W1], &path)
+        .run();
+
+    assert_eq!(code_of(&merged), json!("probe-failed"));
+    assert!(
+        !fixture
+            .gh
+            .order()
+            .iter()
+            .any(|line| line.starts_with("check"))
+    );
+    assert!(!ci_read(&fixture));
+    assert!(!fixture.gh.merge_called());
+    assert_eq!(fixture.chain(), before);
+    let git_calls = fs::read_to_string(&git_log).unwrap_or_default();
+    assert!(!git_calls.contains("--upload-pack=x"), "{git_calls}");
 }
 
 // CA-023: a busca do PR pela branch

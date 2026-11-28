@@ -116,6 +116,26 @@ pub struct ForkParent {
     pub parent: Option<String>,
 }
 
+impl std::fmt::Display for ProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProviderError::CliMissing => f.write_str("the provider CLI is not on the PATH"),
+            ProviderError::NotAuthenticated => f.write_str("the provider CLI is not logged in"),
+            ProviderError::CliTooOld => f.write_str("the provider CLI is too old"),
+            ProviderError::Timeout => f.write_str("the provider CLI timed out"),
+            ProviderError::Failed { stderr } => {
+                write!(f, "the provider CLI failed: {}", stderr.trim())
+            }
+            ProviderError::Malformed => {
+                f.write_str("the provider answered with an unexpected shape")
+            }
+            ProviderError::HeadMoved { expected, seen } => {
+                write!(f, "the head commit moved from {expected} to {seen}")
+            }
+        }
+    }
+}
+
 pub trait Provider {
     fn preflight(&self) -> Result<(), ProviderError>;
     fn default_branch(&self, repo: &RepoRef) -> Result<String, ProviderError>;

@@ -587,8 +587,8 @@ fn it_should_ask_graphql_for_the_required_flag_with_the_host_and_the_variables()
         ])
     );
     for pair in [
-        ["-F", "owner=acme"],
-        ["-F", "name=widgets"],
+        ["-f", "owner=acme"],
+        ["-f", "name=widgets"],
         ["-F", "number=42"],
     ] {
         assert!(
@@ -605,6 +605,57 @@ fn it_should_ask_graphql_for_the_required_flag_with_the_host_and_the_variables()
         "{query}"
     );
     assert!(query.contains("isRequired(pullRequestNumber"), "{query}");
+}
+
+fn graphql_argv_for(owner: &str, name: &str) -> Vec<String> {
+    let repo = RepoRef {
+        host: "github.com".to_owned(),
+        path: vec![owner.to_owned(), name.to_owned()],
+    };
+    let (runner, seen) = Scripted::new(&[]);
+    let _ = gh(&runner).classify_red(&repo, 42, HEAD);
+
+    argvs(&seen).remove(0)
+}
+
+fn has_pair(argv: &[String], flag: &str, value: &str) -> bool {
+    argv.windows(2)
+        .any(|window| window[0] == flag && window[1] == value)
+}
+
+#[test]
+fn it_should_pass_an_all_digit_owner_and_repo_as_raw_strings() {
+    let argv = graphql_argv_for("123", "456");
+
+    assert!(has_pair(&argv, "-f", "owner=123"), "{argv:?}");
+    assert!(has_pair(&argv, "-f", "name=456"), "{argv:?}");
+}
+
+#[test]
+fn it_should_pass_a_repo_named_true_as_a_raw_string() {
+    let argv = graphql_argv_for("acme", "true");
+
+    assert!(has_pair(&argv, "-f", "name=true"), "{argv:?}");
+}
+
+#[test]
+fn it_should_pass_an_owner_starting_with_at_as_a_raw_string_that_reads_no_file() {
+    let argv = graphql_argv_for("@etc", "widgets");
+
+    assert!(has_pair(&argv, "-f", "owner=@etc"), "{argv:?}");
+    assert!(!has_pair(&argv, "-F", "owner=@etc"), "{argv:?}");
+}
+
+#[test]
+fn it_should_answer_malformed_for_a_default_branch_starting_with_a_dash() {
+    let (runner, _seen) = Canned::new(report(
+        "{\"defaultBranchRef\":{\"name\":\"--upload-pack=x\"}}\n",
+        false,
+    ));
+
+    let branch = read(&runner);
+
+    assert!(matches!(branch, Err(ProviderError::Malformed)));
 }
 
 #[test]

@@ -1026,6 +1026,14 @@ impl From<CloseError> for AppError {
         match error {
             CloseError::Omhl(error) => AppError::from(error),
             CloseError::Refused(refusal) => AppError::close_refused(refusal),
+            CloseError::RecordExists(id) => AppError::merge_refusal(
+                "pull-request-record-exists",
+                format!(
+                    "a node already has the id {}, so the pull request record would overwrite it",
+                    id.as_str()
+                ),
+                "ask the owner: omhl merge never overwrites a node".to_owned(),
+            ),
         }
     }
 }

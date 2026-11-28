@@ -806,3 +806,26 @@ fn it_should_give_each_refusal_family_a_json_error_with_steps_and_next() {
     );
     assert!(error["context"]["next"].is_string(), "{error}");
 }
+
+// Revisão de código: a recusa de um merge que estourou o limite é texto legível
+
+#[test]
+fn it_should_refuse_a_timed_out_merge_call_with_a_readable_message() {
+    let fixture = MergeFixture::new();
+    std::fs::remove_file(fixture.scratch().join("gh-answers/merged")).expect("the flip is removed");
+    // o limite do merge é a constante de 30 s; o gh dorme além dele
+    fixture.gh.sleep("merge", 40);
+
+    let merged = fixture
+        .omhl_cmd(&["--format", "json", "merge", W1])
+        .deadline(std::time::Duration::from_secs(90))
+        .run();
+
+    let error = error_of(&merged);
+    assert_eq!(error["code"], json!("merge-refused"));
+    let message = error["message"].as_str().unwrap_or_default().to_owned();
+    assert!(message.contains("timed out"), "{message}");
+    for debug in ["{", "Failed {", "Timeout"] {
+        assert!(!message.contains(debug), "{debug} in {message}");
+    }
+}

@@ -117,15 +117,7 @@ O `docs/mechanical-gates.md` descreve o [programa gravado na attestation](docs/m
 
 ## Worktrunk neste repositório
 
-O plugin não usa o Worktrunk: ele ensina `git worktree add -b` e `git switch -c`. Este repositório mantém uma configuração própria do Worktrunk em `.config/wt.toml`:
-
-```toml
-[pre-switch]
-omhl-gate = "case {{ branch }} in develop|main) exit 0;; esac; omhl gate-worktree --branch {{ branch }}"
-
-[post-start]
-omhl-freeze = "case {{ branch }} in develop|main) exit 0;; esac; omhl hook branch-created --branch {{ branch }}"
-```
+O plugin não usa o Worktrunk: ele ensina `git worktree add -b` e `git switch -c`. Este repositório mantém uma configuração própria do Worktrunk em [`.config/wt.toml`](.config/wt.toml), que é a fonte dos comandos.
 
 - O `pre-switch` roda o portão antes de a branch e a worktree existirem num `wt switch -c`; uma saída não zero aborta. O `post-start` chama `omhl hook branch-created --branch {{ branch }}` em segundo plano, quando a worktree nasce. O `{{ branch }}` vai sem aspas (o `wt` já o escapa) e o `case` libera `develop` e `main`.
 - O `wt` guarda a aprovação de um comando de projeto pelo texto exato do comando. Depois de mudar qualquer comando do `.config/wt.toml`, o dono roda `wt config approvals add` e confere com `wt config approvals list`; sem a aprovação e sem terminal, todo `wt switch` aborta com `Cannot prompt for approval`. O agente nunca usa `-y` nem `--no-hooks` para contornar isso: ele para e pede ao dono.

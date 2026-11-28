@@ -388,7 +388,7 @@ impl Engine<'_> {
         let read = provider.state(&repo, pr.number).map_err(failure)?;
         let call_failure = match call {
             Some(Ok(call)) if !call.success => Some(call.stderr),
-            Some(Err(error)) => Some(format!("{error:?}")),
+            Some(Err(error)) => Some(error.to_string()),
             _ => None,
         };
         match (read.state, call_failure) {
@@ -415,17 +415,6 @@ impl Engine<'_> {
 
         progress.current = "close";
         let id = pull_request_id(work_item, provider_config.name, pr.number);
-        // shortcut: lido antes da leitura do fechamento, não dentro dela; mover para a facade se houver gravação concorrente.
-        if self.omhl.get(&self.tenant, &id)?.is_some() {
-            return Err(refusal(
-                "pull-request-record-exists",
-                format!(
-                    "a node already has the id {}, so the pull request record would overwrite it",
-                    id.as_str()
-                ),
-                "ask the owner: omhl merge never overwrites a node",
-            ));
-        }
         let record = PullRequestRecord {
             id: id.clone(),
             provider: provider_config.name.as_str(),

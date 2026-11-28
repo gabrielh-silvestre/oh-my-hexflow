@@ -99,7 +99,7 @@ git worktree add -b feat/wi-x__login .worktrees/feat-wi-x__login develop
 - O caminho é `<worktree.dir>/<branch com "/" trocado por "-">`; o `worktree.dir` vem do `.omhl/workflow.toml` e o padrão é `.worktrees`, dentro do repositório. O plugin garante a linha da pasta no `info/exclude`, então a worktree não aparece no `git status` do checkout principal.
 - Sem worktree, `git switch -c <branch>` cria a branch no checkout atual.
 - O portão de criação (quando o projeto o liga), a marca de nascimento e o aviso de push agem sobre esses comandos rodados pelo `Bash` do Claude Code, e sobre nenhum outro. Uma branch criada no terminal recebe a marca pela rede do `session-start`.
-- `omhl hook branch-created --branch <branch>` grava a marca de congelamento em cada pasta `wi-<id>__*` do work item da branch (seção 7) e garante a linha do `info/exclude`. Uma branch que não é de work item devolve `marked` e `already` vazios; sem `.omhl.toml` acima, sai 0 em silêncio. Quem cria a branch fora do Claude Code pode chamá-lo de uma configuração própria; a deste repositório está no [CONTRIBUTING.md](../CONTRIBUTING.md).
+- `omhl hook branch-created --branch <branch>` grava a marca de congelamento em cada pasta `wi-<id>__*` do work item da branch (seção 7) e garante a linha do `info/exclude`. Numa branch que não é de work item ele não grava nada e sai 0; sem `.omhl.toml` acima, sai 0 em silêncio. Quem cria a branch fora do Claude Code pode chamá-lo de uma configuração própria; a deste repositório está no [CONTRIBUTING.md](../CONTRIBUTING.md).
 - Instale o `omhl` fora de qualquer worktree (veja `binary-in-worktree` na seção 5 de [mechanical-gates.md](mechanical-gates.md)), senão um `git worktree remove` o apaga.
 
 ## 6. A spec

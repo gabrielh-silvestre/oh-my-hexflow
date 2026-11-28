@@ -10,6 +10,7 @@ use crate::provider::{
     PullRequest, RedCheck, RepoRef, Required, StateRead, Strategy,
 };
 use crate::runner::{CommandRunner, RunErrorKind, RunReport, RunSpec};
+use crate::workflow::branch_policy::is_valid_branch_name;
 
 pub const GH_PROGRAM: &str = "gh";
 
@@ -17,6 +18,8 @@ const MAX_STREAM_BYTES: u64 = 1024 * 1024;
 
 /// Variáveis que redirecionam ou colorem o `gh`; o `GH_TOKEN` fica, porque é a credencial da pessoa.
 const ISOLATED_ENV: [&str; 4] = ["GH_REPO", "GH_HOST", "GH_FORCE_TTY", "CLICOLOR_FORCE"];
+
+const ENTERPRISE_TOKENS: [&str; 2] = ["GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
 
 const PULL_REQUEST_FIELDS: &str =
     "number,state,headRefOid,isCrossRepository,baseRefName,autoMergeRequest";
@@ -29,6 +32,7 @@ pub struct GhProvider<'r> {
     runner: &'r dyn CommandRunner,
     host: String,
     timeout: Duration,
+    extra_remove: Vec<String>,
 }
 
 impl<'r> GhProvider<'r> {
@@ -37,7 +41,16 @@ impl<'r> GhProvider<'r> {
             runner,
             host: host.to_owned(),
             timeout,
+            extra_remove: Vec::new(),
         }
+    }
+
+    /// Leitor sem pedido de ninguém: o host vem do `workflow.toml` versionado e o token Enterprise vale para qualquer host.
+    pub fn unattended(mut self) -> GhProvider<'r> {
+        if self.host != "github.com" {
+            self.extra_remove = ENTERPRISE_TOKENS.map(str::to_owned).to_vec();
+        }
+        self
     }
 
     fn slug(&self, repo: &RepoRef) -> String {
@@ -55,7 +68,11 @@ impl<'r> GhProvider<'r> {
             cwd,
             timeout: self.timeout,
             env_set: vec![("GH_PROMPT_DISABLED".to_owned(), "1".to_owned())],
-            env_remove: ISOLATED_ENV.map(str::to_owned).to_vec(),
+            env_remove: ISOLATED_ENV
+                .map(str::to_owned)
+                .into_iter()
+                .chain(self.extra_remove.iter().cloned())
+                .collect(),
             max_stream_bytes: MAX_STREAM_BYTES,
         };
         let report = self.runner.run(&spec).map_err(|error| match error.kind {
@@ -197,7 +214,7 @@ impl Provider for GhProvider<'_> {
         value
             .pointer("/defaultBranchRef/name")
             .and_then(Value::as_str)
-            .filter(|name| !name.is_empty())
+            .filter(|name| is_valid_branch_name(name))
             .map(str::to_owned)
             .ok_or(ProviderError::Malformed)
     }
@@ -272,9 +289,9 @@ impl Provider for GhProvider<'_> {
             "--slurp",
             "--hostname",
             &self.host,
-            "-F",
+            "-f",
             &owner,
-            "-F",
+            "-f",
             &name,
             "-F",
             &number,

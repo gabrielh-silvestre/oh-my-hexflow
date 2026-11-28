@@ -473,3 +473,148 @@ fn it_should_let_gh_pr_view_pass_with_the_integration_on() {
 
     assert_eq!(outcome.deny, None);
 }
+
+// EMD-040 e EMD-042: os leitores sem pedido não levam as credenciais do Enterprise
+
+const GHE_ON: &str = "version = 1\n\n[provider]\nname = \"github\"\nhost = \"ghe.example.com\"\n";
+const ENTERPRISE_TOKENS: [&str; 2] = ["GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
+const KEPT_TOKENS: [&str; 2] = ["GH_TOKEN", "GITHUB_TOKEN"];
+
+fn ghe_repo() -> TempDir {
+    let dir = repo(Some(GHE_ON));
+    git_ok(
+        dir.path(),
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            "https://ghe.example.com/acme/widgets.git",
+        ],
+    );
+
+    dir
+}
+
+fn only_call(received: &Receiver<RunSpec>) -> RunSpec {
+    let specs = calls(received);
+    assert_eq!(specs.len(), 1, "one gh call");
+
+    specs[0].clone()
+}
+
+fn removed(spec: &RunSpec, name: &str) -> bool {
+    spec.env_remove.iter().any(|removed| removed == name)
+}
+
+#[test]
+fn it_should_drop_the_enterprise_tokens_from_the_push_warning_on_another_host() {
+    let dir = ghe_repo();
+    let (runner, received) = gh_answering(trunk());
+
+    guard(dir.path(), "git push origin trunk", &runner);
+
+    let spec = only_call(&received);
+    assert!(
+        ENTERPRISE_TOKENS.iter().all(|name| removed(&spec, name)),
+        "{:?}",
+        spec.env_remove
+    );
+    assert!(
+        !KEPT_TOKENS.iter().any(|name| removed(&spec, name)),
+        "{:?}",
+        spec.env_remove
+    );
+}
+
+#[test]
+fn it_should_drop_the_enterprise_tokens_from_the_mcp_write_warning_on_another_host() {
+    let dir = ghe_repo();
+    let (runner, received) = gh_answering(trunk());
+
+    write(dir.path(), "acme", Some("trunk"), &runner);
+
+    let spec = only_call(&received);
+    assert!(
+        ENTERPRISE_TOKENS.iter().all(|name| removed(&spec, name)),
+        "{:?}",
+        spec.env_remove
+    );
+    assert!(
+        !KEPT_TOKENS.iter().any(|name| removed(&spec, name)),
+        "{:?}",
+        spec.env_remove
+    );
+}
+
+#[test]
+fn it_should_keep_the_push_warning_environment_of_today_on_github_com() {
+    let dir = repo(Some(PROVIDER_ON));
+    let (runner, received) = gh_answering(trunk());
+
+    guard(dir.path(), "git push origin trunk", &runner);
+
+    let spec = only_call(&received);
+    assert!(
+        !ENTERPRISE_TOKENS.iter().any(|name| removed(&spec, name)),
+        "{:?}",
+        spec.env_remove
+    );
+    assert!(
+        !KEPT_TOKENS.iter().any(|name| removed(&spec, name)),
+        "{:?}",
+        spec.env_remove
+    );
+}
+
+#[test]
+fn it_should_keep_the_mcp_write_warning_environment_of_today_on_github_com() {
+    let dir = repo(Some(PROVIDER_ON));
+    let (runner, received) = gh_answering(trunk());
+
+    write(dir.path(), "acme", Some("trunk"), &runner);
+
+    let spec = only_call(&received);
+    assert!(
+        !ENTERPRISE_TOKENS.iter().any(|name| removed(&spec, name)),
+        "{:?}",
+        spec.env_remove
+    );
+}
+
+// EMD-041 e EMD-042: uma branch padrão que o validador recusa não é lida
+
+fn dashed() -> Result<RunReport, RunError> {
+    report(
+        0,
+        "{\"defaultBranchRef\":{\"name\":\"--upload-pack=x\"}}\n",
+        false,
+    )
+}
+
+#[test]
+fn it_should_warn_that_the_default_branch_could_not_be_read_for_a_dashed_name_on_push() {
+    let dir = repo(Some(PROVIDER_ON));
+    let (runner, _received) = gh_answering(dashed());
+
+    let outcome = guard(dir.path(), "git push origin trunk", &runner);
+
+    assert!(
+        context_text(&outcome).contains(UNREAD),
+        "{}",
+        context_text(&outcome)
+    );
+}
+
+#[test]
+fn it_should_warn_that_the_default_branch_could_not_be_read_for_a_dashed_name_on_mcp_write() {
+    let dir = repo(Some(PROVIDER_ON));
+    let (runner, _received) = gh_answering(dashed());
+
+    let outcome = write(dir.path(), "acme", Some("trunk"), &runner);
+
+    assert!(
+        context_text(&outcome).contains(UNREAD),
+        "{}",
+        context_text(&outcome)
+    );
+}

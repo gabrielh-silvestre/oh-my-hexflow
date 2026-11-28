@@ -20,3 +20,16 @@ pub fn build<'r>(
         ProviderName::Github => Box::new(GhProvider::new(runner, &config.host, timeout)),
     }
 }
+
+/// Os leitores da branch padrão que rodam sem pedido tiram também os tokens Enterprise fora do `github.com`.
+pub fn build_unattended<'r>(
+    config: &ProviderConfig,
+    runner: &'r dyn CommandRunner,
+    timeout: Duration,
+) -> Box<dyn Provider + 'r> {
+    match config.name {
+        ProviderName::Github => {
+            Box::new(GhProvider::new(runner, &config.host, timeout).unattended())
+        }
+    }
+}

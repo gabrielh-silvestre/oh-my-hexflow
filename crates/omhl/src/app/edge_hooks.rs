@@ -10,7 +10,7 @@ use super::gate_worktree::{self, Decision, REFUSAL_CODES};
 use super::heal_branch_marks;
 use super::runtime::Runtime;
 use crate::ports::git::GitProbe;
-use crate::ports::provider::build;
+use crate::ports::provider::build_unattended;
 use crate::ports::workflow::read_workflow;
 use crate::project::marker::find_marker;
 use crate::project::{ClaudeEnv, Env};
@@ -276,7 +276,7 @@ fn read_default_branch(
     gh: &ProviderAccess<'_>,
 ) -> Result<String, ()> {
     let repo = origin?;
-    build(config, gh.runner, gh.timeout)
+    build_unattended(config, gh.runner, gh.timeout)
         .default_branch(&repo)
         .map_err(|_| ())
 }
