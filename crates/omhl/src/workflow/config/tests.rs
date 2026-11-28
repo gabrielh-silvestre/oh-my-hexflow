@@ -4,9 +4,10 @@ use std::path::Path;
 use crate::project::ProjectError;
 use crate::test_support::delivery_gate::{CI_GREEN, VERIFY_ANCHORING};
 use crate::test_support::omhl::RUN_TESTS;
+use crate::workflow::branch_policy::{BranchConfig, BranchFormat, ExceptionMode, ExceptionRule};
 use crate::workflow::config::{
     InterviewConfig, InterviewWeights, PromotionConfig, RequireAtom, SpecsConfig, WorkflowConfig,
-    native_run_digest, parse_workflow, raw_native_run_digest,
+    native_run_digest, parse_evaluated_workflow, parse_workflow, raw_native_run_digest,
 };
 
 const CONFIG_LOOSENING_REVIEW: &str = "checks.config-loosening-review";
@@ -1021,4 +1022,337 @@ fn it_should_refuse_a_repeated_interview_table() {
     ]);
 
     assert_eq!(refusal(&text).code, ERROR_CODE);
+}
+
+// Tabela [branch] (brn1 CA-001)
+
+fn with_branch(rows: &[&str]) -> String {
+    let mut all = vec!["version = 1"];
+    all.extend_from_slice(rows);
+    lines(&all)
+}
+
+fn assert_refused_with_position(error: &ProjectError) {
+    assert_eq!(error.code, ERROR_CODE);
+    assert!(
+        error.message.contains(WORKFLOW_PATH),
+        "the message names the file path: {}",
+        error.message
+    );
+    assert!(
+        error.message.contains("line ") && error.message.contains(", column "),
+        "the message carries a line and a column: {}",
+        error.message
+    );
+}
+
+fn toml_string(raw: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in raw.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            c if c.is_control() => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn integration_text(name: &str) -> String {
+    with_branch(&["[branch]", &format!("integration = {}", toml_string(name))])
+}
+
+#[test]
+fn it_should_accept_every_branch_key_into_the_expected_fields() {
+    let text = with_branch(&[
+        "[branch]",
+        "format = \"work/<id>/<type>/<slug>\"",
+        "integration = \"develop\"",
+        "[[branch.exception]]",
+        "pattern = \"poc/*\"",
+        "mode = \"skip\"",
+        "[[branch.exception]]",
+        "pattern = \"develop\"",
+        "mode = \"dry-run-with-mark\"",
+    ]);
+
+    let config = accepted(&text);
+
+    assert_eq!(
+        config.branch,
+        BranchConfig {
+            format: BranchFormat::parse("work/<id>/<type>/<slug>").expect("valid format"),
+            integration: Some("develop".to_owned()),
+            exceptions: vec![
+                ExceptionRule {
+                    pattern: "poc/*".to_owned(),
+                    mode: ExceptionMode::Skip,
+                },
+                ExceptionRule {
+                    pattern: "develop".to_owned(),
+                    mode: ExceptionMode::DryRunWithMark,
+                },
+            ],
+        }
+    );
+}
+
+#[test]
+fn it_should_accept_the_dry_run_mode() {
+    let text = with_branch(&[
+        "[[branch.exception]]",
+        "pattern = \"spike/*\"",
+        "mode = \"dry-run\"",
+    ]);
+
+    let config = accepted(&text);
+
+    assert_eq!(config.branch.exceptions[0].mode, ExceptionMode::DryRun);
+}
+
+#[test]
+fn it_should_default_the_branch_policy_when_the_table_is_absent() {
+    let config = accepted("version = 1\n");
+
+    assert_eq!(config.branch, BranchConfig::default());
+}
+
+#[test]
+fn it_should_refuse_an_unknown_key_inside_branch_with_its_position() {
+    let text = with_branch(&["[branch]", "colour = true"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_the_mark_key_inside_branch_with_its_position() {
+    let text = with_branch(&["[branch]", "mark = true"]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 3);
+}
+
+#[test]
+fn it_should_refuse_an_unknown_key_inside_an_exception_with_its_position() {
+    let text = with_branch(&[
+        "[[branch.exception]]",
+        "pattern = \"poc/*\"",
+        "mode = \"skip\"",
+        "colour = true",
+    ]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 5);
+}
+
+#[test]
+fn it_should_refuse_the_mark_key_inside_an_exception_with_its_position() {
+    let text = with_branch(&[
+        "[[branch.exception]]",
+        "pattern = \"poc/*\"",
+        "mode = \"skip\"",
+        "mark = true",
+    ]);
+
+    let error = refusal(&text);
+
+    assert_refused_at_line(&error, 5);
+}
+
+#[test]
+fn it_should_refuse_an_exception_without_mode() {
+    let text = with_branch(&["[[branch.exception]]", "pattern = \"poc/*\""]);
+
+    let error = refusal(&text);
+
+    assert_refused_with_position(&error);
+}
+
+#[test]
+fn it_should_refuse_an_exception_without_pattern() {
+    let text = with_branch(&["[[branch.exception]]", "mode = \"skip\""]);
+
+    let error = refusal(&text);
+
+    assert_refused_with_position(&error);
+}
+
+#[test]
+fn it_should_refuse_a_mode_outside_the_three_values() {
+    let text = with_branch(&[
+        "[[branch.exception]]",
+        "pattern = \"poc/*\"",
+        "mode = \"mark\"",
+    ]);
+
+    let error = refusal(&text);
+
+    assert_refused_with_position(&error);
+}
+
+#[test]
+fn it_should_refuse_a_format_that_is_not_a_valid_template() {
+    let text = with_branch(&["[branch]", "format = \"<type>/<id>-<slug>\""]);
+
+    let error = refusal(&text);
+
+    assert_refused_with_position(&error);
+}
+
+#[test]
+fn it_should_refuse_a_wrong_type_for_each_branch_key() {
+    let texts = [
+        with_branch(&["[branch]", "format = 1"]),
+        with_branch(&["[branch]", "integration = 1"]),
+        with_branch(&["[[branch.exception]]", "pattern = 1", "mode = \"skip\""]),
+        with_branch(&["[[branch.exception]]", "pattern = \"poc/*\"", "mode = 1"]),
+    ];
+
+    let accepted_by_mistake: Vec<&String> = texts
+        .iter()
+        .filter(|text| !matches!(parse(text), Err(error) if error.code == ERROR_CODE))
+        .collect();
+
+    assert!(
+        accepted_by_mistake.is_empty(),
+        "not refused: {accepted_by_mistake:?}"
+    );
+}
+
+#[test]
+fn it_should_refuse_an_exception_that_is_not_a_list() {
+    let text = with_branch(&[
+        "[branch.exception]",
+        "pattern = \"poc/*\"",
+        "mode = \"skip\"",
+    ]);
+
+    let error = refusal(&text);
+
+    assert_refused_with_position(&error);
+}
+
+#[test]
+fn it_should_not_echo_the_file_content_in_a_branch_refusal() {
+    let refused = [
+        with_branch(&["[branch]", &format!("{CANARY} = true")]),
+        with_branch(&["[branch]", &format!("format = \"<{CANARY}>\"")]),
+        with_branch(&["[branch]", &format!("integration = \"{CANARY} x\"")]),
+        with_branch(&[
+            "[[branch.exception]]",
+            "pattern = \"poc/*\"",
+            &format!("mode = \"{CANARY}\""),
+        ]),
+    ];
+
+    let messages: Vec<String> = refused.iter().map(|text| refusal(text).message).collect();
+
+    let leaked: Vec<&String> = messages
+        .iter()
+        .filter(|message| message.contains(CANARY))
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "messages repeat the file content: {leaked:?}"
+    );
+}
+
+#[test]
+fn it_should_refuse_an_invalid_branch_table_in_the_lenient_evaluated_parse() {
+    let text = with_branch(&["[branch]", "mark = true"]);
+
+    let error = parse_evaluated_workflow(workflow_path(), text.as_bytes())
+        .expect_err("the evaluated copy is refused");
+
+    assert_eq!(error.code, ERROR_CODE);
+}
+
+// branch.integration (brn1 CA-013, EMD-061)
+
+#[test]
+fn it_should_refuse_each_invalid_integration_name_with_its_position() {
+    let names = [
+        "",
+        "-x",
+        "/a",
+        "refs/heads/x",
+        "HEAD",
+        "a..b",
+        "a//b",
+        "a@{b",
+        "@",
+        "a/",
+        "a.",
+        ".a",
+        "a/.b",
+        "a.lock",
+        "a.lock/b",
+        "a b",
+        "a\u{1}b",
+        "a\u{7f}b",
+        "a~b",
+        "a^b",
+        "a:b",
+        "a?b",
+        "a*b",
+        "a[b",
+        "a\\b",
+    ];
+
+    let not_refused: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|name| {
+            !matches!(parse(&integration_text(name)), Err(error)
+                if error.code == ERROR_CODE
+                    && error.message.contains("line ")
+                    && error.message.contains(", column "))
+        })
+        .collect();
+
+    assert!(not_refused.is_empty(), "not refused: {not_refused:?}");
+}
+
+#[test]
+fn it_should_accept_an_integration_equal_to_an_exception_pattern() {
+    let text = with_branch(&[
+        "[branch]",
+        "integration = \"develop\"",
+        "[[branch.exception]]",
+        "pattern = \"develop\"",
+        "mode = \"dry-run-with-mark\"",
+    ]);
+
+    let config = accepted(&text);
+
+    assert_eq!(config.branch.integration.as_deref(), Some("develop"));
+}
+
+#[test]
+fn it_should_accept_main_as_the_integration() {
+    let config = accepted(&integration_text("main"));
+
+    assert_eq!(config.branch.integration.as_deref(), Some("main"));
+}
+
+#[test]
+fn it_should_refuse_an_integration_of_201_characters() {
+    let error = refusal(&integration_text(&"a".repeat(201)));
+
+    assert_refused_with_position(&error);
+}
+
+#[test]
+fn it_should_accept_an_integration_of_200_characters() {
+    let name = "a".repeat(200);
+
+    let config = accepted(&integration_text(&name));
+
+    assert_eq!(config.branch.integration, Some(name));
 }

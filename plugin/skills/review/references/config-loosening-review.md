@@ -40,7 +40,7 @@ A type the project added (a prefix not in the default table) is judged at every 
 | `specs.cite_business_premise` | it goes from true to false (cite_business_premise going from true to false) |
 | `native.checks` | an item goes from on to off (native activation item going from on to off) |
 | `prefix` and `require` | an atom leaves the closure of a type, as in the tables above |
-| a declared branch format | it changes |
+| `[branch]` | as in the paragraphs on `branch.exception`, `branch.integration` and `branch.format` below |
 | the CI-on-merge requirement and the git hooks declaration | either is removed |
 | `specs.dir` | outside this review: a separate guard already protects it |
 | `promotion.min_work_items` | outside this review |
@@ -52,6 +52,14 @@ The `[interview]` table (threshold and weights) is outside the brake: any edit t
 In `[native.run]`, removing the native command loosens: the native goes back to being an instruction, attested by hand.
 
 In `[native.run]`, changing the command goes to the reviewer, who judges whether the new one requires less than the old one.
+
+The modes of `branch.exception`, from the most demanding to the least, are `dry-run-with-mark, dry-run, skip` (premises.brn1-exception-mode-order).
+
+- `branch.exception` loosens, and only the owner may do it, when the PR declares an exception, widens a `pattern` (from a name to a prefix, or to a shorter prefix) or moves a `mode` toward `skip`.
+- `branch.exception` tightens, and the agent may do it, when the PR moves a `mode` toward `dry-run-with-mark`, narrows a `pattern` or removes an exception.
+- `branch.integration`: declaring or changing it needs the explicit request or the approval of the owner; flag a change that the PR does not cite.
+
+`branch.format` direction comes from the PR diff of `.omhl/workflow.toml`, base side against head side: a key absent at the base and present at the head is the first declaration, which the agent may make; a key present at the base and absent at the head is the removal, which the agent may make; a key on both sides with a different template is the swap of a declared format, which only the owner may make, so flag a swap the PR does not attribute to the owner; an edit that keeps the template equal is no change. Each PR is judged by its own diff, so removing the format in one PR and declaring another in the next is an accepted limit.
 
 ### Check files
 

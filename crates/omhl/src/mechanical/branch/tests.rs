@@ -1,8 +1,9 @@
 use crate::mechanical::branch::{
-    BranchError, BranchKind, HeadFacts, PushError, PushPlan, branch_prefix, classify,
-    current_branch, plan_push,
+    BranchError, BranchKind, HeadFacts, PushError, PushPlan, classify, current_branch, integration,
+    plan_push,
 };
 use crate::test_support::sid;
+use crate::workflow::branch_policy::{BranchConfig, BranchFormat, ExceptionMode, ExceptionRule};
 
 const HEAD_SHA: &str = "1111111111111111111111111111111111111111";
 const OTHER_SHA: &str = "2222222222222222222222222222222222222222";
@@ -21,8 +22,24 @@ fn push_line(lref: &str, lsha: &str, rref: &str, rsha: &str) -> String {
     format!("{lref} {lsha} {rref} {rsha}\n")
 }
 
-fn work_item(id_text: &str) -> BranchKind {
-    BranchKind::WorkItem(sid(id_text))
+fn work_item(id_text: &str, kind: &str) -> BranchKind {
+    BranchKind::WorkItem {
+        id: sid(id_text),
+        kind: Some(kind.to_owned()),
+    }
+}
+
+fn policy_with(rules: &[(&str, ExceptionMode)]) -> BranchConfig {
+    BranchConfig {
+        exceptions: rules
+            .iter()
+            .map(|(pattern, mode)| ExceptionRule {
+                pattern: (*pattern).to_owned(),
+                mode: *mode,
+            })
+            .collect(),
+        ..BranchConfig::default()
+    }
 }
 
 #[test]
@@ -104,90 +121,6 @@ fn it_should_report_ambiguity_when_no_branch_contains_head() {
 }
 
 #[test]
-fn it_should_classify_main_as_main() {
-    let kind = classify("main");
-
-    assert_eq!(kind, BranchKind::Main);
-}
-
-#[test]
-fn it_should_classify_develop_as_develop() {
-    let kind = classify("develop");
-
-    assert_eq!(kind, BranchKind::Develop);
-}
-
-#[test]
-fn it_should_classify_a_type_slash_wi_id_double_underscore_slug_branch_as_a_work_item() {
-    let kind = classify("feat/wi-w1__x");
-
-    assert_eq!(kind, work_item("work-items.w1"));
-}
-
-#[test]
-fn it_should_take_the_work_item_id_up_to_the_first_double_underscore() {
-    let with_extra_slug = classify("feat/wi-w1__x__y");
-    let front = classify("feat/wi-mg0__s5");
-
-    assert_eq!(with_extra_slug, work_item("work-items.w1"));
-    assert_eq!(front, work_item("work-items.mg0"));
-}
-
-#[test]
-fn it_should_classify_a_work_item_branch_without_a_slug_as_other() {
-    let without_separator = classify("feat/wi-w1");
-    let with_empty_slug = classify("feat/wi-w1__");
-
-    assert_eq!(without_separator, BranchKind::Other);
-    assert_eq!(with_empty_slug, BranchKind::Other);
-}
-
-#[test]
-fn it_should_classify_a_branch_without_a_type_prefix_as_other() {
-    let kind = classify("wi-w1__x");
-
-    assert_eq!(kind, BranchKind::Other);
-}
-
-#[test]
-fn it_should_classify_a_branch_whose_id_is_not_a_valid_name_as_other() {
-    let too_long = format!("feat/wi-{}__x", "a".repeat(64));
-    let names = [
-        "feat/wi-W1__x",
-        "feat/wi-w.1__x",
-        "feat/wi-w_1__x",
-        "feat/wi-__x",
-        "feat/wi--w1__x",
-        too_long.as_str(),
-    ];
-
-    let kinds: Vec<_> = names.iter().map(|name| classify(name)).collect();
-
-    assert_eq!(kinds, vec![BranchKind::Other; 6]);
-}
-
-#[test]
-fn it_should_classify_a_branch_with_nested_prefixes_as_other() {
-    let kind = classify("a/b/wi-w1__x");
-
-    assert_eq!(kind, BranchKind::Other);
-}
-
-#[test]
-fn it_should_not_treat_main_fix_as_main() {
-    let kind = classify("main-fix");
-
-    assert_eq!(kind, BranchKind::Other);
-}
-
-#[test]
-fn it_should_not_treat_develop2_as_develop() {
-    let kind = classify("develop2");
-
-    assert_eq!(kind, BranchKind::Other);
-}
-
-#[test]
 fn it_should_treat_a_rebase_head_without_the_refs_heads_prefix_as_absent() {
     let with_candidate = facts(None, Some("detached HEAD\n"), &["develop"]);
     let without_candidate = facts(None, Some("detached HEAD\n"), &[]);
@@ -197,13 +130,6 @@ fn it_should_treat_a_rebase_head_without_the_refs_heads_prefix_as_absent() {
 
     assert_eq!(from_candidate, Ok("develop".to_owned()));
     assert_eq!(from_nothing, Err(BranchError::Ambiguous));
-}
-
-#[test]
-fn it_should_accept_a_slash_inside_the_slug() {
-    let kind = classify("feat/wi-w1__a/b");
-
-    assert_eq!(kind, work_item("work-items.w1"));
 }
 
 #[test]
@@ -411,90 +337,243 @@ fn it_should_accept_a_head_local_ref_in_a_push_whatever_the_checkout_branch() {
     assert_eq!(plan, Ok(PushPlan::CheckHead));
 }
 
-// Prefixo (tipo) da branch
+// Classificadora com a política padrão (CA-003)
 
 #[test]
-fn it_should_extract_the_type_of_each_of_the_seven_prefixes() {
-    let types = [
-        "feat", "fix", "refactor", "tests", "bugfix", "chore", "docs",
-    ];
+fn it_should_classify_main_as_main() {
+    let kind = classify(&BranchConfig::default(), "main");
 
-    let names: Vec<String> = types
-        .iter()
-        .map(|kind| format!("{kind}/wi-w1__x"))
-        .collect();
-
-    let prefixes: Vec<_> = names.iter().map(|name| branch_prefix(name)).collect();
-
-    let expected: Vec<_> = types.iter().map(|kind| Some(*kind)).collect();
-    assert_eq!(prefixes, expected);
+    assert_eq!(kind, BranchKind::Main);
 }
 
 #[test]
-fn it_should_extract_a_type_outside_the_seven_prefixes_without_judging_it() {
-    let prefix = branch_prefix("perf/wi-w1__x");
+fn it_should_classify_a_type_slash_wi_id_double_underscore_slug_branch_as_a_work_item() {
+    let kind = classify(&BranchConfig::default(), "feat/wi-w1__x");
 
-    assert_eq!(prefix, Some("perf"));
+    assert_eq!(kind, work_item("work-items.w1", "feat"));
 }
 
 #[test]
-fn it_should_extract_the_type_when_the_slug_has_a_double_underscore_or_a_slash() {
-    let with_extra_slug = branch_prefix("feat/wi-w1__x__y");
-    let with_slash = branch_prefix("fix/wi-w1__a/b");
+fn it_should_take_the_work_item_id_up_to_the_first_double_underscore() {
+    let policy = BranchConfig::default();
 
-    assert_eq!(with_extra_slug, Some("feat"));
-    assert_eq!(with_slash, Some("fix"));
+    let with_extra_slug = classify(&policy, "feat/wi-w1__x__y");
+    let front = classify(&policy, "feat/wi-mg0__s5");
+
+    assert_eq!(with_extra_slug, work_item("work-items.w1", "feat"));
+    assert_eq!(front, work_item("work-items.mg0", "feat"));
 }
 
 #[test]
-fn it_should_give_no_prefix_to_main_and_develop() {
-    let main = branch_prefix("main");
-    let develop = branch_prefix("develop");
+fn it_should_classify_a_work_item_branch_without_a_slug_as_other() {
+    let policy = BranchConfig::default();
 
-    assert_eq!(main, None);
-    assert_eq!(develop, None);
+    let without_separator = classify(&policy, "feat/wi-w1");
+    let with_empty_slug = classify(&policy, "feat/wi-w1__");
+
+    assert_eq!(without_separator, BranchKind::Other);
+    assert_eq!(with_empty_slug, BranchKind::Other);
 }
 
 #[test]
-fn it_should_give_no_prefix_to_a_work_item_branch_without_a_slug() {
-    let without_separator = branch_prefix("feat/wi-w1");
-    let with_empty_slug = branch_prefix("feat/wi-w1__");
+fn it_should_classify_a_branch_without_a_type_prefix_as_other() {
+    let kind = classify(&BranchConfig::default(), "wi-w1__x");
 
-    assert_eq!(without_separator, None);
-    assert_eq!(with_empty_slug, None);
+    assert_eq!(kind, BranchKind::Other);
 }
 
 #[test]
-fn it_should_give_no_prefix_to_a_branch_without_a_type_or_with_nested_types() {
-    let without_type = branch_prefix("wi-w1__x");
-    let nested = branch_prefix("a/b/wi-w1__x");
-    let empty_type = branch_prefix("/wi-w1__x");
-
-    assert_eq!(without_type, None);
-    assert_eq!(nested, None);
-    assert_eq!(empty_type, None);
-}
-
-#[test]
-fn it_should_give_no_prefix_when_the_id_is_not_a_valid_name() {
+fn it_should_classify_a_branch_whose_id_is_not_a_valid_name_as_other() {
+    let policy = BranchConfig::default();
     let too_long = format!("feat/wi-{}__x", "a".repeat(64));
     let names = [
         "feat/wi-W1__x",
         "feat/wi-w.1__x",
+        "feat/wi-w_1__x",
         "feat/wi-__x",
+        "feat/wi--w1__x",
         too_long.as_str(),
     ];
 
-    let prefixes: Vec<_> = names.iter().map(|name| branch_prefix(name)).collect();
+    let kinds: Vec<_> = names.iter().map(|name| classify(&policy, name)).collect();
 
-    assert_eq!(prefixes, vec![None; 4]);
+    assert_eq!(kinds, vec![BranchKind::Other; 6]);
 }
 
 #[test]
-fn it_should_give_no_prefix_to_a_ref_shaped_or_option_shaped_name() {
+fn it_should_classify_a_branch_with_nested_prefixes_as_other_because_the_type_has_no_slash() {
+    let kind = classify(&BranchConfig::default(), "a/b/wi-w1__x");
+
+    assert_eq!(kind, BranchKind::Other);
+}
+
+#[test]
+fn it_should_not_treat_main_fix_as_main() {
+    let kind = classify(&BranchConfig::default(), "main-fix");
+
+    assert_eq!(kind, BranchKind::Other);
+}
+
+#[test]
+fn it_should_not_treat_develop2_as_develop() {
+    let policy = policy_with(&[("develop", ExceptionMode::DryRunWithMark)]);
+
+    let kind = classify(&policy, "develop2");
+
+    assert_eq!(kind, BranchKind::Other);
+}
+
+#[test]
+fn it_should_accept_a_slash_inside_the_slug() {
+    let kind = classify(&BranchConfig::default(), "feat/wi-w1__a/b");
+
+    assert_eq!(kind, work_item("work-items.w1", "feat"));
+}
+
+#[test]
+fn it_should_read_the_type_of_each_of_the_seven_prefixes() {
+    let policy = BranchConfig::default();
+    let types = [
+        "feat", "fix", "refactor", "tests", "bugfix", "chore", "docs",
+    ];
+
+    let kinds: Vec<_> = types
+        .iter()
+        .map(|kind| classify(&policy, &format!("{kind}/wi-w1__x")))
+        .collect();
+
+    let expected: Vec<_> = types
+        .iter()
+        .map(|kind| work_item("work-items.w1", kind))
+        .collect();
+    assert_eq!(kinds, expected);
+}
+
+#[test]
+fn it_should_read_a_type_outside_the_seven_prefixes_without_judging_it() {
+    let kind = classify(&BranchConfig::default(), "perf/wi-w1__x");
+
+    assert_eq!(kind, work_item("work-items.w1", "perf"));
+}
+
+#[test]
+fn it_should_classify_a_ref_shaped_or_option_shaped_name_as_other() {
+    let policy = BranchConfig::default();
     let names = ["pr:7", "-x", "--branch=-x", "$(id)", "a;touch x", ""];
 
-    let prefixes: Vec<_> = names.iter().map(|name| branch_prefix(name)).collect();
+    let kinds: Vec<_> = names.iter().map(|name| classify(&policy, name)).collect();
 
-    assert_eq!(prefixes, vec![None; 6]);
+    assert_eq!(kinds, vec![BranchKind::Other; 6]);
+}
+
+#[test]
+fn it_should_classify_a_branch_by_the_declared_format() {
+    let policy = BranchConfig {
+        format: BranchFormat::parse("work/<id>/<type>/<slug>").expect("valid format"),
+        ..BranchConfig::default()
+    };
+
+    let declared = classify(&policy, "work/w1/fix/a-b");
+    let default_shape = classify(&policy, "feat/wi-w1__x");
+
+    assert_eq!(declared, work_item("work-items.w1", "fix"));
+    assert_eq!(default_shape, BranchKind::Other);
+}
+
+#[test]
+fn it_should_give_no_kind_to_a_work_item_of_a_format_without_type() {
+    let policy = BranchConfig {
+        format: BranchFormat::parse("<id>/<slug>").expect("valid format"),
+        ..BranchConfig::default()
+    };
+
+    let kind = classify(&policy, "w1/a-b");
+
+    assert_eq!(
+        kind,
+        BranchKind::WorkItem {
+            id: sid("work-items.w1"),
+            kind: None
+        }
+    );
+}
+
+// Precedência (CA-005)
+
+#[test]
+fn it_should_classify_main_as_main_even_when_an_exception_pattern_matches_it() {
+    // "main" como pattern é recusado no parse, então a política é montada direto.
+    let policy = policy_with(&[("main", ExceptionMode::Skip)]);
+
+    let kind = classify(&policy, "main");
+
+    assert_eq!(kind, BranchKind::Main);
+}
+
+#[test]
+fn it_should_classify_a_work_item_branch_as_work_item_even_when_an_exception_matches_it() {
+    let policy = policy_with(&[("feat/*", ExceptionMode::Skip)]);
+
+    let kind = classify(&policy, "feat/wi-w1__x");
+
+    assert_eq!(kind, work_item("work-items.w1", "feat"));
+}
+
+#[test]
+fn it_should_classify_an_exception_branch_with_the_declared_mode_for_each_mode() {
+    let modes = [
+        ExceptionMode::DryRunWithMark,
+        ExceptionMode::DryRun,
+        ExceptionMode::Skip,
+    ];
+
+    let kinds: Vec<_> = modes
+        .iter()
+        .map(|mode| classify(&policy_with(&[("poc/*", *mode)]), "poc/x"))
+        .collect();
+
+    let expected: Vec<_> = modes
+        .iter()
+        .map(|mode| BranchKind::Exception(*mode))
+        .collect();
+    assert_eq!(kinds, expected);
+}
+
+#[test]
+fn it_should_classify_develop_as_other_without_a_declaration() {
+    let kind = classify(&BranchConfig::default(), "develop");
+
+    assert_eq!(kind, BranchKind::Other);
+}
+
+#[test]
+fn it_should_classify_develop_as_an_exception_when_it_is_declared() {
+    let policy = policy_with(&[("develop", ExceptionMode::DryRunWithMark)]);
+
+    let kind = classify(&policy, "develop");
+
+    assert_eq!(kind, BranchKind::Exception(ExceptionMode::DryRunWithMark));
+}
+
+// Integração declarada (CA-013, resolvedor)
+
+#[test]
+fn it_should_return_the_declared_integration_branch() {
+    let policy = BranchConfig {
+        integration: Some("develop".to_owned()),
+        ..BranchConfig::default()
+    };
+
+    let name = integration(&policy);
+
+    assert_eq!(name, Some("develop"));
+}
+
+#[test]
+fn it_should_return_no_integration_without_a_declaration() {
+    let policy = BranchConfig::default();
+
+    let name = integration(&policy);
+
+    assert_eq!(name, None);
 }

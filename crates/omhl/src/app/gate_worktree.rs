@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use super::App;
 use super::error::AppError;
 use crate::error::OmhlError;
-use crate::mechanical::branch::{branch_prefix, work_item_id};
+use crate::mechanical::branch::{BranchKind, classify};
 use crate::ports::git::GitProbe;
 use crate::ports::workflow::read_workflow;
 use crate::project::marker::find_marker;
@@ -31,26 +31,31 @@ pub(super) struct PendingLookup {
 
 pub(super) fn decide(start: &Path, branch: &str) -> Result<Decision, AppError> {
     let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
-    if matches!(branch, "develop" | "main") {
+    if branch == "main" {
         return Ok(Decision::Final(allowed(branch, "exempt-branch")));
     }
     let probe = GitProbe::new(&located.root);
+    let main_dir = probe.main_dir().map_err(|_| AppError::main_dir_unknown())?;
+    let config = read_workflow(&main_dir)?;
+    let format = &config.branch.format;
+    let (id, kind) = match classify(&config.branch, branch) {
+        BranchKind::Exception(_) => return Ok(Decision::Final(allowed(branch, "exempt-branch"))),
+        BranchKind::WorkItem { id, kind } => (Some(id), kind),
+        _ => (None, None),
+    };
     let with_worktree = probe
         .worktree_branches()
         .map_err(|error| AppError::probe_failed(&error.message))?;
     if with_worktree.iter().any(|name| name == branch) {
         return Ok(Decision::Final(allowed(branch, "worktree-exists")));
     }
-
-    let main_dir = probe.main_dir().map_err(|_| AppError::main_dir_unknown())?;
-    let config = read_workflow(&main_dir)?;
-    let (Some(prefix), Some(work_item)) = (branch_prefix(branch), work_item_id(branch)) else {
-        return Err(AppError::prefix_not_allowed(BRANCH_POINTER));
+    let (Some(prefix), Some(work_item)) = (kind, id) else {
+        return Err(AppError::prefix_not_allowed(BRANCH_POINTER, format));
     };
     let required = config
         .prefixes
-        .get(prefix)
-        .ok_or_else(|| AppError::prefix_not_allowed(BRANCH_POINTER))?;
+        .get(&prefix)
+        .ok_or_else(|| AppError::prefix_not_allowed(BRANCH_POINTER, format))?;
     let without_facts = unsatisfied_atoms(required, &[], false);
     if without_facts.is_empty() {
         return Ok(Decision::Final(allowed(branch, "matrix-satisfied")));
@@ -58,7 +63,7 @@ pub(super) fn decide(start: &Path, branch: &str) -> Result<Decision, AppError> {
 
     Ok(Decision::NeedsDatabase(PendingLookup {
         branch: branch.to_owned(),
-        prefix: prefix.to_owned(),
+        prefix,
         work_item,
         required: required.clone(),
         without_facts,

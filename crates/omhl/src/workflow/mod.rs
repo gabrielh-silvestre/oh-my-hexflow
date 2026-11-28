@@ -1,3 +1,4 @@
+pub mod branch_policy;
 pub mod config;
 pub mod gap;
 pub mod lock;

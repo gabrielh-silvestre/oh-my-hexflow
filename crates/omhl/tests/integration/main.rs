@@ -9,6 +9,8 @@ mod agents;
 mod app;
 mod architecture;
 mod boundary_docs;
+mod branch_name_parity;
+mod branch_texts;
 mod byproduct_prune;
 mod byproduct_store;
 mod catalogs;

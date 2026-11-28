@@ -64,7 +64,7 @@ pub enum Action {
         id: String,
         by: Option<String>,
     },
-    ConsumeDevelopMark,
+    ConsumeCommitMark,
     Byproduct {
         check: String,
         work_item: String,

@@ -36,7 +36,7 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 - `work-item-not-found` (exit 1): the work item does not exist (or the id belongs to another node type). The pointer is `/work_item`. Check the id.
 - `INVALID_INPUT` (exit 1): the id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
 - `work-item-type-unknown` (exit 1): the work item has no type the project's matrix knows. Record the type with `omhl append` or name the branch with its prefix.
-- `review-base-invalid` (exit 1): `--base` does not name a commit or is the same commit as `HEAD`. Pass the integration branch the pull request targets, such as `develop`.
+- `review-base-invalid` (exit 1): `--base` does not name a commit or is the same commit as `HEAD`. Pass the integration branch the pull request targets, the `branch.integration` of the main-directory `workflow.toml`.
 - `snapshot-dirty` (exit 1): the tree has an uncommitted change. Commit and repeat.
 - `probe-failed` (exit 1): git did not answer (outside a repository, or in one with no commits). Run inside a checkout with at least one commit.
 - `invalid-workflow-config` (exit 1): the `.omhl/workflow.toml` of the main directory is not accepted (a bad key or value, an unsupported version, a symbolic link, a file that is not UTF-8 or one above the size limit). The gate refuses before asking anything, except for the repair pull request (`--base` naming a diff that only fixes the file), and the error never turns a native check on or off. The other exception is `close --abandon` (`--abandon`), which does not evaluate the gate. Fix the file; `omhl load --dry-run` details it.

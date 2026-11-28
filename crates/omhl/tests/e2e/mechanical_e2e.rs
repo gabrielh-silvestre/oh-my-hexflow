@@ -16,6 +16,7 @@ use support::child::{Cmd, Output as OmhlOutput, omhl_json};
 use support::git::{
     expect_git_success, git_command_with_env, git_ok, git_with_env, write_executable,
 };
+use support::project::DEVELOP_WORKFLOW;
 use tempfile::TempDir;
 
 const BEFORE_COMMIT: &str = "before-commit";
@@ -41,7 +42,7 @@ const SLOW: &str = "checks.slow";
 const FAKE_GH: &str = "#!/bin/sh\necho 'all checks passed'\nexit 0\n";
 
 const BRANCH_PROTECTED_HINT: &str =
-    "main receives no direct changes; create a branch type/wi-<id>__<slug>";
+    "main receives no direct changes; create a branch <type>/wi-<id>__<slug>";
 const PUSH_TO_MAIN_HINT: &str = "main receives no direct pushes; open a pull request";
 const PUSH_REF_NOT_CHECKED_OUT_HINT: &str =
     "push refs/heads/feat/wi-w2__y from its own worktree; the pre-push hook attests only HEAD";
@@ -1006,12 +1007,15 @@ fn it_should_leave_no_orphan_when_the_git_process_is_killed_during_the_hook() {
 }
 
 #[test]
-fn it_should_delete_the_develop_mark_only_after_the_first_commit_on_develop() {
+fn it_should_delete_the_commit_mark_only_after_the_first_commit_on_develop() {
     let e = E2e::new(&[green_gate()]);
     e.git_ok(&e.r, &["switch", "-c", "develop"]);
+    e.write(&e.r, ".omhl/workflow.toml", DEVELOP_WORKFLOW);
+    e.git_ok(&e.r, &["add", ".omhl/workflow.toml"]);
+    e.git_ok(&e.r, &["commit", "--no-verify", "-m", "declare develop"]);
     let git_dir = PathBuf::from(e.git_ok(&e.r, &["rev-parse", "--absolute-git-dir"]));
-    let mark = git_dir.join("omhl-develop-mark");
-    fs::write(&mark, "omhl-develop-mark v1\n").expect("write the develop mark");
+    let mark = git_dir.join("omhl-commit-mark");
+    fs::write(&mark, "omhl-commit-mark v1\n").expect("write the commit mark");
     e.stage(&e.r, "d", "d\n");
 
     let aborted = e.git(&e.r, &["commit", "-m", ""]);

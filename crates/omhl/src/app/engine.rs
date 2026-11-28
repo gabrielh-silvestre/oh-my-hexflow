@@ -17,18 +17,17 @@ use crate::delivery_gate::{Abandonment, FailedDelivery, Forcing, GateSnapshots, 
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::{Closing, Omhl, WorkRequirements};
 use crate::graphs::WORK_ITEM_TYPES;
-use crate::mechanical::branch::{
-    BranchKind, DEVELOP_BRANCH, branch_prefix, classify, work_item_id,
-};
+use crate::mechanical::branch::{BranchKind, classify, integration};
 use crate::native::{CONFIG_LOOSENING_REVIEW_ID, review_trigger_paths};
 use crate::ports::git::{BlobReason, GitProbe, WorkflowSource, workflow_text};
 use crate::probe::{
-    DevelopMark, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
+    CommitMark, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource,
 };
 use crate::project::ProjectError;
 use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
 use crate::runner::CommandRunner;
+use crate::workflow::branch_policy::BranchConfig;
 use crate::workflow::config::{
     NativeConfig, RequireAtom, parse_evaluated_workflow, parse_workflow,
 };
@@ -51,7 +50,7 @@ pub(super) struct Engine<'d> {
     pub(super) project_root: Option<PathBuf>,
     pub(super) exec: Option<Exec<'d>>,
     pub(super) retention: Option<&'d dyn ByproductRetention>,
-    pub(super) mark: Option<&'d dyn DevelopMark>,
+    pub(super) mark: Option<&'d dyn CommitMark>,
     pub(super) native: Option<&'d dyn NativeResolver>,
     pub(super) retry: RetryPolicy,
     pub(super) retry_after_run: RetryPolicy,
@@ -159,7 +158,7 @@ impl Engine<'_> {
             Action::ReportRecurrences { min } => self.report_recurrences(*min),
             Action::ReportRetro { work_item } => self.report_retro(work_item),
             Action::ReportSessions { work_items } => self.report_sessions(work_items),
-            Action::ConsumeDevelopMark => work_item::consume_develop_mark(self),
+            Action::ConsumeCommitMark => work_item::consume_commit_mark(self),
             Action::CheckSweep | Action::GateWorktree { .. } => {
                 Err(AppError::action_outside_engine())
             }
@@ -293,21 +292,77 @@ impl Engine<'_> {
         enabled: &NativeConfig,
     ) -> Result<(Value, bool), AppError> {
         let on = enabled.checks.contains(CONFIG_LOOSENING_REVIEW_ID);
-        let Some(base) = base else {
-            let note = match on {
-                true => json!({ "base": null, "note": "no base was given" }),
-                false => Value::Null,
-            };
-
-            return Ok((note, on));
-        };
+        let declared = integration(&enabled.branch);
+        if base.is_none() && declared.is_none() {
+            return Ok((no_base_note(on, "no base was given"), on));
+        }
         let root = require_project_root(self.project_root.as_deref())?;
         let git = GitProbe::new(root);
         let probe_failed = |error: ProbeError| AppError::probe_failed(&error.message);
         let head = git.ref_commit("HEAD").map_err(probe_failed)?;
-        let merge_base = git.merge_base(base).map_err(probe_failed)?;
-        let Some(merge_base) = merge_base.filter(|found| Some(found) != head.as_ref()) else {
-            return Err(OmhlError::rule(RuleCode::ReviewBaseInvalid, "/base").into());
+        let range_from = |base: &str| -> Result<String, AppError> {
+            git.merge_base(base)
+                .map_err(probe_failed)?
+                .filter(|found| Some(found) != head.as_ref())
+                .ok_or_else(AppError::review_base_unresolved)
+        };
+        let (shown, merge_base, origin) = match (declared, base) {
+            (None, base) => {
+                let base = base.unwrap_or_default();
+                (
+                    base.to_owned(),
+                    range_from(base)?,
+                    "caller --base".to_owned(),
+                )
+            }
+            (Some(name), base) => {
+                // Só a ref local: o nome nu pode resolver para uma tag.
+                let integration_ref = format!("refs/heads/{name}");
+                git.ref_commit(&integration_ref)
+                    .map_err(probe_failed)?
+                    .ok_or_else(AppError::review_integration_missing)?;
+                let merged = git
+                    .is_ancestor("HEAD", &integration_ref)
+                    .map_err(probe_failed)?;
+                match (merged, base) {
+                    (true, None) => {
+                        let note = format!(
+                            "integration branch {name} contains HEAD and no base was given"
+                        );
+                        return Ok((no_base_note(on, &note), on));
+                    }
+                    (true, Some(base)) => {
+                        let commit = git
+                            .ref_commit(base)
+                            .map_err(probe_failed)?
+                            .ok_or_else(AppError::review_base_unresolved)?;
+                        if !git
+                            .is_ancestor(&commit, &integration_ref)
+                            .map_err(probe_failed)?
+                        {
+                            return Err(AppError::review_base_not_in_integration());
+                        }
+                        (
+                            base.to_owned(),
+                            range_from(&commit)?,
+                            format!("caller --base; integration branch {name} contains HEAD"),
+                        )
+                    }
+                    (false, base) => {
+                        let merge_base = range_from(&integration_ref)?;
+                        if let Some(base) = base
+                            && range_from(base)? != merge_base
+                        {
+                            return Err(AppError::review_base_other_merge_base());
+                        }
+                        (
+                            name.to_owned(),
+                            merge_base,
+                            format!("integration branch {name}"),
+                        )
+                    }
+                }
+            }
         };
         let changed = git.changed_names(&merge_base).map_err(probe_failed)?;
         let paths = review_trigger_paths(&changed);
@@ -315,9 +370,10 @@ impl Engine<'_> {
 
         Ok((
             json!({
-                "base": base,
+                "base": shown,
                 "merge_base": merge_base,
                 "paths": paths,
+                "origin": origin,
             }),
             required,
         ))
@@ -336,8 +392,8 @@ impl Engine<'_> {
         let (enabled, _) = self.resolve_native_for_pr(base)?;
         let node = self.omhl.ensure_open(&self.tenant, &work_item)?;
         let requirements = self.work_requirements(&work_item, &enabled)?;
+        let integration = self.read_integration(&node, &snapshots, &enabled.branch)?;
         let (_, review_required) = self.review_base(base, &enabled)?;
-        let integration = self.read_integration(&node, &snapshots)?;
         let mut facts = self.retro_facts(&work_item, true)?;
         let author = caller.author();
         let delivery = FailedDelivery {
@@ -365,11 +421,12 @@ impl Engine<'_> {
         Ok(output::closed(&closed, retro(&facts).as_ref()))
     }
 
-    /// O commit avaliado só vale como entregue se o branch do item o tem dentro da `develop` local.
+    /// O commit avaliado só vale como entregue se o branch do item o tem dentro da integração declarada local.
     fn read_integration(
         &self,
         node: &NodeView,
         snapshots: &GateSnapshots,
+        policy: &BranchConfig,
     ) -> Result<Integration, AppError> {
         let root = require_project_root(self.project_root.as_deref())?;
         let git = GitProbe::new(root);
@@ -378,12 +435,18 @@ impl Engine<'_> {
         let on_item_branch = match (node.type_name.as_str(), &branch) {
             (_, None) => false,
             ("pull-request", Some(branch)) => node.data["branch"].as_str() == Some(branch),
-            (_, Some(branch)) => classify(branch) == BranchKind::WorkItem(node.id.clone()),
+            (_, Some(branch)) => matches!(
+                classify(policy, branch),
+                BranchKind::WorkItem { id, .. } if id == node.id
+            ),
         };
         if !on_item_branch {
             return Err(AppError::delivery_not_on_work_item_branch());
         }
-        let integration_ref = format!("refs/heads/{DEVELOP_BRANCH}");
+        let reference = integration(policy)
+            .ok_or_else(AppError::delivery_integration_undeclared)?
+            .to_owned();
+        let integration_ref = format!("refs/heads/{reference}");
         let commit = git
             .ref_commit(&integration_ref)
             .map_err(probe_failed)?
@@ -395,10 +458,7 @@ impl Engine<'_> {
             return Err(AppError::delivery_not_integrated());
         }
 
-        Ok(Integration {
-            reference: DEVELOP_BRANCH.to_owned(),
-            commit,
-        })
+        Ok(Integration { reference, commit })
     }
 
     fn abandon(
@@ -522,7 +582,24 @@ impl Engine<'_> {
             run: Default::default(),
             invalid_run: Default::default(),
             prefixes: config.prefixes,
+            // A política vem do leitor estável, nunca da cópia da branch.
+            branch: self
+                .native
+                .map(|native| native.stable_branch())
+                .unwrap_or_default(),
         })
+    }
+
+    /// Leitores que não recusam um principal ilegível: a política sai do leitor estável.
+    pub(super) fn lenient_branch_policy(&self) -> BranchConfig {
+        match self.native_refusal() {
+            Ok(config) => config.branch,
+            Err(NativeRefusal::InvalidWorkflow(_)) => self
+                .native
+                .map(|native| native.stable_branch())
+                .unwrap_or_default(),
+            Err(NativeRefusal::MainDirUnknown) => BranchConfig::default(),
+        }
     }
 
     fn work_requirements(
@@ -564,7 +641,12 @@ impl Engine<'_> {
         let recorded = node.data["type"].as_str();
         let prefixes = match recorded {
             Some(_) => Vec::new(),
-            None => self.branch_prefixes(&node.id, node.type_name.as_str(), &node.data)?,
+            None => self.branch_prefixes(
+                &enabled.branch,
+                &node.id,
+                node.type_name.as_str(),
+                &node.data,
+            )?,
         };
         let names: Vec<&str> = prefixes.iter().map(String::as_str).collect();
         let name = effective_type(recorded, &names, &enabled.prefixes).ok_or_else(|| {
@@ -576,6 +658,7 @@ impl Engine<'_> {
 
     fn branch_prefixes(
         &self,
+        policy: &BranchConfig,
         id: &SemanticId,
         type_name: &str,
         data: &Value,
@@ -583,8 +666,8 @@ impl Engine<'_> {
         let mut prefixes: Vec<String> = if type_name == "pull-request" {
             data["branch"]
                 .as_str()
-                .and_then(branch_prefix)
-                .map(str::to_owned)
+                .and_then(|branch| branch_type(policy, branch))
+                .map(|(_, kind)| kind)
                 .into_iter()
                 .collect()
         } else {
@@ -593,8 +676,9 @@ impl Engine<'_> {
                 .local_branches()
                 .map_err(|error| AppError::probe_failed(&error.message))?
                 .iter()
-                .filter(|branch| work_item_id(branch).as_ref() == Some(id))
-                .filter_map(|branch| branch_prefix(branch).map(str::to_owned))
+                .filter_map(|branch| branch_type(policy, branch))
+                .filter(|(found, _)| found == id)
+                .map(|(_, kind)| kind)
                 .collect()
         };
         prefixes.sort();
@@ -672,7 +756,9 @@ impl Engine<'_> {
         }
 
         let stored = self.omhl.get(&self.tenant, id)?.map(|node| node.data);
-        let prefixes = self.branch_prefixes(id, type_name, stored.as_ref().unwrap_or(data))?;
+        let policy = self.resolve_native()?.branch;
+        let prefixes =
+            self.branch_prefixes(&policy, id, type_name, stored.as_ref().unwrap_or(data))?;
 
         Ok(match prefixes.as_slice() {
             [only] => Some(only.clone()),
@@ -694,6 +780,13 @@ pub(super) fn require_project_root(root: Option<&Path>) -> Result<&Path, AppErro
 
 const REPAIR_PATH: &str = ".omhl/workflow.toml";
 const REPAIR_WARNING: &str = "the main workflow file is not accepted; this pull request repairs it, so its HEAD version was used and the review is required";
+
+fn no_base_note(on: bool, note: &str) -> Value {
+    match on {
+        true => json!({ "base": null, "note": note }),
+        false => Value::Null,
+    }
+}
 
 fn mark_repair(review_base: &mut Value, repair: bool) {
     if repair {
@@ -791,5 +884,15 @@ pub(super) fn add_warnings(value: &mut Value, warnings: Vec<Value>) {
     match value["warnings"].as_array_mut() {
         Some(existing) => existing.extend(warnings),
         None => value["warnings"] = json!(warnings),
+    }
+}
+
+fn branch_type(policy: &BranchConfig, branch: &str) -> Option<(SemanticId, String)> {
+    match classify(policy, branch) {
+        BranchKind::WorkItem {
+            id,
+            kind: Some(kind),
+        } => Some((id, kind)),
+        _ => None,
     }
 }

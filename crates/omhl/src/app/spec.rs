@@ -10,22 +10,23 @@ use super::error::AppError;
 use super::spec_facts::GraphFacts;
 use super::work_item::work_item_refusal;
 use crate::error::{OmhlError, RuleCode};
-use crate::mechanical::branch::work_item_id;
+use crate::mechanical::branch::{BranchKind, classify};
 use crate::ports::files::{FILE_TOO_LARGE, read_regular_utf8};
 use crate::ports::git::{GitProbe, SPEC_LOCK_GIT_BUDGET};
 use crate::ports::notes::birth_notes_folder;
 use crate::ports::paths::resolve_physical;
 use crate::ports::specs::{FreezeMarkWrite, SpecDocument, SpecFolder, SpecStore, SpecStoreError};
-use crate::ports::workflow::{read_policy, read_workflow};
+use crate::ports::workflow::{read_workflow, stable_branch_policy};
 use crate::probe::{GIT_TIMED_OUT, ProbeError};
 use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
 use crate::project::marker::{find_marker, find_valid_marker, is_valid_marker};
+use crate::workflow::branch_policy::BranchConfig;
 use crate::workflow::config::{SpecsConfig, WorkflowConfig};
 use crate::workflow::lock::{
-    Cause, EditInput, Facts, SpecPath, Tool, Verdict, decide, git_dir_protected, has_git_component,
-    has_spec_folder_component, is_marker_candidate, is_notes_candidate, is_notes_path_of,
-    is_same_path, is_workflow_candidate, marker_protected, parse_spec_path, resulting_texts,
-    spec_dir_frozen, specs_dir_of, unavailable,
+    Cause, EditInput, Facts, SpecPath, Tool, Verdict, branch_format_unmarked, branch_policy_of,
+    decide, git_dir_protected, has_git_component, has_spec_folder_component, is_marker_candidate,
+    is_notes_candidate, is_notes_path_of, is_same_path, is_workflow_candidate, marker_protected,
+    parse_spec_path, resulting_texts, spec_dir_frozen, specs_dir_of, unavailable,
 };
 use crate::workflow::names::{FOLDER_PREFIX, WORK_ITEM_ID_PREFIX};
 use crate::workflow::spec::{
@@ -429,9 +430,15 @@ fn decide_with_git(
         .map_err(git_step("checking the main directory"));
     let policy_dir = main_dir.as_ref().map_or(root, |dir| dir);
     // Arquivo inválido cai nos padrões: liberar aqui deixaria a spec congelada editável por um typo.
-    let config = read_workflow(policy_dir).unwrap_or_default();
+    let read = read_workflow(policy_dir);
+    let policy = match (&read, &main_dir) {
+        (Ok(config), _) => config.branch.clone(),
+        (Err(_), Ok(dir)) => stable_branch_policy(&probe.rooted_at(dir)),
+        (Err(_), Err(_)) => BranchConfig::default(),
+    };
+    let config = read.unwrap_or_default();
     let (verdict, healed) = match parse_spec_path(&config.specs.dir, file_path) {
-        Some(spec) => decide_recognized(tool, &spec, &config.specs.dir, &probe, &main_dir)
+        Some(spec) => decide_recognized(tool, &spec, &config.specs.dir, &probe, &main_dir, &policy)
             .unwrap_or_else(|failure| {
                 let subject = format!("{FOLDER_PREFIX}{}", spec.work_item);
 
@@ -446,7 +453,10 @@ fn decide_with_git(
         return (verdict, healed);
     }
 
-    (decide_workflow(input, file_path, &probe, &main_dir), healed)
+    (
+        decide_workflow(input, file_path, &probe, &main_dir, &policy),
+        healed,
+    )
 }
 
 /// Só um `.omhl.toml` que hoje é marcador válido entra, e só nega se o resultado deixar de ser; pura sobre bytes, sem git.
@@ -518,6 +528,7 @@ fn decide_recognized(
     specs_dir: &str,
     probe: &GitProbe,
     main_dir: &Result<PathBuf, Unavailable>,
+    policy: &BranchConfig,
 ) -> Result<(Verdict, Vec<AppError>), Unavailable> {
     let main_dir = main_dir.as_ref().map_err(Clone::clone)?;
     let work_item = format!("{WORK_ITEM_ID_PREFIX}{}", spec.work_item);
@@ -526,7 +537,7 @@ fn decide_recognized(
         .map_err(git_step("listing the local branches"))?;
     let has_branch = branches
         .iter()
-        .any(|branch| work_item_id(branch).is_some_and(|id| id.as_str() == work_item));
+        .any(|branch| branch_work_item(policy, branch).is_some_and(|id| id.as_str() == work_item));
     // Do marcador, não da pasta do arquivo: com `specs.dir` link para fora do repositório, o git a partir da pasta do arquivo não acha repositório.
     let checkout = probe
         .checkout_dir()
@@ -555,7 +566,7 @@ fn decide_recognized(
 
     Ok((
         decide(tool, spec, &facts),
-        heal_freeze_marks(&store, &branches),
+        heal_freeze_marks(&store, &branches, policy),
     ))
 }
 
@@ -565,14 +576,20 @@ fn decide_workflow(
     file_path: &Path,
     probe: &GitProbe,
     main_dir: &Result<PathBuf, Unavailable>,
+    policy: &BranchConfig,
 ) -> Verdict {
-    decide_specs_dir_change(input, file_path, probe, main_dir).unwrap_or_else(|failure| {
-        unavailable(
-            &file_path.display().to_string(),
-            failure.step,
-            &failure.cause,
-        )
-    })
+    decide_specs_dir_change(input, file_path, probe, main_dir, policy)
+        .and_then(|verdict| match verdict {
+            Verdict::Allow => decide_format_change(input, file_path, probe, main_dir),
+            deny => Ok(deny),
+        })
+        .unwrap_or_else(|failure| {
+            unavailable(
+                &file_path.display().to_string(),
+                failure.step,
+                &failure.cause,
+            )
+        })
 }
 
 fn decide_specs_dir_change(
@@ -580,6 +597,7 @@ fn decide_specs_dir_change(
     file_path: &Path,
     probe: &GitProbe,
     main_dir: &Result<PathBuf, Unavailable>,
+    policy: &BranchConfig,
 ) -> Result<Verdict, Unavailable> {
     let main_dir = main_dir.as_ref().map_err(Clone::clone)?;
     let workflow = main_dir.join(OMHL_DIR).join(WORKFLOW_FILE);
@@ -600,7 +618,7 @@ fn decide_specs_dir_change(
     else {
         return Ok(Verdict::Allow);
     };
-    let frozen = frozen_work_item(probe, main_dir.join(&old_dir))?;
+    let frozen = frozen_work_item(probe, main_dir.join(&old_dir), policy)?;
 
     Ok(frozen.map_or(Verdict::Allow, |work_item| {
         spec_dir_frozen(
@@ -612,8 +630,63 @@ fn decide_specs_dir_change(
     }))
 }
 
+/// Troca do formato efetivo: cura as marcas pelo formato antigo e nega se alguma pasta de work item de branch local continua sem marca.
+fn decide_format_change(
+    input: &EditInput,
+    file_path: &Path,
+    probe: &GitProbe,
+    main_dir: &Result<PathBuf, Unavailable>,
+) -> Result<Verdict, Unavailable> {
+    let main_dir = main_dir.as_ref().map_err(Clone::clone)?;
+    let workflow = main_dir.join(OMHL_DIR).join(WORKFLOW_FILE);
+    if !is_same_path(file_path, &workflow) {
+        return Ok(Verdict::Allow);
+    }
+    let current = read_regular_utf8(&workflow, EXT_FILE_MAX_BYTES).ok();
+    let old_bytes = current.as_deref().map(str::as_bytes);
+    let old_policy = branch_policy_of(old_bytes);
+    let texts = resulting_texts(input, current.as_deref()).ok_or(Unavailable {
+        step: "reading the new content of workflow.toml",
+        cause: Cause::Read("the new content cannot be computed"),
+    })?;
+    if texts
+        .iter()
+        .all(|text| branch_policy_of(Some(text.as_bytes())).format == old_policy.format)
+    {
+        return Ok(Verdict::Allow);
+    }
+    const STEP: &str = "checking the freeze marks before the branch format change";
+    let specs_dir = main_dir.join(specs_dir_of(old_bytes));
+    let store = SpecStore::new(specs_dir.clone());
+    let branches = probe.local_branches().map_err(git_step(STEP))?;
+    heal_freeze_marks(&store, &branches, &old_policy);
+    for branch in &branches {
+        let Some(work_item) = branch_work_item(&old_policy, branch).and_then(|id| {
+            id.as_str()
+                .strip_prefix(WORK_ITEM_ID_PREFIX)
+                .map(str::to_owned)
+        }) else {
+            continue;
+        };
+        let folders = store.folders_of(&work_item).map_err(read_step(STEP))?;
+        if let Some(folder) = folders.iter().find(|folder| !store.is_marked(folder)) {
+            return Ok(branch_format_unmarked(
+                &format!("{FOLDER_PREFIX}{work_item}"),
+                &specs_dir.join(folder),
+                branch,
+            ));
+        }
+    }
+
+    Ok(Verdict::Allow)
+}
+
 /// O primeiro work item congelado: a marca em alguma pasta da pasta de specs antiga (a branch pode ter sido apagada) ou, sem marca, uma branch local dele.
-fn frozen_work_item(probe: &GitProbe, specs_dir: PathBuf) -> Result<Option<String>, Unavailable> {
+fn frozen_work_item(
+    probe: &GitProbe,
+    specs_dir: PathBuf,
+    policy: &BranchConfig,
+) -> Result<Option<String>, Unavailable> {
     const STEP: &str = "looking for frozen work items";
     if let Some(work_item) = SpecStore::new(specs_dir)
         .frozen_work_item()
@@ -624,7 +697,7 @@ fn frozen_work_item(probe: &GitProbe, specs_dir: PathBuf) -> Result<Option<Strin
     let branches = probe.local_branches().map_err(git_step(STEP))?;
 
     Ok(branches.iter().find_map(|branch| {
-        let id = work_item_id(branch)?;
+        let id = branch_work_item(policy, branch)?;
 
         id.as_str()
             .strip_prefix(WORK_ITEM_ID_PREFIX)
@@ -634,10 +707,14 @@ fn frozen_work_item(probe: &GitProbe, specs_dir: PathBuf) -> Result<Option<Strin
 
 /// Grava a marca nas pastas dos work items que têm branch local: é a rede para a branch apagada
 /// depois. Nenhuma falha vira erro, só um aviso, e a decisão da trava não depende dela.
-fn heal_freeze_marks(store: &SpecStore, branches: &[String]) -> Vec<AppError> {
+fn heal_freeze_marks(
+    store: &SpecStore,
+    branches: &[String],
+    policy: &BranchConfig,
+) -> Vec<AppError> {
     let work_items: BTreeSet<String> = branches
         .iter()
-        .filter_map(|branch| work_item_id(branch))
+        .filter_map(|branch| branch_work_item(policy, branch))
         .filter_map(|id| {
             id.as_str()
                 .strip_prefix(WORK_ITEM_ID_PREFIX)
@@ -679,17 +756,23 @@ fn mark_folders(
 /// Não abre o banco nem exige o work item nele; branch que não é de work item não tem efeito.
 pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
     let located = find_marker(start)?.ok_or_else(AppError::no_marker)?;
-    let Some(work_item) = work_item_id(branch).and_then(|id| {
+    let probe = GitProbe::new(&located.root);
+    let main_dir = probe
+        .main_dir()
+        .map_err(|error| AppError::probe_failed(&error.message))?;
+    let read = read_workflow(&main_dir);
+    let policy = match &read {
+        Ok(config) => config.branch.clone(),
+        Err(_) => stable_branch_policy(&probe.rooted_at(&main_dir)),
+    };
+    let config = read.unwrap_or_default();
+    let Some(work_item) = branch_work_item(&policy, branch).and_then(|id| {
         id.as_str()
             .strip_prefix(WORK_ITEM_ID_PREFIX)
             .map(str::to_owned)
     }) else {
         return Ok(json!({ "marked": [], "already": [] }));
     };
-    let main_dir = GitProbe::new(&located.root)
-        .main_dir()
-        .map_err(|error| AppError::probe_failed(&error.message))?;
-    let config = read_policy(&located.root).unwrap_or_default();
     let store = SpecStore::new(main_dir.join(&config.specs.dir));
 
     let folders = store
@@ -698,6 +781,13 @@ pub fn wt_post_start(start: &Path, branch: &str) -> Result<Value, AppError> {
     let (marked, already) = mark_folders(&store, folders).map_err(spec_store_refusal)?;
 
     Ok(json!({ "marked": marked, "already": already }))
+}
+
+fn branch_work_item(policy: &BranchConfig, branch: &str) -> Option<SemanticId> {
+    match classify(policy, branch) {
+        BranchKind::WorkItem { id, .. } => Some(id),
+        _ => None,
+    }
 }
 
 /// O alvo de um `Write` pode ainda não existir, nem a pasta dele.

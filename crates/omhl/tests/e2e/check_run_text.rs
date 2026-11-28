@@ -294,7 +294,7 @@ fn it_should_count_an_orphaned_check_as_not_run_in_the_failure_summary() {
 #[test]
 fn it_should_leave_work_item_out_of_the_failure_json_on_develop() {
     let p = cli_repo(&[("suite", SUITE_RED)]);
-    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
+    p.switch_to_declared_develop();
 
     let output = run_pr(&p, "json");
 
@@ -322,7 +322,7 @@ fn it_should_open_the_failure_text_with_event_work_item_and_summary() {
 #[test]
 fn it_should_open_the_failure_text_without_a_work_item_on_develop() {
     let p = cli_repo(&[("suite", SUITE_RED)]);
-    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
+    p.switch_to_declared_develop();
 
     let output = run_pr(&p, "agent");
 
@@ -509,7 +509,7 @@ fn it_should_print_the_failure_text_on_stderr_without_the_check_output() {
 #[test]
 fn it_should_print_the_output_tail_of_a_failed_check_on_develop() {
     let p = cli_repo(&[("red", NOISY_RED)]);
-    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
+    p.switch_to_declared_develop();
 
     let output = run_pr(&p, "agent");
 
@@ -764,7 +764,7 @@ event = "before-push"
 #[test]
 fn it_should_keep_the_interior_spaces_of_the_command_output_in_the_agent_text() {
     let p = cli_repo(&[("spaced", SPACED_RED)]);
-    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
+    p.switch_to_declared_develop();
 
     let output = run_pr(&p, "agent");
 
@@ -779,7 +779,7 @@ fn it_should_keep_the_interior_spaces_of_the_command_output_in_the_agent_text() 
 #[test]
 fn it_should_trim_only_the_end_of_the_command_output_line_in_the_agent_text() {
     let p = cli_repo(&[("spaced", SPACED_RED)]);
-    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
+    p.switch_to_declared_develop();
 
     let output = run_pr(&p, "agent");
 
@@ -793,7 +793,7 @@ fn it_should_trim_only_the_end_of_the_command_output_line_in_the_agent_text() {
 #[test]
 fn it_should_keep_the_command_output_line_untouched_in_the_human_text() {
     let p = cli_repo(&[("spaced", SPACED_RED)]);
-    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
+    p.switch_to_declared_develop();
 
     let output = run_pr(&p, "human");
 
@@ -918,7 +918,7 @@ fn it_should_leave_the_stored_output_warning_out_of_a_failed_run() {
 #[test]
 fn it_should_leave_the_stored_output_warning_out_on_develop_where_nothing_is_recorded() {
     let p = cli_repo(&[("warn", WARNING)]);
-    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
+    p.switch_to_declared_develop();
 
     let output = run_pr(&p, "json");
 

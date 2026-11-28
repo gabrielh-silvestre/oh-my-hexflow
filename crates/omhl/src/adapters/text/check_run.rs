@@ -27,6 +27,8 @@ pub static PROFILE: Profile = Profile {
     success: &[
         Entry::new(Region::Root, "event", Shape::Closed),
         Entry::new(Region::Root, "push", Shape::Derived).optional(),
+        Entry::new(Region::Root, "branch", Shape::Literal).optional(),
+        Entry::new(Region::Root, "mode", Shape::Closed).optional(),
         Entry::new(Region::Root, "work_item", Shape::Literal).optional(),
         Entry::new(Region::Root, "recorded", Shape::Derived).optional(),
         Entry::new(Region::Root, "checks_planned", Shape::Noise).optional(),
@@ -218,6 +220,14 @@ impl Specialization for CheckRun {
             return vec![
                 event,
                 "nothing to attest in this push; no check ran".to_owned(),
+            ];
+        }
+
+        if let Some(mode) = opt_text(value, "mode") {
+            return vec![
+                event,
+                text(value, "branch"),
+                format!("exception mode {mode}; no check ran, not recorded"),
             ];
         }
 

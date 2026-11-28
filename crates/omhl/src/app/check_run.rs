@@ -31,6 +31,7 @@ use crate::native::{NativeBase, RUN_TESTS_ID};
 use crate::ports::git::WorkflowSource;
 use crate::probe::{NativeRefusal, ProbeError, ProbeOutcome, TreeSource};
 use crate::runner::{CommandRunner, RunError, RunErrorKind, RunReport, RunSpec};
+use crate::workflow::branch_policy::ExceptionMode;
 use crate::workflow::config::{NativeConfig, NativeRun, native_run_digest};
 
 const MAX_STREAM_BYTES: u64 = 4_194_304;
@@ -65,7 +66,7 @@ const HOOK_GIT_ENV: [&str; 5] = [
 
 type MissError = fn(Vec<CheckDetail>) -> AppError;
 
-/// `work_item` é `None` na `develop`.
+/// `work_item` é `None` numa exceção declarada.
 struct Scope<'a> {
     event: &'a str,
     work_item: Option<&'a SemanticId>,
@@ -137,12 +138,27 @@ impl Engine<'_> {
             return Ok(json!({ "event": event, "push": "nothing-to-attest", "results": [] }));
         }
         let branch = head_branch(&facts, &event)?;
-        let route = resolve_work_item(self, &event, &branch)?;
+        let policy = self.lenient_branch_policy();
+        let route = resolve_work_item(self, &event, &branch, &policy)?;
+        if route == WorkItemRoute::Skip {
+            let mut output = json!({
+                "event": event,
+                "branch": branch,
+                "mode": ExceptionMode::Skip.as_str(),
+                "recorded": false,
+                "results": [],
+            });
+            let warnings = self.native_run_warnings();
+            if !warnings.is_empty() {
+                output["warnings"] = json!(warnings);
+            }
+            return Ok(output);
+        }
         let scope = Scope {
             event: &event,
             work_item: match &route {
                 WorkItemRoute::Recorded(id) => Some(id),
-                WorkItemRoute::DryRun => None,
+                WorkItemRoute::DryRun | WorkItemRoute::Skip => None,
             },
             branch: &branch,
             cwd: &root,
@@ -438,7 +454,7 @@ impl Engine<'_> {
         }
         let judged = evaluate_run(check, spec, &report);
         let Some(work_item) = scope.work_item else {
-            // Na `develop` nada é gravado: a saída só existe no `context`.
+            // Numa exceção nada é gravado: a saída só existe no `context`.
             let mut context = scope.ran_context("failed", &check.id, &spec.run, snapshot);
             context["output_tail"] = output_tail(&report);
             if let (Some(context), Value::Object(fields)) = (

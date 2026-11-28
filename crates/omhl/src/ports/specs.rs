@@ -162,7 +162,7 @@ impl SpecStore {
         }))
     }
 
-    fn is_marked(&self, folder: &str) -> bool {
+    pub fn is_marked(&self, folder: &str) -> bool {
         match fs::symlink_metadata(self.dir.join(folder).join(FREEZE_MARK)) {
             Ok(_) => true,
             Err(error) => !matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory),

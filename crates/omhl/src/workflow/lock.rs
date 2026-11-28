@@ -1,6 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
-use super::config::parse_workflow;
+use super::branch_policy::BranchConfig;
+use super::config::{WorkflowConfig, parse_workflow};
 use super::names::{
     ENGLISH_AMENDMENT_PREFIX, ENGLISH_PART_PREFIX, FILE_SUFFIX, FREEZE_MARK,
     PORTUGUESE_AMENDMENT_PREFIX, PORTUGUESE_PART_PREFIX, is_amendment_name, is_part_name,
@@ -13,6 +14,7 @@ use crate::project::marker::MARKER_FILE;
 
 const FROZEN: &str = "spec-frozen";
 const SPEC_DIR_FROZEN: &str = "spec-dir-frozen";
+const BRANCH_FORMAT_UNMARKED: &str = "branch-format-unmarked";
 const GIT_DIR_PROTECTED: &str = "git-dir-protected";
 const MARKER_PROTECTED: &str = "marker-protected";
 const UNAVAILABLE: &str = "spec-lock-unavailable";
@@ -115,12 +117,18 @@ fn one_line(text: &str) -> String {
 
 /// O `specs.dir` efetivo de um `workflow.toml`: o que a política do hook usaria. Ausente (`None`), acima do teto, que não é UTF-8 ou que `parse_workflow` recusa vale o padrão.
 pub fn specs_dir_of(bytes: Option<&[u8]>) -> String {
+    workflow_of(bytes).specs.dir
+}
+
+pub fn branch_policy_of(bytes: Option<&[u8]>) -> BranchConfig {
+    workflow_of(bytes).branch
+}
+
+fn workflow_of(bytes: Option<&[u8]>) -> WorkflowConfig {
     bytes
         .filter(|bytes| bytes.len() as u64 <= EXT_FILE_MAX_BYTES)
         .and_then(|bytes| parse_workflow(Path::new(WORKFLOW_FILE), bytes).ok())
         .unwrap_or_default()
-        .specs
-        .dir
 }
 
 /// Os textos que o arquivo pode ter depois da edição, um por versão em que todas as trocas se aplicam.
@@ -267,6 +275,19 @@ pub fn spec_dir_frozen(file_path: &Path, old: &str, new: &str, work_item: &str) 
             one_line(new),
             one_line(&file_path.display().to_string()),
             one_line(work_item)
+        ),
+    }
+}
+
+/// A marca vai para a branch local do work item (`wi-<id>`), pelo `wt-post-start`.
+pub fn branch_format_unmarked(work_item: &str, folder: &Path, branch: &str) -> Verdict {
+    Verdict::Deny {
+        code: BRANCH_FORMAT_UNMARKED,
+        reason: format!(
+            "{BRANCH_FORMAT_UNMARKED}: this edit would change branch.format while the spec folder {} of work item {} has no freeze mark, which would release the spec lock; write the mark with `omhl hook wt-post-start --branch '{}'` and retry the edit",
+            one_line(&folder.display().to_string()),
+            one_line(work_item),
+            one_line(branch).replace('\'', "'\\''")
         ),
     }
 }

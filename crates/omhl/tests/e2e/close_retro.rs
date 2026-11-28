@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use support::child::{Output, omhl, omhl_json};
 use support::git::{git_in, git_ok};
 use support::omhl::{PR_7, closed_with_gate, pull_request_data, work_item_data};
-use support::project::Project;
+use support::project::{DEVELOP_BRANCH_TABLE, Project};
 
 const W1: &str = "work-items.w1";
 const PART_DIR: &str = "wi-w1__login";
@@ -1779,6 +1779,7 @@ impl Fixture {
     /// Branch do item com um commit próprio, `develop` ainda sem ele.
     fn unmerged(natives: &[&str]) -> Fixture {
         let fixture = fixture_with_natives(natives);
+        fixture.declare_develop();
         fixture.git(&["checkout", "-b", ITEM_BRANCH]);
         fs::write(fixture.project.dir().join("feature.txt"), "feature\n")
             .expect("the feature file is written");
@@ -1791,6 +1792,7 @@ impl Fixture {
     /// Como `merged`, com o `workflow.toml` já na `main`: a faixa a partir dela só toca fonte.
     fn merged_with_the_workflow_on_main(natives: &[&str]) -> Fixture {
         let fixture = fixture_with_natives(natives);
+        fixture.declare_develop();
         fixture.commit_all();
         fixture.git(&["checkout", "-b", ITEM_BRANCH]);
         fs::write(fixture.project.dir().join("feature.txt"), "feature\n")
@@ -1826,6 +1828,14 @@ impl Fixture {
 
     fn git(&self, args: &[&str]) {
         git_ok(self.project.dir(), args);
+    }
+
+    /// Sem a declaração de `branch.integration` o modo não tem integração para ler.
+    fn declare_develop(&self) {
+        let path = self.project.dir().join(".omhl/workflow.toml");
+        let current = fs::read_to_string(&path).expect("the workflow file exists");
+        fs::write(path, format!("{current}{DEVELOP_BRANCH_TABLE}"))
+            .expect("the declaration is written");
     }
 
     fn develop_commit(&self) -> String {
@@ -1970,6 +1980,13 @@ fn it_should_refuse_the_failed_delivery_with_review_base_invalid_and_write_nothi
     ]);
 
     fixture.assert_refused_with(&closed, "review-base-invalid", &before);
+    assert!(
+        json_line(&closed.stderr)["error"]
+            .to_string()
+            .contains("--base"),
+        "{}",
+        closed.stderr
+    );
 }
 
 #[test]
@@ -2136,6 +2153,23 @@ fn it_should_refuse_with_delivery_not_integrated_after_a_squash_merge() {
     let closed = fixture.failed_delivery(W1);
 
     fixture.assert_refused_with(&closed, "delivery-not-integrated", &before);
+}
+
+#[test]
+fn it_should_refuse_with_delivery_not_integrated_citing_the_declaration_and_abandon_when_no_integration_is_declared()
+ {
+    let fixture = Fixture::merged(&[RUN_TESTS, CI_GREEN]);
+    fixture.project.enable_natives(&[RUN_TESTS, CI_GREEN]);
+    fixture.commit_all();
+    let before = fixture.chain();
+
+    let closed = fixture.failed_delivery(W1);
+
+    fixture.assert_refused_with(&closed, "delivery-not-integrated", &before);
+    let next_step = json_line(&closed.stderr)["error"]["details"][0]["next_step"].to_string();
+    for fragment in ["branch.integration", "--abandon"] {
+        assert!(next_step.contains(fragment), "{fragment}: {next_step}");
+    }
 }
 
 #[test]

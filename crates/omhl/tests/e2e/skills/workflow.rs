@@ -696,7 +696,7 @@ fn it_should_say_in_close_md_that_a_merged_item_closes_with_failed_delivery_and_
 fn it_should_say_in_close_md_which_merges_failed_delivery_does_not_cover() {
     assert_page_says(
         CLOSE_PAGE,
-        "squash or rebase merges or a project without `develop`",
+        "squash or rebase merges or a project without `branch.integration`",
     );
 }
 

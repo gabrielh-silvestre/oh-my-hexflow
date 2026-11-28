@@ -195,6 +195,33 @@ rode `omhl load`. Detalhes em
 
 Uma entrada por mudança que exige ação de quem atualiza, a mais nova primeiro.
 
+### A `develop` sai do binário: cada projeto declara as suas branches
+
+O binário não trata mais a `develop` como branch embutida. Cada projeto declara a integração e as exceções em `[branch]` do `.omhl/workflow.toml` do diretório principal. O que muda para quem atualiza:
+
+1. Declare `[branch]` para manter o comportamento de hoje: sem a declaração, um commit na `develop` é recusado com `branch-name-invalid`. No exemplo, `poc/*` não roda checks e a `develop` pede a marca:
+
+   ```toml
+   version = 1
+
+   [branch]
+   integration = "develop"
+
+   [[branch.exception]]
+   pattern = "poc/*"
+   mode = "skip"
+
+   [[branch.exception]]
+   pattern = "develop"
+   mode = "dry-run-with-mark"
+   ```
+
+2. A marca e os códigos têm nomes novos, sem alias: a primeira linha da marca é `omhl-commit-mark v1`, no arquivo `omhl-commit-mark` da pasta git da worktree, e os códigos são `commit-mark-missing` e `commit-mark-unavailable`. A marca antiga `omhl-develop-mark` é ignorada.
+3. Até a release do plugin na `main`, o command instalado ainda grava o nome antigo: grave a marca nova à mão, com a linha de `plugin/commands/omhl-commit-mark.md`, no caminho que a dica do `commit-mark-missing` mostra.
+4. O formato do nome da branch pode ser declarado em `branch.format`; trocar um formato já declarado é só do dono.
+5. A base da revisão do `gate-delivery` e do `close` vem de `branch.integration`.
+6. Um binário anterior recusa o `workflow.toml` com `[branch]`: instale o binário novo antes de o `[branch]` chegar ao diretório principal.
+
 ### Os checks viram a interface do projeto
 
 O evento, o comando e o gate agora se chamam `before-push`, `gate-delivery` e `delivery`. O que muda para quem atualiza:

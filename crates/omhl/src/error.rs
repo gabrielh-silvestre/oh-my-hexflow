@@ -200,8 +200,8 @@ impl RuleCode {
                 next_step: "unset CLAUDE_CODE_SESSION_ID, or run omhl inside a Claude Code session",
             }),
             RuleCode::ReviewBaseInvalid => Some(Guidance {
-                cause: "--base does not name a commit, or it is the same commit as HEAD, so there is no range to review",
-                next_step: "pass --base with the integration branch the pull request targets, such as develop",
+                cause: "the review base is not valid, so there is no range to review",
+                next_step: "pass a --base that names the integration branch the pull request targets",
             }),
             RuleCode::TypeChangeLoosens => Some(Guidance {
                 cause: "the new work item type asks for less than the current type, which loosens what the work item must deliver",

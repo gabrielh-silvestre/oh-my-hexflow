@@ -39,9 +39,10 @@ use std::sync::mpsc;
 
 use ::omhl::facade::SessionSource;
 use ::omhl::probe::{
-    DevelopMark, HeadFacts, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe,
+    CommitMark, HeadFacts, NativeRefusal, NativeResolver, ProbeError, ProbeOutcome, SnapshotProbe,
     TreeSource,
 };
+use ::omhl::workflow::branch_policy::{BranchConfig, ExceptionMode, ExceptionRule};
 use ::omhl::workflow::config::NativeConfig;
 use hexlog::{
     Author, Clock, IdGenerator, NativeNode, NativeNodes, RelationTypeName, SemanticId, Snapshot,
@@ -110,7 +111,7 @@ pub struct FakeProbe {
     head_tree: Option<Result<ProbeOutcome, ProbeError>>,
     tree_dirty: Option<bool>,
     head_facts: Option<HeadFacts>,
-    develop_mark: Option<bool>,
+    commit_mark: Option<bool>,
     consume_log: Option<mpsc::Sender<()>>,
 }
 
@@ -122,7 +123,7 @@ impl FakeProbe {
             head_tree: None,
             tree_dirty: None,
             head_facts: None,
-            develop_mark: None,
+            commit_mark: None,
             consume_log: None,
         }
     }
@@ -161,8 +162,8 @@ impl FakeProbe {
         self
     }
 
-    pub fn with_develop_mark(mut self, present: bool) -> FakeProbe {
-        self.develop_mark = Some(present);
+    pub fn with_commit_mark(mut self, present: bool) -> FakeProbe {
+        self.commit_mark = Some(present);
         self
     }
 
@@ -205,10 +206,18 @@ impl SnapshotProbe for FakeProbe {
     }
 }
 
-impl DevelopMark for FakeProbe {
+pub const FAKE_MARK_PATH: &str = "/git-dir/omhl-commit-mark";
+
+impl CommitMark for FakeProbe {
     fn present(&self) -> Result<bool, ProbeError> {
-        self.develop_mark
-            .ok_or_else(|| probe_error("develop mark probe not configured"))
+        self.commit_mark
+            .ok_or_else(|| probe_error("commit mark probe not configured"))
+    }
+
+    fn location(&self) -> Result<std::path::PathBuf, ProbeError> {
+        self.commit_mark
+            .map(|_| std::path::PathBuf::from(FAKE_MARK_PATH))
+            .ok_or_else(|| probe_error("commit mark probe not configured"))
     }
 
     fn consume(&self) -> Result<(), ProbeError> {
@@ -217,6 +226,18 @@ impl DevelopMark for FakeProbe {
             let _ = log.send(());
         }
         Ok(())
+    }
+}
+
+/// O que o `.omhl/workflow.toml` deste repositório declara para a `develop`: integração e exceção com marca.
+pub fn develop_policy() -> BranchConfig {
+    BranchConfig {
+        integration: Some("develop".to_owned()),
+        exceptions: vec![ExceptionRule {
+            pattern: "develop".to_owned(),
+            mode: ExceptionMode::DryRunWithMark,
+        }],
+        ..BranchConfig::default()
     }
 }
 
@@ -234,6 +255,14 @@ impl FakeNative {
 
     pub fn all_enabled() -> FakeNative {
         FakeNative::enabling(&delivery_gate::ALL_NATIVE_CHECKS)
+    }
+
+    /// Política de branches que o resolvedor devolve; numa recusa não há o que carregar.
+    pub fn with_branch_policy(mut self, policy: BranchConfig) -> FakeNative {
+        if let Ok(config) = &mut self.result {
+            config.branch = policy;
+        }
+        self
     }
 
     pub fn refusing(refusal: NativeRefusal) -> FakeNative {

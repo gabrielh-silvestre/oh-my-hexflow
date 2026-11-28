@@ -8,7 +8,7 @@ use support::child::{Output as Child, omhl};
 use support::git::{git_in, git_ok, write_executable};
 use support::legacy::seed_legacy_confirmed_premise;
 use support::omhl::{project_dir_refusal, work_item_data};
-use support::project::Project;
+use support::project::{DEVELOP_WORKFLOW, Project};
 use tempfile::TempDir;
 
 const W1: &str = "work-items.w1";
@@ -330,8 +330,9 @@ fn it_should_not_create_the_database_when_there_is_no_marker() {
 }
 
 #[test]
-fn it_should_allow_develop_without_looking_at_the_branch_name_pattern() {
+fn it_should_allow_a_declared_develop_exception_without_looking_at_the_branch_name_pattern() {
     let fixture = Fixture::new();
+    fixture.write_workflow(DEVELOP_WORKFLOW);
 
     let output = fixture.gate_with_absent_db("develop");
 

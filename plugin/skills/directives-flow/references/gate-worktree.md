@@ -30,9 +30,9 @@ An error goes to stderr, as a JSON line, with exit 1. A missing `--branch` is a 
 
 ## Examples
 
-`develop` and `main` pass without checking anything else:
+`main` and a branch that `.omhl/workflow.toml` declares in `[[branch.exception]]` pass without checking anything else (the fixture declares `develop`):
 
-```omhl-example fixture=git
+```omhl-example fixture=git-develop-exception
 $ omhl gate-worktree --branch develop
 {"allowed":true,"branch":"develop","reason":"exempt-branch"}
 ```

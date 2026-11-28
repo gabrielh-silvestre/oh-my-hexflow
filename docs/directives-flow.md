@@ -1,6 +1,6 @@
 # Fluxo por diretivas e premissas
 
-Vocabulário em [GLOSSARY.md](../GLOSSARY.md). Visão geral e primeiros passos no [README](../README.md). A branch, a marca da `develop` e os checks mecânicos estão em [mechanical-gates.md](mechanical-gates.md).
+Vocabulário em [GLOSSARY.md](../GLOSSARY.md). Visão geral e primeiros passos no [README](../README.md). A branch, a marca de commit e os checks mecânicos estão em [mechanical-gates.md](mechanical-gates.md).
 
 O humano define diretivas e premissas. O agente escolhe os comportamentos e escreve a spec a partir delas. Este fluxo roda no binário `omhl`, sem o hexlog em TypeScript.
 
@@ -25,7 +25,7 @@ O work item nasce pelo `append` que já existia, sem comando novo.
 
 ### A matriz de prefixos
 
-Edição direta na `develop` nunca passa pelo gate.
+Edição direta numa branch declarada em `[[branch.exception]]` nunca passa pelo gate.
 
 ## 2. Comandos
 
@@ -146,6 +146,7 @@ A correção entra como emenda (seção 9).
 | `spec-frozen` | Registre uma `divergence` e crie a emenda (seção 9). Em `.omhl.toml` ou `.omhl/` dentro da pasta congelada, o arquivo de marcador não se cria nem se edita ali |
 | `spec-lock-unavailable` | O hook não conseguiu ler o git ou a pasta de spec depois de reconhecer a spec: corrija a causa que a mensagem diz; com `git timed out`, tente de novo |
 | `spec-dir-frozen` | A edição do `.omhl/workflow.toml` principal mudaria o `specs.dir` enquanto algum work item tem spec congelada: não mude a chave por nenhuma ferramenta; peça ao dono, que a muda fora do Claude Code |
+| `branch-format-unmarked` | A edição do `.omhl/workflow.toml` principal trocaria o `branch.format` enquanto a pasta de spec de um work item não tem a marca `.frozen`, o que soltaria a trava: grave a marca com o `omhl hook wt-post-start --branch <branch>` que a mensagem mostra e repita a edição |
 | `git-dir-protected` | O caminho está sob um `.git` de um projeto omhl: não mude arquivo do `.git` por nenhuma ferramenta; peça ao dono, que o muda fora do Claude Code |
 | `marker-protected` | A edição deixaria o `.omhl.toml` do projeto sem ser um marcador válido: mantenha-o válido ou peça ao dono, e não o mude por nenhuma ferramenta |
 | `spec-in-linked-worktree` | Escreva no caminho do diretório principal que a mensagem informa |

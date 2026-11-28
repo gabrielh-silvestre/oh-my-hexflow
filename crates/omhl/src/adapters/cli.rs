@@ -220,7 +220,7 @@ pub enum HooksCommand {
         #[arg(long)]
         force: bool,
     },
-    /// Consume the develop mark after a commit on develop; the git post-commit hook calls it.
+    /// Consume the commit mark after a commit on a dry-run-with-mark exception branch.
     PostCommit,
 }
 
@@ -845,7 +845,7 @@ fn to_action(
         } => Action::HooksInstall { force },
         ActionCommand::Hooks {
             command: HooksCommand::PostCommit,
-        } => Action::ConsumeDevelopMark,
+        } => Action::ConsumeCommitMark,
         ActionCommand::Spec {
             command: SpecCommand::Init { work_item, slug },
         } => Action::SpecInit { work_item, slug },

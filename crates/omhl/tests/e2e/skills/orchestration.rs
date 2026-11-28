@@ -892,7 +892,7 @@ fn it_should_explain_a_test_suite_failure_in_byproduct_md_without_naming_a_runne
     for fragment in [
         "omhl byproduct checks.test-suite <work-item> --tail 40",
         "ceiling of 500",
-        "On the `develop` branch there is no `byproduct`",
+        "declared exception",
         "Any test runner prints its summary and the names of the failed tests near the end",
         "widen `--tail` a little at a time",
     ] {
