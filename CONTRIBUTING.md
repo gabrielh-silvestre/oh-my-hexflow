@@ -117,4 +117,4 @@ O `docs/mechanical-gates.md` descreve o [programa gravado na attestation](docs/m
 
 ## Binário novo depois do merge
 
-Depois do merge e antes de qualquer gravação no banco real, instale o binário novo em `~/.cargo/bin/omhl` (`cargo install --path crates/omhl`); se os hooks de git apontam para outro caminho, rode `omhl hooks install` com o binário novo. Nunca rode o `target/debug` ou o `target/release` de uma worktree contra o banco real. O limite que explica a regra, um binário anterior sobre um banco com sessão, está em [docs/architecture.md](docs/architecture.md).
+Depois do merge e antes de qualquer gravação no banco real, instale o binário novo em `~/.local/bin/omhl` (`cargo install --locked --path crates/omhl --root ~/.local`), o binário que os hooks de git executam; se os hooks apontam para outro caminho, rode `omhl hooks install` com o binário novo. Nunca rode o `target/debug` ou o `target/release` de uma worktree contra o banco real. O limite que explica a regra, um binário anterior sobre um banco com sessão, está em [docs/architecture.md](docs/architecture.md).
