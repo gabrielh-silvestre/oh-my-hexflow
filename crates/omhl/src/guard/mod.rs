@@ -23,7 +23,6 @@ const ATTESTATION_ID_MAX: usize = 200;
 /// O SHA entra em pedaços de 32 porque cada segmento do id aceita no máximo 63 caracteres.
 const SNAPSHOT_SEGMENT: usize = 32;
 
-/// De qual declaração do `.omhl/workflow.toml` vem o comando que o atestado selou.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Origin {
     InForce,

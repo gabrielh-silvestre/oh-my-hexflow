@@ -71,7 +71,6 @@ impl Engine<'_> {
         Ok(summary(removed, kept_live, freed_bytes))
     }
 
-    /// Hashes das attestations vigentes que o leitor de byproduct pode escolher em cada par (check, work item) do tenant.
     fn live_hashes(&mut self) -> Result<BTreeSet<String>, AppError> {
         let attestations = nodes_matching(&mut self.omhl, &self.tenant, "attestation", Vec::new())
             .map_err(|_| AppError::byproduct_prune_failed())?;

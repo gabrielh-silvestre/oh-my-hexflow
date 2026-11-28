@@ -110,7 +110,6 @@ fn it_should_mark_the_four_native_checks_blocking_with_the_contract_events() {
     assert_eq!(found, expected);
 }
 
-// Valor em develop antes da entrega: dois ids nativos saíram e um evento mudou.
 const DEVELOP_CATALOG_VERSION: (u32, u32, u32) = (1, 1, 0);
 
 fn parse_version(version: &str) -> (u32, u32, u32) {

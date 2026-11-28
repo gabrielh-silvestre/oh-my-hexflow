@@ -342,8 +342,7 @@ pub fn list_refusal(pointer: &str, message: &str) -> Value {
     })
 }
 
-/// Id da attestation do digest que só a declaração avaliada exige:
-/// `attestations.evaluated.<sha[..32]>.<sha[32..]>.<check>.<work_item>`.
+/// Id da attestation do digest que só a declaração avaliada exige.
 pub fn evaluated_attestation_id_for(snapshot: &Snapshot, check: &str, work_item: &str) -> String {
     let sha = snapshot.id();
 

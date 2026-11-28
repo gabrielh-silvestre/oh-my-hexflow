@@ -182,7 +182,6 @@ impl Engine<'_> {
             .collect()
     }
 
-    /// O nativo roda como um check mecânico, sem arquivo de check; a declaração avaliada (índice) só soma ao que está em vigor.
     fn plan_native_run(&self, event: &str) -> Vec<PlannedCheck> {
         let Some(check) = NativeBase
             .checks()
@@ -219,7 +218,7 @@ impl Engine<'_> {
         read_evaluated_native(self.project_root.as_deref(), WorkflowSource::Index, "index")
     }
 
-    /// Comando do índice; com o nativo desligado no principal, só vale se o arquivo o liga.
+    /// Com o nativo desligado no principal, o comando só vale se o arquivo o liga.
     fn evaluated_native_run(&self, enabled_in_force: bool) -> Option<NativeRun> {
         let config = self.read_evaluated_index().0?;
         if !enabled_in_force && !config.checks.contains(RUN_TESTS_ID) {
@@ -229,7 +228,6 @@ impl Engine<'_> {
         config.run.get(RUN_TESTS_ID).cloned()
     }
 
-    /// `--check` de um nativo: o que roda sai de `plan_native_run`; sem comando, a recusa depende de o nativo estar ligado.
     fn plan_native_target(&self, native: &crate::native::NativeCheck) -> Result<String, AppError> {
         let enabled = self
             .native_refusal()

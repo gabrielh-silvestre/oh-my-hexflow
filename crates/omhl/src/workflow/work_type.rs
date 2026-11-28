@@ -22,8 +22,6 @@ pub fn loosens(previous: &[RequireAtom], next: &[RequireAtom]) -> bool {
         .any(|atom| !next_closed.contains(atom))
 }
 
-/// O tipo que o `close` e o `gate-delivery` aplicam: o `type` gravado, ou então o único prefixo dos branches do item.
-/// `None` quando o tipo fica fora da tabela efetiva ou quando não há um único prefixo.
 pub fn effective_type(
     recorded: Option<&str>,
     branch_prefixes: &[&str],

@@ -73,12 +73,10 @@ pub struct PromotionConfig {
 pub struct NativeConfig {
     pub checks: BTreeSet<&'static str>,
     pub run: BTreeMap<String, NativeRun>,
-    /// Entradas `[native.run.<id>]` do arquivo avaliado que não passaram na validação: id e digest da tabela crua.
     pub invalid_run: BTreeMap<String, String>,
     pub prefixes: BTreeMap<String, Vec<RequireAtom>>,
 }
 
-/// Comando que o projeto declara para um check nativo; `expect` já vem com o padrão preenchido.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeRun {
     pub run: Vec<String>,
@@ -308,7 +306,6 @@ pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, Proje
     parse_with(path, bytes, false)
 }
 
-/// Leitura do arquivo avaliado: entrada `[native.run]` inválida não derruba o arquivo, vira `invalid_run`.
 pub fn parse_evaluated_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, ProjectError> {
     parse_with(path, bytes, true)
 }

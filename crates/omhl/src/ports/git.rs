@@ -77,7 +77,6 @@ pub fn workflow_text(probe: &GitProbe, source: WorkflowSource<'_>) -> Result<Str
     String::from_utf8(blob.content).map_err(|_| BlobReason::NotUtf8)
 }
 
-/// Campos antes do `\t` de uma linha de `ls-tree` ou `ls-files -s`.
 fn entry_fields(entry: &str) -> Vec<&str> {
     entry
         .split_once('\t')
@@ -326,7 +325,6 @@ impl GitProbe {
         self.load_blob(mode, oid, kind == "blob")
     }
 
-    /// Como `read_blob`, mas lê a entrada preparada no índice (`GIT_INDEX_FILE` incluído).
     pub fn read_index_blob(&self, path: &str) -> Result<Option<GitBlob>, ProbeError> {
         let listing = utf8_output(self.run_ok(self.git(&["ls-files", "-s", "-z", "--", path]))?)?;
         let Some(entry) = listing.split('\0').find(|entry| !entry.is_empty()) else {

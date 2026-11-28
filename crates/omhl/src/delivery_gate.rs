@@ -34,7 +34,6 @@ pub struct GateSnapshots {
     pub head_tree: Snapshot,
 }
 
-/// Um check exigido pelo gate: nativos com comando carregam o digest de cada declaração.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequiredCheck {
     pub id: SemanticId,

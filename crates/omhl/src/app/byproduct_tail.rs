@@ -91,7 +91,6 @@ fn is_native(check: &str) -> bool {
     NativeBase.checks().iter().any(|native| native.id == check)
 }
 
-/// Do snapshot mais novo do par, a falha mais recente; sem falha, a de maior `seq`.
 fn select_native(nodes: Vec<NodeView>) -> Option<NodeView> {
     let mut newest = newest_snapshot(nodes);
     newest.sort_by_key(|node| node.seq);
@@ -105,7 +104,6 @@ fn select_native(nodes: Vec<NodeView>) -> Option<NodeView> {
     }
 }
 
-/// Toda attestation que o leitor pode escolher: as do snapshot mais novo de cada par (check, work item).
 pub(super) fn selectable_per_pair(nodes: Vec<NodeView>) -> Vec<NodeView> {
     let mut pairs: BTreeMap<(String, Option<String>), Vec<NodeView>> = BTreeMap::new();
     for node in nodes {
@@ -117,7 +115,6 @@ pub(super) fn selectable_per_pair(nodes: Vec<NodeView>) -> Vec<NodeView> {
     pairs.into_values().flat_map(newest_snapshot).collect()
 }
 
-/// As attestations vigentes do snapshot da de maior `seq` do par; ambas as declarações de um nativo ficam.
 fn newest_snapshot(nodes: Vec<NodeView>) -> Vec<NodeView> {
     let Some(snapshot) = nodes
         .iter()

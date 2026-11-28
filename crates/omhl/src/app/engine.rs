@@ -493,7 +493,6 @@ impl Engine<'_> {
         );
     }
 
-    /// Declaração do `HEAD`; sem leitura ou sem parse, nenhuma declaração avaliada.
     pub(super) fn evaluated_native(&self) -> NativeConfig {
         self.read_evaluated_head().0.unwrap_or_default()
     }
@@ -749,7 +748,7 @@ fn evaluated_run_warnings<'a>(
     })
 }
 
-/// Declaração avaliada de uma origem (índice ou `HEAD`) e o aviso de arquivo ilegível; é o único ponto que lê o texto.
+/// Declaração avaliada de uma origem (índice ou `HEAD`) e o aviso de arquivo ilegível.
 pub(super) fn read_evaluated_native(
     root: Option<&Path>,
     source: WorkflowSource<'_>,
