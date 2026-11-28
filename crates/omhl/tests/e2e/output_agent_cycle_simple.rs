@@ -330,10 +330,10 @@ fn it_should_print_the_hooks_install_paths_without_a_warning() {
     assert_eq!(
         lines_of(&text),
         [
-            "✔ hooks install · 4 scripts".to_owned(),
+            "✔ hooks install · 5 scripts".to_owned(),
             format!("  hooks path: {}", text_at(&value, "hooks_path")),
             format!("  omhl: {}", text_at(&value, "omhl")),
-            "  scripts: pre-commit, pre-merge-commit, pre-push, post-commit".to_owned(),
+            "  scripts: pre-commit, pre-merge-commit, pre-push, post-commit, post-merge".to_owned(),
         ]
     );
 }
@@ -344,7 +344,7 @@ fn it_should_open_hooks_install_with_a_warning_symbol_and_the_warning_count() {
 
     let text = printed(&state, None, &["hooks", "install"]);
 
-    assert_eq!(first_line(&text), "⚠ hooks install · 4 scripts · 1 warning");
+    assert_eq!(first_line(&text), "⚠ hooks install · 5 scripts · 1 warning");
 }
 
 #[test]
@@ -396,10 +396,11 @@ fn it_should_align_the_hooks_install_labels_in_human() {
     assert_eq!(
         lines_of(&text),
         [
-            "✔ hooks install · 4 scripts".to_owned(),
+            "✔ hooks install · 5 scripts".to_owned(),
             format!("  hooks path: {}", text_at(&value, "hooks_path")),
             format!("  omhl:       {}", text_at(&value, "omhl")),
-            "  scripts:    pre-commit, pre-merge-commit, pre-push, post-commit".to_owned(),
+            "  scripts:    pre-commit, pre-merge-commit, pre-push, post-commit, post-merge"
+                .to_owned(),
         ]
     );
 }
