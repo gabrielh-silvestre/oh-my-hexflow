@@ -8,7 +8,8 @@ mod lock {
     use std::path::Path;
 
     use crate::workflow::lock::{
-        Cause, Facts, SpecPath, Tool, Verdict, decide, next_amendment, parse_spec_path, unavailable,
+        Cause, Facts, SpecPath, Tool, Verdict, branch_format_unmarked, decide, next_amendment,
+        parse_spec_path, unavailable,
     };
 
     use super::{CUSTOM_SPECS, DEFAULT_SPECS, FOLDER, FROZEN, IN_WORKTREE};
@@ -60,6 +61,22 @@ mod lock {
             Verdict::Deny { code, reason } => (code, reason),
             Verdict::Allow => panic!("expected a denial, got Allow"),
         }
+    }
+
+    #[test]
+    fn it_should_quote_the_branch_for_the_shell_in_the_branch_format_unmarked_command() {
+        let verdict = branch_format_unmarked(
+            "work-items.w1",
+            Path::new(MAIN_FOLDER),
+            "feat/wi-w1__a'$(touch x)",
+        );
+
+        let (_, reason) = denial(verdict);
+
+        assert!(
+            reason.contains(r"`omhl hook wt-post-start --branch 'feat/wi-w1__a'\''$(touch x)'`"),
+            "{reason}"
+        );
     }
 
     #[test]

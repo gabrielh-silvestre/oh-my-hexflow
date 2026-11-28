@@ -22,7 +22,7 @@ When there are only failed blocking checks, the error is `checks-failed`: read t
 
 ## Branch and work item
 
-`omhl check run` finds the work item by the branch name `type/wi-<id>__<slug>`. On `main` it answers `branch-protected` and runs nothing; outside the pattern, `branch-name-invalid`. On `develop` it runs without recording anything, and `before-commit` asks for the `develop` mark.
+`omhl check run` finds the work item by the branch name `type/wi-<id>__<slug>`. On `main` it answers `branch-protected` and runs nothing; outside the pattern, `branch-name-invalid`. On a branch declared in `[[branch.exception]]` it runs without recording anything (`skip` runs nothing), and `before-commit` on a `dry-run-with-mark` exception asks for the commit mark.
 
 ## Push
 

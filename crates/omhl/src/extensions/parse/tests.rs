@@ -1193,6 +1193,7 @@ mod loosening_criteria {
 
     use super::super::{CheckToml, WhenToml};
     use crate::native::NativeBase;
+    use crate::workflow::branch_policy::{BranchConfig, ExceptionMode, ExceptionRule};
     use crate::workflow::config::{
         InterviewConfig, InterviewWeights, PromotionConfig, RequireAtom, SpecsConfig,
         WorkflowConfig,
@@ -1200,7 +1201,7 @@ mod loosening_criteria {
 
     const REFERENCE: &str = "skills/review/references/config-loosening-review.md";
     const SECTIONS: [&str; 4] = ["Criteria", "Scope", "Input", "What the reviewer returns"];
-    const WORKFLOW_KEYS: [&str; 10] = [
+    const WORKFLOW_KEYS: [&str; 19] = [
         "[native.run]",
         "[interview]",
         "specs.dir",
@@ -1211,6 +1212,15 @@ mod loosening_criteria {
         "native.checks",
         "prefix",
         "require",
+        "[branch]",
+        "branch.format",
+        "branch.integration",
+        "branch.exception",
+        "pattern",
+        "mode",
+        "dry-run-with-mark",
+        "dry-run",
+        "skip",
     ];
     const CHECK_FIELDS: [&str; 9] = [
         "blocking",
@@ -1247,7 +1257,9 @@ mod loosening_criteria {
             .unwrap_or_else(|error| panic!("{} is readable: {error}", path.display()))
     }
 
+    // O texto marca nomes com crases; o nome conta com ou sem elas.
     fn missing_names<'a>(text: &str, names: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
+        let text = text.replace('`', "");
         names
             .into_iter()
             .filter(|name| !text.contains(name))
@@ -1267,6 +1279,7 @@ mod loosening_criteria {
             native: _,
             interview,
             prefixes,
+            branch,
         } = WorkflowConfig::default();
         let SpecsConfig {
             dir: _,
@@ -1274,6 +1287,18 @@ mod loosening_criteria {
             placeholders: _,
             cite_business_premise: _,
         } = specs;
+        let BranchConfig {
+            format: _,
+            integration: _,
+            exceptions: _,
+        } = branch;
+        let ExceptionRule {
+            pattern: _,
+            mode: _,
+        } = ExceptionRule {
+            pattern: String::new(),
+            mode: ExceptionMode::Skip,
+        };
         let PromotionConfig { min_work_items: _ } = promotion;
         let InterviewConfig {
             threshold: _,
@@ -1318,6 +1343,19 @@ mod loosening_criteria {
         ]
         .map(atom);
 
+        let mode = |mode: ExceptionMode| match mode {
+            ExceptionMode::DryRunWithMark => "dry-run-with-mark",
+            ExceptionMode::DryRun => "dry-run",
+            ExceptionMode::Skip => "skip",
+        };
+        let mode_order = [
+            ExceptionMode::DryRunWithMark,
+            ExceptionMode::DryRun,
+            ExceptionMode::Skip,
+        ]
+        .map(mode)
+        .join(", ");
+
         let default_types = prefixes.keys().map(String::as_str);
         let native_ids = NativeBase.checks().iter().map(|check| check.id);
 
@@ -1330,6 +1368,7 @@ mod loosening_criteria {
             .chain(native_ids)
             .chain(LOOSENING_CASES)
             .map(str::to_owned)
+            .chain([mode_order])
             .collect()
     }
 
@@ -1337,6 +1376,15 @@ mod loosening_criteria {
         required_names()
             .into_iter()
             .filter(|name| name != removed)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    // Retira também os nomes que contêm o removido: a ordem dos modos carrega os três valores.
+    fn names_without_any_containing(removed: &str) -> String {
+        required_names()
+            .into_iter()
+            .filter(|name| !name.contains(removed))
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -1422,6 +1470,89 @@ mod loosening_criteria {
             missing_names(&text, required_names().iter().map(String::as_str)),
             vec!["removing run"]
         );
+    }
+
+    #[test]
+    fn it_should_name_branch_integration_absent_from_the_text() {
+        let text = names_without("branch.integration");
+
+        assert_eq!(
+            missing_names(&text, required_names().iter().map(String::as_str)),
+            vec!["branch.integration"]
+        );
+    }
+
+    #[test]
+    fn it_should_name_an_exception_mode_absent_from_the_text() {
+        for mode in ["dry-run-with-mark", "skip"] {
+            let text = names_without_any_containing(mode);
+            let names = required_names();
+
+            let missing = missing_names(&text, names.iter().map(String::as_str));
+
+            assert!(missing.contains(&mode), "{mode} is named: {missing:?}");
+        }
+    }
+
+    #[test]
+    fn it_should_name_the_mode_order_absent_from_the_text() {
+        let order = "dry-run-with-mark, dry-run, skip";
+        let text = names_without(order);
+
+        assert_eq!(
+            missing_names(&text, required_names().iter().map(String::as_str)),
+            vec![order]
+        );
+    }
+
+    #[test]
+    fn it_should_accept_the_mode_order_with_backticks_around_each_value() {
+        let text = "`dry-run-with-mark`, `dry-run`, `skip`";
+
+        assert_eq!(
+            missing_names(text, ["dry-run-with-mark, dry-run, skip"]),
+            Vec::<&str>::new()
+        );
+    }
+
+    // Os parágrafos (separados por linha em branco) que nomeiam a âncora.
+    fn paragraphs_naming(text: &str, anchor: &str) -> String {
+        text.split("\n\n")
+            .filter(|paragraph| paragraph.contains(anchor))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn it_should_give_the_direction_of_branch_exception_to_the_owner_and_to_the_agent() {
+        let text = reference_text();
+
+        let lines = lines_naming(&text, "branch.exception");
+
+        assert!(lines.iter().any(|line| line.contains("owner")));
+        assert!(lines.iter().any(|line| line.contains("agent")));
+    }
+
+    #[test]
+    fn it_should_give_the_direction_of_branch_integration_to_the_owner() {
+        let text = reference_text();
+
+        let lines = lines_naming(&text, "branch.integration");
+
+        assert!(lines.iter().any(|line| line.contains("owner")));
+    }
+
+    #[test]
+    fn it_should_give_the_three_directions_of_branch_format_by_the_pr_diff() {
+        let text = reference_text();
+
+        let block = paragraphs_naming(&text, "branch.format");
+
+        let missing = missing_names(
+            &block,
+            ["first declaration", "removal", "swap", "owner", "no change"],
+        );
+        assert_eq!(missing, Vec::<&str>::new());
     }
 
     fn lines_naming<'a>(text: &'a str, anchor: &str) -> Vec<&'a str> {

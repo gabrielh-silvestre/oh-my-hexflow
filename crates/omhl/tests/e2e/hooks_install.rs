@@ -10,7 +10,7 @@ use support::child::{Cmd, Output, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::{git_in, git_ok, git_with_env, write_executable};
 use support::omhl::{typed_work_item_data, work_item_data};
-use support::project::Project;
+use support::project::{DEVELOP_WORKFLOW, Project};
 use tempfile::TempDir;
 
 const W1: &str = "feat/wi-w1__x";
@@ -18,7 +18,7 @@ const W2: &str = "feat/wi-w2__y";
 const WI_W1: &str = "work-items.w1";
 const WI_W2: &str = "work-items.w2";
 const SCRIPTS: [&str; 4] = ["pre-commit", "pre-merge-commit", "pre-push", "post-commit"];
-const MARK_BYTES: &str = "omhl-develop-mark v1\n";
+const MARK_BYTES: &str = "omhl-commit-mark v1\n";
 const BUILD_DIR_HINT: &str = "install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks";
 const UNWRITABLE_HINT: &str =
     "the hooks folder of the user cannot be written; check XDG_DATA_HOME and permissions";
@@ -440,8 +440,17 @@ impl HookRepo {
         self.attestations().iter().map(summary).collect()
     }
 
+    /// Declara a `develop` no `workflow.toml` do diretório principal; o arquivo fica fora do índice e do status para não mexer em árvore nem em contagem de commits.
+    fn declare_develop(&self) {
+        self.project.write_workflow(DEVELOP_WORKFLOW);
+        let exclude = self.d().join(".git/info/exclude");
+        let mut text = fs::read_to_string(&exclude).unwrap_or_default();
+        text.push_str("/.omhl/workflow.toml\n");
+        fs::write(exclude, text).expect("the exclude file is written");
+    }
+
     fn mark(&self) -> PathBuf {
-        self.d().join(".git").join("omhl-develop-mark")
+        self.d().join(".git").join("omhl-commit-mark")
     }
 
     fn put_mark(&self) {
@@ -882,6 +891,7 @@ fn it_should_run_without_recording_on_develop_and_pass_only_with_the_mark() {
     let repo = HookRepo::new();
     repo.check("green").seed();
     repo.installed();
+    repo.declare_develop();
     repo.git(&["switch", "-c", "develop"]);
 
     let without_mark = repo.commit_f();
@@ -890,7 +900,7 @@ fn it_should_run_without_recording_on_develop_and_pass_only_with_the_mark() {
 
     assert_eq!(without_mark.status.code(), Some(1));
     assert!(
-        has_code(&without_mark, "develop-mark-missing"),
+        has_code(&without_mark, "commit-mark-missing"),
         "stderr: {}",
         stderr(&without_mark)
     );
@@ -1285,13 +1295,14 @@ fn it_should_refuse_a_develop_commit_without_the_mark_through_the_installed_hook
     let repo = HookRepo::new();
     repo.check("touch").seed();
     repo.installed();
+    repo.declare_develop();
     repo.git(&["switch", "-c", "develop"]);
 
     let commit = repo.commit_f();
 
     assert_eq!(commit.status.code(), Some(1));
     assert!(
-        has_code(&commit, "develop-mark-missing"),
+        has_code(&commit, "commit-mark-missing"),
         "stderr: {}",
         stderr(&commit)
     );
@@ -1300,10 +1311,11 @@ fn it_should_refuse_a_develop_commit_without_the_mark_through_the_installed_hook
 }
 
 #[test]
-fn it_should_not_require_the_develop_mark_on_a_push() {
+fn it_should_not_require_the_commit_mark_on_a_push() {
     let repo = HookRepo::new();
     repo.check("green-pr").seed();
     repo.add_remote();
+    repo.declare_develop();
     repo.git(&["switch", "-c", "develop"]);
     repo.commit_before("g.txt", "g\n");
     repo.installed();
@@ -1343,10 +1355,11 @@ fn it_should_refuse_to_push_a_branch_that_is_not_checked_out() {
 }
 
 #[test]
-fn it_should_consume_the_develop_mark_in_the_post_commit_hook_after_a_commit_on_develop() {
+fn it_should_consume_the_commit_mark_in_the_post_commit_hook_after_a_commit_on_develop() {
     let repo = HookRepo::new();
     repo.check("green").seed();
     repo.installed();
+    repo.declare_develop();
     repo.git(&["switch", "-c", "develop"]);
     repo.put_mark();
 
@@ -1357,10 +1370,11 @@ fn it_should_consume_the_develop_mark_in_the_post_commit_hook_after_a_commit_on_
 }
 
 #[test]
-fn it_should_consume_the_develop_mark_after_a_commit_made_with_no_verify() {
+fn it_should_consume_the_commit_mark_after_a_commit_made_with_no_verify() {
     let repo = HookRepo::new();
     repo.check("green").seed();
     repo.installed();
+    repo.declare_develop();
     repo.git(&["switch", "-c", "develop"]);
     repo.put_mark();
 
@@ -1371,10 +1385,11 @@ fn it_should_consume_the_develop_mark_after_a_commit_made_with_no_verify() {
 }
 
 #[test]
-fn it_should_keep_the_develop_mark_when_the_commit_is_aborted() {
+fn it_should_keep_the_commit_mark_when_the_commit_is_aborted() {
     let repo = HookRepo::new();
     repo.check("green").seed();
     repo.installed();
+    repo.declare_develop();
     repo.git(&["switch", "-c", "develop"]);
     repo.put_mark();
 
@@ -1487,11 +1502,12 @@ fn it_should_let_a_no_ff_merge_outside_main_pass_through_the_pre_merge_commit_ho
 }
 
 #[test]
-fn it_should_require_the_develop_mark_for_a_clean_merge_on_develop_and_keep_it_afterwards() {
+fn it_should_require_the_commit_mark_for_a_clean_merge_on_develop_and_keep_it_afterwards() {
     let repo = HookRepo::new();
     repo.check("green").seed();
     repo.git(&["switch", "-c", W1]);
     repo.commit_before("g.txt", "g\n");
+    repo.declare_develop();
     repo.git(&["switch", "-c", "develop", "main"]);
     repo.installed();
 
@@ -1502,7 +1518,7 @@ fn it_should_require_the_develop_mark_for_a_clean_merge_on_develop_and_keep_it_a
 
     assert_eq!(without_mark.status.code(), Some(1));
     assert!(
-        has_code(&without_mark, "develop-mark-missing"),
+        has_code(&without_mark, "commit-mark-missing"),
         "stderr: {}",
         stderr(&without_mark)
     );
@@ -1520,13 +1536,14 @@ fn it_should_require_the_develop_mark_for_a_clean_merge_on_develop_and_keep_it_a
 }
 
 #[test]
-fn it_should_spend_the_develop_mark_when_a_conflicted_merge_on_develop_is_closed_by_commit() {
+fn it_should_spend_the_commit_mark_when_a_conflicted_merge_on_develop_is_closed_by_commit() {
     let repo = HookRepo::new();
     repo.check("green");
     fs::write(repo.d().join("a.txt"), "line\n").expect("a.txt is written");
     repo.seed();
     repo.git(&["switch", "-c", W1]);
     repo.commit_before("a.txt", "theirs\n");
+    repo.declare_develop();
     repo.git(&["switch", "-c", "develop", "main"]);
     repo.commit_before("a.txt", "ours\n");
     repo.installed();

@@ -1,6 +1,6 @@
 use hexlog::SemanticId;
 
-use crate::workflow::names::{WORK_ITEM_ID_PREFIX, work_item_of_folder};
+use crate::workflow::branch_policy::{BranchConfig, ExceptionMode};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeadFacts {
@@ -18,8 +18,11 @@ pub enum BranchError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BranchKind {
     Main,
-    Develop,
-    WorkItem(SemanticId),
+    WorkItem {
+        id: SemanticId,
+        kind: Option<String>,
+    },
+    Exception(ExceptionMode),
     Other,
 }
 
@@ -64,30 +67,24 @@ pub fn current_branch(facts: &HeadFacts) -> Result<String, BranchError> {
     }
 }
 
-pub const DEVELOP_BRANCH: &str = "develop";
-
-pub fn classify(branch: &str) -> BranchKind {
-    match branch {
-        "main" => BranchKind::Main,
-        DEVELOP_BRANCH => BranchKind::Develop,
-        _ => work_item_id(branch).map_or(BranchKind::Other, BranchKind::WorkItem),
+/// Uma exceção nunca silencia uma branch que o formato reconhece como de work item.
+pub fn classify(policy: &BranchConfig, branch: &str) -> BranchKind {
+    if branch == "main" {
+        return BranchKind::Main;
     }
+    if let Some(found) = policy.format.match_branch(branch) {
+        return BranchKind::WorkItem {
+            id: found.id,
+            kind: found.kind,
+        };
+    }
+    policy
+        .exception_for(branch)
+        .map_or(BranchKind::Other, BranchKind::Exception)
 }
 
-pub fn branch_prefix(branch: &str) -> Option<&str> {
-    work_item_id(branch)?;
-
-    branch.split_once('/').map(|(kind, _)| kind)
-}
-
-pub fn work_item_id(branch: &str) -> Option<SemanticId> {
-    let (kind, rest) = branch.split_once('/')?;
-    if kind.is_empty() {
-        return None;
-    }
-    let id = work_item_of_folder(rest)?;
-
-    SemanticId::parse(&format!("{WORK_ITEM_ID_PREFIX}{id}")).ok()
+pub fn integration(policy: &BranchConfig) -> Option<&str> {
+    policy.integration.as_deref()
 }
 
 pub fn plan_push(

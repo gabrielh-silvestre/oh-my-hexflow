@@ -3,10 +3,11 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::ports::files::read_regular_utf8;
-use crate::ports::git::GitProbe;
+use crate::ports::git::{GitProbe, WorkflowSource, workflow_text};
 use crate::probe::{NativeRefusal, NativeResolver};
 use crate::project::ProjectError;
 use crate::project::layout::{EXT_FILE_MAX_BYTES, OMHL_DIR, WORKFLOW_FILE};
+use crate::workflow::branch_policy::BranchConfig;
 use crate::workflow::config::{
     INVALID_WORKFLOW_CONFIG, NativeConfig, WorkflowConfig, parse_workflow,
 };
@@ -24,6 +25,15 @@ pub fn read_workflow(root: &Path) -> Result<WorkflowConfig, ProjectError> {
     })?;
 
     parse_workflow(&path, text.as_bytes())
+}
+
+/// Leitor estável: o blob `HEAD` do `workflow.toml` na sonda com raiz no diretório principal; qualquer falha fica no padrão.
+pub fn stable_branch_policy(main_probe: &GitProbe) -> BranchConfig {
+    workflow_text(main_probe, WorkflowSource::Rev("HEAD"))
+        .ok()
+        .and_then(|text| parse_workflow(Path::new(WORKFLOW_FILE), text.as_bytes()).ok())
+        .map(|config| config.branch)
+        .unwrap_or_default()
 }
 
 pub fn policy_dir(root: &Path) -> PathBuf {
@@ -46,8 +56,15 @@ impl NativeResolver for GitProbe {
                 run: config.native.run,
                 invalid_run: Default::default(),
                 prefixes: config.prefixes,
+                branch: config.branch,
             })
             .map_err(NativeRefusal::InvalidWorkflow)
+    }
+
+    fn stable_branch(&self) -> BranchConfig {
+        self.main_dir()
+            .map(|main_dir| stable_branch_policy(&self.rooted_at(&main_dir)))
+            .unwrap_or_default()
     }
 }
 

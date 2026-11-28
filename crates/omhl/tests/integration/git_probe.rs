@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use ::omhl::mechanical::branch::{BranchKind, DEVELOP_BRANCH, classify};
+use ::omhl::mechanical::branch::{BranchKind, classify};
 use ::omhl::ports::git::GitProbe;
-use ::omhl::probe::{DevelopMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
+use ::omhl::probe::{CommitMark, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe, TreeSource};
+use ::omhl::workflow::branch_policy::ExceptionMode;
 use hexlog::{Snapshot, SnapshotKind};
 use support::git::{GitRepo, fake_program, git_command_with_env, git_in, write_executable};
 use tempfile::TempDir;
@@ -16,7 +17,8 @@ const BASE_TREE: &str = "f4b354863caa9cea99b95422c9dab70465757d87";
 const A2_TREE: &str = "52f1df20d82674a56a52d430e0fb60413718a7af";
 const IGNORED_TREE: &str = "c9f3fad2228f19ec0456dbf08e6494b22b1bc58f";
 const ALT_INDEX_TREE: &str = "c1af2f9a5066cabd6fbdb33dc829668ebe416790";
-const MARK_LINE: &str = "omhl-develop-mark v1";
+const MARK_LINE: &str = "omhl-commit-mark v1";
+const DEVELOP_BRANCH: &str = "develop";
 const FEATURE: &str = "feat/wi-w1__x";
 
 fn probe_dir(dir: &std::path::Path) -> Result<ProbeOutcome, ProbeError> {
@@ -283,7 +285,7 @@ fn tree_dirty_around(script: &str) -> (Result<bool, ProbeError>, Result<bool, Pr
 }
 
 fn mark_path(repo: &GitRepo) -> PathBuf {
-    repo.path().join(".git/omhl-develop-mark")
+    repo.path().join(".git/omhl-commit-mark")
 }
 
 // Matriz do repositório real
@@ -1041,7 +1043,7 @@ fn it_should_read_the_rebase_head_inside_a_linked_worktree() {
     );
 }
 
-// A marca da develop
+// A marca de commit
 
 #[test]
 fn it_should_report_no_mark_when_the_file_does_not_exist() {
@@ -1074,7 +1076,7 @@ fn it_should_report_no_mark_when_the_first_line_differs() {
     let repo = base();
     let probe = GitProbe::new(repo.path());
     let mut results = Vec::new();
-    for content in ["omhl-develop-mark v2\n", "x\nomhl-develop-mark v1\n", ""] {
+    for content in ["omhl-commit-mark v2\n", "x\nomhl-commit-mark v1\n", ""] {
         fs::write(mark_path(&repo), content).expect("write");
         results.push(probe.present());
     }
@@ -1091,7 +1093,7 @@ fn it_should_consume_the_mark_and_keep_the_other_files_of_the_git_dir() {
         format!("{MARK_LINE}\ncreated for the test\n"),
     )
     .expect("write");
-    let keep = repo.path().join(".git/omhl-develop-mark.keep");
+    let keep = repo.path().join(".git/omhl-commit-mark.keep");
     fs::write(&keep, "k").expect("write");
 
     let first = probe.consume();
@@ -1115,7 +1117,7 @@ fn it_should_consume_the_mark_and_keep_the_other_files_of_the_git_dir() {
 fn it_should_keep_the_mark_per_worktree() {
     let repo = base();
     let (_parent, wt) = add_worktree(&repo);
-    let wt_mark = repo.path().join(".git/worktrees/wt/omhl-develop-mark");
+    let wt_mark = repo.path().join(".git/worktrees/wt/omhl-commit-mark");
     fs::write(&wt_mark, format!("{MARK_LINE}\n")).expect("write");
     let root_probe = GitProbe::new(repo.path());
 
@@ -1340,12 +1342,12 @@ fn it_should_fail_the_ancestry_read_when_git_exits_with_another_status() {
 }
 
 #[test]
-fn it_should_share_the_develop_constant_between_classify_and_the_ref_read() {
+fn it_should_classify_the_declared_develop_exception_and_still_read_its_ref() {
     let repo = feature_ahead_of_develop();
 
-    let kind = classify(DEVELOP_BRANCH);
+    let kind = classify(&support::develop_policy(), DEVELOP_BRANCH);
     let commit = GitProbe::new(repo.path()).ref_commit(&develop_ref());
 
-    assert_eq!(kind, BranchKind::Develop);
+    assert_eq!(kind, BranchKind::Exception(ExceptionMode::DryRunWithMark));
     assert!(matches!(commit, Ok(Some(_))));
 }

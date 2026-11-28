@@ -187,7 +187,7 @@ impl Fixture {
 
         app.with_project_root(self.root.path())
             .with_exec(runner, &self.blobs)
-            .with_develop_mark(probe)
+            .with_commit_mark(probe)
             .with_retry_after_run(after_run_policy())
     }
 
@@ -261,12 +261,17 @@ fn develop() -> HeadFacts {
     facts(Some("develop"), &["develop"])
 }
 
+/// `develop` é só um nome; a exceção com marca vem da política que o resolvedor devolve.
+fn develop_native() -> support::FakeNative {
+    support::FakeNative::enabling(&[]).with_branch_policy(support::develop_policy())
+}
+
 /// Sonda limpa no HEAD com os fatos e a marca dados; o `Receiver` conta as chamadas de `consume`.
 fn probe_on(head_facts: HeadFacts, mark: bool) -> (FakeProbe, Receiver<()>) {
     let (tx, consumed) = mpsc::channel();
     let probe = FakeProbe::clean(snap('a'))
         .with_head_facts(head_facts)
-        .with_develop_mark(mark)
+        .with_commit_mark(mark)
         .with_consume_log(tx);
 
     (probe, consumed)
@@ -279,7 +284,7 @@ fn wi_probe() -> FakeProbe {
 fn dirty_probe() -> FakeProbe {
     FakeProbe::dirty()
         .with_head_facts(wi_head_facts())
-        .with_develop_mark(false)
+        .with_commit_mark(false)
 }
 
 // Checks e respostas do runner
@@ -765,7 +770,7 @@ fn it_should_refuse_a_branch_whose_name_is_outside_the_pattern() {
             "kind": "branch-name-invalid",
             "event": "before-push",
             "branch": "random-branch",
-            "hint": "rename the branch to type/wi-<id>__<slug> with git branch -m",
+            "hint": "rename the branch to <type>/wi-<id>__<slug> with git branch -m",
         })
     );
     assert_eq!(received(&specs), Vec::<Vec<String>>::new());
@@ -1485,7 +1490,7 @@ fn it_should_refuse_the_main_branch_without_running_anything() {
             "kind": "branch-protected",
             "event": "before-commit",
             "branch": "main",
-            "hint": "main receives no direct changes; create a branch type/wi-<id>__<slug>",
+            "hint": "main receives no direct changes; create a branch <type>/wi-<id>__<slug>",
         })
     );
     assert_eq!(received(&specs), Vec::<Vec<String>>::new());
@@ -1585,7 +1590,8 @@ fn it_should_run_without_recording_on_develop() {
     fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let (probe, _consumed) = probe_on(develop(), false);
-    let mut app = fx.app(&probe, &runner);
+    let native = develop_native();
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
 
     let output = run_pr(&mut app).expect("the dry run succeeds");
 
@@ -1619,7 +1625,8 @@ fn it_should_fail_on_develop_with_the_output_tail_when_a_blocking_check_fails() 
     };
     let (runner, _specs) = FakeRunner::new(vec![answer(LINT, Ok(failing))]);
     let (probe, _consumed) = probe_on(develop(), false);
-    let mut app = fx.app(&probe, &runner);
+    let native = develop_native();
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
 
     let error = run_pr(&mut app).expect_err("the dry run fails");
 
@@ -1639,27 +1646,45 @@ fn it_should_fail_on_develop_with_the_output_tail_when_a_blocking_check_fails() 
 }
 
 #[test]
-fn it_should_answer_develop_mark_missing_on_develop_before_running_any_command() {
+fn it_should_answer_commit_mark_missing_on_develop_before_running_any_command() {
     let fx = Fixture::new();
     fx.seed_check("checks.tree", run_data("before-commit", true, &["true"]));
     let (runner, specs) = FakeRunner::new(vec![ok(&["true"])]);
     let (probe, _consumed) = probe_on(develop(), false);
-    let mut app = fx.app(&probe, &runner);
+    let native = develop_native();
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
 
     let error = app
         .dispatch(&Caller::cli(), &on_event("before-commit"))
-        .expect_err("the develop mark is missing");
+        .expect_err("the commit mark is missing");
 
-    assert_eq!(error.code(), "develop-mark-missing");
+    assert_eq!(error.code(), "commit-mark-missing");
     assert_eq!(
         details(&error)[0]["context"],
         json!({
-            "kind": "develop-mark-missing",
+            "kind": "commit-mark-missing",
             "event": "before-commit",
             "branch": "develop",
-            "hint": "create the mark with the /oh-my-hexflow:omhl-develop-mark command",
+            "hint": "create the mark with the /oh-my-hexflow:omhl-commit-mark command, or write /git-dir/omhl-commit-mark with the first line `omhl-commit-mark v1`",
         })
     );
+    assert_eq!(received(&specs), Vec::<Vec<String>>::new());
+}
+
+#[test]
+fn it_should_answer_commit_mark_unavailable_when_the_mark_cannot_be_probed() {
+    let fx = Fixture::new();
+    fx.seed_check("checks.tree", run_data("before-commit", true, &["true"]));
+    let (runner, specs) = FakeRunner::new(vec![ok(&["true"])]);
+    let probe = FakeProbe::clean(snap('a')).with_head_facts(develop());
+    let native = develop_native();
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
+
+    let error = app
+        .dispatch(&Caller::cli(), &on_event("before-commit"))
+        .expect_err("the commit mark cannot be probed");
+
+    assert_eq!(error.code(), "commit-mark-unavailable");
     assert_eq!(received(&specs), Vec::<Vec<String>>::new());
 }
 
@@ -1669,7 +1694,8 @@ fn it_should_not_consume_the_mark_when_develop_passes_with_it() {
     fx.seed_check("checks.text", check_data("before-commit", "x", true));
     let (runner, _specs) = FakeRunner::new(vec![]);
     let (probe, consumed) = probe_on(develop(), true);
-    let mut app = fx.app(&probe, &runner);
+    let native = develop_native();
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
 
     let output = app
         .dispatch(&Caller::cli(), &on_event("before-commit"))
@@ -1688,7 +1714,8 @@ fn it_should_not_consume_the_mark_when_develop_fails() {
     fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, _specs) = FakeRunner::new(vec![exit(LINT, 1)]);
     let (probe, consumed) = probe_on(develop(), true);
-    let mut app = fx.app(&probe, &runner);
+    let native = develop_native();
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
 
     let error = run_pr(&mut app).expect_err("the dry run fails");
 
@@ -1753,12 +1780,13 @@ fn it_should_carry_the_stored_outcome_when_the_outcome_is_immutable() {
 }
 
 #[test]
-fn it_should_not_require_the_develop_mark_for_a_before_pr_event() {
+fn it_should_not_require_the_commit_mark_for_a_before_pr_event() {
     let fx = Fixture::new();
     fx.seed_check("checks.lint", run_data("before-push", true, LINT));
     let (runner, specs) = FakeRunner::new(vec![ok(LINT)]);
     let (probe, _consumed) = probe_on(develop(), false);
-    let mut app = fx.app(&probe, &runner);
+    let native = develop_native();
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
 
     let output = run_pr(&mut app).expect("the dry run succeeds without the mark");
 
@@ -1768,13 +1796,14 @@ fn it_should_not_require_the_develop_mark_for_a_before_pr_event() {
 }
 
 #[test]
-fn it_should_not_require_the_develop_mark_for_a_before_merge_event() {
+fn it_should_not_require_the_commit_mark_for_a_before_merge_event() {
     let fx = Fixture::new();
     let gh = &["gh", "pr", "checks"];
     fx.seed_check("checks.ci", run_data("before-merge", true, gh));
     let (runner, specs) = FakeRunner::new(vec![ok(gh)]);
     let (probe, _consumed) = probe_on(develop(), false);
-    let mut app = fx.app(&probe, &runner);
+    let native = develop_native();
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
 
     let output = app
         .dispatch(&Caller::cli(), &on_event("before-merge"))
@@ -1786,14 +1815,15 @@ fn it_should_not_require_the_develop_mark_for_a_before_merge_event() {
 }
 
 #[test]
-fn it_should_consume_the_develop_mark_after_a_commit_on_develop() {
+fn it_should_consume_the_commit_mark_after_a_commit_on_develop() {
     let fx = Fixture::new();
     let (runner, _specs) = FakeRunner::new(vec![]);
     let (probe, consumed) = probe_on(develop(), true);
-    let mut app = fx.app(&probe, &runner);
+    let native = develop_native();
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
 
     let output = app
-        .dispatch(&Caller::cli(), &Action::ConsumeDevelopMark)
+        .dispatch(&Caller::cli(), &Action::ConsumeCommitMark)
         .expect("the mark is consumed");
 
     assert_eq!(output, json!({ "consumed": true }));
@@ -1801,14 +1831,14 @@ fn it_should_consume_the_develop_mark_after_a_commit_on_develop() {
 }
 
 #[test]
-fn it_should_not_consume_the_develop_mark_after_a_commit_on_another_branch() {
+fn it_should_not_consume_the_commit_mark_after_a_commit_on_another_branch() {
     let fx = Fixture::new();
     let (runner, _specs) = FakeRunner::new(vec![]);
     let (probe, consumed) = probe_on(wi_head_facts(), true);
     let mut app = fx.app(&probe, &runner);
 
     let output = app
-        .dispatch(&Caller::cli(), &Action::ConsumeDevelopMark)
+        .dispatch(&Caller::cli(), &Action::ConsumeCommitMark)
         .expect("the hook answers");
 
     assert_eq!(output, json!({ "consumed": false }));
@@ -1988,28 +2018,28 @@ fn it_should_stop_and_report_a_lost_parent_without_running_the_remaining_checks(
 }
 
 #[test]
-fn it_should_not_read_the_branch_when_the_develop_mark_is_absent_after_a_commit() {
+fn it_should_not_read_the_branch_when_the_commit_mark_is_absent_after_a_commit() {
     let fx = Fixture::new();
     let (runner, _specs) = FakeRunner::new(vec![]);
-    let probe = FakeProbe::clean(snap('a')).with_develop_mark(false);
+    let probe = FakeProbe::clean(snap('a')).with_commit_mark(false);
     let mut app = fx.app(&probe, &runner);
 
     let output = app
-        .dispatch(&Caller::cli(), &Action::ConsumeDevelopMark)
+        .dispatch(&Caller::cli(), &Action::ConsumeCommitMark)
         .expect("the hook answers without reading the branch");
 
     assert_eq!(output, json!({ "consumed": false }));
 }
 
 #[test]
-fn it_should_keep_the_develop_mark_silently_when_head_is_ambiguous_after_a_commit() {
+fn it_should_keep_the_commit_mark_silently_when_head_is_ambiguous_after_a_commit() {
     let fx = Fixture::new();
     let (runner, _specs) = FakeRunner::new(vec![]);
     let (probe, consumed) = probe_on(facts(None, &[]), true);
     let mut app = fx.app(&probe, &runner);
 
     let output = app
-        .dispatch(&Caller::cli(), &Action::ConsumeDevelopMark)
+        .dispatch(&Caller::cli(), &Action::ConsumeCommitMark)
         .expect("the hook answers");
 
     assert_eq!(output, json!({ "consumed": false }));

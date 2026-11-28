@@ -2,6 +2,7 @@ use ::omhl::delivery_gate::{GateSnapshots, RequiredCheck};
 use ::omhl::facade::{ClosedWorkItem, Omhl};
 use ::omhl::gate::{GateReport, QuestionReport};
 use ::omhl::native::NativeCheck;
+use ::omhl::workflow::branch_policy::BranchConfig;
 use ::omhl::workflow::config::{NativeConfig, WorkflowConfig};
 use hexlog::{
     AppendItem, AppendOutcome, ItemBody, Lineage, NodeView, RecordId, SemanticId, Snapshot,
@@ -52,6 +53,7 @@ pub fn native_enabled(ids: &[&'static str]) -> NativeConfig {
         checks: ids.iter().copied().collect(),
         // A tabela que um projeto sem `workflow.toml` lê: a dos padrões do binário.
         prefixes: WorkflowConfig::default().prefixes,
+        branch: BranchConfig::default(),
         ..NativeConfig::default()
     }
 }

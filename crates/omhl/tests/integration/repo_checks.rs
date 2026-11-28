@@ -7,9 +7,9 @@ use ::omhl::guard::{ROLE_REFERENCE_COMMANDS, ROLE_REFERENCE_MATRIX};
 use support::repo_checks::repo_root;
 
 const MARK_LINE: &str =
-    r#"printf 'omhl-develop-mark v1\n' > "$(git rev-parse --absolute-git-dir)/omhl-develop-mark""#;
+    r#"printf 'omhl-commit-mark v1\n' > "$(git rev-parse --absolute-git-dir)/omhl-commit-mark""#;
 const MECHANICAL_GATES_PAGE: &str = "docs/mechanical-gates.md";
-const DEVELOP_MARK_COMMAND: &str = "plugin/commands/omhl-develop-mark.md";
+const COMMIT_MARK_COMMAND: &str = "plugin/commands/omhl-commit-mark.md";
 const DIRECTIVES_FLOW_PAGE: &str = "docs/directives-flow.md";
 const DIRECTIVES_FLOW_SKILL: &str = "plugin/skills/directives-flow/SKILL.md";
 /// Âncoras da skill, sempre entre crases no texto; origem: bloco S13 do plano e decisões (e), (i) e (j).
@@ -123,13 +123,13 @@ fn it_should_link_the_mechanical_gates_page_from_the_readme() {
 }
 
 #[test]
-fn it_should_provide_the_develop_mark_command_with_the_marker_line() {
-    let command = read_repo_file(DEVELOP_MARK_COMMAND);
+fn it_should_provide_the_commit_mark_command_with_the_marker_line() {
+    let command = read_repo_file(COMMIT_MARK_COMMAND);
     let page = read_repo_file(MECHANICAL_GATES_PAGE);
 
     assert!(command.lines().any(|line| line == MARK_LINE));
-    assert!(command.contains("omhl-develop-mark v1"));
-    assert!(page.contains("](../plugin/commands/omhl-develop-mark.md)"));
+    assert!(command.contains("omhl-commit-mark v1"));
+    assert!(page.contains("](../plugin/commands/omhl-commit-mark.md)"));
 }
 
 #[test]

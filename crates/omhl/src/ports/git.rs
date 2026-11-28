@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use hexlog::{Snapshot, SnapshotKind};
 
 use crate::probe::{
-    DevelopMark, GIT_TIMED_OUT, GitVersion, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe,
+    CommitMark, GIT_TIMED_OUT, GitVersion, HeadFacts, ProbeError, ProbeOutcome, SnapshotProbe,
     TreeSource,
 };
 use crate::project::layout::EXT_FILE_MAX_BYTES;
@@ -23,9 +23,10 @@ const MAX_OUTPUT_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_ERROR_CHARS: usize = 200;
 const OID_PREFIX: &[u8] = b"# branch.oid ";
 const DIRTY_PREFIXES: [&[u8]; 4] = [b"1 ", b"2 ", b"u ", b"? "];
-const MARK_FILE: &str = "omhl-develop-mark";
-const MARK_LINE: &[u8] = b"omhl-develop-mark v1";
+const MARK_FILE: &str = "omhl-commit-mark";
+const MARK_LINE: &[u8] = b"omhl-commit-mark v1";
 
+#[derive(Clone)]
 pub struct GitProbe {
     dir: PathBuf,
     program: OsString,
@@ -111,6 +112,14 @@ impl GitProbe {
 
     pub fn with_timeout(self, timeout: Duration) -> GitProbe {
         GitProbe { timeout, ..self }
+    }
+
+    pub fn rooted_at(&self, dir: &Path) -> GitProbe {
+        GitProbe {
+            dir: dir.to_path_buf(),
+            index_file: None,
+            ..self.clone()
+        }
     }
 
     pub fn with_deadline(self, deadline: Instant) -> GitProbe {
@@ -461,7 +470,11 @@ impl SnapshotProbe for GitProbe {
     }
 }
 
-impl DevelopMark for GitProbe {
+impl CommitMark for GitProbe {
+    fn location(&self) -> Result<PathBuf, ProbeError> {
+        self.mark_path()
+    }
+
     fn present(&self) -> Result<bool, ProbeError> {
         match fs::read(self.mark_path()?) {
             Ok(content) => Ok(content.split(|byte| *byte == b'\n').next() == Some(MARK_LINE)),

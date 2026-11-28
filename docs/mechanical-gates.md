@@ -42,16 +42,18 @@ O `command[0]` da attestation é o programa montado a partir do `run`: o caminho
 
 O `before-commit` recusa o commit com `worktree-differs-from-index` quando um submódulo tem arquivo modificado ou não rastreado, igual ao `before-push` e ao `pre-push`. A recusa vale mesmo com `submodule.<nome>.ignore=all` na configuração. Um check que suja o submódulo ao rodar passa a parar com `command-changed-worktree`. Para sair, limpe o submódulo ou ponha o arquivo gerado no `.gitignore` do próprio submódulo.
 
-## 3. Branch, marca da `develop` e `main`
+## 3. Branch, marca de commit e `main`
 
 **Criação da branch.** A matriz, o hook e os bypasses estão em [directives-flow.md](directives-flow.md).
 
-### A marca da `develop`
+### A marca de commit
 
-No Claude Code, crie a marca com o command do plugin: `/oh-my-hexflow:omhl-develop-mark`. O texto dele está em [plugin/commands/omhl-develop-mark.md](../plugin/commands/omhl-develop-mark.md). No terminal, o equivalente é:
+O binário não conhece nenhuma branch além da `main`. Cada projeto declara em `[branch]` do `.omhl/workflow.toml` do diretório principal a integração (`branch.integration`, a base da revisão) e as exceções (`[[branch.exception]]`, com `pattern` e `mode`). Uma exceção `dry-run-with-mark` exige a marca de commit no `before-commit`; `dry-run` roda os checks sem gravar; `skip` não roda nada.
+
+No Claude Code, crie a marca com o command do plugin: `/oh-my-hexflow:omhl-commit-mark`. O texto dele está em [plugin/commands/omhl-commit-mark.md](../plugin/commands/omhl-commit-mark.md), com o limite da marca num merge local. No terminal, o equivalente é:
 
 ```sh
-printf 'omhl-develop-mark v1\n' > "$(git rev-parse --absolute-git-dir)/omhl-develop-mark"
+printf 'omhl-commit-mark v1\n' > "$(git rev-parse --absolute-git-dir)/omhl-commit-mark"
 ```
 
 A marca é um freio, não uma parede: um humano no terminal a cria à mão.

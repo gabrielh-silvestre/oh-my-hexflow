@@ -33,7 +33,7 @@ use serde_json::Value;
 use crate::skills::coverage::{leaf_commands, read_docs, skills_dir, starts_with_path};
 use crate::support::child::omhl;
 use crate::support::git::{expect_git_success, git_command_with_env};
-use crate::support::project::Project;
+use crate::support::project::{DEVELOP_WORKFLOW, Project};
 use crate::support::repo_checks::repo_root;
 use crate::support::sweep_lock::serialize_sweeps;
 
@@ -55,7 +55,7 @@ const SESSION_DECISION: &str = r#"{"items":[{"body":{"kind":"node","id":"decisio
 const SESSION_GAP: &str = r#"{"items":[{"body":{"kind":"node","id":"gaps.limit","type":"gap","data":{"question":"What is the row limit?","context":"CSV export.","work_item":"work-items.w1"}}}]}"#;
 const NATIVE_WORKFLOW: &str = "version = 1\n\n[native]\nchecks = [\"checks.run-tests\", \"checks.ci-green-before-merge\", \"checks.verify-review-comment-anchoring\"]\n";
 const INVALID_WORKFLOW: &str = "version = 1\n\n[native]\nchecks = [\"checks.unknown\"]\n";
-const DEVELOP_MARK: &str = "omhl-develop-mark v1\n";
+const COMMIT_MARK: &str = "omhl-commit-mark v1\n";
 
 // Parser dos blocos
 
@@ -436,6 +436,11 @@ impl Fixture {
                 fixture.seed();
                 fixture.init_git();
             }
+            "git-develop-exception" => {
+                fixture.write(".omhl/workflow.toml", DEVELOP_WORKFLOW);
+                fixture.seed();
+                fixture.init_git();
+            }
             "natives" | "invalid-workflow" => {
                 let workflow = if name == "natives" {
                     NATIVE_WORKFLOW
@@ -487,11 +492,12 @@ impl Fixture {
                 fs::remove_file(fixture.dir().join(".omhl/guidelines/brief.toml"))
                     .expect("the guideline file is removed");
             }
-            "develop-mark" => {
+            "commit-mark" => {
+                fixture.write(".omhl/workflow.toml", DEVELOP_WORKFLOW);
                 fixture.seed();
                 fixture.init_git();
                 fixture.git(&["switch", "-c", "develop"]);
-                fixture.write(".git/omhl-develop-mark", DEVELOP_MARK);
+                fixture.write(".git/omhl-commit-mark", COMMIT_MARK);
             }
             other => return Err(format!("unknown fixture `{other}`")),
         }

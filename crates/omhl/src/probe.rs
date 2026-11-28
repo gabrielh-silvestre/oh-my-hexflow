@@ -2,6 +2,7 @@ use hexlog::Snapshot;
 
 pub use crate::mechanical::branch::HeadFacts;
 use crate::project::ProjectError;
+use crate::workflow::branch_policy::BranchConfig;
 use crate::workflow::config::NativeConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,9 +19,11 @@ pub trait SnapshotProbe: Send + Sync {
     fn head_facts(&self) -> Result<HeadFacts, ProbeError>;
 }
 
-/// Porta própria da marca de `develop`: a sonda de leitura não escreve.
-pub trait DevelopMark: Send + Sync {
+/// Porta própria da marca de commit: a sonda de leitura não escreve.
+pub trait CommitMark: Send + Sync {
     fn present(&self) -> Result<bool, ProbeError>;
+    /// Caminho absoluto do arquivo da marca, para a dica de quem a cria à mão.
+    fn location(&self) -> Result<std::path::PathBuf, ProbeError>;
     /// Marca ausente também é `Ok`.
     fn consume(&self) -> Result<(), ProbeError>;
 }
@@ -28,6 +31,10 @@ pub trait DevelopMark: Send + Sync {
 /// Resolve quais checks nativos o projeto ligou; recusa em vez de assumir um padrão.
 pub trait NativeResolver: Send + Sync {
     fn resolve(&self) -> Result<NativeConfig, NativeRefusal>;
+    /// Política do blob `HEAD` do diretório principal, para os leitores que não recusam um principal ilegível.
+    fn stable_branch(&self) -> BranchConfig {
+        BranchConfig::default()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

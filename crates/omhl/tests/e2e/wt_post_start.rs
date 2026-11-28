@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 use support::child::{Output, omhl};
 use support::git::git_in;
-use support::project::Project;
+use support::project::{DEVELOP_WORKFLOW, Project};
 use tempfile::TempDir;
 
 const BRANCH: &str = "feat/wi-w1__login";
@@ -110,6 +110,7 @@ fn it_should_do_nothing_for_a_branch_that_is_not_a_work_item_branch() {
 #[test]
 fn it_should_do_nothing_for_develop_and_main() {
     let repo = Repo::new();
+    repo.project.write_workflow(DEVELOP_WORKFLOW);
     repo.seed(LOGIN);
 
     let outputs = ["develop", "main"].map(|branch| repo.wt_post_start(branch));

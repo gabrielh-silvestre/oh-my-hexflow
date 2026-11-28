@@ -917,7 +917,7 @@ fn it_should_answer_branch_name_invalid_for_a_branch_outside_the_pattern_through
     assert_eq!(context["branch"], json!("topic"));
     assert_eq!(
         context["hint"],
-        json!("rename the branch to type/wi-<id>__<slug> with git branch -m")
+        json!("rename the branch to <type>/wi-<id>__<slug> with git branch -m")
     );
     assert!(!ran.exists(), "the check command did not run");
     assert_eq!(attestations(&p), Vec::<Value>::new());
@@ -1055,11 +1055,11 @@ fn it_should_exit_two_when_the_pre_push_flag_comes_without_the_before_pr_event()
 }
 
 #[test]
-fn it_should_consume_the_develop_mark_through_the_post_commit_command() {
+fn it_should_consume_the_commit_mark_through_the_post_commit_command() {
     let p = cli_repo(&[]);
-    git_ok(p.dir(), &["switch", "-q", "-c", "develop"]);
-    let mark = p.dir().join(".git").join("omhl-develop-mark");
-    fs::write(&mark, "omhl-develop-mark v1\n").expect("the mark is written");
+    p.switch_to_declared_develop();
+    let mark = p.dir().join(".git").join("omhl-commit-mark");
+    fs::write(&mark, "omhl-commit-mark v1\n").expect("the mark is written");
 
     let first = omhl_in(&p, &["hooks", "post-commit"]).run();
     let mark_left = mark.exists();

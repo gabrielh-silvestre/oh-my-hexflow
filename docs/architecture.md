@@ -80,7 +80,7 @@ Segue a decisão de projeto sobre caixas cinzas: caixa cinza é um módulo profu
 
 ### 3.23 Mudanças nas caixas existentes
 
-- **`SnapshotProbe` e `DevelopMark`** (`probe.rs`). A trait tinha um método, `probe`. A marca da `develop` ganhou a trait própria `DevelopMark`, porque a sonda de leitura não escreve.
+- **`SnapshotProbe` e `CommitMark`** (`probe.rs`). A trait tinha um método, `probe`. A marca de commit das branches de exceção `dry-run-with-mark` ganhou a trait própria `CommitMark`, porque a sonda de leitura não escreve.
 
 ### 3.24 Fluxo de diretivas e premissas: `omhl::workflow` e as ports novas
 

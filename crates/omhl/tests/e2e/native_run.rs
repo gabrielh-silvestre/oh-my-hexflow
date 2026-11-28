@@ -14,7 +14,7 @@ use support::child::{Cmd, omhl, omhl_json};
 use support::ext::ExtTree;
 use support::git::git_ok;
 use support::omhl::{acme, node_item, with_snapshot};
-use support::project::Project;
+use support::project::{DEVELOP_BRANCH_TABLE, Project};
 use support::{FakeProbe, FixedClock, SeqIds, executor_attestation_data, executor_author};
 
 const WORK_ITEM_APPEND: &str = r#"{"items":[{"body":{"kind":"node","id":"work-items.w1","type":"work-item","data":{"title":"t","status":"open","type":"chore"}}}]}"#;
@@ -1522,9 +1522,13 @@ fn it_should_pass_the_gate_after_the_next_commit_when_the_main_directory_merged_
 
 fn on_develop(p: &Project) {
     git_ok(p.dir(), &["switch", "-q", "-c", "develop", "main"]);
+    let path = p.dir().join(".omhl/workflow.toml");
+    let declared = fs::read_to_string(&path).expect("the workflow is read") + DEVELOP_BRANCH_TABLE;
+    fs::write(&path, declared).expect("the develop declaration is written");
+    git_ok(p.dir(), &["commit", "-q", "-am", "declare develop"]);
     fs::write(
-        p.dir().join(".git").join("omhl-develop-mark"),
-        "omhl-develop-mark v1\n",
+        p.dir().join(".git").join("omhl-commit-mark"),
+        "omhl-commit-mark v1\n",
     )
     .expect("the mark is written");
 }

@@ -8,7 +8,7 @@ Whoever calls it is the clone's git hook, not a stage of the cycle.
 
 ## When to use
 
-Whoever calls it is the `post-commit` hook that `omhl hooks install` writes; you rarely run it by hand. On the `develop` branch, after a commit, it consumes the `develop` mark (the `omhl-develop-mark` file in the git folder), so the next direct commit requires a new mark. On another branch it does nothing.
+Whoever calls it is the `post-commit` hook that `omhl hooks install` writes; you rarely run it by hand. On a branch that `.omhl/workflow.toml` declares as a `dry-run-with-mark` exception, after a commit, it consumes the commit mark (the `omhl-commit-mark` file in the git folder), so the next direct commit requires a new mark. On another branch it does nothing.
 
 ## Inputs
 
@@ -18,7 +18,7 @@ Whoever calls it is the `post-commit` hook that `omhl hooks install` writes; you
 
 ## Output
 
-A JSON line on stdout, exit 0: `consumed`, which is `true` when the mark existed on `develop` and was deleted, and `false` when there was no mark or the branch is not `develop`. Calling again after it was consumed returns `false`: the command is idempotent. `omhl check run --event before-commit` and an aborted commit never spend the mark.
+A JSON line on stdout, exit 0: `consumed`, which is `true` when the mark existed on a `dry-run-with-mark` exception branch and was deleted, and `false` when there was no mark or the branch is not such an exception. Calling again after it was consumed returns `false`: the command is idempotent. `omhl check run --event before-commit` and an aborted commit never spend the mark.
 
 ## Errors
 
@@ -30,9 +30,9 @@ An error goes to stderr, as a JSON line, with exit 1. An unknown option or a mis
 
 ## Examples
 
-Consumes the mark after a commit on `develop`. The second call no longer finds the mark:
+Consumes the mark after a commit on a `dry-run-with-mark` exception branch. The second call no longer finds the mark:
 
-```omhl-example fixture=develop-mark
+```omhl-example fixture=commit-mark
 $ omhl hooks post-commit
 {"consumed":true}
 $ omhl hooks post-commit

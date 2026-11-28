@@ -12,6 +12,7 @@ use crate::guidance::Guidance;
 use crate::project::ProjectError;
 use crate::project::layout::ISSUES_MAX;
 use crate::projection::ProjectionError;
+use crate::workflow::branch_policy::BranchFormat;
 use crate::workflow::spec::Violation;
 
 const BUSY_MESSAGE: &str =
@@ -245,10 +246,10 @@ impl AppError {
         )
     }
 
-    pub(crate) fn develop_mark_unavailable() -> AppError {
+    pub(crate) fn commit_mark_unavailable() -> AppError {
         AppError::plain(
-            "develop-mark-unavailable",
-            "the develop mark is not configured",
+            "commit-mark-unavailable",
+            "the commit mark is not configured or cannot be read",
         )
     }
 
@@ -549,7 +550,62 @@ impl AppError {
             "/work_item",
             Guidance {
                 cause: "the evaluated commit is not in the local integration branch",
-                next_step: "update the local develop from the remote without a new commit, or ask the owner for --abandon",
+                next_step: "update the local integration branch from the remote without a new commit, or ask the owner for --abandon",
+            },
+        )
+    }
+
+    pub(crate) fn delivery_integration_undeclared() -> AppError {
+        AppError::refusal(
+            "delivery-not-integrated",
+            "/work_item",
+            Guidance {
+                cause: "the workflow declares no integration branch, so the delivery cannot be checked",
+                next_step: "declare the integration branch in branch.integration at the owner's request; without it, the only close left is --abandon",
+            },
+        )
+    }
+
+    pub(crate) fn review_integration_missing() -> AppError {
+        AppError::refusal(
+            "review-base-invalid",
+            "/base",
+            Guidance {
+                cause: "the integration branch declared in branch.integration has no local ref",
+                next_step: "create or fetch the local branch named in branch.integration, or fix branch.integration",
+            },
+        )
+    }
+
+    pub(crate) fn review_base_unresolved() -> AppError {
+        AppError::refusal(
+            "review-base-invalid",
+            "/base",
+            Guidance {
+                cause: "--base does not name a commit, or it is the same commit as HEAD, so there is no range to review",
+                next_step: "pass --base with the merge-base of the pull request with its integration branch",
+            },
+        )
+    }
+
+    pub(crate) fn review_base_other_merge_base() -> AppError {
+        AppError::refusal(
+            "review-base-invalid",
+            "/base",
+            Guidance {
+                cause: "--base gives another merge-base with HEAD than the declared integration branch",
+                next_step: "drop --base, or pass a --base whose merge-base with HEAD is the one of the integration branch",
+            },
+        )
+    }
+
+    pub(crate) fn review_base_not_in_integration() -> AppError {
+        AppError::refusal(
+            "review-base-invalid",
+            "/base",
+            Guidance {
+                cause: "--base is not an ancestor of the declared integration branch",
+                next_step: "pass --base with the merge-base that gate-delivery printed before the merge",
             },
         )
     }
@@ -620,11 +676,11 @@ impl AppError {
         AppError::at_pointer("branch-protected", path, "the branch is protected")
     }
 
-    pub(crate) fn develop_mark_missing(path: &str) -> AppError {
+    pub(crate) fn commit_mark_missing(path: &str) -> AppError {
         AppError::at_pointer(
-            "develop-mark-missing",
+            "commit-mark-missing",
             path,
-            "a commit on develop needs the develop mark",
+            "a commit on this exception branch needs the commit mark",
         )
     }
 
@@ -747,12 +803,19 @@ impl AppError {
         )
     }
 
-    pub(crate) fn prefix_not_allowed(path: &str) -> AppError {
-        AppError::at_pointer(
-            "prefix-not-allowed",
-            path,
-            "the branch name must be <type>/wi-<id>__<slug> with a type listed in the workflow prefixes",
-        )
+    pub(crate) fn prefix_not_allowed(path: &str, format: &BranchFormat) -> AppError {
+        let message = if format.has_type() {
+            format!(
+                "the branch name must be {} with a type listed in the workflow prefixes",
+                format.template()
+            )
+        } else {
+            format!(
+                "the branch format {} has no <type>, so the type is not in the branch name",
+                format.template()
+            )
+        };
+        AppError::at_pointer("prefix-not-allowed", path, &message)
     }
 
     pub(crate) fn main_dir_unknown() -> AppError {

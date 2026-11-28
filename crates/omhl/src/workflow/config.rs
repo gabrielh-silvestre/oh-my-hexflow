@@ -14,6 +14,9 @@ use crate::project::layout::{
     CHECKS_DIR, DOT_GIT_DIR, GUIDELINES_DIR, OMHL_DIR, PROJECTION_DIR, SPECS_DIR, WORKFLOW_FILE,
 };
 use crate::project::text::{position_at, toml_error_position};
+use crate::workflow::branch_policy::{
+    BranchConfig, BranchFormat, ExceptionMode, ExceptionRule, is_valid_branch_name,
+};
 
 const SUPPORTED_VERSION: u32 = 1;
 pub const INVALID_WORKFLOW_CONFIG: &str = "invalid-workflow-config";
@@ -25,6 +28,7 @@ pub struct WorkflowConfig {
     pub native: NativeConfig,
     pub interview: InterviewConfig,
     pub prefixes: BTreeMap<String, Vec<RequireAtom>>,
+    pub branch: BranchConfig,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -75,6 +79,8 @@ pub struct NativeConfig {
     pub run: BTreeMap<String, NativeRun>,
     pub invalid_run: BTreeMap<String, String>,
     pub prefixes: BTreeMap<String, Vec<RequireAtom>>,
+    /// Só vale na saída do `NativeResolver` e do `repaired_native`; a cópia avaliada fica no padrão.
+    pub branch: BranchConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,6 +155,7 @@ impl Default for WorkflowConfig {
                 .into_iter()
                 .map(|(prefix, atoms)| (prefix.to_owned(), atoms))
                 .collect(),
+            branch: BranchConfig::default(),
         }
     }
 }
@@ -162,7 +169,26 @@ struct RawWorkflow {
     native: Option<RawNative>,
     interview: Option<RawInterview>,
     prefix: Option<BTreeMap<String, RawPrefix>>,
+    branch: Option<RawBranch>,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawBranch {
+    format: Option<Spanned<String>>,
+    integration: Option<Spanned<String>>,
+    exception: Option<Vec<RawException>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawException {
+    pattern: Spanned<String>,
+    mode: Spanned<String>,
+}
+
+/// Um ref maior não seria gravado: a recusa vem no parse, não só no `close --failed-delivery`.
+const INTEGRATION_MAX_CHARS: usize = 200;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -302,6 +328,72 @@ fn parse_interview(raw: RawInterview) -> Result<InterviewConfig, String> {
     Ok(interview)
 }
 
+fn parse_branch(path: &Path, text: &str, raw: RawBranch) -> Result<BranchConfig, ProjectError> {
+    let mut branch = BranchConfig::default();
+    if let Some(format) = raw.format {
+        branch.format = BranchFormat::parse(format.as_ref())
+            .map_err(|error| invalid_at(path, text, format.span(), error.reason()))?;
+    }
+    if let Some(integration) = raw.integration {
+        let name = integration.as_ref();
+        if !is_valid_branch_name(name) || name.chars().count() > INTEGRATION_MAX_CHARS {
+            return Err(invalid_at(
+                path,
+                text,
+                integration.span(),
+                "branch.integration must be a valid git branch name of at most 200 characters",
+            ));
+        }
+        branch.integration = Some(integration.into_inner());
+    }
+    for entry in raw.exception.unwrap_or_default() {
+        let mode = ExceptionMode::parse(entry.mode.as_ref()).ok_or_else(|| {
+            invalid_at(
+                path,
+                text,
+                entry.mode.span(),
+                "branch.exception.mode must be dry-run-with-mark, dry-run or skip",
+            )
+        })?;
+        let pattern = entry.pattern.as_ref();
+        if !is_valid_pattern(pattern) {
+            return Err(invalid_at(
+                path,
+                text,
+                entry.pattern.span(),
+                "branch.exception.pattern must be a branch name or prefix/*, other than main",
+            ));
+        }
+        if branch
+            .exceptions
+            .iter()
+            .any(|rule| rule.pattern == *pattern)
+        {
+            return Err(invalid_at(
+                path,
+                text,
+                entry.pattern.span(),
+                "branch.exception.pattern repeats another entry",
+            ));
+        }
+        branch.exceptions.push(ExceptionRule {
+            pattern: entry.pattern.into_inner(),
+            mode,
+        });
+    }
+    Ok(branch)
+}
+
+/// O `*` só vale no fim de `prefixo/*`.
+fn is_valid_pattern(pattern: &str) -> bool {
+    let name = match pattern.strip_suffix("/*") {
+        Some(prefix) if !prefix.is_empty() => format!("{prefix}/x"),
+        Some(_) => return false,
+        None => pattern.to_owned(),
+    };
+    pattern != "main" && is_valid_branch_name(&name)
+}
+
 pub fn parse_workflow(path: &Path, bytes: &[u8]) -> Result<WorkflowConfig, ProjectError> {
     parse_with(path, bytes, false)
 }
@@ -413,6 +505,9 @@ fn parse_with(path: &Path, bytes: &[u8], lenient: bool) -> Result<WorkflowConfig
             ));
         };
         config.native.checks.insert(check.id);
+    }
+    if let Some(branch) = raw.branch {
+        config.branch = parse_branch(path, text, branch)?;
     }
     for (prefix, table) in raw.prefix.unwrap_or_default() {
         // O projeto soma os átomos aos padrões do tipo: uma lista vazia não os tira.

@@ -47,7 +47,7 @@ With `--format json` it is a JSON line with three fields:
 Closing a work item that was already merged:
 
 - A merged work item never closes with `--abandon`, unless the merge is one `--failed-delivery` does not cover. It closes with `--failed-delivery --note`, with the owner's literal phrase in the `--note`.
-- The limit: `--failed-delivery` does not cover squash or rebase merges or a project without `develop`. There the owner uses `--abandon`, and the `--reason` says how the merge happened.
+- The limit: `--failed-delivery` does not cover squash or rebase merges or a project without `branch.integration`. There the owner uses `--abandon`, and the `--reason` says how the merge happened.
 - The retro is required only after `--failed-delivery`: propose one improvement per item, and one improvement per failed `refuse` question saying how it got past the brake before the merge, as in [fechamento.md](fechamento.md). `--abandon` has no required retro.
 
 ## Errors
@@ -61,7 +61,7 @@ An error goes to stderr, with exit 1, as text (`✘ code · message`; with `--fo
 - `review-base-invalid` (exit 1): `--base` does not name a commit or is the same commit as `HEAD`. Pass the merge-base that `gate-delivery` prints.
 - `failed-delivery-unneeded` (exit 1): no `refuse` question failed, so `--failed-delivery` has nothing to record. Close without it, or with `--force --note` when only warnings failed.
 - `delivery-not-on-work-item-branch` (exit 1): the current branch is not the work item's. Check it out and run `close` again.
-- `delivery-not-integrated` (exit 1): the evaluated commit is not in the local integration branch. Update the local `develop` from the remote without a new commit, or ask the owner for `--abandon`.
+- `delivery-not-integrated` (exit 1): the evaluated commit is not in the local integration branch. Update the local integration branch (`branch.integration`) from the remote without a new commit, or ask the owner for `--abandon`.
 - `invalid-transition` (exit 1): the work item is already closed. A closed work item does not close again.
 - `INVALID_INPUT` (exit 1): the id has an invalid form (`semantic-id-format`). The `path` of the detail says which argument.
 - `snapshot-dirty` (exit 1): the tree has an uncommitted change. Commit and repeat.

@@ -104,6 +104,8 @@ fn it_should_refuse_a_base_that_does_not_resolve_naming_the_option() {
         assert_refused(&output, "review-base-invalid");
         let message = error_of(&output)["message"].to_string();
         assert!(message.contains("--base"), "{message}");
+        let text = error_of(&output).to_string();
+        assert!(!text.contains("develop"), "{text}");
     }
 }
 
@@ -115,6 +117,8 @@ fn it_should_refuse_head_as_the_base_because_the_range_is_empty() {
         let output = run(&project, &[command, W1, "--base", "HEAD"]);
 
         assert_refused(&output, "review-base-invalid");
+        let text = error_of(&output).to_string();
+        assert!(text.contains("--base"), "{text}");
     }
 }
 

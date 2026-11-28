@@ -53,7 +53,7 @@ use self::retry::{RetryPolicy, with_retry};
 use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::{Omhl, OmhlDeps};
-use crate::probe::{DevelopMark, NativeResolver};
+use crate::probe::{CommitMark, NativeResolver};
 use crate::runner::CommandRunner;
 use crate::workflow::matrix::PremiseFact;
 
@@ -114,7 +114,7 @@ impl<'d> App<'d> {
         self
     }
 
-    pub fn with_develop_mark(mut self, mark: &'d dyn DevelopMark) -> App<'d> {
+    pub fn with_commit_mark(mut self, mark: &'d dyn CommitMark) -> App<'d> {
         self.engine.mark = Some(mark);
         self
     }

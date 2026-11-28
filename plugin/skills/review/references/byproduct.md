@@ -33,7 +33,7 @@ Text on stdout, exit 0: `✔ byproduct · <check> · <work item> · <outcome> ·
 - Do not pass the text on to the user or repeat it in the answer. Cite only the test name and the error line, without values.
 - If you find a secret, warn the user in one sentence (which check and which stream), without writing it, so they rotate the credential.
 
-**How to read a `test-suite` failure.** Any test runner prints its summary and the names of the failed tests near the end of the output. Start with `omhl byproduct checks.test-suite <work-item> --tail 40`; if context is missing, widen `--tail` a little at a time (for example `--tail 200`), up to the ceiling of 500. On the `develop` branch there is no `byproduct`: the error tail comes in `context.output_tail`. Widening `--tail` exposes more text: stop at the smallest value that shows the name of the failed test.
+**How to read a `test-suite` failure.** Any test runner prints its summary and the names of the failed tests near the end of the output. Start with `omhl byproduct checks.test-suite <work-item> --tail 40`; if context is missing, widen `--tail` a little at a time (for example `--tail 200`), up to the ceiling of 500. On a declared exception branch there is no `byproduct`: the error tail comes in `context.output_tail`. Widening `--tail` exposes more text: stop at the smallest value that shows the name of the failed test.
 
 ## Errors
 

@@ -121,7 +121,7 @@ impl Fixture {
             .unwrap_or_else(|error| panic!("the app opens: {error}"))
             .with_project_root(self.raw.dir.path())
             .with_exec(runner, &self.blobs)
-            .with_develop_mark(probe)
+            .with_commit_mark(probe)
     }
 
     /// Pasta do (banco, tenant) onde o `BlobStore` grava.
@@ -339,9 +339,11 @@ fn it_should_prune_on_a_develop_run() {
     };
     let probe = FakeProbe::clean(snap('a'))
         .with_head_facts(facts)
-        .with_develop_mark(true);
+        .with_commit_mark(true);
     let runner = no_runs();
-    let mut app = fx.app(&probe, &runner);
+    let native = crate::support::FakeNative::enabling(&[])
+        .with_branch_policy(crate::support::develop_policy());
+    let mut app = fx.app(&probe, &runner).with_native_resolver(&native);
     let action = Action::CheckRun {
         target: CheckTarget::Event("before-commit".to_owned()),
         pre_push: None,
