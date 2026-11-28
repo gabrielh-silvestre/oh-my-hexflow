@@ -176,3 +176,96 @@ fn it_should_say_close_takes_the_merge_base_that_gate_delivery_prints() {
 
     assert!(text.contains("the merge-base that `gate-delivery` prints"));
 }
+
+// A página do `omhl merge` (CMP-033, EMD-026, CA-041 pela EMD-027)
+
+const MERGE_CODES: [&str; 20] = [
+    "integration-off",
+    "head-detached",
+    "branch-not-work-item",
+    "origin-missing",
+    "origin-host-mismatch",
+    "provider-cli-missing",
+    "provider-not-authenticated",
+    "provider-cli-too-old",
+    "head-not-pushed",
+    "pull-request-base-mismatch",
+    "pull-request-not-found",
+    "pull-request-ambiguous",
+    "pull-request-record-exists",
+    "fork-unsupported",
+    "ci-not-green",
+    "ci-running",
+    "ci-required-missing",
+    "merge-refused",
+    "merge-pending",
+    "merge-through-omhl",
+];
+
+/// O trecho da página da linha `## Errors` até o próximo título de nível 2.
+fn errors_section(text: &str) -> &str {
+    let start = text
+        .find("## Errors")
+        .expect("the page has an Errors section");
+    let rest = &text[start + 2..];
+    let end = rest.find("\n## ").map_or(rest.len(), |index| index);
+
+    &rest[..end]
+}
+
+#[test]
+fn it_should_list_every_new_merge_code_in_the_errors_section_of_the_merge_page() {
+    let text = page(&format!("{REVIEW}merge.md"));
+    let anchors: Vec<String> = MERGE_CODES.iter().map(|code| format!("`{code}`")).collect();
+    let anchors: Vec<&str> = anchors.iter().map(String::as_str).collect();
+
+    let absent = missing(errors_section(&text), &anchors);
+
+    assert_eq!(absent, Vec::<&str>::new());
+}
+
+#[test]
+fn it_should_list_the_options_of_merge_on_the_merge_page() {
+    let text = page(&format!("{REVIEW}merge.md"));
+
+    let absent = missing(
+        &text,
+        &[
+            "`--squash`",
+            "`--rebase`",
+            "`--force`",
+            "`--note`",
+            "`--base`",
+            "`--format json`",
+        ],
+    );
+
+    assert_eq!(absent, Vec::<&str>::new());
+}
+
+#[test]
+fn it_should_name_each_step_of_merge_on_the_merge_page() {
+    let text = page(&format!("{REVIEW}merge.md"));
+
+    let absent = missing(
+        &text,
+        &[
+            "`lookup`", "`head`", "`base`", "`checks`", "`ci`", "`gate`", "`merge`", "`close`",
+        ],
+    );
+
+    assert_eq!(absent, Vec::<&str>::new());
+}
+
+#[test]
+fn it_should_keep_the_common_error_page_free_of_the_merge_codes() {
+    let text = page(&format!("{FLOW}errors.md"));
+
+    let present: Vec<&str> = MERGE_CODES
+        .iter()
+        .copied()
+        .filter(|code| text.contains(&format!("`{code}`")))
+        .collect();
+
+    assert_eq!(present, Vec::<&str>::new());
+}

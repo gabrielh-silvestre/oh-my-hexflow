@@ -8,7 +8,9 @@
 
 ## When to use
 
-Once per clone, so git calls the checks on its own: it writes the four scripts (`pre-commit`, `pre-merge-commit`, `pre-push`, `post-commit`) to a single user folder and points the clone's `core.hooksPath` at it. Without this the clone has no hook, and the delivery gate charges for the lack later. These are **git** hooks, unrelated to the Claude Code `omhl hook session-start` hook.
+Once per clone, so git calls the checks on its own: it writes the five scripts (`pre-commit`, `pre-merge-commit`, `pre-push`, `post-commit`, `post-merge`) to a single user folder and points the clone's `core.hooksPath` at it. Without this the clone has no hook, and the delivery gate charges for the lack later. These are **git** hooks, unrelated to the Claude Code `omhl hook session-start` hook.
+
+The agent runs it only when the person asks, as the warning of the session start suggests when the project declares `[git] hooks = true` and the clone has no hooks.
 
 ## Inputs
 
@@ -19,7 +21,7 @@ Once per clone, so git calls the checks on its own: it writes the four scripts (
 
 ## Output
 
-Text on stdout, exit 0: `✔ hooks install · 4 scripts`, the lines `hooks path:` (the scripts folder, in `$XDG_DATA_HOME/omhl/hooks/`), `omhl:` (the path of the binary written into the scripts) and `scripts:`, and one `- warning · <code> · <path>` line per warning. With a warning the symbol becomes `⚠` and the `Next:` carries the warning's hint. With `--format json` it is a JSON line: `hooks_path`, `omhl`, `scripts` and `warnings` (each with `code`, `path` and `hint`). The folder is unique per user: installing in one clone rewrites the scripts of all the others, and the binary written is that of the last installation. If the `omhl` running the installation is in a `target/debug` or `target/release` folder (`binary-in-build-dir`), or inside a linked worktree (`binary-in-worktree`), the installation records it anyway and the warning says the path. That binary disappears with the worktree: install a binary outside any worktree (`cargo install` or a copy in `~/.local/bin`) and run the command again. Reinstalling with the same folder is idempotent.
+Text on stdout, exit 0: `✔ hooks install · 5 scripts`, the lines `hooks path:` (the scripts folder, in `$XDG_DATA_HOME/omhl/hooks/`), `omhl:` (the path of the binary written into the scripts) and `scripts:`, and one `- warning · <code> · <path>` line per warning. With a warning the symbol becomes `⚠` and the `Next:` carries the warning's hint. With `--format json` it is a JSON line: `hooks_path`, `omhl`, `scripts` and `warnings` (each with `code`, `path` and `hint`). The folder is unique per user: installing in one clone rewrites the scripts of all the others, and the binary written is that of the last installation. If the `omhl` running the installation is in a `target/debug` or `target/release` folder (`binary-in-build-dir`), or inside a linked worktree (`binary-in-worktree`), the installation records it anyway and the warning says the path. That binary disappears with the worktree: install a binary outside any worktree (`cargo install` or a copy in `~/.local/bin`) and run the command again. Reinstalling with the same folder is idempotent.
 
 ## Errors
 
@@ -39,17 +41,17 @@ Installs the hooks. The warning appears because the example's binary is in `targ
 
 ```omhl-example fixture=git
 $ omhl hooks install
-⚠ hooks install · 4 scripts · 1 warning
+⚠ hooks install · 5 scripts · 1 warning
   hooks path: <xdg>/omhl/hooks
   omhl: <omhl>
-  scripts: pre-commit, pre-merge-commit, pre-push, post-commit
+  scripts: pre-commit, pre-merge-commit, pre-push, post-commit, post-merge
 - warning · binary-in-build-dir · <omhl>
 Next: install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks.
 $ omhl hooks install
-⚠ hooks install · 4 scripts · 1 warning
+⚠ hooks install · 5 scripts · 1 warning
   hooks path: <xdg>/omhl/hooks
   omhl: <omhl>
-  scripts: pre-commit, pre-merge-commit, pre-push, post-commit
+  scripts: pre-commit, pre-merge-commit, pre-push, post-commit, post-merge
 - warning · binary-in-build-dir · <omhl>
 Next: install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks.
 ```
@@ -58,5 +60,5 @@ With `--format json` the result comes out for machines:
 
 ```omhl-example fixture=git
 $ omhl hooks install --format json
-{"hooks_path":"<xdg>/omhl/hooks","omhl":"<omhl>","scripts":["pre-commit","pre-merge-commit","pre-push","post-commit"],"warnings":[{"code":"binary-in-build-dir","hint":"install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks","path":"<omhl>"}]}
+{"hooks_path":"<xdg>/omhl/hooks","omhl":"<omhl>","scripts":["pre-commit","pre-merge-commit","pre-push","post-commit","post-merge"],"warnings":[{"code":"binary-in-build-dir","hint":"install an omhl binary outside any worktree (cargo install or ~/.local/bin) and run omhl hooks install again; every clone shares these hooks","path":"<omhl>"}]}
 ```

@@ -90,9 +90,9 @@ omhl hooks install
 
 Regras:
 
-- **`binary-in-build-dir` e `binary-in-worktree`.** Um binário dentro de uma worktree ligada some com `wt remove`: instale um binário fora de qualquer worktree (`cargo install` ou uma cópia em `~/.local/bin`) e rode `omhl hooks install` de novo.
+- **`binary-in-build-dir` e `binary-in-worktree`.** Um binário dentro de uma worktree ligada some com `git worktree remove` (o `omhl merge` a remove na arrumação): instale um binário fora de qualquer worktree (`cargo install` ou uma cópia em `~/.local/bin`) e rode `omhl hooks install` de novo.
 - **Sem `.omhl.toml`.** Rebaseie a branch sobre a `main`, ou use `--no-verify`.
-- **`wt merge`.** O `wt merge` faz o commit de squash na branch da frente e depois um `git push` para o destino. Com os hooks instalados, o `pre-push` roda na worktree da frente.
+- **`omhl hook branch-created`.** Grava a marca de congelamento de uma branch criada fora do Claude Code; não roda check nenhum.
 - Rode `omhl check run --event before-merge` quando quiser registrar o status do CI.
 
 ## 6. Comando que lê do terminal

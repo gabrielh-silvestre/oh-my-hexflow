@@ -115,6 +115,14 @@ O `test-suite` é exceção à regra fria (decisão `perf2-timeout-secs-incremen
 
 O `docs/mechanical-gates.md` descreve o [programa gravado na attestation](docs/mechanical-gates.md#o-programa-gravado-na-attestation). Aqui o nome engana: `cargo` é um link para `rustup`, e o `rustup` decide o que roda pelo nome com que foi chamado. Gravar o destino do link e o sha256 juntos, como campo novo da attestation, é um follow-up.
 
+## Worktrunk neste repositório
+
+O plugin não usa o Worktrunk: ele ensina `git worktree add -b` e `git switch -c`. Este repositório mantém uma configuração própria do Worktrunk em [`.config/wt.toml`](.config/wt.toml), que é a fonte dos comandos.
+
+- O `pre-switch` roda o portão antes de a branch e a worktree existirem num `wt switch -c`; uma saída não zero aborta. O `post-start` chama `omhl hook branch-created --branch {{ branch }}` em segundo plano, quando a worktree nasce. O `{{ branch }}` vai sem aspas (o `wt` já o escapa) e o `case` libera `develop` e `main`.
+- O `wt` guarda a aprovação de um comando de projeto pelo texto exato do comando. Depois de mudar qualquer comando do `.config/wt.toml`, o dono roda `wt config approvals add` e confere com `wt config approvals list`; sem a aprovação e sem terminal, todo `wt switch` aborta com `Cannot prompt for approval`. O agente nunca usa `-y` nem `--no-hooks` para contornar isso: ele para e pede ao dono.
+- `wt switch -c` parte da branch padrão; para partir da `develop`, passe `--base develop`.
+
 ## Binário novo depois do merge
 
 Depois do merge e antes de qualquer gravação no banco real, instale o binário novo em `~/.local/bin/omhl` (`cargo install --locked --path crates/omhl --root ~/.local`), o binário que os hooks de git executam; se os hooks apontam para outro caminho, rode `omhl hooks install` com o binário novo. Nunca rode o `target/debug` ou o `target/release` de uma worktree contra o banco real. O limite que explica a regra, um binário anterior sobre um banco com sessão, está em [docs/architecture.md](docs/architecture.md).

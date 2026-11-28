@@ -74,7 +74,7 @@ mod lock {
         let (_, reason) = denial(verdict);
 
         assert!(
-            reason.contains(r"`omhl hook wt-post-start --branch 'feat/wi-w1__a'\''$(touch x)'`"),
+            reason.contains(r"`omhl hook branch-created --branch 'feat/wi-w1__a'\''$(touch x)'`"),
             "{reason}"
         );
     }
@@ -93,7 +93,7 @@ mod lock {
     fn it_should_parse_a_path_in_a_linked_worktree_the_same_way() {
         let parsed = parse_spec_path(
             DEFAULT_SPECS,
-            Path::new("/scratch/wt/.omhl/specs/wi-w1__login/parte-01.md"),
+            Path::new("/scratch/linked/.omhl/specs/wi-w1__login/parte-01.md"),
         );
 
         assert_eq!(parsed, Some(spec_path("w1", FOLDER, "parte-01.md")));

@@ -1195,13 +1195,13 @@ mod loosening_criteria {
     use crate::native::NativeBase;
     use crate::workflow::branch_policy::{BranchConfig, ExceptionMode, ExceptionRule};
     use crate::workflow::config::{
-        InterviewConfig, InterviewWeights, PromotionConfig, RequireAtom, SpecsConfig,
-        WorkflowConfig,
+        CreationGateConfig, GitConfig, InterviewConfig, InterviewWeights, PromotionConfig,
+        ProviderConfig, ProviderName, RequireAtom, SpecsConfig, WorkflowConfig, WorktreeConfig,
     };
 
     const REFERENCE: &str = "skills/review/references/config-loosening-review.md";
     const SECTIONS: [&str; 4] = ["Criteria", "Scope", "Input", "What the reviewer returns"];
-    const WORKFLOW_KEYS: [&str; 19] = [
+    const WORKFLOW_KEYS: [&str; 29] = [
         "[native.run]",
         "[interview]",
         "specs.dir",
@@ -1221,6 +1221,16 @@ mod loosening_criteria {
         "dry-run-with-mark",
         "dry-run",
         "skip",
+        "[git]",
+        "git.hooks",
+        "[creation_gate]",
+        "creation_gate.enabled",
+        "[provider]",
+        "provider.name",
+        "provider.host",
+        "provider.require_ci",
+        "[worktree]",
+        "worktree.dir",
     ];
     const CHECK_FIELDS: [&str; 9] = [
         "blocking",
@@ -1280,7 +1290,23 @@ mod loosening_criteria {
             interview,
             prefixes,
             branch,
+            git,
+            creation_gate,
+            provider: _,
+            worktree,
         } = WorkflowConfig::default();
+        let GitConfig { hooks: _ } = git;
+        let CreationGateConfig { enabled: _ } = creation_gate;
+        let ProviderConfig {
+            name: _,
+            host: _,
+            require_ci: _,
+        } = ProviderConfig {
+            name: ProviderName::Github,
+            host: String::new(),
+            require_ci: false,
+        };
+        let WorktreeConfig { dir: _ } = worktree;
         let SpecsConfig {
             dir: _,
             max_lines: _,
@@ -1604,5 +1630,80 @@ mod loosening_criteria {
         assert!(lines.iter().any(|line| line.contains("changing")
             && line.contains("reviewer")
             && line.contains("requires less")));
+    }
+
+    // CA-003 (EMD-021): as chaves das integrações e a direção de cada uma
+
+    #[test]
+    fn it_should_name_each_integration_key_absent_from_the_text() {
+        for key in [
+            "git.hooks",
+            "creation_gate.enabled",
+            "provider.name",
+            "provider.host",
+            "provider.require_ci",
+            "worktree.dir",
+        ] {
+            let text = names_without(key);
+            let names = required_names();
+
+            let missing = missing_names(&text, names.iter().map(String::as_str));
+
+            assert_eq!(missing, vec![key], "{key}");
+        }
+    }
+
+    #[test]
+    fn it_should_say_that_turning_the_integration_off_loosens() {
+        let text = reference_text();
+
+        let block = paragraphs_naming(&text, "[provider]").to_lowercase();
+
+        assert!(block.contains("off") && block.contains("loosen"), "{block}");
+    }
+
+    #[test]
+    fn it_should_say_that_removing_require_ci_loosens() {
+        let text = reference_text();
+
+        let lines = lines_naming(&text, "require_ci");
+
+        assert!(
+            lines.iter().any(|line| line.contains("loosen")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn it_should_say_that_turning_the_integration_on_tightens() {
+        let text = reference_text();
+
+        let block = paragraphs_naming(&text, "[provider]").to_lowercase();
+
+        assert!(block.contains("tighten"), "{block}");
+    }
+
+    #[test]
+    fn it_should_say_that_changing_the_host_asks_for_attention() {
+        let text = reference_text();
+
+        let lines = lines_naming(&text, "provider.host");
+
+        assert!(
+            lines.iter().any(|line| line.contains("attention")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn it_should_say_that_the_worktree_dir_is_neutral() {
+        let text = reference_text();
+
+        let lines = lines_naming(&text, "worktree.dir");
+
+        assert!(
+            lines.iter().any(|line| line.contains("neutral")),
+            "{lines:?}"
+        );
     }
 }

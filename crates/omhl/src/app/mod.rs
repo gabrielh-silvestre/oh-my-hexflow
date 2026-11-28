@@ -5,6 +5,7 @@ mod byproduct_tail;
 mod check_retire;
 mod check_run;
 mod context;
+mod edge_hooks;
 mod engine;
 mod gate_worktree;
 mod git_version;
@@ -12,13 +13,16 @@ mod guideline_retire;
 mod hooks;
 mod language;
 mod load;
+mod merge;
 mod read;
 mod report;
 mod report_sessions;
 mod spec;
 mod spec_facts;
+mod tidy;
 mod wire;
 mod work_item;
+mod worktree_exclude;
 
 pub mod action;
 pub mod error;
@@ -36,14 +40,24 @@ pub use crate::workflow::lock::{EditInput, Replacement, Tool, Verdict};
 pub use crate::workflow::omhl_leaf::Group;
 
 pub use self::agent_role::{AgentRoleEnv, RoleVerdict, agent_role};
+pub use self::edge_hooks::{
+    BashEvent, GuardOutcome, MergeToolEvent, PUSH_WARNING_TIMEOUT, ProviderAccess, WriteToolEvent,
+    branch_birth, command_guard, merge_tool_guard, write_tool_warning,
+};
 pub use self::language::{
     LanguageRungs, language_line, resolve_language, settings_language, user_settings_language,
 };
-pub use self::spec::{SpecLockEvent, SpecLockOutcome, spec_lock, wt_post_start};
+pub use self::spec::{
+    SpecLockEvent, SpecLockOutcome, branch_created, heal_branch_marks, spec_lock,
+};
+pub use crate::ports::process::ProcessRunner;
+pub use crate::provider::Strategy;
+pub use hexlog::SemanticId;
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use hexlog::{Config, ErrorCode, SemanticId, TenantId};
+use hexlog::{Config, ErrorCode, TenantId};
 use serde_json::Value;
 
 use self::action::{Action, Caller};
@@ -54,6 +68,7 @@ use crate::byproduct::{ByproductRetention, ByproductStore};
 use crate::error::{OmhlError, RuleCode};
 use crate::facade::{Omhl, OmhlDeps};
 use crate::probe::{CommitMark, NativeResolver};
+use crate::provider::Provider;
 use crate::runner::CommandRunner;
 use crate::workflow::matrix::PremiseFact;
 
@@ -89,6 +104,8 @@ impl<'d> App<'d> {
                 retry: retry.clone(),
                 retry_after_run: RetryPolicy::after_run(),
                 hooks_dir: None,
+                provider_runner: None,
+                provider: None,
             },
             retry: retry.clone(),
         })
@@ -136,8 +153,32 @@ impl<'d> App<'d> {
         self
     }
 
+    /// O `gh` só é montado depois de o `[provider]` ser lido, dentro do `omhl merge`.
+    pub fn with_provider_runner(
+        mut self,
+        runner: &'d dyn CommandRunner,
+        timeout: Duration,
+    ) -> App<'d> {
+        self.engine.provider_runner = Some((runner, timeout));
+        self
+    }
+
+    /// Para os testes da lógica: vale só depois de o `[provider]` ser lido.
+    pub fn with_provider(mut self, provider: &'d dyn Provider) -> App<'d> {
+        self.engine.provider = Some(provider);
+        self
+    }
+
     pub fn work_item_refusal(&mut self, id: &SemanticId) -> Result<Option<RuleCode>, AppError> {
         work_item::work_item_refusal(&mut self.engine, id)
+    }
+
+    pub fn git_hooks_notice(&self) -> Option<String> {
+        self.engine.git_hooks_notice()
+    }
+
+    pub fn work_item_type(&mut self, id: &SemanticId) -> Result<Option<String>, AppError> {
+        work_item::work_item_type(&mut self.engine, id)
     }
 
     pub fn premise_facts(&mut self, work_item: &SemanticId) -> Result<Vec<PremiseFact>, AppError> {
@@ -152,12 +193,12 @@ impl<'d> App<'d> {
         with_retry(retry, || engine.spec_is_valid(work_item))
     }
 
-    /// O `check run` cuida das próprias tentativas: repeti-lo inteiro rodaria os comandos de novo.
+    /// O `check run` e o `merge` cuidam das próprias tentativas: repeti-los inteiros rodaria os comandos de novo.
     pub fn dispatch(&mut self, caller: &Caller, action: &Action) -> Result<Value, AppError> {
         let App { engine, retry } = self;
 
         match action {
-            Action::CheckRun { .. } => engine.run(caller, action),
+            Action::CheckRun { .. } | Action::Merge { .. } => engine.run(caller, action),
             _ => with_retry(retry, || engine.run(caller, action)),
         }
     }

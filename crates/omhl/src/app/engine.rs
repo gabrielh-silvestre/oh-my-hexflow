@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use hexlog::{
     AppendRequest, HexlogError, ItemBody, Limits, Lineage, NodeView, PageRequest, SemanticId,
@@ -26,6 +27,7 @@ use crate::probe::{
 use crate::project::ProjectError;
 use crate::project::layout::{OMHL_DIR, PROJECTION_DIR};
 use crate::projection::{build::build, write::write};
+use crate::provider::Provider;
 use crate::runner::CommandRunner;
 use crate::workflow::branch_policy::BranchConfig;
 use crate::workflow::config::{
@@ -55,6 +57,8 @@ pub(super) struct Engine<'d> {
     pub(super) retry: RetryPolicy,
     pub(super) retry_after_run: RetryPolicy,
     pub(super) hooks_dir: Option<PathBuf>,
+    pub(super) provider_runner: Option<(&'d dyn CommandRunner, Duration)>,
+    pub(super) provider: Option<&'d dyn Provider>,
 }
 
 pub(super) fn parse_at<T>(
@@ -159,6 +163,18 @@ impl Engine<'_> {
             Action::ReportRetro { work_item } => self.report_retro(work_item),
             Action::ReportSessions { work_items } => self.report_sessions(work_items),
             Action::ConsumeCommitMark => work_item::consume_commit_mark(self),
+            Action::Merge {
+                work_item,
+                strategy,
+                force_note,
+                base,
+            } => self.merge(
+                caller,
+                work_item,
+                *strategy,
+                force_note.as_deref(),
+                base.as_deref(),
+            ),
             Action::CheckSweep | Action::GateWorktree { .. } => {
                 Err(AppError::action_outside_engine())
             }
@@ -286,7 +302,7 @@ impl Engine<'_> {
     }
 
     /// Com `--base` a base é conferida mesmo com o check desligado; a revisão só é exigida com o check ligado e, havendo base, com caminho gatilho.
-    fn review_base(
+    pub(super) fn review_base(
         &self,
         base: Option<&str>,
         enabled: &NativeConfig,
@@ -534,7 +550,10 @@ impl Engine<'_> {
     }
 
     /// Com o arquivo principal ilegível, só o PR que traz um `.omhl/workflow.toml` aceitável no `HEAD` segue, com a revisão exigida.
-    fn resolve_native_for_pr(&self, base: Option<&str>) -> Result<(NativeConfig, bool), AppError> {
+    pub(super) fn resolve_native_for_pr(
+        &self,
+        base: Option<&str>,
+    ) -> Result<(NativeConfig, bool), AppError> {
         match self.native_refusal() {
             Ok(config) => Ok((config, false)),
             Err(NativeRefusal::MainDirUnknown) => Err(AppError::main_dir_unknown()),
@@ -602,7 +621,7 @@ impl Engine<'_> {
         }
     }
 
-    fn work_requirements(
+    pub(super) fn work_requirements(
         &mut self,
         work_item: &SemanticId,
         enabled: &NativeConfig,
@@ -766,7 +785,7 @@ impl Engine<'_> {
         })
     }
 
-    fn probe_gate_snapshots(&self) -> Result<GateSnapshots, AppError> {
+    pub(super) fn probe_gate_snapshots(&self) -> Result<GateSnapshots, AppError> {
         Ok(GateSnapshots {
             head_commit: self.probe_snapshot()?,
             head_tree: reproducible(self.probe.probe_tree(TreeSource::Head))?,

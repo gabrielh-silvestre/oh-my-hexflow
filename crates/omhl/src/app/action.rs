@@ -1,8 +1,9 @@
-use hexlog::Author;
+use hexlog::{Author, SemanticId};
 use serde_json::Value;
 
 use crate::error::{OmhlError, RuleCode};
 use crate::guard::{GUIDELINE_RETIRE_CLIENT, known_role};
+use crate::provider::Strategy;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -93,6 +94,12 @@ pub enum Action {
     },
     ReportSessions {
         work_items: Vec<String>,
+    },
+    Merge {
+        work_item: SemanticId,
+        strategy: Strategy,
+        force_note: Option<String>,
+        base: Option<String>,
     },
 }
 

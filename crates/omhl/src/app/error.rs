@@ -181,6 +181,13 @@ impl AppError {
         )
     }
 
+    pub(crate) fn worktree_exclude_unreadable() -> AppError {
+        AppError::plain(
+            "worktree-exclude-unreadable",
+            "git check-ignore could not tell whether the worktree folder is ignored; nothing was written to info/exclude",
+        )
+    }
+
     pub(crate) fn notes_folder_unwritable() -> AppError {
         AppError::plain(
             "notes-folder-unwritable",
@@ -914,6 +921,39 @@ impl AppError {
 
         self
     }
+
+    /// Recusa do `omhl merge`: a mensagem nomeia o que o provedor leu (números, bases), nunca a entrada.
+    pub(crate) fn merge_refusal(code: &str, message: String, next_step: String) -> AppError {
+        AppError {
+            code: code.to_owned(),
+            context: None,
+            details: vec![Detail {
+                next_step: Some(next_step),
+                ..Detail::new("/work_item", code, &message)
+            }],
+            message,
+        }
+    }
+
+    pub(crate) fn next_step(&self) -> Option<&str> {
+        self.details
+            .iter()
+            .find_map(|detail| detail.next_step.as_deref())
+    }
+
+    /// Soma campos ao `context` do erro todo, mantendo os que já estavam.
+    pub(crate) fn with_error_context(mut self, fields: Value) -> AppError {
+        let mut context = match std::mem::take(&mut self.context) {
+            Some(Value::Object(existing)) => existing,
+            _ => serde_json::Map::new(),
+        };
+        if let Value::Object(fields) = fields {
+            context.extend(fields);
+        }
+        self.context = Some(Value::Object(context));
+
+        self
+    }
 }
 
 pub(crate) struct CheckDetail {
@@ -986,6 +1026,14 @@ impl From<CloseError> for AppError {
         match error {
             CloseError::Omhl(error) => AppError::from(error),
             CloseError::Refused(refusal) => AppError::close_refused(refusal),
+            CloseError::RecordExists(id) => AppError::merge_refusal(
+                "pull-request-record-exists",
+                format!(
+                    "a node already has the id {}, so the pull request record would overwrite it",
+                    id.as_str()
+                ),
+                "ask the owner: omhl merge never overwrites a node".to_owned(),
+            ),
         }
     }
 }

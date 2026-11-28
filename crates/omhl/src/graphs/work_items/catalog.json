@@ -154,7 +154,10 @@
           "provider": {"enum": ["github"]},
           "repo": {"type": "string", "minLength": 1, "maxLength": 200},
           "number": {"type": "integer", "minimum": 1},
-          "branch": {"type": "string", "minLength": 1, "maxLength": 200}
+          "branch": {"type": "string", "minLength": 1, "maxLength": 200},
+          "work_item": {"type": "string", "minLength": 1, "maxLength": 200},
+          "strategy": {"enum": ["merge", "squash", "rebase"]},
+          "merge_commit": {"type": "string", "minLength": 40, "maxLength": 64}
         },
         "oneOf": [
           {"properties": {"status": {"const": "open"}}, "not": {"required": ["gate"]}},

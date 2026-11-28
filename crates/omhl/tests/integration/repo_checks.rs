@@ -13,7 +13,7 @@ const COMMIT_MARK_COMMAND: &str = "plugin/commands/omhl-commit-mark.md";
 const DIRECTIVES_FLOW_PAGE: &str = "docs/directives-flow.md";
 const DIRECTIVES_FLOW_SKILL: &str = "plugin/skills/directives-flow/SKILL.md";
 /// Âncoras da skill, sempre entre crases no texto; origem: bloco S13 do plano e decisões (e), (i) e (j).
-const SKILL_ANCHORS: [&str; 20] = [
+const SKILL_ANCHORS: [&str; 17] = [
     // as quatro categorias de proposta da retro
     "guideline",
     "premise",
@@ -27,10 +27,6 @@ const SKILL_ANCHORS: [&str; 20] = [
     "append",
     "omhl append",
     "omhl attest",
-    // aprovação do hook do `wt`
-    "wt config approvals add",
-    "Cannot prompt for approval",
-    "--no-hooks",
     // emenda (decisão j)
     "divergence",
     "open",
@@ -232,4 +228,47 @@ fn it_should_keep_the_matrix_table_in_docs_directives_flow_equal_to_the_compiled
     let documented = documented_role_matrix(&page);
 
     assert_eq!(documented, compiled_role_matrix());
+}
+
+// CA-057: a declaração deste repositório (CMP-043)
+
+const REPO_WORKFLOW: &str = ".omhl/workflow.toml";
+
+fn repo_workflow() -> ::omhl::workflow::config::WorkflowConfig {
+    let path = repo_root().join(REPO_WORKFLOW);
+    let bytes = fs::read(&path).expect("the workflow is readable");
+
+    ::omhl::workflow::config::parse_workflow(&path, &bytes).expect("parse_workflow accepts it")
+}
+
+fn repo_workflow_toml() -> toml::Value {
+    toml::from_str(&read_repo_file(REPO_WORKFLOW)).expect("the workflow is TOML")
+}
+
+#[test]
+fn it_should_declare_the_git_hooks_and_the_creation_gate_in_this_repository() {
+    let config = repo_workflow();
+
+    assert!(config.git.hooks);
+    assert!(config.creation_gate.enabled);
+}
+
+#[test]
+fn it_should_declare_github_with_required_ci_in_this_repository() {
+    let config = repo_workflow();
+
+    let provider = config.provider.expect("the provider is declared");
+    assert_eq!(
+        provider.name,
+        ::omhl::workflow::config::ProviderName::Github
+    );
+    assert!(provider.require_ci);
+}
+
+#[test]
+fn it_should_leave_out_the_provider_host_and_the_worktree_table_in_this_repository() {
+    let raw = repo_workflow_toml();
+
+    assert!(raw["provider"].get("host").is_none());
+    assert!(raw.get("worktree").is_none());
 }

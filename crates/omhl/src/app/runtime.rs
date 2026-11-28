@@ -20,6 +20,7 @@ use crate::ports::paths::resolve_physical;
 use crate::ports::process::{
     ProcessRunner, SweepReport, SweptProcess, sweep_project_strays, sweep_strays,
 };
+use crate::ports::provider::MERGE_PROVIDER_TIMEOUT;
 use crate::project::marker::find_marker;
 use crate::project::paths::{data_root, default_db_path, prepare_db_file};
 use crate::project::{Env, ProjectError};
@@ -95,7 +96,8 @@ impl Runtime {
             .with_retention(&self.byproducts)
             .with_commit_mark(&self.probe)
             .with_native_resolver(&self.probe)
-            .with_hooks_dir(hooks_dir))
+            .with_hooks_dir(hooks_dir)
+            .with_provider_runner(&self.runner, MERGE_PROVIDER_TIMEOUT))
     }
 
     pub fn git_notice(&self) -> Option<String> {

@@ -1,6 +1,6 @@
 ---
 name: directives-flow
-description: Protocol of the omhl guideline-and-premise flow. Use before starting a new work item, when recording a premise, guideline, gap or divergence, when writing or correcting a spec in .omhl/specs/, when creating a worktree with wt switch -c, and when reading the database (omhl get, omhl list, omhl verify, omhl project, omhl render, omhl report answers, omhl report recurrences).
+description: Protocol of the omhl guideline-and-premise flow. Use before starting a new work item, when recording a premise, guideline, gap or divergence, when writing or correcting a spec in .omhl/specs/, when creating the branch of a work item with git worktree add -b or git switch -c, and when reading the database (omhl get, omhl list, omhl verify, omhl project, omhl render, omhl report answers, omhl report recurrences).
 ---
 
 # Guideline and premise flow
@@ -22,13 +22,12 @@ The order is that of [cycle.md](references/cycle.md), the source of the cycle in
 - The prefix and the slug give the branch `type/wi-<id>__<slug>`; the prefixes and what each one requires are in [matrix.md](references/matrix.md).
 - The work item carries `title` and `status` `open`: the guard refuses a premise without an open work item.
 - The spec is born with `omhl spec init work-items.<id> <slug>` and is valid when `omhl spec validate work-items.<id>` passes; `feat/` and `fix/` require it.
-- Run `wt switch -c <branch>` only after `omhl gate-worktree --branch <name>` allows it. With the worktree created, the commit and the push run the checks; the checks and the closing of the work item are in the skill [review](../review/SKILL.md).
-
-## If `wt switch` fails with `Cannot prompt for approval`
-
-`wt` stores the approval of the project hook by the text of the command. With no saved approval and no terminal, it aborts every `wt switch`, `develop` included, with the message `Cannot prompt for approval` (followed by `in non-interactive environment`).
-
-Stop. Ask the owner to run `wt config approvals add`. **Never** try `--no-hooks` to get around it: it skips the creation gate, and that bypass is the owner's decision, not yours.
+- Create the branch only after `omhl gate-worktree --branch <name>` allows it, and only with `git`. Prefer a worktree: `git worktree add -b <branch> <worktree.dir>/<branch with "/" replaced by "-"> <start>`, where `worktree.dir` is the folder declared in `.omhl/workflow.toml` (default `.worktrees`, inside the repository).
+- Without a worktree, `git switch -c <branch>` creates the branch in the current checkout.
+- For the branch `feat/wi-x__login`, the default path is `.worktrees/feat-wi-x__login`.
+- The plugin keeps the `.worktrees` folder ignored by git (a line in `info/exclude`), so a worktree there does not show in the `git status` of the main checkout.
+- The creation gate (when the project turns it on), the birth mark and the push warning act on these commands run through Bash in Claude Code, and on no other: a branch created in a terminal gets its birth mark from the `session-start` hook, and the gate does not see it.
+- With the worktree created, the commit and the push run the checks; the checks and the closing of the work item are in the skill [review](../review/SKILL.md).
 
 ## Doubt during execution
 

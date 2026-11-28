@@ -29,6 +29,7 @@ A check with the `run` field is mechanical: `omhl check run` runs the command, c
 | Delete the expired stored outputs | [byproduct-prune.md](byproduct-prune.md) |
 | Install the git hooks | [hooks-install.md](hooks-install.md) |
 | `post-commit` hook | [hooks-post-commit.md](hooks-post-commit.md) |
+| `post-merge` hook | [hooks-post-merge.md](hooks-post-merge.md) |
 | Attest a manual check | [attest.md](attest.md) |
 | When the check or the hook refuses | [gates-operation.md](gates-operation.md) |
 | Common errors | [errors.md](../../directives-flow/references/errors.md) |

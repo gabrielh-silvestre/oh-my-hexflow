@@ -9,9 +9,9 @@ use hexlog::{
 
 use crate::delivery_gate::{
     Abandonment, CloseRefusal, FailedDelivery, Forcing, GATE_NAME, GateSnapshots,
-    abandonment_request, anchor_questions, close_verdict, closing_request, delivery_gate_questions,
-    delivery_verdict, failed_delivery_request, project_checks_filter, required_checks,
-    requirement_questions, spec_digests,
+    PullRequestRecord, abandonment_request, anchor_questions, close_verdict, closing_request,
+    delivery_gate_questions, delivery_verdict, failed_delivery_request, project_checks_filter,
+    required_checks, requirement_questions, spec_digests,
 };
 use crate::error::{OmhlError, RuleCode};
 use crate::gate::{self, GateQuestion, GateReport, GateSource, HexlogSource, read_consistent};
@@ -113,6 +113,8 @@ pub struct Closing<'a> {
 pub enum CloseError {
     Omhl(OmhlError),
     Refused(CloseRefusal),
+    /// O id do nó do PR já existe.
+    RecordExists(SemanticId),
 }
 
 impl From<OmhlError> for CloseError {
@@ -392,6 +394,31 @@ impl<'d> Omhl<'d> {
         review_required: bool,
         closing: &Closing<'_>,
     ) -> Result<ClosedWorkItem, CloseError> {
+        self.close_work_item_with(
+            tenant,
+            work_item,
+            snapshots,
+            enabled,
+            requirements,
+            review_required,
+            closing,
+            None,
+        )
+    }
+
+    /// O mesmo fechamento, com o nó do PR do `omhl merge` na mesma gravação.
+    #[allow(clippy::too_many_arguments)]
+    pub fn close_work_item_with(
+        &mut self,
+        tenant: &TenantId,
+        work_item: &SemanticId,
+        snapshots: &GateSnapshots,
+        enabled: &NativeConfig,
+        requirements: &WorkRequirements,
+        review_required: bool,
+        closing: &Closing<'_>,
+        pull_request: Option<&PullRequestRecord>,
+    ) -> Result<ClosedWorkItem, CloseError> {
         let session = self.session.resolve()?;
         let (current, report) = self.evaluate_closing(
             tenant,
@@ -401,6 +428,16 @@ impl<'d> Omhl<'d> {
             requirements,
             review_required,
         )?;
+        if let Some(record) = pull_request {
+            // Lido sob a mesma cabeça que o gate leu: a gravação direta nunca sobrescreve um nó.
+            let exists = self.get(tenant, &record.id)?.is_some();
+            if self.chain_head(tenant)? != report.chain_head {
+                return Err(OmhlError::rule(RuleCode::GateInconsistent, "").into());
+            }
+            if exists {
+                return Err(CloseError::RecordExists(record.id.clone()));
+            }
+        }
         // A recusa é decidida antes de gravar: quem recusa não deixa nenhum registro.
         let forcing = close_verdict(&report, closing.note).map_err(CloseError::Refused)?;
         let request = closing_request(
@@ -410,6 +447,7 @@ impl<'d> Omhl<'d> {
             &report,
             &snapshots.head_commit,
             forcing.as_ref(),
+            pull_request,
         );
         let outcome = self.append_closing(&request, &session)?;
 

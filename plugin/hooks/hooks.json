@@ -54,6 +54,52 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/omhl-hook.sh", "command-guard"],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__.+__merge_pull_request$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/omhl-hook.sh", "mcp-merge-guard"],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__.+__(push_files|create_or_update_file|delete_file)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/omhl-hook.sh", "mcp-write-warning"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/omhl-hook.sh", "branch-birth"],
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

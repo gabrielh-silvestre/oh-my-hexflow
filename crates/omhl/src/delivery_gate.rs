@@ -472,6 +472,19 @@ pub fn delivery_verdict(report: &GateReport) -> Result<Vec<FailedQuestion>, Clos
     Ok(failed)
 }
 
+/// O nó `pull-request` que o `omhl merge` grava junto do fechamento.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequestRecord {
+    pub id: SemanticId,
+    pub provider: &'static str,
+    pub repo: String,
+    pub number: u64,
+    pub branch: String,
+    pub strategy: &'static str,
+    pub merge_commit: Option<String>,
+}
+
+/// Fechamento e nó do PR na mesma requisição: entram os dois ou nenhum.
 pub(crate) fn closing_request(
     tenant: &TenantId,
     author: &Author,
@@ -479,6 +492,7 @@ pub(crate) fn closing_request(
     report: &GateReport,
     snapshot: &Snapshot,
     forcing: Option<&Forcing>,
+    pull_request: Option<&PullRequestRecord>,
 ) -> AppendRequest {
     let mut gate = gate_json(report, snapshot);
     if let Some(Forcing::Forced(gate_override)) = forcing {
@@ -486,8 +500,42 @@ pub(crate) fn closing_request(
         gate["overridden"] = json!(gate_override.overridden);
         gate["note"] = json!(gate_override.note);
     }
+    let record = pull_request.map(|record| pull_request_item(record, &current, &gate));
+    let mut request = closed_request(tenant, author, current, gate, None);
+    request.items.extend(record);
 
-    closed_request(tenant, author, current, gate, None)
+    request
+}
+
+fn pull_request_item(record: &PullRequestRecord, work_item: &NodeView, gate: &Value) -> AppendItem {
+    let mut data = json!({
+        "title": work_item.data["title"],
+        "status": "closed",
+        "gate": gate,
+        "provider": record.provider,
+        "repo": record.repo,
+        "number": record.number,
+        "branch": record.branch,
+        "work_item": work_item.id,
+        "strategy": record.strategy,
+    });
+    if let Some(kind) = work_item.data.get("type") {
+        data["type"] = kind.clone();
+    }
+    if let Some(commit) = &record.merge_commit {
+        data["merge_commit"] = json!(commit);
+    }
+
+    AppendItem {
+        body: ItemBody::Node {
+            id: record.id.clone(),
+            type_name: type_name("pull-request"),
+            data,
+        },
+        base: None,
+        snapshot: None,
+        external_id: None,
+    }
 }
 
 fn gate_json(report: &GateReport, snapshot: &Snapshot) -> Value {

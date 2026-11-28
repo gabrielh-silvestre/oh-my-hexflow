@@ -23,6 +23,7 @@ pub struct Cmd {
     cwd: Option<PathBuf>,
     env: Vec<(OsString, OsString)>,
     program: Option<PathBuf>,
+    deadline: Duration,
 }
 
 /// O binário `omhl` de `CARGO_BIN_EXE_omhl` com os argumentos dados.
@@ -33,6 +34,7 @@ pub fn omhl(args: &[&str]) -> Cmd {
         cwd: None,
         env: Vec::new(),
         program: None,
+        deadline: DEADLINE,
     }
 }
 
@@ -52,6 +54,12 @@ impl Cmd {
     /// Roda este executável no lugar do `omhl` do cargo (uma cópia em outra pasta).
     pub fn program(mut self, path: &Path) -> Cmd {
         self.program = Some(path.to_path_buf());
+        self
+    }
+
+    /// Prazo maior que os 30 s padrão, para o teste que espera um limite de 30 s do próprio `omhl`.
+    pub fn deadline(mut self, deadline: Duration) -> Cmd {
+        self.deadline = deadline;
         self
     }
 
@@ -106,7 +114,8 @@ impl Cmd {
         let stdout = spawn_reader(child.stdout.take().expect("stdout is piped"));
         let stderr = spawn_reader(child.stderr.take().expect("stderr is piped"));
 
-        let deadline = Instant::now() + DEADLINE;
+        let limit = self.deadline;
+        let deadline = Instant::now() + limit;
         let status = loop {
             if let Some(status) = child.try_wait().expect("the child is polled") {
                 break status;
@@ -114,7 +123,7 @@ impl Cmd {
             if Instant::now() >= deadline {
                 child.kill().expect("the stuck child is killed");
                 child.wait().expect("the killed child is reaped");
-                panic!("omhl {:?} did not exit within {DEADLINE:?}", self.args);
+                panic!("omhl {:?} did not exit within {limit:?}", self.args);
             }
             thread::sleep(POLL);
         };

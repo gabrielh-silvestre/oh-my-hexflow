@@ -64,3 +64,16 @@ pub const GIT_TIMED_OUT: &str = "git timed out";
 pub struct ProbeError {
     pub message: String,
 }
+
+/// O resultado cru de uma chamada do `git`, para quem decide pela recusa dele.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitOutput {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Um `git` rodado num diretório dado; o argv chega sem `-C`.
+pub trait TidyGit {
+    fn git(&self, dir: &std::path::Path, args: &[&str]) -> Result<GitOutput, ProbeError>;
+}

@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use clap::builder::PossibleValuesParser;
 use clap::error::ErrorKind;
 use clap::{ArgGroup, Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+
 use serde_json::{Value, json};
 
 use super::hook;
@@ -15,6 +16,7 @@ use crate::app::error::AppError;
 use crate::app::input::{INPUT_MAX_BYTES, read_json_input};
 use crate::app::runtime::run_action;
 use crate::app::{Group, RUNNABLE_EVENTS};
+use crate::app::{SemanticId, Strategy};
 use crate::project::Env;
 
 #[derive(Debug, Parser)]
@@ -37,7 +39,7 @@ pub struct Cli {
 pub enum Command {
     #[command(flatten)]
     Action(ActionCommand),
-    /// Run one hook of the `omhl hook` group (see the subcommands).
+    /// Run one hook of the `omhl hook` group: session-start, spec-lock, agent-role, subagent-start, branch-birth, command-guard, mcp-merge-guard, mcp-write-warning and branch-created.
     Hook {
         #[command(subcommand)]
         event: HookEvent,
@@ -106,6 +108,24 @@ pub enum ActionCommand {
         #[arg(long, requires = "mode")]
         note: Option<String>,
         #[arg(long, allow_hyphen_values = true, conflicts_with = "abandon")]
+        base: Option<String>,
+    },
+    /// Merge the pull request of a work item through the provider and close the work item; refuses before the merge when the CI or the delivery gate does not pass.
+    Merge {
+        work_item: String,
+        /// Squash the commits instead of a merge commit.
+        #[arg(long, conflicts_with = "rebase")]
+        squash: bool,
+        /// Rebase the commits instead of a merge commit.
+        #[arg(long)]
+        rebase: bool,
+        /// Pass a red CI check that branch protection does not require, or warn questions of the gate, with the owner's authorization in --note.
+        #[arg(long, requires = "note")]
+        force: bool,
+        #[arg(long, requires = "force")]
+        note: Option<String>,
+        /// The base of the loosening review, as in close.
+        #[arg(long, allow_hyphen_values = true)]
         base: Option<String>,
     },
     /// Verify the hash chain.
@@ -215,13 +235,18 @@ pub enum OutputFormat {
 
 #[derive(Debug, Subcommand)]
 pub enum HooksCommand {
-    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit) of this clone; these are git hooks, unrelated to the `omhl hook` group (Claude Code events and the `wt` hook).
+    /// Install the git hooks (pre-commit, pre-merge-commit, pre-push, post-commit, post-merge) of this clone; these are git hooks, unrelated to the `omhl hook` group (Claude Code events and the `branch-created` hook).
     Install {
         #[arg(long)]
         force: bool,
     },
     /// Consume the commit mark after a commit on a dry-run-with-mark exception branch.
     PostCommit,
+    /// Consume the commit mark after a merge on a dry-run-with-mark exception branch; the squash flag 1 keeps it.
+    PostMerge {
+        /// The flag git passes to post-merge: 1 for a squash merge.
+        squash_flag: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -268,7 +293,7 @@ pub enum ReportCommand {
 }
 
 #[derive(Debug, Subcommand)]
-// Os eventos do Claude Code leem o evento no stdin; o `wt-post-start` não lê. Quem decide o código de saída que bloqueia é o `omhl-hook.sh`, cujo ramo sem o binário sai com `exit 0` fora de projeto marcado (`docs/directives-flow.md`).
+// Os eventos do Claude Code leem o evento no stdin; o `branch-created` não lê. Quem decide o código de saída que bloqueia é o `omhl-hook.sh`, cujo ramo sem o binário sai com `exit 0` fora de projeto marcado (`docs/directives-flow.md`).
 pub enum HookEvent {
     /// Inject the session context.
     SessionStart,
@@ -278,8 +303,16 @@ pub enum HookEvent {
     AgentRole,
     /// Print the conversation language of the person as context for a plugin subagent; reads the SubagentStart event on stdin, never blocks, and prints nothing without a language.
     SubagentStart,
-    /// Write the freeze mark in every spec folder of the work item of a new branch (the `post-start` hook of `wt`); does not read stdin, prints JSON, and stays silent without a project marker.
-    WtPostStart {
+    /// Write the freeze mark of every work item with a local branch after a Bash command that created a branch; reads the PostToolUse event on stdin and prints nothing.
+    BranchBirth,
+    /// Run the creation gate on a Bash branch creation and warn on a push that reaches main; reads the PreToolUse event on stdin.
+    CommandGuard,
+    /// Guard the merge of a pull request through an MCP tool; reads the PreToolUse event on stdin.
+    McpMergeGuard,
+    /// Warn when an MCP write tool targets main or the default branch; reads the PreToolUse event on stdin.
+    McpWriteWarning,
+    /// Write the freeze mark in every spec folder of the work item of a new branch and keep the worktree folder ignored; does not read stdin, prints JSON, and stays silent without a project marker.
+    BranchCreated {
         /// Name of the new branch.
         #[arg(long)]
         branch: String,
@@ -332,11 +365,23 @@ pub fn run(
             event: HookEvent::SubagentStart,
         } => hook::subagent_start(stdin, out, env),
         Command::Hook {
-            event: HookEvent::WtPostStart { branch },
+            event: HookEvent::BranchBirth,
+        } => hook::branch_birth(stdin, err),
+        Command::Hook {
+            event: HookEvent::CommandGuard,
+        } => hook::command_guard(stdin, out, err),
+        Command::Hook {
+            event: HookEvent::McpMergeGuard,
+        } => hook::mcp_merge_guard(stdin, out, err),
+        Command::Hook {
+            event: HookEvent::McpWriteWarning,
+        } => hook::mcp_write_warning(stdin, out, err),
+        Command::Hook {
+            event: HookEvent::BranchCreated { branch },
         } => {
             let format = format.unwrap_or_else(|| default_format(key));
             let result = start_dir(project_dir.as_deref())
-                .and_then(|dir| crate::app::wt_post_start(&dir, &branch));
+                .and_then(|dir| crate::app::branch_created(&dir, &branch));
 
             report_silent_without_marker(result, format, key, out, err)
         }
@@ -350,7 +395,7 @@ pub fn run(
     }
 }
 
-/// Os hooks do `wt` (`pre-switch`, `post-start`) rodam em qualquer repositório: sem marcador não há o que decidir nem marcar.
+/// O `gate-worktree` e o `branch-created` rodam em qualquer repositório: sem marcador não há o que decidir nem marcar.
 fn report_silent_without_marker(
     result: Result<Value, AppError>,
     format: OutputFormat,
@@ -358,8 +403,10 @@ fn report_silent_without_marker(
     out: &mut impl std::io::Write,
     err: &mut impl std::io::Write,
 ) -> ExitCode {
-    let silent_without_marker =
-        matches!(key, CommandKey::GateWorktree | CommandKey::HookWtPostStart);
+    let silent_without_marker = matches!(
+        key,
+        CommandKey::GateWorktree | CommandKey::HookBranchCreated
+    );
     match &result {
         Err(error) if silent_without_marker && error.code() == "no-marker" => ExitCode::SUCCESS,
         _ => report(result, format, key, out, err),
@@ -538,6 +585,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::GateDelivery => "gate-delivery",
         CommandKey::GateWorktree => "gate-worktree",
         CommandKey::Close => "close",
+        CommandKey::Merge => "merge",
         CommandKey::Verify => "verify",
         CommandKey::Load => "load",
         CommandKey::Project => "project",
@@ -549,6 +597,7 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::ByproductPrune => "byproduct prune",
         CommandKey::HooksInstall => "hooks install",
         CommandKey::HooksPostCommit => "hooks post-commit",
+        CommandKey::HooksPostMerge => "hooks post-merge",
         CommandKey::SpecInit => "spec init",
         CommandKey::SpecValidate => "spec validate",
         CommandKey::ReportAnswers => "report answers",
@@ -559,7 +608,11 @@ fn command_path(key: CommandKey) -> &'static str {
         CommandKey::HookSpecLock => "hook spec-lock",
         CommandKey::HookAgentRole => "hook agent-role",
         CommandKey::HookSubagentStart => "hook subagent-start",
-        CommandKey::HookWtPostStart => "hook wt-post-start",
+        CommandKey::HookBranchCreated => "hook branch-created",
+        CommandKey::HookBranchBirth => "hook branch-birth",
+        CommandKey::HookCommandGuard => "hook command-guard",
+        CommandKey::HookMcpMergeGuard => "hook mcp-merge-guard",
+        CommandKey::HookMcpWriteWarning => "hook mcp-write-warning",
     }
 }
 
@@ -579,8 +632,20 @@ fn command_key(command: &Command) -> CommandKey {
             event: HookEvent::SubagentStart,
         } => CommandKey::HookSubagentStart,
         Command::Hook {
-            event: HookEvent::WtPostStart { .. },
-        } => CommandKey::HookWtPostStart,
+            event: HookEvent::BranchCreated { .. },
+        } => CommandKey::HookBranchCreated,
+        Command::Hook {
+            event: HookEvent::BranchBirth,
+        } => CommandKey::HookBranchBirth,
+        Command::Hook {
+            event: HookEvent::CommandGuard,
+        } => CommandKey::HookCommandGuard,
+        Command::Hook {
+            event: HookEvent::McpMergeGuard,
+        } => CommandKey::HookMcpMergeGuard,
+        Command::Hook {
+            event: HookEvent::McpWriteWarning,
+        } => CommandKey::HookMcpWriteWarning,
         Command::Action(ActionCommand::List { .. }) => CommandKey::List,
         Command::Action(ActionCommand::Get { .. }) => CommandKey::Get,
         Command::Action(ActionCommand::Append { .. }) => CommandKey::Append,
@@ -589,6 +654,7 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Action(ActionCommand::GateDelivery { .. }) => CommandKey::GateDelivery,
         Command::Action(ActionCommand::GateWorktree { .. }) => CommandKey::GateWorktree,
         Command::Action(ActionCommand::Close { .. }) => CommandKey::Close,
+        Command::Action(ActionCommand::Merge { .. }) => CommandKey::Merge,
         Command::Action(ActionCommand::Verify) => CommandKey::Verify,
         Command::Action(ActionCommand::Load { .. }) => CommandKey::Load,
         Command::Action(ActionCommand::Project) => CommandKey::Project,
@@ -615,6 +681,9 @@ fn command_key(command: &Command) -> CommandKey {
         Command::Action(ActionCommand::Hooks {
             command: HooksCommand::PostCommit,
         }) => CommandKey::HooksPostCommit,
+        Command::Action(ActionCommand::Hooks {
+            command: HooksCommand::PostMerge { .. },
+        }) => CommandKey::HooksPostMerge,
         Command::Action(ActionCommand::Spec {
             command: SpecCommand::Init { .. },
         }) => CommandKey::SpecInit,
@@ -713,6 +782,14 @@ fn execute(
     db: Option<&Path>,
     env: &Env<'_>,
 ) -> Result<Value, AppError> {
+    // Depois do `git merge --squash` o commit que fecha ainda precisa da marca.
+    if let ActionCommand::Hooks {
+        command: HooksCommand::PostMerge { squash_flag },
+    } = &command
+        && squash_flag == "1"
+    {
+        return Ok(json!({ "consumed": false }));
+    }
     let owner_override = has_owner_override(&command);
     let action = to_action(command, stdin, env)?;
 
@@ -808,6 +885,24 @@ fn to_action(
             note,
             base,
         },
+        ActionCommand::Merge {
+            work_item,
+            squash,
+            rebase,
+            note,
+            base,
+            ..
+        } => Action::Merge {
+            work_item: SemanticId::parse(&work_item)
+                .map_err(|error| AppError::from(error.at("/work_item")))?,
+            strategy: match (squash, rebase) {
+                (true, _) => Strategy::Squash,
+                (_, true) => Strategy::Rebase,
+                _ => Strategy::Merge,
+            },
+            force_note: note,
+            base,
+        },
         ActionCommand::Verify => Action::Verify,
         ActionCommand::Load { dry_run, .. } => Action::Load { dry_run },
         ActionCommand::Project => Action::Project,
@@ -845,6 +940,9 @@ fn to_action(
         } => Action::HooksInstall { force },
         ActionCommand::Hooks {
             command: HooksCommand::PostCommit,
+        } => Action::ConsumeCommitMark,
+        ActionCommand::Hooks {
+            command: HooksCommand::PostMerge { .. },
         } => Action::ConsumeCommitMark,
         ActionCommand::Spec {
             command: SpecCommand::Init { work_item, slug },

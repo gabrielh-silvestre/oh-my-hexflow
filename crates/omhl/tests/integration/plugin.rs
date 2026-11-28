@@ -149,7 +149,8 @@ fn it_should_ship_the_hook_script_the_hooks_point_to() {
 }
 
 #[test]
-fn it_should_wire_the_agent_role_hook_on_four_tool_matchers_beside_the_spec_lock_hook() {
+fn it_should_wire_the_agent_role_hook_beside_the_spec_lock_hook_and_the_three_new_pre_tool_use_hooks()
+ {
     let hooks = plugin_file("hooks/hooks.json");
 
     let matchers: Vec<&Value> = hooks["hooks"]["PreToolUse"]
@@ -163,7 +164,10 @@ fn it_should_wire_the_agent_role_hook_on_four_tool_matchers_beside_the_spec_lock
         matchers,
         [
             &json!("Edit|Write|MultiEdit"),
-            &json!("Bash|Monitor|Agent|Task")
+            &json!("Bash|Monitor|Agent|Task"),
+            &json!("Bash"),
+            &json!(MERGE_MATCHER),
+            &json!(WRITE_MATCHER),
         ]
     );
 }
@@ -926,4 +930,164 @@ fn it_should_not_track_any_omc_path_under_the_plugin_directory() {
         .find(|path| path.split('/').any(|part| part == ".omc"));
 
     assert_eq!(found, None, "tracked .omc path under plugin/");
+}
+
+// CA-006: as quatro entradas novas de hooks.json (CMP-006, EMD-019)
+
+const MERGE_MATCHER: &str = "^mcp__.+__merge_pull_request$";
+const WRITE_MATCHER: &str = "^mcp__.+__(push_files|create_or_update_file|delete_file)$";
+const NEW_HOOKS: [(&str, &str, &str); 4] = [
+    ("PostToolUse", "Bash", "branch-birth"),
+    ("PreToolUse", "Bash", "command-guard"),
+    ("PreToolUse", MERGE_MATCHER, "mcp-merge-guard"),
+    ("PreToolUse", WRITE_MATCHER, "mcp-write-warning"),
+];
+
+fn group_entry<'a>(hooks: &'a Value, event: &str, matcher: &str, name: &str) -> &'a Value {
+    hooks["hooks"][event]
+        .as_array()
+        .unwrap_or_else(|| panic!("{event} is a list"))
+        .iter()
+        .filter(|group| group["matcher"] == json!(matcher))
+        .flat_map(|group| group["hooks"].as_array().expect("a group has hooks"))
+        .find(|entry| entry["args"][1] == json!(name))
+        .unwrap_or_else(|| panic!("{event} {matcher} has no entry for {name}"))
+}
+
+fn matcher_regex(matcher: &str) -> regex::Regex {
+    regex::Regex::new(matcher).expect("the matcher is a valid regex")
+}
+
+#[test]
+fn it_should_wire_each_new_hook_under_its_event_and_matcher_in_exec_form() {
+    let hooks = plugin_file("hooks/hooks.json");
+
+    for (event, matcher, name) in NEW_HOOKS {
+        let entry = group_entry(&hooks, event, matcher, name);
+
+        assert_eq!(
+            entry,
+            &json!({
+                "type": "command",
+                "command": "sh",
+                "args": [PLUGIN_ROOT_ARG, name],
+                "timeout": 10,
+            }),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn it_should_keep_the_entries_of_today_beside_the_new_ones() {
+    let hooks = plugin_file("hooks/hooks.json");
+
+    for name in HOOK_NAMES {
+        let entry = entry_for(&hooks, name);
+
+        assert_eq!(entry["args"], json!([PLUGIN_ROOT_ARG, name]), "{name}");
+    }
+}
+
+#[test]
+fn it_should_match_the_merge_tool_of_any_mcp_server_name() {
+    let matcher = matcher_regex(MERGE_MATCHER);
+
+    assert!(matcher.is_match("mcp__github-official__merge_pull_request"));
+    assert!(matcher.is_match("mcp__plugin_x_github__merge_pull_request"));
+}
+
+#[test]
+fn it_should_not_match_a_merge_comment_or_a_listing_with_the_merge_matcher() {
+    let matcher = matcher_regex(MERGE_MATCHER);
+
+    assert!(!matcher.is_match("mcp__github__merge_pull_request_comment"));
+    assert!(!matcher.is_match("mcp__x__list_pull_requests"));
+}
+
+#[test]
+fn it_should_match_the_three_write_tools_of_any_mcp_server_name() {
+    let matcher = matcher_regex(WRITE_MATCHER);
+
+    for tool in ["push_files", "create_or_update_file", "delete_file"] {
+        assert!(
+            matcher.is_match(&format!("mcp__plugin_x_github__{tool}")),
+            "{tool}"
+        );
+        assert!(
+            matcher.is_match(&format!("mcp__github-official__{tool}")),
+            "{tool}"
+        );
+    }
+}
+
+#[test]
+fn it_should_not_match_a_merge_comment_or_a_listing_with_the_write_matcher() {
+    let matcher = matcher_regex(WRITE_MATCHER);
+
+    assert!(!matcher.is_match("mcp__github__merge_pull_request_comment"));
+    assert!(!matcher.is_match("mcp__x__list_pull_requests"));
+}
+
+#[test]
+fn it_should_stay_silent_and_exit_zero_for_each_new_hook_without_omhl() {
+    for (_, _, name) in NEW_HOOKS {
+        for marked in [true, false] {
+            let dir = project(marked);
+            let envs = [("CLAUDE_PROJECT_DIR", str_path(dir.path()))];
+
+            let run = run_without_omhl(name, dir.path(), &envs, "{}\n");
+
+            assert_eq!(run.code, Some(0), "{name} marked={marked}");
+            assert_eq!(run.stdout, "", "{name} marked={marked}");
+            assert_eq!(run.stderr, "", "{name} marked={marked}");
+        }
+    }
+}
+
+// CA-007: o script com um `omhl` falso
+
+#[test]
+fn it_should_block_the_mcp_merge_when_omhl_fails() {
+    let run = run_with_fake_omhl("mcp-merge-guard", "exit 1\n", "");
+
+    assert_eq!(run.code, Some(2));
+}
+
+#[test]
+fn it_should_show_the_stderr_of_omhl_when_the_mcp_merge_guard_fails() {
+    let run = run_with_fake_omhl("mcp-merge-guard", "echo 'omhl broke' >&2\nexit 1\n", "");
+
+    assert!(run.stderr.contains("omhl broke"), "stderr: {}", run.stderr);
+}
+
+#[test]
+fn it_should_exit_one_without_blocking_for_the_other_new_hooks_when_omhl_fails() {
+    for name in ["branch-birth", "command-guard", "mcp-write-warning"] {
+        let run = run_with_fake_omhl(name, "exit 1\n", "");
+
+        assert_eq!(run.code, Some(1), "{name}");
+    }
+}
+
+#[test]
+fn it_should_pass_stdin_and_stdout_through_to_omhl_for_each_new_hook() {
+    for (_, _, name) in NEW_HOOKS {
+        let run = run_with_fake_omhl(name, &format!("{ECHO_INPUT}exit 0\n"), "{\"a\":1}\n");
+
+        assert_eq!(run.code, Some(0), "{name}");
+        assert_eq!(
+            run.stdout,
+            format!("args:hook {name}\nin:{{\"a\":1}}\n"),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn it_should_keep_the_exit_mappings_of_agent_role_and_spec_lock_when_omhl_fails() {
+    let agent_role = run_with_fake_omhl("agent-role", "exit 1\n", "");
+    let spec_lock = run_with_fake_omhl("spec-lock", "exit 1\n", "");
+
+    assert_eq!((agent_role.code, spec_lock.code), (Some(1), Some(2)));
 }

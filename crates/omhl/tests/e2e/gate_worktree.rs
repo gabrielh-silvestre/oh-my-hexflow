@@ -752,24 +752,24 @@ fn it_should_not_count_an_autonomous_technical_premise_of_another_work_item_for_
     assert_refused(&output, "worktree-gate-refused");
 }
 
-// chore e docs: nada, e o banco nem abre
+// chore e docs: nenhuma premissa; a branch de work item vai ao banco mesmo com a matriz vazia (EMD-009)
 
 #[test]
-fn it_should_allow_chore_without_any_premise_and_without_opening_the_database() {
-    let fixture = Fixture::new();
+fn it_should_allow_chore_without_any_premise() {
+    let fixture = Fixture::seeded();
 
-    let output = fixture.gate_with_absent_db("chore/wi-w1__new");
+    let output = fixture.gate("chore/wi-w1__new");
 
-    assert_allowed_without_db(&fixture, &output, "matrix-satisfied");
+    assert_allowed(&output, "matrix-satisfied");
 }
 
 #[test]
-fn it_should_allow_docs_without_any_premise_and_without_opening_the_database() {
-    let fixture = Fixture::new();
+fn it_should_allow_docs_without_any_premise() {
+    let fixture = Fixture::seeded();
 
-    let output = fixture.gate_with_absent_db("docs/wi-w1__new");
+    let output = fixture.gate("docs/wi-w1__new");
 
-    assert_allowed_without_db(&fixture, &output, "matrix-satisfied");
+    assert_allowed(&output, "matrix-satisfied");
 }
 
 // Prefixo vindo do workflow.toml
@@ -1108,12 +1108,12 @@ fn it_should_refuse_feat_of_a_work_item_that_is_not_in_the_database_with_work_it
 }
 
 #[test]
-fn it_should_allow_chore_of_a_closed_work_item_because_its_require_never_opens_the_database() {
+fn it_should_refuse_chore_of_a_closed_work_item_because_the_branch_goes_to_the_database() {
     let fixture = Fixture::seeded_closed();
 
     let output = fixture.gate("chore/wi-w1__new");
 
-    assert_allowed(&output, "matrix-satisfied");
+    assert_refused(&output, "work-item-closed");
 }
 
 // `require = []` num tipo padrão não tira o átomo de negócio do `feat`

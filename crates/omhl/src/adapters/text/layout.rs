@@ -178,6 +178,11 @@ fn closing_line(closing: &Closing, vocabulary: &impl Vocabulary) -> Option<Strin
     match closing {
         Closing::None => None,
         Closing::Next(step) => Some(vocabulary.next(&vocabulary.clean(step))),
+        Closing::Command(command) => Some(format!(
+            "{} {}",
+            super::vocab::NEXT_LABEL,
+            vocabulary.clean(command)
+        )),
         Closing::NothingBlocked(step) => Some(vocabulary.nothing_blocked(&vocabulary.clean(step))),
     }
 }

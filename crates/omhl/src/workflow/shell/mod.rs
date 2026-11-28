@@ -1,6 +1,7 @@
 //! Puro, sem IO e sem biblioteca de shell: aspas, heredocs, separadores, redirecionamentos e embrulhos.
 
 mod cursor;
+pub mod git_command;
 mod heredoc;
 mod lexer;
 mod redirect;

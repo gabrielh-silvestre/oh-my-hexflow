@@ -7,6 +7,7 @@ mod get;
 mod layout;
 mod list;
 mod load;
+mod merge;
 mod render;
 mod report;
 mod sessions;
@@ -44,6 +45,7 @@ pub enum CommandKey {
     GateDelivery,
     GateWorktree,
     Close,
+    Merge,
     Verify,
     Load,
     Project,
@@ -55,6 +57,7 @@ pub enum CommandKey {
     ByproductPrune,
     HooksInstall,
     HooksPostCommit,
+    HooksPostMerge,
     SpecInit,
     SpecValidate,
     ReportAnswers,
@@ -65,11 +68,15 @@ pub enum CommandKey {
     HookSpecLock,
     HookAgentRole,
     HookSubagentStart,
-    HookWtPostStart,
+    HookBranchCreated,
+    HookBranchBirth,
+    HookCommandGuard,
+    HookMcpMergeGuard,
+    HookMcpWriteWarning,
 }
 
 impl CommandKey {
-    pub const ALL: [CommandKey; 30] = [
+    pub const ALL: [CommandKey; 36] = [
         Self::List,
         Self::Get,
         Self::Append,
@@ -78,6 +85,7 @@ impl CommandKey {
         Self::GateDelivery,
         Self::GateWorktree,
         Self::Close,
+        Self::Merge,
         Self::Verify,
         Self::Load,
         Self::Project,
@@ -89,6 +97,7 @@ impl CommandKey {
         Self::ByproductPrune,
         Self::HooksInstall,
         Self::HooksPostCommit,
+        Self::HooksPostMerge,
         Self::SpecInit,
         Self::SpecValidate,
         Self::ReportAnswers,
@@ -99,7 +108,11 @@ impl CommandKey {
         Self::HookSpecLock,
         Self::HookAgentRole,
         Self::HookSubagentStart,
-        Self::HookWtPostStart,
+        Self::HookBranchCreated,
+        Self::HookBranchBirth,
+        Self::HookCommandGuard,
+        Self::HookMcpMergeGuard,
+        Self::HookMcpWriteWarning,
     ];
 }
 
@@ -135,13 +148,19 @@ pub fn renderer_for(key: CommandKey) -> Option<&'static dyn Renderer> {
         CommandKey::SpecValidate => Some(&BaseRenderer(spec_validate::SpecValidate)),
         CommandKey::GateDelivery => Some(&BaseRenderer(gate::GateDelivery)),
         CommandKey::Close => Some(&BaseRenderer(gate::Close)),
+        CommandKey::Merge => Some(&BaseRenderer(merge::Merge)),
         CommandKey::GateWorktree
         | CommandKey::HooksPostCommit
+        | CommandKey::HooksPostMerge
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole
         | CommandKey::HookSubagentStart
-        | CommandKey::HookWtPostStart => None,
+        | CommandKey::HookBranchBirth
+        | CommandKey::HookCommandGuard
+        | CommandKey::HookMcpMergeGuard
+        | CommandKey::HookMcpWriteWarning
+        | CommandKey::HookBranchCreated => None,
     }
 }
 
@@ -168,15 +187,21 @@ pub fn profile_for(key: CommandKey) -> &'static Profile {
         CommandKey::Attest => &simple::ATTEST_PROFILE,
         CommandKey::GateDelivery => &gate::GATE_DELIVERY_PROFILE,
         CommandKey::Close => &gate::CLOSE_PROFILE,
+        CommandKey::Merge => &merge::PROFILE,
         CommandKey::Load => &load::PROFILE,
         CommandKey::SpecValidate => &spec_validate::PROFILE,
         CommandKey::GateWorktree
         | CommandKey::HooksPostCommit
+        | CommandKey::HooksPostMerge
         | CommandKey::HookSessionStart
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole
         | CommandKey::HookSubagentStart
-        | CommandKey::HookWtPostStart => &Profile::EMPTY,
+        | CommandKey::HookBranchBirth
+        | CommandKey::HookCommandGuard
+        | CommandKey::HookMcpMergeGuard
+        | CommandKey::HookMcpWriteWarning
+        | CommandKey::HookBranchCreated => &Profile::EMPTY,
     }
 }
 
@@ -214,8 +239,13 @@ pub fn deferred(key: CommandKey) -> bool {
         | CommandKey::HookSpecLock
         | CommandKey::HookAgentRole
         | CommandKey::HookSubagentStart
-        | CommandKey::HookWtPostStart
+        | CommandKey::HookBranchCreated
+        | CommandKey::HookBranchBirth
+        | CommandKey::HookCommandGuard
+        | CommandKey::HookMcpMergeGuard
+        | CommandKey::HookMcpWriteWarning
         | CommandKey::HooksPostCommit
+        | CommandKey::HooksPostMerge
         | CommandKey::GateWorktree => true,
         CommandKey::List
         | CommandKey::Get
@@ -224,6 +254,7 @@ pub fn deferred(key: CommandKey) -> bool {
         | CommandKey::Render
         | CommandKey::GateDelivery
         | CommandKey::Close
+        | CommandKey::Merge
         | CommandKey::Verify
         | CommandKey::Load
         | CommandKey::Project

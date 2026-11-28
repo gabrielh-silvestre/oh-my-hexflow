@@ -9,3 +9,13 @@ integration = "develop"
 [[branch.exception]]
 pattern = "develop"
 mode = "dry-run-with-mark"
+
+[git]
+hooks = true
+
+[creation_gate]
+enabled = true
+
+[provider]
+name = "github"
+require_ci = true

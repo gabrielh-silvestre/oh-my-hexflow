@@ -12,11 +12,13 @@ pub mod ext;
 pub mod fences;
 pub mod forge;
 pub mod gate;
+pub mod gh;
 pub mod git;
 pub mod guideline_retire;
 pub mod hook;
 pub mod inproc;
 pub mod legacy;
+pub mod merge;
 pub mod omhl;
 pub mod output_agent_leaves;
 pub mod output_agent_query;
@@ -32,6 +34,7 @@ pub mod scan;
 pub mod session;
 #[cfg(target_os = "linux")]
 pub mod sweep_lock;
+pub mod tidy;
 pub mod views;
 
 use std::sync::atomic::{AtomicU64, Ordering};

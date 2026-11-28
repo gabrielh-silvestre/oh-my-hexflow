@@ -144,12 +144,18 @@ fn it_should_say_a_project_binds_a_check_to_any_event_and_an_invented_one_is_ref
 }
 
 #[test]
-fn it_should_not_name_omhl_merge_in_any_plugin_page() {
+fn it_should_name_omhl_merge_only_in_the_review_skill_and_its_merge_page() {
+    // int1 (CMP-033, EMD-026) dá ao `omhl merge` a página própria e a citação na skill review
+    let allowed = [
+        repo_root().join("plugin/skills/review/SKILL.md"),
+        repo_root().join("plugin/skills/review/references/merge.md"),
+    ];
     let mut pages = Vec::new();
     markdown_files(&repo_root().join("plugin"), &mut pages);
 
     let offenders: Vec<_> = pages
         .iter()
+        .filter(|page| !allowed.contains(page))
         .filter(|page| fs::read_to_string(page).is_ok_and(|text| text.contains("omhl merge")))
         .collect();
 

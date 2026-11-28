@@ -1,10 +1,34 @@
+# Format version of this file.
 version = 1
 
 [specs]
+# A spec file longer than this fails omhl spec validate.
 max_lines = 400
 
 [promotion]
+# Work items a premise must repeat in before omhl report recurrences suggests a guideline.
 min_work_items = 4
 
 [prefix.chore]
+# Atoms added to the default requirement of the chore type.
 require = ["agent-premise"]
+
+[git]
+# The project uses the omhl git hooks: session-start warns when the clone lacks or has outdated hooks.
+hooks = true
+
+[creation_gate]
+# The command-guard hook denies a Bash branch creation whose work item misses what its type requires.
+enabled = true
+
+[provider]
+# Turns the integration with the provider on; github is the only value.
+name = "github"
+# Host of the provider, without scheme or path; gh calls go to it.
+host = "github.com"
+# omhl merge requires the CI of the pull request to be green.
+require_ci = true
+
+[worktree]
+# Folder of the work item worktrees, relative to the main directory or absolute.
+dir = ".worktrees"
